@@ -1,14 +1,15 @@
 //
-//  Kalvian_RootsApp.swift
+//  KalvianRootsApp.swift
 //  Kalvian Roots
 //
 //  Created by Michael Bendio on 7/11/25.
 //
 
 import SwiftUI
+import FoundationModels
 
 @main
-struct Kalvian_RootsApp: App {
+struct KalvianRootsApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
