@@ -1,3 +1,4 @@
+
 //
 //  ContentView.swift
 //  Kalvian Roots
@@ -56,6 +57,13 @@ struct SidebarView: View {
                 NavigationLink("Family Extraction") {
                     JuuretView()
                 }
+                
+                /*
+                // ADD JUST THIS ONE BUTTON:
+                Button("🚀 Test @Generable") {
+                    Task { await testGenerablePatternE() }
+                }
+                */
                 
                 NavigationLink("Hiski Search") {
                     Text("Hiski Search (Coming Soon)")

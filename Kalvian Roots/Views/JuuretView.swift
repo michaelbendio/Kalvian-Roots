@@ -2,7 +2,7 @@
 //  JuuretView.swift
 //  Kalvian Roots
 //
-//  Created by Michael Bendio on 7/11/25.
+//  Enhanced with file management integration
 //
 
 import SwiftUI
@@ -11,7 +11,6 @@ import FoundationModels
 struct JuuretView: View {
     @Environment(JuuretApp.self) var app
     @State private var familyId = ""
-    @State private var isExtracting = false
     @State private var showingCitation = false
     @State private var citationText = ""
     @State private var showingHiskiResult = false
@@ -27,12 +26,15 @@ struct JuuretView: View {
                 // Foundation Models Availability Check
                 availabilityStatusView
                 
-                // Family Input Section (only show if available)
-                if systemModel.availability == .available {
+                // FILE STATUS SECTION
+                fileStatusSection
+                
+                // Family Input Section (only show if file loaded and Foundation Models available)
+                if app.isReady && systemModel.availability == .available {
                     inputSection
                     
                     // Extraction Status
-                    if isExtracting {
+                    if app.isProcessing {
                         extractionStatus
                     }
                     
@@ -44,12 +46,15 @@ struct JuuretView: View {
                             .padding(.bottom, 10)
                         
                         familyDisplaySection(family: family)
-                    } else {
-                        Text("No family data loaded")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .padding()
                     }
+                } else if !app.isReady {
+                    // Show file loading instructions
+                    fileLoadingInstructions
+                } else {
+                    Text("Foundation Models not available")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding()
                 }
                 
                 Spacer()
@@ -83,17 +88,135 @@ struct JuuretView: View {
         }
     }
     
+    // MARK: - File Status Section
+    
+    var fileStatusSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("File Status")
+                .font(.headline)
+            
+            HStack {
+                if app.fileManager.isLoading {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Loading file...")
+                        .font(.caption)
+                } else if app.fileManager.isFileLoaded {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                    VStack(alignment: .leading) {
+                        Text("File Loaded")
+                            .font(.caption)
+                            .foregroundColor(.green)
+                        if let url = app.fileManager.currentFileURL {
+                            Text(url.lastPathComponent)
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    Spacer()
+                    Button("Close File") {
+                        app.fileManager.closeFile()
+                    }
+                    .font(.caption)
+                } else {
+                    Image(systemName: "doc.text")
+                        .foregroundColor(.orange)
+                    Text("No file loaded")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                    Spacer()
+                    Button("Open File...") {
+                        Task {
+                            do {
+                                try await app.fileManager.openFileDialog()
+                            } catch {
+                                print("❌ Failed to open file: \(error)")
+                            }
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+            
+            // Show any file manager errors
+            if let errorMessage = app.fileManager.errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .padding(.top, 5)
+            }
+        }
+        .padding()
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(10)
+    }
+    
+    // MARK: - File Loading Instructions
+    
+    var fileLoadingInstructions: some View {
+        VStack(spacing: 15) {
+            Image(systemName: "doc.text.magnifyingglass")
+                .font(.system(size: 48))
+                .foregroundColor(.blue)
+            
+            Text("Load Juuret Kälviällä Text")
+                .font(.title2)
+                .fontWeight(.medium)
+            
+            Text("To extract families, you need to load the Juuret Kälviällä genealogy text file.")
+                .font(.body)
+                .multilineTextAlignment(.center)
+                .foregroundColor(.secondary)
+            
+            VStack(alignment: .leading, spacing: 8) {
+                Text("The app will automatically look for:")
+                    .font(.headline)
+                
+                Text("• JuuretKälviällä.txt in iCloud Documents")
+                Text("• JuuretKälviällä.txt in local Documents")
+                
+                Text("Or use File → Open... to select the file manually")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.top, 5)
+            }
+            .padding()
+            .background(Color.blue.opacity(0.1))
+            .cornerRadius(8)
+            
+            Button("Open File...") {
+                Task {
+                    do {
+                        try await app.fileManager.openFileDialog()
+                    } catch {
+                        print("❌ Failed to open file: \(error)")
+                    }
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+        }
+        .padding()
+    }
+    
+    // MARK: - Input Section (existing)
+    
     var inputSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Family Extraction")
                 .font(.headline)
             
+            Text("🎉 Real Juuret Kälviällä text loaded! Foundation Models will extract from actual genealogical data.")
+                .font(.caption)
+                .foregroundColor(.green)
+                .padding(.bottom, 5)
+            
             HStack {
                 TextField("Family ID (e.g., Korpi 6)", text: $familyId)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .onSubmit {
-                        // Handle Enter key press
-                        if !familyId.isEmpty && !isExtracting {
+                        if !familyId.isEmpty && !app.isProcessing {
                             Task {
                                 await extractFamily()
                             }
@@ -105,13 +228,87 @@ struct JuuretView: View {
                         await extractFamily()
                     }
                 }
-                .disabled(familyId.isEmpty || isExtracting)
+                .disabled(familyId.isEmpty || app.isProcessing)
                 .buttonStyle(.borderedProminent)
             }
         }
         .padding()
         .background(Color.gray.opacity(0.1))
         .cornerRadius(10)
+    }
+    
+    // MARK: - Rest of existing methods...
+    
+    var availabilityStatusView: some View {
+        Group {
+            switch systemModel.availability {
+            case .available:
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                    Text("Foundation Models Ready")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                }
+            case .unavailable(.appleIntelligenceNotEnabled):
+                VStack {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                        Text("Apple Intelligence Not Enabled")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                    }
+                    Text("Please enable Apple Intelligence in System Settings")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            case .unavailable(.deviceNotEligible):
+                VStack {
+                    HStack {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.red)
+                        Text("Device Not Compatible")
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
+                    Text("This device doesn't support Apple Intelligence")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            case .unavailable(.modelNotReady):
+                VStack {
+                    HStack {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                        Text("Model Downloading...")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                    }
+                    Text("Foundation Models are being prepared")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            case .unavailable(_):
+                HStack {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.red)
+                    Text("Foundation Models Unavailable")
+                        .font(.caption)
+                        .foregroundColor(.red)
+                }
+            }
+        }
+    }
+    
+    var extractionStatus: some View {
+        HStack {
+            ProgressView()
+                .scaleEffect(0.8)
+            Text("Extracting family from real Juuret Kälviällä text...")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
     }
     
     func familyDisplaySection(family: Family) -> some View {
@@ -137,7 +334,7 @@ struct JuuretView: View {
                 Text("Parents:")
                     .font(.headline)
                 
-                // Father - No purple spouse link
+                // Father
                 PersonRowView(
                     person: family.father,
                     role: "Father",
@@ -152,7 +349,7 @@ struct JuuretView: View {
                     }
                 )
                 
-                // Mother - No purple spouse link
+                // Mother
                 if let mother = family.mother {
                     PersonRowView(
                         person: mother,
@@ -226,6 +423,14 @@ struct JuuretView: View {
                     }
                 }
             }
+            
+            // Child mortality info
+            if let childrenDied = family.childrenDiedInfancy {
+                Text("Children died in infancy: \(childrenDied)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.top, 5)
+            }
         }
         .padding()
         .background(Color.white)
@@ -233,82 +438,10 @@ struct JuuretView: View {
         .shadow(radius: 2)
     }
     
-    // Keep all the other functions the same...
-    var availabilityStatusView: some View {
-        Group {
-            switch systemModel.availability {
-            case .available:
-                HStack {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                    Text("Foundation Models Ready")
-                        .font(.caption)
-                        .foregroundColor(.green)
-                }
-            case .unavailable(.appleIntelligenceNotEnabled):
-                VStack {
-                    HStack {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.orange)
-                        Text("Apple Intelligence Not Enabled")
-                            .font(.caption)
-                            .foregroundColor(.orange)
-                    }
-                    Text("Please enable Apple Intelligence in System Settings")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-            case .unavailable(.deviceNotEligible):
-                VStack {
-                    HStack {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.red)
-                        Text("Device Not Compatible")
-                            .font(.caption)
-                            .foregroundColor(.red)
-                    }
-                    Text("This device doesn't support Apple Intelligence")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-            case .unavailable(.modelNotReady):
-                VStack {
-                    HStack {
-                        ProgressView()
-                            .scaleEffect(0.7)
-                        Text("Model Downloading...")
-                            .font(.caption)
-                            .foregroundColor(.orange)
-                    }
-                    Text("Foundation Models are being prepared")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-            case .unavailable(_):
-                HStack {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.red)
-                    Text("Foundation Models Unavailable")
-                        .font(.caption)
-                        .foregroundColor(.red)
-                }
-            }
-        }
-    }
-    
-    var extractionStatus: some View {
-        HStack {
-            ProgressView()
-                .scaleEffect(0.8)
-            Text("Extracting family data...")
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-    }
+    // MARK: - Action Methods
     
     func extractFamily() async {
         print("🚀 extractFamily() called from UI")
-        isExtracting = true
         
         do {
             try await app.extractFamily(familyId: familyId.uppercased())
@@ -316,9 +449,6 @@ struct JuuretView: View {
         } catch {
             print("❌ Extraction error: \(error)")
         }
-        
-        isExtracting = false
-        print("🏁 isExtracting set to false")
     }
     
     func showCitation(for person: Person, in family: Family) {
