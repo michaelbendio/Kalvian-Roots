@@ -173,8 +173,8 @@ struct JuuretView: View {
                 Text("The app will automatically look for:")
                     .font(.headline)
                 
-                Text("• JuuretKälviällä.txt in iCloud Documents")
-                Text("• JuuretKälviällä.txt in local Documents")
+                Text("• JuuretKälviällä.roots in iCloud Documents")
+                Text("• JuuretKälviällä.roots in local Documents")
                 
                 Text("Or use File → Open... to select the file manually")
                     .font(.caption)

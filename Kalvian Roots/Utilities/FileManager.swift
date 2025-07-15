@@ -43,9 +43,9 @@ class JuuretFileManager {
         // Try multiple locations
         let possiblePaths = [
             URL(fileURLWithPath: NSHomeDirectory())
-                .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs/Documents/JuuretKälviällä.txt"),
+                .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs/Documents/JuuretKälviällä.roots"),
             URL(fileURLWithPath: NSHomeDirectory())
-                .appendingPathComponent("Documents/JuuretKälviällä.txt")
+                .appendingPathComponent("Documents/JuuretKälviällä.roots")
         ]
         
         for path in possiblePaths {
@@ -117,12 +117,12 @@ class JuuretFileManager {
         await MainActor.run {
             if fileExists {
                 self.errorMessage = """
-                JuuretKälviällä.txt found but needs permission to access.
+                JuuretKälviällä.roots found but needs permission to access.
                 Please use the 'Open File' button to grant access.
                 """
             } else {
                 self.errorMessage = """
-                JuuretKälviällä.txt not found. Please:
+                JuuretKälviällä.roots not found. Please:
                 1. Place the file in Documents or iCloud Drive/Documents
                 2. Use the 'Open File' button to select it
                 """
@@ -261,15 +261,15 @@ class JuuretFileManager {
         
         #if canImport(UniformTypeIdentifiers)
         if #available(macOS 11.0, *) {
-            panel.allowedContentTypes = [.plainText, .text]
+            panel.allowedContentTypes = [.plainText, .text, UTType(filenameExtension: "roots")!]
         } else {
-            panel.allowedFileTypes = ["txt", "text"]
+            panel.allowedFileTypes = ["roots", "text"]
         }
         #else
-        panel.allowedFileTypes = ["txt", "text"]
+        panel.allowedFileTypes = ["roots", "text"]
         #endif
         
-        panel.title = "Select JuuretKälviällä.txt file"
+        panel.title = "Select JuuretKälviällä.roots file"
         panel.message = "Choose the Juuret Kälviällä genealogy text file"
         
         let homeDir = getActualHomeDirectory()
@@ -520,7 +520,7 @@ class JuuretFileManager {
     
     private func checkIfFileExistsAnywhere() -> Bool {
         let fileManager = Foundation.FileManager.default
-        let fileName = "JuuretKälviällä.txt"
+        let fileName = "JuuretKälviällä.roots"
         let homeDir = getActualHomeDirectory()
         
         let locations = [
