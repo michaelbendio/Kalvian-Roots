@@ -21,23 +21,17 @@ struct JuuretFileCommands: Commands {
         // Add our file operations after the newItem group
         CommandGroup(after: .newItem) {
             Button("Open...") {
-                Task {
-                    // We'll need to get the app instance from the environment
-                    // For now, let's use a simplified approach
-                    do {
-                        let content = try await JuuretFileManager.loadJuuretText()
-                        print("✅ File loaded via static method: \(content.count) characters")
-                    } catch {
-                        print("❌ Failed to open file: \(error)")
-                    }
-                }
+                // Note: This is a simplified implementation
+                // In a real app, you'd need to access the app instance
+                // For now, this just prints to console
+                print("📁 File → Open menu item selected")
+                print("💡 Use the Open File button in the app instead")
             }
             .keyboardShortcut("o", modifiers: .command)
             
-            // For now, let's simplify the recent files menu
             Button("Open Recent...") {
-                // TODO: Implement recent files when app state is available
-                print("Recent files not yet implemented in menu commands")
+                print("📋 File → Open Recent menu item selected")
+                print("💡 Recent files feature not yet implemented")
             }
             .disabled(true)
         }

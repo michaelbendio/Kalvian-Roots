@@ -2,7 +2,7 @@
 //  FileManager.swift
 //  Kalvian Roots
 //
-//  Created by Michael Bendio on 7/11/25.
+//  Clean rebuild - no lingering syntax issues
 //
 
 import Foundation
@@ -10,6 +10,9 @@ import SwiftUI
 
 #if os(macOS)
 import AppKit
+#endif
+#if os(iOS)
+import UIKit
 #endif
 #if canImport(UniformTypeIdentifiers)
 import UniformTypeIdentifiers
@@ -26,34 +29,38 @@ class JuuretFileManager {
     var isLoading: Bool = false
     var errorMessage: String?
     private(set) var recentFileURLs: [URL] = []
+    private var savedBookmarkData: Data?
+    
+    #if os(iOS)
+    private var documentPickerDelegate: DocumentPickerDelegate?
+    #endif
+    
+    // MARK: - Static Methods
+    
+    static func loadJuuretText() async throws -> String {
+        let fileManager = Foundation.FileManager.default
+        
+        // Try multiple locations
+        let possiblePaths = [
+            URL(fileURLWithPath: NSHomeDirectory())
+                .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs/Documents/JuuretKälviällä.txt"),
+            URL(fileURLWithPath: NSHomeDirectory())
+                .appendingPathComponent("Documents/JuuretKälviällä.txt")
+        ]
+        
+        for path in possiblePaths {
+            if fileManager.fileExists(atPath: path.path) {
+                return try String(contentsOf: path, encoding: .utf8)
+            }
+        }
+        
+        throw JuuretError.fileNotFound
+    }
     
     // MARK: - Public Methods
     
-    static func loadJuuretText() async throws -> String {
-        let systemFileManager = Foundation.FileManager.default
-        
-        guard let documentsURL = systemFileManager.url(forUbiquityContainerIdentifier: nil)?
-            .appendingPathComponent("Documents") else {
-            throw JuuretError.fileNotFound
-        }
-        
-        let fileURL = documentsURL.appendingPathComponent("JuuretKälviällä.txt")
-        
-        guard systemFileManager.fileExists(atPath: fileURL.path) else {
-            throw JuuretError.fileNotFound
-        }
-        
-        do {
-            try systemFileManager.startDownloadingUbiquitousItem(at: fileURL)
-        } catch {
-            print("Could not start downloading item: \(error)")
-        }
-        
-        return try String(contentsOf: fileURL, encoding: .utf8)
-    }
-    
     func autoLoadDefaultFile() async {
-        print("🔍 Attempting to auto-load JuuretKälviällä.txt from default locations...")
+        print("🔍 Auto-loading with permission-aware approach...")
         
         await MainActor.run {
             isLoading = true
@@ -66,68 +73,75 @@ class JuuretFileManager {
             }
         }
         
-        do {
-            // Try iCloud Documents first
-            if let iCloudURL = getDefaultiCloudFileURL() {
-                print("📱 Found iCloud Documents, attempting to load: \(iCloudURL.path)")
-                try await loadFile(at: iCloudURL)
-                return
+        // Try to load from saved bookmark first
+        if let bookmarkData = loadSavedBookmark() {
+            print("📖 Trying saved bookmark...")
+            
+            do {
+                var isStale = false
+                
+                #if os(macOS)
+                let url = try URL(resolvingBookmarkData: bookmarkData,
+                                 options: .withSecurityScope,
+                                 relativeTo: nil,
+                                 bookmarkDataIsStale: &isStale)
+                #else
+                let url = try URL(resolvingBookmarkData: bookmarkData,
+                                 options: [],
+                                 relativeTo: nil,
+                                 bookmarkDataIsStale: &isStale)
+                #endif
+                
+                if !isStale {
+                    print("✅ Bookmark is valid, attempting to load...")
+                    
+                    #if os(macOS)
+                    if url.startAccessingSecurityScopedResource() {
+                        defer { url.stopAccessingSecurityScopedResource() }
+                        try await loadFile(at: url)
+                        return
+                    }
+                    #else
+                    try await loadFile(at: url)
+                    return
+                    #endif
+                }
+            } catch {
+                print("❌ Bookmark failed: \(error)")
+            }
+        }
+        
+        // Check if file exists and suggest file picker
+        let fileExists = checkIfFileExistsAnywhere()
+        
+        await MainActor.run {
+            if fileExists {
+                self.errorMessage = """
+                JuuretKälviällä.txt found but needs permission to access.
+                Please use the 'Open File' button to grant access.
+                """
             } else {
-                print("📱 iCloud Documents not available or file not found there")
-            }
-            
-            // Try local Documents folder
-            if let localURL = getDefaultLocalFileURL() {
-                print("💻 Found local Documents, attempting to load: \(localURL.path)")
-                try await loadFile(at: localURL)
-                return
-            } else {
-                print("💻 Local Documents check failed")
-            }
-            
-            print("⚠️ JuuretKälviällä.txt not found in default locations")
-            await MainActor.run {
-                self.errorMessage = "JuuretKälviällä.txt not found. Use File → Open to select the file."
-            }
-            
-        } catch {
-            print("❌ Auto-load failed: \(error)")
-            await MainActor.run {
-                self.errorMessage = "Could not auto-load file: \(error.localizedDescription)"
+                self.errorMessage = """
+                JuuretKälviällä.txt not found. Please:
+                1. Place the file in Documents or iCloud Drive/Documents
+                2. Use the 'Open File' button to select it
+                """
             }
         }
     }
     
     func openFileDialog() async throws {
+        print("🔄 openFileDialog() called - current loading state: \(isLoading)")
+        
+        guard !isLoading else {
+            print("🔄 Already loading, skipping duplicate call")
+            return
+        }
+        
         #if os(macOS)
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        panel.allowedContentTypes = [.plainText, .text]
-        panel.title = "Select JuuretKälviällä.txt file"
-        panel.message = "Choose the Juuret Kälviällä genealogy text file"
-        
-        await MainActor.run {
-            isLoading = true
-            errorMessage = nil
-        }
-        
-        defer {
-            Task { @MainActor in
-                isLoading = false
-            }
-        }
-        
-        let result = await MainActor.run { panel.runModal() }
-        
-        if result == .OK, let url = panel.url {
-            print("📁 User selected file: \(url.path)")
-            try await loadFile(at: url)
-            addToRecentFiles(url)
-        } else {
-            print("🚫 User cancelled file selection")
-        }
+        try await openMacFileDialog()
+        #elseif os(iOS)
+        await openIOSFilePicker()
         #else
         throw JuuretError.fileNotFound
         #endif
@@ -147,73 +161,59 @@ class JuuretFileManager {
             }
         }
         
-        guard Foundation.FileManager.default.fileExists(atPath: url.path) else {
+        let fileExists = Foundation.FileManager.default.fileExists(atPath: url.path)
+        print("📖 File exists: \(fileExists)")
+        
+        if !fileExists {
+            print("❌ File not found at path: \(url.path)")
+            
+            if url.path.contains("Mobile Documents") {
+                do {
+                    let resourceValues = try url.resourceValues(forKeys: [.fileSizeKey])
+                    print("☁️ iCloud file info:")
+                    print("☁️ File size: \(resourceValues.fileSize ?? 0) bytes")
+                    print("☁️ This is an iCloud file - may need manual download")
+                } catch {
+                    print("☁️ Could not get iCloud file info: \(error)")
+                }
+            }
+            
             throw JuuretError.fileNotFound
         }
         
-        if url.path.contains("iCloud") {
-            do {
-                try Foundation.FileManager.default.startDownloadingUbiquitousItem(at: url)
-                try await Task.sleep(nanoseconds: 500_000_000)
-            } catch {
-                print("⚠️ Could not start iCloud download: \(error)")
+        do {
+            let content = try String(contentsOf: url, encoding: .utf8)
+            
+            print("✅ File loaded successfully")
+            print("📊 Content length: \(content.count) characters")
+            print("📊 Lines: \(content.components(separatedBy: .newlines).count)")
+            
+            await MainActor.run {
+                self.currentFileURL = url
+                self.currentFileContent = content
+                self.isFileLoaded = true
+                self.errorMessage = nil
             }
-        }
-        
-        let content = try String(contentsOf: url, encoding: .utf8)
-        
-        print("✅ File loaded successfully")
-        print("📊 Content length: \(content.count) characters")
-        print("📊 Lines: \(content.components(separatedBy: .newlines).count)")
-        
-        await MainActor.run {
-            self.currentFileURL = url
-            self.currentFileContent = content
-            self.isFileLoaded = true
-            self.errorMessage = nil
+            
+        } catch {
+            print("❌ Failed to read file content: \(error)")
+            throw error
         }
     }
     
     func extractFamilyText(familyId: String) -> String? {
         guard let content = currentFileContent else {
-            print("❌ No file content available for extraction")
             return nil
         }
         
         let normalizedId = familyId.uppercased()
-        print("🔍 Searching for family: \(normalizedId)")
-        print("📊 File content length: \(content.count) characters")
-        
         let lines = content.components(separatedBy: .newlines)
-        print("📊 Total lines in file: \(lines.count)")
         
-        // Enhanced search - look for lines that contain the family ID
-        var foundLines: [Int] = []
-        for (index, line) in lines.enumerated() {
-            if line.uppercased().contains(normalizedId) {
-                foundLines.append(index)
-                print("🔍 Found '\(normalizedId)' on line \(index + 1): \(line.prefix(50))...")
-            }
-        }
-        
-        if foundLines.isEmpty {
-            print("❌ Family \(normalizedId) not found anywhere in text")
-            return nil
-        }
-        
-        // Look for the exact family header (starts with the family ID)
         guard let startIndex = lines.firstIndex(where: { line in
             line.uppercased().hasPrefix(normalizedId)
         }) else {
-            print("❌ No line starts with \(normalizedId), but found these matches:")
-            for lineIndex in foundLines.prefix(3) {
-                print("   Line \(lineIndex + 1): \(lines[lineIndex])")
-            }
             return nil
         }
-        
-        print("✅ Found family \(normalizedId) starting at line \(startIndex + 1)")
-        print("📄 Header line: \(lines[startIndex])")
         
         var familyLines: [String] = []
         
@@ -221,21 +221,13 @@ class JuuretFileManager {
             let line = lines[i]
             
             if i > startIndex && isFamilyHeaderLine(line) {
-                print("🛑 Stopped at next family header (line \(i + 1)): \(line.prefix(30))...")
                 break
             }
             
             familyLines.append(line)
         }
         
-        let familyText = familyLines.joined(separator: "\n")
-        print("📄 Extracted \(familyLines.count) lines for family \(normalizedId)")
-        print("📄 First few lines of extracted text:")
-        for (index, line) in familyLines.prefix(5).enumerated() {
-            print("   \(index + 1): \(line)")
-        }
-        
-        return familyText
+        return familyLines.joined(separator: "\n")
     }
     
     func closeFile() {
@@ -243,7 +235,6 @@ class JuuretFileManager {
         currentFileContent = nil
         isFileLoaded = false
         errorMessage = nil
-        print("📁 File closed")
     }
     
     func addToRecentFiles(_ url: URL) {
@@ -253,56 +244,376 @@ class JuuretFileManager {
         if recentFileURLs.count > 10 {
             recentFileURLs = Array(recentFileURLs.prefix(10))
         }
-        
-        print("📋 Added to recent files: \(url.lastPathComponent)")
     }
     
     func clearRecentFiles() {
         recentFileURLs.removeAll()
-        print("🗑️ Recent files cleared")
     }
     
-    // MARK: - Private Helper Methods
+    // MARK: - Platform-Specific File Dialogs
     
-    private func getDefaultiCloudFileURL() -> URL? {
-        guard let iCloudURL = Foundation.FileManager.default.url(forUbiquityContainerIdentifier: nil)?
-            .appendingPathComponent("Documents")
-            .appendingPathComponent("JuuretKälviällä.txt") else {
-            return nil
+    #if os(macOS)
+    private func openMacFileDialog() async throws {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        
+        #if canImport(UniformTypeIdentifiers)
+        if #available(macOS 11.0, *) {
+            panel.allowedContentTypes = [.plainText, .text]
+        } else {
+            panel.allowedFileTypes = ["txt", "text"]
+        }
+        #else
+        panel.allowedFileTypes = ["txt", "text"]
+        #endif
+        
+        panel.title = "Select JuuretKälviällä.txt file"
+        panel.message = "Choose the Juuret Kälviällä genealogy text file"
+        
+        let homeDir = getActualHomeDirectory()
+        let iCloudDocs = URL(fileURLWithPath: "\(homeDir)/Library/Mobile Documents/com~apple~CloudDocs/Documents")
+        if Foundation.FileManager.default.fileExists(atPath: iCloudDocs.path) {
+            panel.directoryURL = iCloudDocs
+        } else {
+            panel.directoryURL = URL(fileURLWithPath: "\(homeDir)/Documents")
         }
         
-        return Foundation.FileManager.default.fileExists(atPath: iCloudURL.path) ? iCloudURL : nil
+        await MainActor.run {
+            isLoading = true
+            errorMessage = nil
+        }
+        
+        defer {
+            Task { @MainActor in
+                isLoading = false
+            }
+        }
+        
+        let result = await MainActor.run { panel.runModal() }
+        
+        if result == .OK, let url = panel.url {
+            print("📁 User selected file: \(url.path)")
+            
+            do {
+                #if os(macOS)
+                let bookmarkData = try url.bookmarkData(options: .withSecurityScope,
+                                                       includingResourceValuesForKeys: nil,
+                                                       relativeTo: nil)
+                #else
+                let bookmarkData = try url.bookmarkData(options: [],
+                                                       includingResourceValuesForKeys: nil,
+                                                       relativeTo: nil)
+                #endif
+                saveBookmark(bookmarkData)
+                print("💾 Saved security bookmark for future access")
+            } catch {
+                print("⚠️ Could not create bookmark: \(error)")
+            }
+            
+            #if os(macOS)
+            if url.startAccessingSecurityScopedResource() {
+                defer { url.stopAccessingSecurityScopedResource() }
+                try await loadFile(at: url)
+            } else {
+                throw JuuretError.fileNotFound
+            }
+            #else
+            try await loadFile(at: url)
+            #endif
+            
+            addToRecentFiles(url)
+        } else {
+            print("🚫 User cancelled file selection")
+        }
+    }
+    #endif
+    
+    #if os(iOS)
+    @MainActor
+    private func openIOSFilePicker() async {
+        print("📱 === Starting iOS file picker process ===")
+        
+        guard !isLoading else {
+            print("📱 Already loading, skipping duplicate call")
+            return
+        }
+        
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first else {
+            print("❌ Could not get window scene or window")
+            errorMessage = "Could not access app window"
+            return
+        }
+        
+        var rootViewController = window.rootViewController
+        print("📱 Initial root controller: \(String(describing: rootViewController))")
+        
+        if let hostingController = rootViewController as? UIHostingController<AnyView> {
+            rootViewController = hostingController
+            print("📱 Using hosting controller")
+        }
+        
+        guard let rootVC = rootViewController else {
+            print("❌ Could not get root view controller")
+            errorMessage = "Could not access view controller"
+            return
+        }
+        
+        var topController = rootVC
+        while let presented = topController.presentedViewController {
+            print("📱 Found presented controller: \(String(describing: presented))")
+            topController = presented
+        }
+        
+        print("📱 Will present on: \(String(describing: topController))")
+        
+        let documentPicker: UIDocumentPickerViewController
+        
+        #if canImport(UniformTypeIdentifiers)
+        if #available(iOS 14.0, *) {
+            print("📱 Using modern document picker (iOS 14+)")
+            documentPicker = UIDocumentPickerViewController(forOpeningContentTypes: [.plainText, .text])
+        } else {
+            print("📱 Using legacy document picker (iOS 13)")
+            documentPicker = UIDocumentPickerViewController(documentTypes: ["public.plain-text", "public.text"], in: .open)
+        }
+        #else
+        print("📱 Using fallback document picker")
+        documentPicker = UIDocumentPickerViewController(documentTypes: ["public.plain-text", "public.text"], in: .open)
+        #endif
+        
+        documentPicker.allowsMultipleSelection = false
+        documentPicker.modalPresentationStyle = .formSheet
+        documentPicker.shouldShowFileExtensions = true
+        
+        print("📱 Document picker configured")
+        
+        let delegate = DocumentPickerDelegate { [weak self] url in
+            print("📱 === Delegate callback triggered ===")
+            print("📱 Selected URL: \(url)")
+            
+            Task {
+                await self?.handlePickedFile(url)
+            }
+        }
+        
+        self.documentPickerDelegate = delegate
+        documentPicker.delegate = delegate
+        
+        print("📱 Delegate assigned, about to present...")
+        
+        isLoading = true
+        errorMessage = nil
+        
+        topController.present(documentPicker, animated: true) {
+            print("📱 Document picker presentation animation completed")
+        }
+        
+        print("📱 === File picker setup complete ===")
     }
     
-    private func getDefaultLocalFileURL() -> URL? {
-        guard let documentsURL = Foundation.FileManager.default.urls(for: .documentDirectory,
-                                                          in: .userDomainMask).first else {
-            print("💻 Could not get local Documents directory")
-            return nil
+    @MainActor
+    private func handlePickedFile(_ url: URL) async {
+        print("📱 === Handling picked file ===")
+        print("📱 File: \(url.lastPathComponent)")
+        print("📱 Path: \(url.path)")
+        
+        // CRITICAL: Start accessing security scoped resource FIRST
+        let hasAccess = url.startAccessingSecurityScopedResource()
+        print("📱 Security scoped access granted: \(hasAccess)")
+        
+        // Use defer to ensure we stop accessing when done
+        defer {
+            if hasAccess {
+                url.stopAccessingSecurityScopedResource()
+                print("📱 Released security scoped access")
+            }
         }
         
-        let localURL = documentsURL.appendingPathComponent("JuuretKälviällä.txt")
-        print("💻 Checking local path: \(localURL.path)")
+        do {
+            if url.path.contains("Mobile Documents") {
+                print("☁️ Detected iCloud file, checking download status...")
+                
+                do {
+                    try Foundation.FileManager.default.startDownloadingUbiquitousItem(at: url)
+                    print("☁️ Started iCloud download...")
+                    
+                    var attempts = 0
+                    let maxAttempts = 20
+                    
+                    while attempts < maxAttempts {
+                        if Foundation.FileManager.default.fileExists(atPath: url.path) {
+                            do {
+                                let testData = try Data(contentsOf: url, options: [.mappedIfSafe])
+                                if testData.count > 0 {
+                                    print("✅ iCloud file is now accessible!")
+                                    break
+                                }
+                            } catch {
+                                print("⚠️ File exists but not yet readable: \(error)")
+                            }
+                        }
+                        
+                        print("☁️ Attempt \(attempts + 1): waiting for iCloud sync...")
+                        
+                        try await Task.sleep(nanoseconds: 500_000_000)
+                        attempts += 1
+                    }
+                    
+                    if attempts >= maxAttempts {
+                        print("⚠️ iCloud download timed out, trying to load anyway...")
+                    }
+                    
+                } catch {
+                    print("⚠️ Could not start iCloud download: \(error)")
+                    print("⚠️ Will try to load file directly...")
+                }
+            }
+            
+            let fileExists = Foundation.FileManager.default.fileExists(atPath: url.path)
+            print("📱 File exists check: \(fileExists)")
+            
+            if fileExists {
+                // Save bookmark AFTER we confirm access works
+                do {
+                    let bookmarkData = try url.bookmarkData(options: [],
+                                                           includingResourceValuesForKeys: nil,
+                                                           relativeTo: nil)
+                    saveBookmark(bookmarkData)
+                    print("💾 Saved iOS bookmark for future access")
+                } catch {
+                    print("⚠️ Could not create iOS bookmark: \(error)")
+                }
+                
+                print("📱 Starting file load...")
+                try await loadFile(at: url)
+                addToRecentFiles(url)
+                print("📱 File load completed successfully")
+            } else {
+                print("❌ File still doesn't exist after iCloud download attempt")
+                
+                // Give more specific error for iCloud files
+                if url.path.contains("Mobile Documents") {
+                    errorMessage = "iCloud file not accessible. Please ensure the file is downloaded to your device in the Files app."
+                } else {
+                    errorMessage = "Selected file could not be accessed."
+                }
+                
+                throw JuuretError.fileNotFound
+            }
+            
+        } catch {
+            print("❌ iOS file loading failed: \(error)")
+            if errorMessage == nil {
+                errorMessage = "Failed to load selected file. If this is an iCloud file, make sure it's downloaded to your device."
+            }
+        }
         
-        let exists = Foundation.FileManager.default.fileExists(atPath: localURL.path)
-        print("💻 File exists at local path: \(exists)")
+        documentPickerDelegate = nil
+        print("📱 === File handling complete ===")
+    }
+    #endif
+    
+    // MARK: - Helper Methods
+    
+    private func checkIfFileExistsAnywhere() -> Bool {
+        let fileManager = Foundation.FileManager.default
+        let fileName = "JuuretKälviällä.txt"
+        let homeDir = getActualHomeDirectory()
         
-        return exists ? localURL : nil
+        let locations = [
+            "\(homeDir)/Library/Mobile Documents/com~apple~CloudDocs/Documents/\(fileName)",
+            "\(homeDir)/Documents/\(fileName)",
+            "\(homeDir)/Desktop/\(fileName)",
+            "\(homeDir)/Downloads/\(fileName)"
+        ]
+        
+        for location in locations {
+            if fileManager.fileExists(atPath: location) {
+                print("📍 File exists at: \(location)")
+                return true
+            }
+        }
+        
+        return false
+    }
+    
+    private func getActualHomeDirectory() -> String {
+        let homeDir = NSHomeDirectory()
+        if homeDir.contains("/Library/Containers/") {
+            return homeDir.replacingOccurrences(
+                of: "/Library/Containers/com.michael-bendio.Kalvian-Roots/Data",
+                with: ""
+            )
+        }
+        return homeDir
+    }
+    
+    private func saveBookmark(_ bookmarkData: Data) {
+        UserDefaults.standard.set(bookmarkData, forKey: "JuuretFileBookmark")
+        self.savedBookmarkData = bookmarkData
+    }
+    
+    private func loadSavedBookmark() -> Data? {
+        if let saved = savedBookmarkData {
+            return saved
+        }
+        
+        let bookmark = UserDefaults.standard.data(forKey: "JuuretFileBookmark")
+        savedBookmarkData = bookmark
+        return bookmark
     }
     
     private func isFamilyHeaderLine(_ line: String) -> Bool {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        
-        let familyPattern = "^[A-ZÄÖÅ-]+ [IVX0-9]+[ABC]?( II| III| IV)?, PAGE"
-        
-        do {
-            let regex = try NSRegularExpression(pattern: familyPattern)
-            let range = NSRange(location: 0, length: trimmed.count)
-            return regex.firstMatch(in: trimmed, range: range) != nil
-        } catch {
-            return trimmed.contains(" ") &&
-                   trimmed.contains(",") &&
-                   trimmed.contains("PAGE")
-        }
+        return trimmed.contains(" ") && trimmed.contains(",") && trimmed.contains("PAGE")
     }
 }
+
+#if os(iOS)
+class DocumentPickerDelegate: NSObject, UIDocumentPickerDelegate {
+    private let completion: (URL) -> Void
+    
+    init(completion: @escaping (URL) -> Void) {
+        self.completion = completion
+        super.init()
+        print("📱 DocumentPickerDelegate created")
+    }
+    
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        print("📱 === DocumentPicker delegate called ===")
+        print("📱 Number of files selected: \(urls.count)")
+        
+        for (index, url) in urls.enumerated() {
+            print("📱 File \(index): \(url.lastPathComponent)")
+            print("📱 Full path: \(url.path)")
+        }
+        
+        if let url = urls.first {
+            print("📱 Calling completion with first file: \(url.lastPathComponent)")
+            completion(url)
+        } else {
+            print("❌ No files in selection")
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            controller.dismiss(animated: true) {
+                print("📱 DocumentPicker dismissed after selection")
+            }
+        }
+    }
+    
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        print("🚫 DocumentPicker cancelled by user")
+        controller.dismiss(animated: true) {
+            print("📱 Cancelled picker dismissed")
+        }
+    }
+    
+    deinit {
+        print("📱 DocumentPickerDelegate deallocated")
+    }
+}
+#endif
