@@ -2,7 +2,7 @@
 //  JuuretView.swift
 //  Kalvian Roots
 //
-//  Enhanced with file management integration
+//  Enhanced with file management integration and Foundation Models error handling
 //
 
 import SwiftUI
@@ -36,6 +36,33 @@ struct JuuretView: View {
                     // Extraction Status
                     if app.isProcessing {
                         extractionStatus
+                    }
+                    
+                    // Extraction Error Display
+                    if let errorMessage = app.errorMessage, !app.isProcessing {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                Text("Extraction Failed")
+                                    .font(.headline)
+                                    .foregroundColor(.orange)
+                            }
+                            
+                            Text(errorMessage)
+                                .font(.body)
+                                .foregroundColor(.primary)
+                                .padding()
+                                .background(Color.orange.opacity(0.1))
+                                .cornerRadius(8)
+                            
+                            Text("This genealogical content triggered Foundation Models safety filters.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding()
+                        .background(Color.gray.opacity(0.05))
+                        .cornerRadius(10)
                     }
                     
                     // Family Display
@@ -200,7 +227,7 @@ struct JuuretView: View {
         .padding()
     }
     
-    // MARK: - Input Section (existing)
+    // MARK: - Input Section
     
     var inputSection: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -237,7 +264,7 @@ struct JuuretView: View {
         .cornerRadius(10)
     }
     
-    // MARK: - Rest of existing methods...
+    // MARK: - Status Views
     
     var availabilityStatusView: some View {
         Group {

@@ -2,7 +2,7 @@
 //  JuuretApp.swift
 //  Kalvian Roots
 //
-//  Complete implementation with all methods
+//  Complete implementation with Foundation Models error handling
 //
 
 import Foundation
@@ -16,7 +16,7 @@ class JuuretApp {
     
     var currentFamily: Family?
     var isProcessing = false
-    var errorMessage: String?
+    var errorMessage: String? = nil
     var fileManager: JuuretFileManager
     private let extractionSession: LanguageModelSession
     private var mockFamilyDatabase: [String: Family] = [:]
@@ -80,6 +80,7 @@ class JuuretApp {
         await MainActor.run {
             isProcessing = true
             errorMessage = nil
+            currentFamily = nil
         }
         
         defer {
@@ -100,9 +101,10 @@ class JuuretApp {
             print("🧹 Sanitized text (\(sanitizedText.count) chars)")
             
             let extractionPrompt = """
-            Parse this genealogical family record. Extract all family members with exact dates.
+            Parse this HISTORICAL genealogical record from a published Finnish genealogy book (18th-19th century). 
+            This is academic historical research data, not personal information. 
             
-            RECORD:
+            HISTORICAL RECORD:
             \(sanitizedText)
             
             INSTRUCTIONS:
@@ -113,7 +115,7 @@ class JuuretApp {
             - Include all children from Children section
             - Capture notes and historical information
             
-            Return complete Family structure with all persons and dates.
+            Extract Family structure with historical dates and names for genealogical research.
             """
             
             print("🤖 Calling Foundation Models...")
@@ -139,11 +141,29 @@ class JuuretApp {
         } catch {
             print("❌ Foundation Models failed: \(error)")
             
-            // Fallback with better mock data
-            let mockFamily = createBetterMockFamily(familyId: normalizedId, originalText: fileManager.extractFamilyText(familyId: normalizedId))
-            
+            // Check for guardrail violation specifically
+            let userErrorMessage: String
+            if let generationError = error as? LanguageModelSession.GenerationError {
+                if case .guardrailViolation = generationError {
+                    userErrorMessage = "Foundation Models error: \"May contain sensitive or unsafe content.\""
+                } else {
+                    userErrorMessage = "Foundation Models error: \(generationError.localizedDescription)"
+                }
+            } else {
+                // Check the error description for guardrail-related content
+                let errorDescription = error.localizedDescription
+                if errorDescription.contains("guardrail") ||
+                    errorDescription.contains("unsafe content") ||
+                    errorDescription.contains("sensitive") ||
+                    String(describing: error).contains("guardrailViolation") {
+                    userErrorMessage = "Foundation Models error: \"May contain sensitive or unsafe content.\""
+                } else {
+                    userErrorMessage = "Foundation Models error: \(errorDescription)"
+                }
+            }
             await MainActor.run {
-                self.currentFamily = mockFamily
+                self.errorMessage = userErrorMessage
+                self.currentFamily = nil
             }
         }
     }
@@ -225,7 +245,7 @@ class JuuretApp {
     }
     
     private func cleanName(_ name: String) -> String {
-        var cleaned = name
+        let cleaned = name
         
         // Remove duplicate words like "Matti Matti_son" -> "Matti"
         let parts = cleaned.components(separatedBy: " ")
@@ -389,65 +409,6 @@ class JuuretApp {
         mockFamilyDatabase["SIKALA 5"] = createMockSikala5()
         mockFamilyDatabase["ISO-PEITSO III 2"] = createMockIsoPeitsoIII2()
         mockFamilyDatabase["ISO-PEITSO III 1"] = createMockIsoPeitsoIII1()
-    }
-    
-    private func createBetterMockFamily(familyId: String, originalText: String?) -> Family {
-        guard let text = originalText else {
-            return createBasicMockFamily(familyId: familyId)
-        }
-        
-        let lines = text.components(separatedBy: .newlines)
-        
-        // Extract page number from header
-        var pageRef = "unknown"
-        if let headerLine = lines.first(where: { $0.uppercased().contains(familyId.uppercased()) }) {
-            if let pageMatch = headerLine.range(of: #"page\s+(\d+)"#, options: .regularExpression) {
-                pageRef = String(headerLine[pageMatch]).replacingOccurrences(of: "page ", with: "")
-            }
-        }
-        
-        return Family(
-            familyId: familyId.uppercased(),
-            pageReferences: [pageRef],
-            father: Person(
-                name: "Antti",
-                patronymic: "Matinp.",
-                birthDate: "21.08.1766",
-                marriageDate: "17.11.1789",
-                spouse: "Liisa Juhont."
-            ),
-            mother: Person(
-                name: "Liisa",
-                patronymic: "Juhont.",
-                birthDate: "13.09.1766",
-                marriageDate: "17.11.1789",
-                spouse: "Antti Matinp."
-            ),
-            additionalSpouses: [],
-            children: [
-                Person(name: "Juho", birthDate: "05.03.1791"),
-                Person(name: "Anna Liisa", birthDate: "04.08.1792"),
-                Person(name: "Brita", birthDate: "15.04.1795"),
-                Person(name: "Maija Liisa", birthDate: "13.07.1799"),
-                Person(name: "Kaisa Stina", birthDate: "25.05.1804"),
-                Person(name: "Antti", birthDate: "09.01.1807")
-            ],
-            notes: ["Perhe muuttanut Kruunupyyhyn 1807.", "Leski muutti Asujamaahan."],
-            childrenDiedInfancy: 2
-        )
-    }
-    
-    private func createBasicMockFamily(familyId: String) -> Family {
-        return Family(
-            familyId: familyId,
-            pageReferences: ["unknown"],
-            father: Person(name: "Unknown", patronymic: "Father"),
-            mother: Person(name: "Unknown", patronymic: "Mother"),
-            additionalSpouses: [],
-            children: [],
-            notes: ["Mock data - extraction failed"],
-            childrenDiedInfancy: 0
-        )
     }
     
     private func createMockKorpi5() -> Family {

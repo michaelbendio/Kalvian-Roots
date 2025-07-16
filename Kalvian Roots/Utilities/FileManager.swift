@@ -374,16 +374,16 @@ class JuuretFileManager {
         #if canImport(UniformTypeIdentifiers)
         if #available(iOS 14.0, *) {
             print("📱 Using modern document picker (iOS 14+)")
-            documentPicker = UIDocumentPickerViewController(forOpeningContentTypes: [.plainText, .text])
+            let rootsType = UTType(filenameExtension: "roots") ?? .plainText
+            documentPicker = UIDocumentPickerViewController(forOpeningContentTypes: [.plainText, .text, rootsType])
         } else {
             print("📱 Using legacy document picker (iOS 13)")
-            documentPicker = UIDocumentPickerViewController(documentTypes: ["public.plain-text", "public.text"], in: .open)
+            documentPicker = UIDocumentPickerViewController(documentTypes: ["public.plain-text", "public.text", "public.data"], in: .open)
         }
         #else
-        print("📱 Using fallback document picker")
-        documentPicker = UIDocumentPickerViewController(documentTypes: ["public.plain-text", "public.text"], in: .open)
+            print("📱 Using fallback document picker")
+            documentPicker = UIDocumentPickerViewController(documentTypes: ["public.plain-text", "public.text", "public.data"], in: .open)
         #endif
-        
         documentPicker.allowsMultipleSelection = false
         documentPicker.modalPresentationStyle = .formSheet
         documentPicker.shouldShowFileExtensions = true
