@@ -6,60 +6,74 @@
 //
 
 import Foundation
-import FoundationModels
 
 /**
  * Person.swift - Individual genealogical person data
  *
  * Individual person with Finnish naming conventions and genealogical data.
- * Phase 2: Using Foundation Models @Generable for structured person extraction!
+ * Updated for AI parsing without Foundation Models Framework dependencies.
  */
 
 /**
  * Individual person with Finnish naming conventions and genealogical data.
  *
- * Foundation Models @Generable: Enables structured person extraction with @Guide descriptions
- * for Finnish genealogical patterns and naming conventions.
+ * Enhanced for cross-reference resolution and AI parsing.
+ * Removed @Generable and @Guide annotations for direct AI prompting approach.
  */
-@Generable
 struct Person: Hashable, Sendable {
-    @Guide(description: "Finnish given name like 'Matti', 'Brita'")
+    // MARK: - Core Genealogical Data
+    
+    /// Finnish given name like 'Matti', 'Brita'
     var name: String
     
-    @Guide(description: "Patronymic like 'Erikinp.' (Erik's son), 'Matint.' (Matti's daughter)")
+    /// Patronymic like 'Erikinp.' (Erik's son), 'Matint.' (Matti's daughter)
     var patronymic: String?
     
-    @Guide(description: "Birth date in format '22.12.1701'")
+    /// Birth date in format '22.12.1701'
     var birthDate: String?
     
-    @Guide(description: "Death date in format '22.08.1812'")
+    /// Death date in format '22.08.1812'
     var deathDate: String?
     
-    @Guide(description: "Marriage date like '14.10.1750' or '∞ 51'")
+    /// Marriage date like '14.10.1750' or '∞ 51'
     var marriageDate: String?
     
-    @Guide(description: "Spouse name with patronymic like 'Brita Matint.'")
+    /// Spouse name with patronymic like 'Brita Matint.'
     var spouse: String?
     
-    @Guide(description: "Family reference from {family_id} notation")
+    /// Family reference from {family_id} notation where person is a child
     var asChildReference: String?
     
-    @Guide(description: "Family where person appears as parent")
+    /// Family where person appears as parent
     var asParentReference: String?
     
-    @Guide(description: "FamilySearch ID from <ID> notation, may be nil")
+    /// FamilySearch ID from <ID> notation, may be nil
     var familySearchId: String?
     
-    @Guide(description: "Note markers like '*' or '**'")
+    /// Note markers like '*' or '**'
     var noteMarkers: [String]
     
-    @Guide(description: "Father's name for birth record disambiguation")
+    // MARK: - Cross-Reference Enhancement Fields (NEW)
+    
+    /// Father's name for Hiski birth record disambiguation
     var fatherName: String?
     
-    @Guide(description: "Mother's name for birth record disambiguation")
+    /// Mother's name for Hiski birth record disambiguation
     var motherName: String?
     
-    // MARK: - Initializer
+    /// Enhanced death date from as_parent family (more complete than original)
+    var enhancedDeathDate: String?
+    
+    /// Enhanced marriage date from as_parent family (full date vs partial)
+    var enhancedMarriageDate: String?
+    
+    /// Spouse's birth date from spouse's as_child family
+    var spouseBirthDate: String?
+    
+    /// Spouse's parents' family ID for complete spouse documentation
+    var spouseParentsFamilyId: String?
+    
+    // MARK: - Initializers
     
     init(
         name: String,
@@ -73,7 +87,11 @@ struct Person: Hashable, Sendable {
         familySearchId: String? = nil,
         noteMarkers: [String] = [],
         fatherName: String? = nil,
-        motherName: String? = nil
+        motherName: String? = nil,
+        enhancedDeathDate: String? = nil,
+        enhancedMarriageDate: String? = nil,
+        spouseBirthDate: String? = nil,
+        spouseParentsFamilyId: String? = nil
     ) {
         self.name = name
         self.patronymic = patronymic
@@ -87,6 +105,10 @@ struct Person: Hashable, Sendable {
         self.noteMarkers = noteMarkers
         self.fatherName = fatherName
         self.motherName = motherName
+        self.enhancedDeathDate = enhancedDeathDate
+        self.enhancedMarriageDate = enhancedMarriageDate
+        self.spouseBirthDate = spouseBirthDate
+        self.spouseParentsFamilyId = spouseParentsFamilyId
     }
     
     // MARK: - Computed Properties
@@ -104,9 +126,67 @@ struct Person: Hashable, Sendable {
         return asChildReference != nil || asParentReference != nil || spouse != nil
     }
     
-    // MARK: - Methods
+    /// Best available death date (enhanced takes priority)
+    var bestDeathDate: String? {
+        return enhancedDeathDate ?? deathDate
+    }
     
-    /// Validate person data
+    /// Best available marriage date (enhanced takes priority)
+    var bestMarriageDate: String? {
+        return enhancedMarriageDate ?? marriageDate
+    }
+    
+    /// Check if person has spouse information
+    var isMarried: Bool {
+        return spouse != nil || marriageDate != nil || enhancedMarriageDate != nil
+    }
+    
+    /// Check if person has parent information for Hiski queries
+    var hasParentInfo: Bool {
+        return fatherName != nil || motherName != nil
+    }
+    
+    /// Get formatted display date (converts DD.MM.YYYY to readable format)
+    func getFormattedDate(_ date: String?) -> String? {
+        guard let date = date else { return nil }
+        return DateFormatter.formatGenealogyDate(date)
+    }
+    
+    // MARK: - Cross-Reference Enhancement
+    
+    /// Update person with data from their as_parent family
+    mutating func enhanceWithAsParentData(deathDate: String? = nil, marriageDate: String? = nil) {
+        if let deathDate = deathDate {
+            self.enhancedDeathDate = deathDate
+        }
+        if let marriageDate = marriageDate {
+            self.enhancedMarriageDate = marriageDate
+        }
+    }
+    
+    /// Update person with spouse information from cross-reference
+    mutating func enhanceWithSpouseData(birthDate: String? = nil, parentsFamilyId: String? = nil) {
+        if let birthDate = birthDate {
+            self.spouseBirthDate = birthDate
+        }
+        if let parentsFamilyId = parentsFamilyId {
+            self.spouseParentsFamilyId = parentsFamilyId
+        }
+    }
+    
+    /// Update person with parent names for Hiski disambiguation
+    mutating func enhanceWithParentNames(father: String? = nil, mother: String? = nil) {
+        if let father = father {
+            self.fatherName = father
+        }
+        if let mother = mother {
+            self.motherName = mother
+        }
+    }
+    
+    // MARK: - Validation
+    
+    /// Validate person data and return warnings
     func validateData() -> [String] {
         var warnings: [String] = []
         
@@ -115,10 +195,130 @@ struct Person: Hashable, Sendable {
         }
         
         if let birthDate = birthDate,
-           !birthDate.contains(".") && !birthDate.allSatisfy({ $0.isNumber || $0.isWhitespace }) {
+           !isValidDateFormat(birthDate) {
             warnings.append("Unusual birth date format: \(birthDate)")
         }
         
+        if let deathDate = deathDate,
+           !isValidDateFormat(deathDate) {
+            warnings.append("Unusual death date format: \(deathDate)")
+        }
+        
+        if let asChildRef = asChildReference,
+           !FamilyIDs.validFamilyIds.contains(asChildRef.uppercased()) {
+            warnings.append("Invalid as_child reference: \(asChildRef)")
+        }
+        
+        if let asParentRef = asParentReference,
+           !FamilyIDs.validFamilyIds.contains(asParentRef.uppercased()) {
+            warnings.append("Invalid as_parent reference: \(asParentRef)")
+        }
+        
         return warnings
+    }
+    
+    /// Check if date string is in valid format (DD.MM.YYYY or partial)
+    private func isValidDateFormat(_ date: String) -> Bool {
+        // Allow DD.MM.YYYY format
+        if date.matches(regex: #"^\d{1,2}\.\d{1,2}\.\d{4}$"#) {
+            return true
+        }
+        
+        // Allow partial dates like "1727" or "∞ 51"
+        if date.matches(regex: #"^\d{4}$"#) || date.contains("∞") {
+            return true
+        }
+        
+        return false
+    }
+    
+    // MARK: - Name Equivalence Support
+    
+    /// Check if this person could be the same as another person (for cross-reference resolution)
+    func couldBeSamePerson(as other: Person, allowingNameEquivalences: [String: String] = [:]) -> Bool {
+        // Birth date must match exactly (most reliable identifier)
+        guard birthDate == other.birthDate else { return false }
+        
+        // Check name equivalence
+        let nameMatch = name.lowercased() == other.name.lowercased() ||
+                       allowingNameEquivalences[name.lowercased()] == other.name.lowercased() ||
+                       allowingNameEquivalences[other.name.lowercased()] == name.lowercased()
+        
+        guard nameMatch else { return false }
+        
+        // Check patronymic if both have it
+        if let myPatronymic = patronymic, let otherPatronymic = other.patronymic {
+            return myPatronymic.lowercased() == otherPatronymic.lowercased()
+        }
+        
+        // If only one has patronymic, still could be same person
+        return true
+    }
+    
+    // MARK: - Hiski Query Support
+    
+    /// Generate parameters for Hiski birth query
+    func getHiskiBirthQueryParams() -> (childName: String, birthDate: String?, fatherName: String?, motherName: String?) {
+        return (
+            childName: displayName,
+            birthDate: birthDate,
+            fatherName: fatherName,
+            motherName: motherName
+        )
+    }
+    
+    /// Generate parameters for Hiski marriage query
+    func getHiskiMarriageQueryParams() -> (spouse1: String, spouse2: String?, marriageDate: String?) {
+        return (
+            spouse1: displayName,
+            spouse2: spouse,
+            marriageDate: bestMarriageDate
+        )
+    }
+    
+    /// Generate parameters for Hiski death query
+    func getHiskiDeathQueryParams() -> (personName: String, deathDate: String?) {
+        return (
+            personName: displayName,
+            deathDate: bestDeathDate
+        )
+    }
+}
+
+// MARK: - Extensions
+
+extension String {
+    /// Check if string matches a regex pattern
+    func matches(regex pattern: String) -> Bool {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return false }
+        let range = NSRange(location: 0, length: count)
+        return regex.firstMatch(in: self, range: range) != nil
+    }
+}
+
+extension DateFormatter {
+    /// Shared formatter for genealogical dates
+    static let genealogicalFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "dd.MM.yyyy"
+        return formatter
+    }()
+    
+    /// Convert DD.MM.YYYY to readable format like "9 September 1727"
+    static func formatGenealogyDate(_ dateString: String) -> String? {
+        let parts = dateString.components(separatedBy: ".")
+        guard parts.count == 3,
+              let day = Int(parts[0]),
+              let month = Int(parts[1]),
+              let year = Int(parts[2]) else {
+            return nil
+        }
+        
+        let months = ["", "January", "February", "March", "April", "May", "June",
+                     "July", "August", "September", "October", "November", "December"]
+        
+        guard month > 0 && month <= 12 else { return nil }
+        
+        return "\(day) \(months[month]) \(year)"
     }
 }

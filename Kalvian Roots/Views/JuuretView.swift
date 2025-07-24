@@ -123,12 +123,7 @@ struct JuuretView: View {
                 .font(.headline)
             
             HStack {
-                if app.fileManager.isLoading {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                    Text("Loading file...")
-                        .font(.caption)
-                } else if app.fileManager.isFileLoaded {
+                if app.fileManager.isFileLoaded {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
                     VStack(alignment: .leading) {
@@ -156,7 +151,7 @@ struct JuuretView: View {
                     Button("Open File...") {
                         Task {
                             do {
-                                try await app.fileManager.openFileDialog()
+                                _ = try await app.fileManager.openFile()
                             } catch {
                                 print("❌ Failed to open file: \(error)")
                             }
@@ -167,7 +162,7 @@ struct JuuretView: View {
             }
             
             // Show any file manager errors
-            if let errorMessage = app.fileManager.errorMessage {
+            if let errorMessage = app.errorMessage, !app.isProcessing {
                 Text(errorMessage)
                     .font(.caption)
                     .foregroundColor(.red)
@@ -215,7 +210,7 @@ struct JuuretView: View {
             Button("Open File...") {
                 Task {
                     do {
-                        try await app.fileManager.openFileDialog()
+                        _ = try await app.fileManager.openFile()
                     } catch {
                         print("❌ Failed to open file: \(error)")
                     }
@@ -506,3 +501,4 @@ struct JuuretView: View {
         print("📋 Copied to clipboard: \(text.prefix(50))...")
     }
 }
+
