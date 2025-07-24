@@ -2,27 +2,15 @@
 //  AIService.swift
 //  Kalvian Roots
 //
-//  AI service abstraction for multiple providers
-//
-//  Created by Michael Bendio on 7/23/25.
+//  AI service abstraction with comprehensive debug logging
 //
 
 import Foundation
 
-/**
- * AIService.swift - Flexible AI service abstraction
- *
- * Supports multiple AI providers (OpenAI, Claude, DeepSeek) with unified interface.
- * Each provider implements the AIService protocol for genealogical text parsing.
- */
-
 // MARK: - AI Service Protocol
 
 /**
- * Unified interface for AI services that can parse genealogical text
- *
- * Supports OpenAI, Claude, DeepSeek, and mock implementations
- * Returns Swift struct initialization code as strings
+ * Unified interface for AI services with debug logging integration
  */
 protocol AIService {
     var name: String { get }
@@ -41,6 +29,7 @@ enum AIServiceError: LocalizedError {
     case parsingFailed(String)
     case rateLimited
     case apiKeyMissing
+    case httpError(Int, String)
     
     var errorDescription: String? {
         switch self {
@@ -56,6 +45,8 @@ enum AIServiceError: LocalizedError {
             return "AI service rate limit reached. Please try again later."
         case .apiKeyMissing:
             return "API key required for AI service"
+        case .httpError(let code, let message):
+            return "HTTP \(code): \(message)"
         }
     }
 }
@@ -63,34 +54,44 @@ enum AIServiceError: LocalizedError {
 // MARK: - Mock AI Service
 
 /**
- * Mock AI service for testing and development
- *
- * Returns hardcoded family structures based on family ID
- * Useful for testing the architecture without API calls
+ * Mock AI service for testing with debug logging
  */
 class MockAIService: AIService {
     let name = "Mock AI"
     let isConfigured = true
     
     func configure(apiKey: String) throws {
-        // Mock doesn't need configuration
+        logDebug(.ai, "MockAI configure called (no-op)")
     }
     
     func parseFamily(familyId: String, familyText: String) async throws -> String {
-        print("🤖 MockAI parsing family: \(familyId)")
+        logInfo(.ai, "🤖 MockAI parsing family: \(familyId)")
+        logTrace(.ai, "Family text length: \(familyText.count) characters")
+        
+        DebugLogger.shared.startTimer("mock_ai_processing")
         
         // Simulate AI processing time
         try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
         
+        let duration = DebugLogger.shared.endTimer("mock_ai_processing")
+        logDebug(.ai, "MockAI processing completed in \(String(format: "%.3f", duration))s")
+        
         // Return hardcoded responses for known families
+        let response: String
         switch familyId.uppercased() {
         case "KORPI 6":
-            return mockKorpi6Response()
+            response = mockKorpi6Response()
+            logDebug(.ai, "Returning KORPI 6 mock response")
         case "TEST 1":
-            return mockTest1Response()
+            response = mockTest1Response()
+            logDebug(.ai, "Returning TEST 1 mock response")
         default:
-            return mockGenericResponse(familyId: familyId)
+            response = mockGenericResponse(familyId: familyId)
+            logDebug(.ai, "Returning generic mock response for \(familyId)")
         }
+        
+        logTrace(.ai, "Mock response length: \(response.count) characters")
+        return response
     }
     
     private func mockKorpi6Response() -> String {
@@ -204,13 +205,144 @@ class MockAIService: AIService {
     }
 }
 
-// MARK: - OpenAI Service
+// MARK: - DeepSeek Service (Enhanced with Debug Logging)
 
 /**
- * OpenAI ChatGPT API service for genealogical parsing
+ * DeepSeek API service with comprehensive debug logging
  *
- * Uses GPT-4 for parsing Finnish genealogical text into Swift structs
- * Handles API authentication, rate limiting, and response validation
+ * Primary AI service for genealogical parsing with detailed tracing
+ */
+class DeepSeekService: AIService {
+    let name = "DeepSeek"
+    private var apiKey: String?
+    private let baseURL = "https://api.deepseek.com/v1/chat/completions"
+    
+    var isConfigured: Bool {
+        let configured = apiKey != nil && !apiKey!.isEmpty
+        logTrace(.ai, "DeepSeek isConfigured: \(configured)")
+        return configured
+    }
+    
+    func configure(apiKey: String) throws {
+        logInfo(.ai, "🔧 Configuring DeepSeek with API key")
+        logTrace(.ai, "API key length: \(apiKey.count) characters")
+        
+        guard !apiKey.isEmpty else {
+            logError(.ai, "❌ Empty API key provided to DeepSeek")
+            throw AIServiceError.apiKeyMissing
+        }
+        
+        self.apiKey = apiKey
+        logInfo(.ai, "✅ DeepSeek configured successfully")
+    }
+    
+    func parseFamily(familyId: String, familyText: String) async throws -> String {
+        logInfo(.ai, "🤖 DeepSeek parsing family: \(familyId)")
+        logDebug(.ai, "Family text length: \(familyText.count) characters")
+        logTrace(.ai, "Family text preview: \(String(familyText.prefix(200)))...")
+        
+        guard isConfigured else {
+            logError(.ai, "❌ DeepSeek not configured")
+            throw AIServiceError.notConfigured(name)
+        }
+        
+        DebugLogger.shared.startTimer("deepseek_request")
+        
+        let prompt = createGenealogyPrompt(familyId: familyId, familyText: familyText)
+        logTrace(.ai, "Generated prompt length: \(prompt.count) characters")
+        
+        let request = OpenAIRequest( // DeepSeek uses OpenAI-compatible format
+            model: "deepseek-chat",
+            messages: [
+                OpenAIMessage(role: "system", content: getSystemPrompt()),
+                OpenAIMessage(role: "user", content: prompt)
+            ],
+            temperature: 0.1,
+            max_tokens: 2000
+        )
+        
+        logDebug(.ai, "Making DeepSeek API call")
+        DebugLogger.shared.logAIRequest("DeepSeek", prompt: prompt)
+        
+        do {
+            let response = try await makeAPICall(request: request)
+            let duration = DebugLogger.shared.endTimer("deepseek_request")
+            
+            DebugLogger.shared.logAIResponse("DeepSeek", response: response, duration: duration)
+            logInfo(.ai, "✅ DeepSeek response received successfully")
+            
+            return response
+            
+        } catch {
+            DebugLogger.shared.endTimer("deepseek_request")
+            logError(.ai, "❌ DeepSeek API call failed: \(error)")
+            throw error
+        }
+    }
+    
+    private func makeAPICall(request: OpenAIRequest) async throws -> String {
+        guard let url = URL(string: baseURL) else {
+            logError(.network, "❌ Invalid DeepSeek URL: \(baseURL)")
+            throw AIServiceError.networkError(URLError(.badURL))
+        }
+        
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(apiKey!)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        logTrace(.network, "DeepSeek request headers configured")
+        
+        do {
+            urlRequest.httpBody = try JSONEncoder().encode(request)
+            logTrace(.network, "Request body encoded, size: \(urlRequest.httpBody?.count ?? 0) bytes")
+            
+            logDebug(.network, "Sending HTTP request to DeepSeek")
+            let (data, response) = try await URLSession.shared.data(for: urlRequest)
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                logDebug(.network, "DeepSeek HTTP response: \(httpResponse.statusCode)")
+                
+                guard httpResponse.statusCode == 200 else {
+                    if httpResponse.statusCode == 429 {
+                        logWarn(.network, "DeepSeek rate limit hit (429)")
+                        throw AIServiceError.rateLimited
+                    }
+                    
+                    let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+                    logError(.network, "DeepSeek HTTP error \(httpResponse.statusCode): \(errorMessage)")
+                    throw AIServiceError.httpError(httpResponse.statusCode, errorMessage)
+                }
+            }
+            
+            logTrace(.network, "Response data size: \(data.count) bytes")
+            
+            let openAIResponse = try JSONDecoder().decode(OpenAIResponse.self, from: data)
+            logTrace(.ai, "DeepSeek response decoded successfully")
+            
+            guard let content = openAIResponse.choices.first?.message.content else {
+                logError(.ai, "❌ No content in DeepSeek response")
+                throw AIServiceError.invalidResponse("No content in response")
+            }
+            
+            let cleanedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+            logTrace(.ai, "DeepSeek content cleaned, final length: \(cleanedContent.count)")
+            
+            return cleanedContent
+            
+        } catch let error as AIServiceError {
+            throw error
+        } catch {
+            logError(.network, "❌ DeepSeek network error: \(error)")
+            throw AIServiceError.networkError(error)
+        }
+    }
+}
+
+// MARK: - OpenAI Service (With Debug Logging)
+
+/**
+ * OpenAI ChatGPT API service with debug logging
  */
 class OpenAIService: AIService {
     let name = "OpenAI GPT-4"
@@ -218,20 +350,32 @@ class OpenAIService: AIService {
     private let baseURL = "https://api.openai.com/v1/chat/completions"
     
     var isConfigured: Bool {
-        return apiKey != nil && !apiKey!.isEmpty
+        let configured = apiKey != nil && !apiKey!.isEmpty
+        logTrace(.ai, "OpenAI isConfigured: \(configured)")
+        return configured
     }
     
     func configure(apiKey: String) throws {
+        logInfo(.ai, "🔧 Configuring OpenAI with API key")
+        
         guard !apiKey.isEmpty else {
+            logError(.ai, "❌ Empty API key provided to OpenAI")
             throw AIServiceError.apiKeyMissing
         }
+        
         self.apiKey = apiKey
+        logInfo(.ai, "✅ OpenAI configured successfully")
     }
     
     func parseFamily(familyId: String, familyText: String) async throws -> String {
+        logInfo(.ai, "🤖 OpenAI parsing family: \(familyId)")
+        
         guard isConfigured else {
+            logError(.ai, "❌ OpenAI not configured")
             throw AIServiceError.notConfigured(name)
         }
+        
+        DebugLogger.shared.startTimer("openai_request")
         
         let prompt = createGenealogyPrompt(familyId: familyId, familyText: familyText)
         
@@ -241,11 +385,23 @@ class OpenAIService: AIService {
                 OpenAIMessage(role: "system", content: getSystemPrompt()),
                 OpenAIMessage(role: "user", content: prompt)
             ],
-            temperature: 0.1, // Low temperature for consistent parsing
+            temperature: 0.1,
             max_tokens: 2000
         )
         
-        return try await makeAPICall(request: request)
+        DebugLogger.shared.logAIRequest("OpenAI", prompt: prompt)
+        
+        do {
+            let response = try await makeAPICall(request: request)
+            let duration = DebugLogger.shared.endTimer("openai_request")
+            
+            DebugLogger.shared.logAIResponse("OpenAI", response: response, duration: duration)
+            return response
+            
+        } catch {
+            DebugLogger.shared.endTimer("openai_request")
+            throw error
+        }
     }
     
     private func makeAPICall(request: OpenAIRequest) async throws -> String {
@@ -268,7 +424,8 @@ class OpenAIService: AIService {
                     if httpResponse.statusCode == 429 {
                         throw AIServiceError.rateLimited
                     }
-                    throw AIServiceError.networkError(URLError(.badServerResponse))
+                    let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+                    throw AIServiceError.httpError(httpResponse.statusCode, errorMessage)
                 }
             }
             
@@ -288,13 +445,10 @@ class OpenAIService: AIService {
     }
 }
 
-// MARK: - Claude Service
+// MARK: - Claude Service (With Debug Logging)
 
 /**
- * Anthropic Claude API service for genealogical parsing
- *
- * Uses Claude for parsing Finnish genealogical text into Swift structs
- * Alternative to OpenAI with different strengths in text analysis
+ * Anthropic Claude API service with debug logging
  */
 class ClaudeService: AIService {
     let name = "Claude"
@@ -302,20 +456,32 @@ class ClaudeService: AIService {
     private let baseURL = "https://api.anthropic.com/v1/messages"
     
     var isConfigured: Bool {
-        return apiKey != nil && !apiKey!.isEmpty
+        let configured = apiKey != nil && !apiKey!.isEmpty
+        logTrace(.ai, "Claude isConfigured: \(configured)")
+        return configured
     }
     
     func configure(apiKey: String) throws {
+        logInfo(.ai, "🔧 Configuring Claude with API key")
+        
         guard !apiKey.isEmpty else {
+            logError(.ai, "❌ Empty API key provided to Claude")
             throw AIServiceError.apiKeyMissing
         }
+        
         self.apiKey = apiKey
+        logInfo(.ai, "✅ Claude configured successfully")
     }
     
     func parseFamily(familyId: String, familyText: String) async throws -> String {
+        logInfo(.ai, "🤖 Claude parsing family: \(familyId)")
+        
         guard isConfigured else {
+            logError(.ai, "❌ Claude not configured")
             throw AIServiceError.notConfigured(name)
         }
+        
+        DebugLogger.shared.startTimer("claude_request")
         
         let prompt = createGenealogyPrompt(familyId: familyId, familyText: familyText)
         
@@ -328,7 +494,19 @@ class ClaudeService: AIService {
             system: getSystemPrompt()
         )
         
-        return try await makeAPICall(request: request)
+        DebugLogger.shared.logAIRequest("Claude", prompt: prompt)
+        
+        do {
+            let response = try await makeAPICall(request: request)
+            let duration = DebugLogger.shared.endTimer("claude_request")
+            
+            DebugLogger.shared.logAIResponse("Claude", response: response, duration: duration)
+            return response
+            
+        } catch {
+            DebugLogger.shared.endTimer("claude_request")
+            throw error
+        }
     }
     
     private func makeAPICall(request: ClaudeRequest) async throws -> String {
@@ -352,7 +530,8 @@ class ClaudeService: AIService {
                     if httpResponse.statusCode == 429 {
                         throw AIServiceError.rateLimited
                     }
-                    throw AIServiceError.networkError(URLError(.badServerResponse))
+                    let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+                    throw AIServiceError.httpError(httpResponse.statusCode, errorMessage)
                 }
             }
             
@@ -372,112 +551,38 @@ class ClaudeService: AIService {
     }
 }
 
-// MARK: - DeepSeek Service
-
-/**
- * DeepSeek API service for genealogical parsing
- *
- * Uses DeepSeek for parsing Finnish genealogical text into Swift structs
- * Cost-effective alternative with good performance on structured tasks
- */
-class DeepSeekService: AIService {
-    let name = "DeepSeek"
-    private var apiKey: String?
-    private let baseURL = "https://api.deepseek.com/v1/chat/completions"
-    
-    var isConfigured: Bool {
-        return apiKey != nil && !apiKey!.isEmpty
-    }
-    
-    func configure(apiKey: String) throws {
-        guard !apiKey.isEmpty else {
-            throw AIServiceError.apiKeyMissing
-        }
-        self.apiKey = apiKey
-    }
-    
-    func parseFamily(familyId: String, familyText: String) async throws -> String {
-        guard isConfigured else {
-            throw AIServiceError.notConfigured(name)
-        }
-        
-        let prompt = createGenealogyPrompt(familyId: familyId, familyText: familyText)
-        
-        let request = OpenAIRequest( // DeepSeek uses OpenAI-compatible format
-            model: "deepseek-chat",
-            messages: [
-                OpenAIMessage(role: "system", content: getSystemPrompt()),
-                OpenAIMessage(role: "user", content: prompt)
-            ],
-            temperature: 0.1,
-            max_tokens: 2000
-        )
-        
-        return try await makeAPICall(request: request)
-    }
-    
-    private func makeAPICall(request: OpenAIRequest) async throws -> String {
-        guard let url = URL(string: baseURL) else {
-            throw AIServiceError.networkError(URLError(.badURL))
-        }
-        
-        var urlRequest = URLRequest(url: url)
-        urlRequest.httpMethod = "POST"
-        urlRequest.setValue("Bearer \(apiKey!)", forHTTPHeaderField: "Authorization")
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        do {
-            urlRequest.httpBody = try JSONEncoder().encode(request)
-            
-            let (data, response) = try await URLSession.shared.data(for: urlRequest)
-            
-            if let httpResponse = response as? HTTPURLResponse {
-                guard httpResponse.statusCode == 200 else {
-                    if httpResponse.statusCode == 429 {
-                        throw AIServiceError.rateLimited
-                    }
-                    throw AIServiceError.networkError(URLError(.badServerResponse))
-                }
-            }
-            
-            let openAIResponse = try JSONDecoder().decode(OpenAIResponse.self, from: data)
-            
-            guard let content = openAIResponse.choices.first?.message.content else {
-                throw AIServiceError.invalidResponse("No content in response")
-            }
-            
-            return content.trimmingCharacters(in: .whitespacesAndNewlines)
-            
-        } catch let error as AIServiceError {
-            throw error
-        } catch {
-            throw AIServiceError.networkError(error)
-        }
-    }
-}
-
-// MARK: - Shared Prompt Generation
+// MARK: - Shared Prompt Generation (Enhanced)
 
 extension AIService {
     func getSystemPrompt() -> String {
         return """
-        You are an expert genealogist parsing Finnish family records from the book "Juuret Kälviällä".
+        You are an expert Finnish genealogist parsing records from "Juuret Kälviällä".
         
         Your task is to parse genealogical text into Swift struct initialization code.
-        Return ONLY the Swift struct code, no explanations or markdown.
+        Return ONLY the Swift struct code, no explanations or markdown formatting.
         
-        Key patterns in Finnish genealogical text:
+        Key Finnish genealogical patterns:
         - ★ = birth date (format DD.MM.YYYY)
         - † = death date (format DD.MM.YYYY)
         - ∞ = marriage date (format DD.MM.YYYY or ∞ YY for 2-digit year)
-        - {FAMILY_ID} = family cross-reference
-        - <ID> = FamilySearch ID
+        - {FAMILY_ID} = family cross-reference where person is a child
+        - <ID> = FamilySearch ID (optional)
         - Patronymics: "Erikinp." = Erik's son, "Matint." = Matti's daughter
-        - "II puoliso" = additional spouse
+        - "II puoliso" = additional spouse, "III puoliso" = third spouse
         - "Lapset" = children section
         - "Lapsena kuollut N" = N children died in infancy
+        - Notes marked with *) or **) appear after family data
         
-        Extract all available data including notes, spouse names, and family references.
+        Extract all available data including:
+        - All dates in original DD.MM.YYYY format
+        - All names with patronymics
+        - Family cross-references from {FAMILY_ID} notation
+        - FamilySearch IDs from <ID> notation
+        - Marriage partners and dates
+        - Note markers (* or **)
+        - All family notes and historical information
+        
+        Return exactly the Swift Family(...) initialization code with no other text.
         """
     }
     
@@ -487,10 +592,10 @@ extension AIService {
 
         Family ID: \(familyId)
         
-        Text:
+        Source Text:
         \(familyText)
         
-        Return Swift struct initialization code using these structures:
+        Return Swift struct initialization using these exact structures:
         
         struct Person {
             var name: String
@@ -503,7 +608,7 @@ extension AIService {
             var asParentReference: String?
             var familySearchId: String?
             var noteMarkers: [String]
-            // Optional fields...
+            // Additional fields with nil defaults
         }
         
         struct Family {
@@ -517,12 +622,12 @@ extension AIService {
             var childrenDiedInfancy: Int?
         }
         
-        Return ONLY the Family(...) initialization code.
+        Return ONLY the Family(...) struct initialization code. No markdown, no explanations.
         """
     }
 }
 
-// MARK: - API Data Structures
+// MARK: - API Data Structures (unchanged but documented)
 
 // OpenAI API structures
 struct OpenAIRequest: Codable {

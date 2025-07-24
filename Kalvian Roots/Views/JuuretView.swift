@@ -2,14 +2,13 @@
 //  JuuretView.swift
 //  Kalvian Roots
 //
-//  Enhanced with file management integration and Foundation Models error handling
+//  Complete rewrite without Foundation Models Framework
 //
 
 import SwiftUI
-import FoundationModels
 
 struct JuuretView: View {
-    @Environment(JuuretApp.self) var app
+    @Environment(JuuretApp.self) private var juuretApp
     @State private var familyId = ""
     @State private var showingCitation = false
     @State private var citationText = ""
@@ -17,71 +16,42 @@ struct JuuretView: View {
     @State private var hiskiResult = ""
     @State private var showingSpouseCitation = false
     @State private var spouseCitationText = ""
-    
-    let systemModel = SystemLanguageModel.default
+    @State private var showingDebugSettings = false
     
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                // Foundation Models Availability Check
-                availabilityStatusView
+                // AI SERVICE STATUS SECTION
+                aiServiceStatusView
                 
                 // FILE STATUS SECTION
                 fileStatusSection
                 
-                // Family Input Section (only show if file loaded and Foundation Models available)
-                if app.isReady && systemModel.availability == .available {
+                // DEBUG CONTROLS
+                debugControlsSection
+                
+                // Family Input Section (only show if ready)
+                if juuretApp.isReady {
                     inputSection
                     
-                    // Extraction Status
-                    if app.isProcessing {
-                        extractionStatus
+                    // Processing Status
+                    if juuretApp.isProcessing {
+                        processingStatusView
                     }
                     
-                    // Extraction Error Display
-                    if let errorMessage = app.errorMessage, !app.isProcessing {
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundColor(.orange)
-                                Text("Extraction Failed")
-                                    .font(.headline)
-                                    .foregroundColor(.orange)
-                            }
-                            
-                            Text(errorMessage)
-                                .font(.body)
-                                .foregroundColor(.primary)
-                                .padding()
-                                .background(Color.orange.opacity(0.1))
-                                .cornerRadius(8)
-                            
-                            Text("This genealogical content triggered Foundation Models safety filters.")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding()
-                        .background(Color.gray.opacity(0.05))
-                        .cornerRadius(10)
+                    // Error Display
+                    if let errorMessage = juuretApp.errorMessage, !juuretApp.isProcessing {
+                        errorDisplayView(errorMessage)
                     }
                     
                     // Family Display
-                    if let family = app.currentFamily {
-                        Text("✅ Family Loaded: \(family.familyId)")
-                            .font(.caption)
-                            .foregroundColor(.green)
-                            .padding(.bottom, 10)
-                        
+                    if let family = juuretApp.currentFamily {
+                        familyLoadedIndicator(family)
                         familyDisplaySection(family: family)
                     }
-                } else if !app.isReady {
-                    // Show file loading instructions
-                    fileLoadingInstructions
                 } else {
-                    Text("Foundation Models not available")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding()
+                    // Show setup instructions
+                    setupInstructionsView
                 }
                 
                 Spacer()
@@ -89,6 +59,10 @@ struct JuuretView: View {
             .padding()
         }
         .navigationTitle("Family Extraction")
+        .sheet(isPresented: $showingDebugSettings) {
+            DebugSettingsView()
+                .environment(juuretApp)
+        }
         .alert("Citation", isPresented: $showingCitation) {
             Button("Copy to Clipboard") {
                 copyToClipboard(citationText)
@@ -113,24 +87,96 @@ struct JuuretView: View {
         } message: {
             Text(spouseCitationText)
         }
+        .onAppear {
+            logInfo(.ui, "JuuretView appeared")
+        }
+    }
+    
+    // MARK: - AI Service Status Section
+    
+    private var aiServiceStatusView: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("AI Service Status")
+                .font(.headline)
+            
+            HStack {
+                if juuretApp.aiParsingService.isConfigured {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                    VStack(alignment: .leading) {
+                        Text("\(juuretApp.currentServiceName) Ready")
+                            .font(.caption)
+                            .foregroundColor(.green)
+                        Text("API key configured")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                } else {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                    VStack(alignment: .leading) {
+                        Text("\(juuretApp.currentServiceName) Not Configured")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                        Text("API key required")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                Spacer()
+                
+                Button("Settings") {
+                    showingDebugSettings = true
+                }
+                .buttonStyle(.bordered)
+                .font(.caption)
+            }
+            
+            // Service switching
+            HStack {
+                Text("Current service:")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                
+                Picker("AI Service", selection: Binding(
+                    get: { juuretApp.currentServiceName },
+                    set: { newValue in
+                        Task {
+                            logInfo(.ui, "User switching AI service to: \(newValue)")
+                            await juuretApp.switchAIService(to: newValue)
+                        }
+                    }
+                )) {
+                    ForEach(juuretApp.availableServices, id: \.self) { service in
+                        Text(service).tag(service)
+                    }
+                }
+                .pickerStyle(.menu)
+                .font(.caption)
+            }
+        }
+        .padding()
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(10)
     }
     
     // MARK: - File Status Section
     
-    var fileStatusSection: some View {
+    private var fileStatusSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("File Status")
                 .font(.headline)
             
             HStack {
-                if app.fileManager.isFileLoaded {
+                if juuretApp.fileManager.isFileLoaded {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
                     VStack(alignment: .leading) {
                         Text("File Loaded")
                             .font(.caption)
                             .foregroundColor(.green)
-                        if let url = app.fileManager.currentFileURL {
+                        if let url = juuretApp.fileManager.currentFileURL {
                             Text(url.lastPathComponent)
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
@@ -138,7 +184,8 @@ struct JuuretView: View {
                     }
                     Spacer()
                     Button("Close File") {
-                        app.fileManager.closeFile()
+                        logInfo(.ui, "User closing file")
+                        juuretApp.fileManager.closeFile()
                     }
                     .font(.caption)
                 } else {
@@ -149,24 +196,19 @@ struct JuuretView: View {
                         .foregroundColor(.orange)
                     Spacer()
                     Button("Open File...") {
+                        logInfo(.ui, "User opening file")
                         Task {
                             do {
-                                _ = try await app.fileManager.openFile()
+                                _ = try await juuretApp.fileManager.openFile()
+                                await juuretApp.updateFileContent()
+                                logInfo(.ui, "File opened and content updated")
                             } catch {
-                                print("❌ Failed to open file: \(error)")
+                                logError(.ui, "Failed to open file: \(error)")
                             }
                         }
                     }
                     .buttonStyle(.borderedProminent)
                 }
-            }
-            
-            // Show any file manager errors
-            if let errorMessage = app.errorMessage, !app.isProcessing {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundColor(.red)
-                    .padding(.top, 5)
             }
         }
         .padding()
@@ -174,62 +216,125 @@ struct JuuretView: View {
         .cornerRadius(10)
     }
     
-    // MARK: - File Loading Instructions
+    // MARK: - Debug Controls Section
     
-    var fileLoadingInstructions: some View {
+    private var debugControlsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Debug Controls")
+                .font(.headline)
+            
+            HStack {
+                Button("Load Sample Family") {
+                    logInfo(.ui, "User loading sample family")
+                    juuretApp.loadSampleFamily()
+                }
+                .buttonStyle(.bordered)
+                .font(.caption)
+                
+                Button("Load Complex Family") {
+                    logInfo(.ui, "User loading complex sample family")
+                    juuretApp.loadComplexSampleFamily()
+                }
+                .buttonStyle(.bordered)
+                .font(.caption)
+                
+                Button("Debug Settings") {
+                    showingDebugSettings = true
+                }
+                .buttonStyle(.bordered)
+                .font(.caption)
+            }
+            
+            // Quick log level controls
+            HStack {
+                Text("Log Level:")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                
+                ForEach(LogLevel.allCases, id: \.self) { level in
+                    Button(level.description) {
+                        DebugLogger.shared.setLevel(level)
+                        logInfo(.ui, "Debug level changed to: \(level.description)")
+                    }
+                    .buttonStyle(.plain)
+                    .font(.caption2)
+                    .foregroundColor(getCurrentLogLevel() == level ? .blue : .secondary)
+                }
+            }
+        }
+        .padding()
+        .background(Color.blue.opacity(0.05))
+        .cornerRadius(10)
+    }
+    
+    // MARK: - Setup Instructions
+    
+    private var setupInstructionsView: some View {
         VStack(spacing: 15) {
-            Image(systemName: "doc.text.magnifyingglass")
+            Image(systemName: "gearshape.2")
                 .font(.system(size: 48))
                 .foregroundColor(.blue)
             
-            Text("Load Juuret Kälviällä Text")
+            Text("Setup Required")
                 .font(.title2)
                 .fontWeight(.medium)
             
-            Text("To extract families, you need to load the Juuret Kälviällä genealogy text file.")
+            Text("To extract families from Juuret Kälviällä text, you need:")
                 .font(.body)
                 .multilineTextAlignment(.center)
                 .foregroundColor(.secondary)
             
             VStack(alignment: .leading, spacing: 8) {
-                Text("The app will automatically look for:")
-                    .font(.headline)
+                HStack {
+                    Image(systemName: juuretApp.aiParsingService.isConfigured ? "checkmark.circle.fill" : "circle")
+                        .foregroundColor(juuretApp.aiParsingService.isConfigured ? .green : .orange)
+                    Text("AI Service API Key (\(juuretApp.currentServiceName))")
+                }
                 
-                Text("• JuuretKälviällä.roots in iCloud Documents")
-                Text("• JuuretKälviällä.roots in local Documents")
-                
-                Text("Or use File → Open... to select the file manually")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .padding(.top, 5)
+                HStack {
+                    Image(systemName: juuretApp.fileManager.isFileLoaded ? "checkmark.circle.fill" : "circle")
+                        .foregroundColor(juuretApp.fileManager.isFileLoaded ? .green : .orange)
+                    Text("Juuret Kälviällä Text File")
+                }
             }
             .padding()
             .background(Color.blue.opacity(0.1))
             .cornerRadius(8)
             
-            Button("Open File...") {
-                Task {
-                    do {
-                        _ = try await app.fileManager.openFile()
-                    } catch {
-                        print("❌ Failed to open file: \(error)")
+            HStack {
+                if !juuretApp.aiParsingService.isConfigured {
+                    Button("Configure AI Service") {
+                        showingDebugSettings = true
                     }
+                    .buttonStyle(.borderedProminent)
+                }
+                
+                if !juuretApp.fileManager.isFileLoaded {
+                    Button("Open File...") {
+                        Task {
+                            do {
+                                _ = try await juuretApp.fileManager.openFile()
+                                await juuretApp.updateFileContent()
+                            } catch {
+                                logError(.ui, "Failed to open file: \(error)")
+                            }
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
         }
         .padding()
     }
     
     // MARK: - Input Section
     
-    var inputSection: some View {
+    private var inputSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Family Extraction")
                 .font(.headline)
             
-            Text("🎉 Real Juuret Kälviällä text loaded! Foundation Models will extract from actual genealogical data.")
+            Text("🎉 Ready! AI service configured and Juuret Kälviällä text loaded.")
                 .font(.caption)
                 .foregroundColor(.green)
                 .padding(.bottom, 5)
@@ -238,7 +343,7 @@ struct JuuretView: View {
                 TextField("Family ID (e.g., Korpi 6)", text: $familyId)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .onSubmit {
-                        if !familyId.isEmpty && !app.isProcessing {
+                        if !familyId.isEmpty && !juuretApp.isProcessing {
                             Task {
                                 await extractFamily()
                             }
@@ -250,8 +355,17 @@ struct JuuretView: View {
                         await extractFamily()
                     }
                 }
-                .disabled(familyId.isEmpty || app.isProcessing)
+                .disabled(familyId.isEmpty || juuretApp.isProcessing)
                 .buttonStyle(.borderedProminent)
+                
+                Button("Extract + Resolve") {
+                    Task {
+                        await extractFamilyComplete()
+                    }
+                }
+                .disabled(familyId.isEmpty || juuretApp.isProcessing)
+                .buttonStyle(.bordered)
+                .font(.caption)
             }
         }
         .padding()
@@ -261,79 +375,75 @@ struct JuuretView: View {
     
     // MARK: - Status Views
     
-    var availabilityStatusView: some View {
-        Group {
-            switch systemModel.availability {
-            case .available:
-                HStack {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                    Text("Foundation Models Ready")
-                        .font(.caption)
-                        .foregroundColor(.green)
-                }
-            case .unavailable(.appleIntelligenceNotEnabled):
-                VStack {
-                    HStack {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.orange)
-                        Text("Apple Intelligence Not Enabled")
-                            .font(.caption)
-                            .foregroundColor(.orange)
-                    }
-                    Text("Please enable Apple Intelligence in System Settings")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-            case .unavailable(.deviceNotEligible):
-                VStack {
-                    HStack {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.red)
-                        Text("Device Not Compatible")
-                            .font(.caption)
-                            .foregroundColor(.red)
-                    }
-                    Text("This device doesn't support Apple Intelligence")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-            case .unavailable(.modelNotReady):
-                VStack {
-                    HStack {
-                        ProgressView()
-                            .scaleEffect(0.7)
-                        Text("Model Downloading...")
-                            .font(.caption)
-                            .foregroundColor(.orange)
-                    }
-                    Text("Foundation Models are being prepared")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-            case .unavailable(_):
-                HStack {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.red)
-                    Text("Foundation Models Unavailable")
-                        .font(.caption)
-                        .foregroundColor(.red)
-                }
+    private var processingStatusView: some View {
+        VStack(spacing: 10) {
+            HStack {
+                ProgressView()
+                    .scaleEffect(0.8)
+                Text(juuretApp.extractionProgress.description)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            if juuretApp.isResolvingCrossReferences {
+                Text("Resolving family cross-references...")
+                    .font(.caption2)
+                    .foregroundColor(.blue)
             }
         }
+        .padding()
+        .background(Color.blue.opacity(0.1))
+        .cornerRadius(8)
     }
     
-    var extractionStatus: some View {
-        HStack {
-            ProgressView()
-                .scaleEffect(0.8)
-            Text("Extracting family from real Juuret Kälviällä text...")
+    private func errorDisplayView(_ errorMessage: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.red)
+                Text("Error")
+                    .font(.headline)
+                    .foregroundColor(.red)
+            }
+            
+            Text(errorMessage)
+                .font(.body)
+                .foregroundColor(.primary)
+                .padding()
+                .background(Color.red.opacity(0.1))
+                .cornerRadius(8)
+            
+            if errorMessage.contains("not configured") {
+                Button("Configure AI Service") {
+                    showingDebugSettings = true
+                }
+                .buttonStyle(.borderedProminent)
                 .font(.caption)
-                .foregroundColor(.secondary)
+            }
         }
+        .padding()
+        .background(Color.gray.opacity(0.05))
+        .cornerRadius(10)
     }
     
-    func familyDisplaySection(family: Family) -> some View {
+    private func familyLoadedIndicator(_ family: Family) -> some View {
+        HStack {
+            Text("✅ Family Loaded: \(family.familyId)")
+                .font(.caption)
+                .foregroundColor(.green)
+            
+            Spacer()
+            
+            if juuretApp.hasEnhancedFamily {
+                Text("🔗 Cross-references resolved")
+                    .font(.caption2)
+                    .foregroundColor(.blue)
+            }
+        }
+        .padding(.bottom, 10)
+    }
+    
+    private func familyDisplaySection(family: Family) -> some View {
         VStack(alignment: .leading, spacing: 15) {
             // Family Header
             VStack(alignment: .leading) {
@@ -416,7 +526,7 @@ struct JuuretView: View {
                 ForEach(Array(family.children.enumerated()), id: \.offset) { _, child in
                     PersonRowView(
                         person: child,
-                        role: "Child", // This will show purple spouse links
+                        role: "Child",
                         onNameClick: { person in
                             showCitation(for: person, in: family)
                         },
@@ -462,43 +572,226 @@ struct JuuretView: View {
     
     // MARK: - Action Methods
     
-    func extractFamily() async {
-        print("🚀 extractFamily() called from UI")
+    private func extractFamily() async {
+        logInfo(.ui, "User initiated family extraction: \(familyId)")
         
         do {
-            try await app.extractFamily(familyId: familyId.uppercased())
-            print("✅ extractFamily() completed successfully")
+            try await juuretApp.extractFamily(familyId: familyId.uppercased())
+            logInfo(.ui, "Family extraction completed successfully")
         } catch {
-            print("❌ Extraction error: \(error)")
+            logError(.ui, "Family extraction failed: \(error)")
         }
     }
     
-    func showCitation(for person: Person, in family: Family) {
-        print("📄 Show citation for: \(person.displayName)")
-        citationText = app.generateCitation(for: person, in: family)
+    private func extractFamilyComplete() async {
+        logInfo(.ui, "User initiated complete family extraction with cross-references: \(familyId)")
+        
+        do {
+            try await juuretApp.extractFamilyComplete(familyId: familyId.uppercased())
+            logInfo(.ui, "Complete family extraction completed successfully")
+        } catch {
+            logError(.ui, "Complete family extraction failed: \(error)")
+        }
+    }
+    
+    private func showCitation(for person: Person, in family: Family) {
+        logInfo(.ui, "User requested citation for: \(person.displayName)")
+        citationText = juuretApp.generateCitation(for: person, in: family)
         showingCitation = true
+        logDebug(.citation, "Generated citation length: \(citationText.count) characters")
     }
     
-    func showHiskiQuery(for date: String, eventType: EventType) {
-        print("🔍 Show Hiski query for: \(date)")
-        hiskiResult = app.generateHiskiQuery(for: date, eventType: eventType)
+    private func showHiskiQuery(for date: String, eventType: EventType) {
+        logInfo(.ui, "User requested Hiski query for: \(date) (\(eventType))")
+        hiskiResult = juuretApp.generateHiskiQuery(for: date, eventType: eventType)
         showingHiskiResult = true
+        logDebug(.citation, "Generated Hiski URL: \(hiskiResult)")
     }
     
-    func showSpouseCitation(spouseName: String, in family: Family) {
-        print("💑 Show spouse citation for: \(spouseName)")
-        spouseCitationText = app.generateSpouseCitation(spouseName: spouseName, in: family)
+    private func showSpouseCitation(spouseName: String, in family: Family) {
+        logInfo(.ui, "User requested spouse citation for: \(spouseName)")
+        spouseCitationText = juuretApp.generateSpouseCitation(spouseName: spouseName, in: family)
         showingSpouseCitation = true
+        logDebug(.citation, "Generated spouse citation length: \(spouseCitationText.count) characters")
     }
     
-    func copyToClipboard(_ text: String) {
+    private func copyToClipboard(_ text: String) {
         #if os(macOS)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         #else
         UIPasteboard.general.string = text
         #endif
-        print("📋 Copied to clipboard: \(text.prefix(50))...")
+        logInfo(.ui, "Copied to clipboard: \(text.prefix(50))...")
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func getCurrentLogLevel() -> LogLevel {
+        return DebugLogger.shared.getCurrentSettings().level
     }
 }
 
+// MARK: - Debug Settings View
+
+struct DebugSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(JuuretApp.self) private var juuretApp
+    @State private var apiKey = ""
+    @State private var showingAPIKey = false
+    @State private var selectedService = "DeepSeek"
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section("AI Service Configuration") {
+                    Picker("AI Service", selection: $selectedService) {
+                        ForEach(juuretApp.availableServices, id: \.self) { service in
+                            Text(service).tag(service)
+                        }
+                    }
+                    .onChange(of: selectedService) { _, newValue in
+                        Task {
+                            await juuretApp.switchAIService(to: newValue)
+                        }
+                    }
+                    
+                    HStack {
+                        if showingAPIKey {
+                            TextField("API Key", text: $apiKey)
+                                .textFieldStyle(.roundedBorder)
+                        } else {
+                            SecureField("API Key", text: $apiKey)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                        
+                        Button(showingAPIKey ? "Hide" : "Show") {
+                            showingAPIKey.toggle()
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    
+                    Button("Save API Key") {
+                        Task {
+                            await juuretApp.configureAIService(apiKey: apiKey)
+                            apiKey = "" // Clear after saving
+                        }
+                    }
+                    .disabled(apiKey.isEmpty)
+                    
+                    // Service status
+                    ForEach(juuretApp.getAIServiceStatus(), id: \.name) { status in
+                        HStack {
+                            Circle()
+                                .fill(status.configured ? .green : .red)
+                                .frame(width: 8, height: 8)
+                            Text(status.name)
+                            Spacer()
+                            Text(status.configured ? "Configured" : "Not Configured")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                
+                Section("Debug Settings") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Log Level")
+                            .font(.headline)
+                        
+                        ForEach(LogLevel.allCases, id: \.self) { level in
+                            Button(action: {
+                                DebugLogger.shared.setLevel(level)
+                            }) {
+                                HStack {
+                                    Text(level.description)
+                                    Spacer()
+                                    if DebugLogger.shared.getCurrentSettings().level == level {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(.blue)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Log Categories")
+                            .font(.headline)
+                        
+                        ForEach(LogCategory.allCases, id: \.self) { category in
+                            Button(action: {
+                                let currentCategories = DebugLogger.shared.getCurrentSettings().categories
+                                if currentCategories.contains(category) {
+                                    DebugLogger.shared.disableCategory(category)
+                                } else {
+                                    DebugLogger.shared.enableCategory(category)
+                                }
+                            }) {
+                                HStack {
+                                    Text("\(category.emoji) \(category.rawValue)")
+                                    Spacer()
+                                    if DebugLogger.shared.getCurrentSettings().categories.contains(category) {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(.blue)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        
+                        Button("Enable All Categories") {
+                            DebugLogger.shared.enableAllCategories()
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+                
+                Section("Statistics") {
+                    let stats = juuretApp.getResolutionStatistics()
+                    
+                    HStack {
+                        Text("Cross-reference attempts:")
+                        Spacer()
+                        Text("\(stats.totalAttempts)")
+                    }
+                    
+                    HStack {
+                        Text("Success rate:")
+                        Spacer()
+                        Text("\(String(format: "%.1f", stats.successRate * 100))%")
+                    }
+                    
+                    let nameStats = juuretApp.getNameEquivalenceReport()
+                    
+                    HStack {
+                        Text("Name equivalences learned:")
+                        Spacer()
+                        Text("\(nameStats.learnedCount)")
+                    }
+                    
+                    Button("Reset Statistics") {
+                        juuretApp.resetStatistics()
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+            .navigationTitle("Debug Settings")
+            #if !os(macOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .onAppear {
+            selectedService = juuretApp.currentServiceName
+            logInfo(.ui, "Debug settings view opened")
+        }
+    }
+}

@@ -122,19 +122,35 @@ class JuuretFileManager {
      * Auto-load default file from iCloud Documents
      */
     func autoLoadDefaultFile() async {
+        logDebug(.file, "🔍 Searching for default file...")
+        
         guard let defaultURL = getDefaultFileURL() else {
-            print("📂 Default file not found in iCloud Documents")
+            logInfo(.file, "📂 Default file not found - user will need to select manually")
             return
         }
         
-        do {
-            _ = try await openFile(at: defaultURL)
-            print("✅ Auto-loaded default file from iCloud Documents")
-        } catch {
-            print("⚠️ Failed to auto-load default file: \(error)")
+        // Check if we can access the file (sandbox permissions)
+        if Foundation.FileManager.default.fileExists(atPath: defaultURL.path) {
+            logDebug(.file, "📂 Default file found at: \(defaultURL.path)")
+            
+            // Try to access the file
+            do {
+                _ = try await openFile(at: defaultURL)
+                logInfo(.file, "✅ Auto-loaded default file successfully")
+            } catch {
+                logWarn(.file, "⚠️ Default file found but access failed: \(error.localizedDescription)")
+                logInfo(.file, "💡 User will need to manually grant access via 'Open File' button")
+                
+                // Set a helpful error message for the UI
+                await MainActor.run {
+                    // We could set an error state here if needed
+                }
+            }
+        } else {
+            logDebug(.file, "📂 Default file not found at expected location")
         }
     }
-    
+
     // MARK: - Default File Detection
     
     /**
