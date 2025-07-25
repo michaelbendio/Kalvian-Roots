@@ -100,7 +100,7 @@ struct SidebarView: View {
                 }
                 
                 NavigationLink("AI Settings") {
-                    AISettingsView()
+                    AISettingsView()  // This now references the separate file
                 }
                 
                 NavigationLink("Hiski Search") {
@@ -136,72 +136,7 @@ struct SidebarView: View {
     }
 }
 
-// MARK: - AI Settings View
-struct AISettingsView: View {
-    @Environment(JuuretApp.self) private var app
-    @State private var selectedService = "Mock AI"
-    @State private var apiKey = ""
-    @State private var showingAPIKey = false
-    
-    var body: some View {
-        Form {
-            Section("AI Service") {
-                Picker("Service", selection: $selectedService) {
-                    ForEach(app.availableServices, id: \.self) { service in
-                        Text(service).tag(service)
-                    }
-                }
-                .onChange(of: selectedService) { _, newValue in
-                    Task {
-                        await app.switchAIService(to: newValue)
-                    }
-                }
-                
-                HStack {
-                    if showingAPIKey {
-                        TextField("API Key", text: $apiKey)
-                            .textFieldStyle(.roundedBorder)
-                    } else {
-                        SecureField("API Key", text: $apiKey)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    
-                    Button(showingAPIKey ? "Hide" : "Show") {
-                        showingAPIKey.toggle()
-                    }
-                    .buttonStyle(.borderless)
-                }
-                
-                Button("Save API Key") {
-                    Task {
-                        await app.configureAIService(apiKey: apiKey)
-                        apiKey = "" // Clear after saving
-                    }
-                }
-                .disabled(apiKey.isEmpty)
-            }
-            
-            Section("Service Status") {
-                ForEach(app.getAIServiceStatus(), id: \.name) { status in
-                    HStack {
-                        Circle()
-                            .fill(status.configured ? .green : .red)
-                            .frame(width: 8, height: 8)
-                        Text(status.name)
-                        Spacer()
-                        Text(status.configured ? "Configured" : "Not Configured")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-        .navigationTitle("AI Settings")
-        .onAppear {
-            selectedService = app.currentServiceName
-        }
-    }
-}
+// MARK: - AISettingsView has been moved to its own file: Views/AISettingsView.swift
 
 #Preview {
     ContentView()
