@@ -2,16 +2,16 @@
 //  AIParsingService.swift
 //  Kalvian Roots
 //
-//  Core AI parsing service with comprehensive debug logging
+//  Updated for JSON parsing instead of Swift struct parsing
 //
 
 import Foundation
 
 /**
- * AIParsingService.swift - Core AI parsing with detailed tracing
+ * AIParsingService.swift - JSON-based AI parsing with detailed tracing
  *
- * Orchestrates AI family extraction with Swift struct parsing and comprehensive
- * debug logging for troubleshooting genealogical text parsing issues.
+ * Orchestrates AI family extraction with JSON parsing (replacing custom struct parsing)
+ * Much more robust and reliable than the previous Swift struct approach.
  */
 
 @Observable
@@ -57,7 +57,7 @@ class AIParsingService {
         autoConfigureServices()
     }
     
-    // MARK: - Service Management
+    // MARK: - Service Management (Unchanged)
     
     /**
      * Switch to a different AI service by name
@@ -99,15 +99,15 @@ class AIParsingService {
         return status
     }
     
-    // MARK: - Family Parsing (Core Method)
+    // MARK: - Family Parsing (Updated for JSON)
     
     /**
-     * Parse a family from genealogical text using the current AI service
+     * Parse a family from genealogical text using JSON parsing
      *
-     * This is the main entry point for AI-based family extraction with comprehensive logging
+     * This is the main entry point for AI-based family extraction with JSON parsing
      */
     func parseFamily(familyId: String, familyText: String) async throws -> Family {
-        logInfo(.parsing, "🤖 Starting AI family parsing for: \(familyId)")
+        logInfo(.parsing, "🤖 Starting JSON-based AI family parsing for: \(familyId)")
         logDebug(.parsing, "Using AI service: \(currentAIService.name)")
         logDebug(.parsing, "Family text length: \(familyText.count) characters")
         logTrace(.parsing, "Family text preview: \(String(familyText.prefix(300)))...")
@@ -120,30 +120,35 @@ class AIParsingService {
         }
         
         do {
-            // Step 1: Get Swift struct string from AI
-            logDebug(.ai, "Step 1: Requesting AI parsing from \(currentAIService.name)")
+            // Step 1: Get JSON string from AI
+            logDebug(.ai, "Step 1: Requesting JSON parsing from \(currentAIService.name)")
             DebugLogger.shared.startTimer("ai_request")
             
-            let structString = try await currentAIService.parseFamily(
+            let jsonString = try await currentAIService.parseFamily(
                 familyId: familyId,
                 familyText: familyText
             )
             
             let aiDuration = DebugLogger.shared.endTimer("ai_request")
             logInfo(.ai, "✅ AI response received in \(String(format: "%.2f", aiDuration))s")
-            logDebug(.ai, "Response length: \(structString.count) characters")
-            logTrace(.ai, "Response preview: \(String(structString.prefix(500)))...")
+            logDebug(.ai, "Response length: \(jsonString.count) characters")
+            logTrace(.ai, "Response preview: \(String(jsonString.prefix(500)))...")
             
-            // Step 2: Parse the struct string into a Family object
-            logDebug(.parsing, "Step 2: Parsing struct string into Family object")
-            DebugLogger.shared.startTimer("struct_parsing")
+            // DEBUG: Log the full response for troubleshooting
+            print("🐛 ========== AI JSON RESPONSE ==========")
+            print(jsonString)
+            print("🐛 ========== END AI RESPONSE ==========")
             
-            let family = try parseStructString(structString)
+            // Step 2: Parse the JSON string into a Family object
+            logDebug(.parsing, "Step 2: Parsing JSON string into Family object")
+            DebugLogger.shared.startTimer("json_parsing")
             
-            let parseDuration = DebugLogger.shared.endTimer("struct_parsing")
+            let family = try parseJSONString(jsonString)
+            
+            let parseDuration = DebugLogger.shared.endTimer("json_parsing")
             let totalDuration = DebugLogger.shared.endTimer("total_parsing")
             
-            logInfo(.parsing, "✅ Struct parsing completed in \(String(format: "%.3f", parseDuration))s")
+            logInfo(.parsing, "✅ JSON parsing completed in \(String(format: "%.3f", parseDuration))s")
             logInfo(.parsing, "🎉 Total parsing completed in \(String(format: "%.2f", totalDuration))s")
             
             // Step 3: Log parsing results
@@ -153,7 +158,7 @@ class AIParsingService {
             
         } catch let error as AIServiceError {
             _ = DebugLogger.shared.endTimer("ai_request")
-            _ = DebugLogger.shared.endTimer("struct_parsing")
+            _ = DebugLogger.shared.endTimer("json_parsing")
             _ = DebugLogger.shared.endTimer("total_parsing")
             
             logError(.ai, "❌ AI service error: \(error.localizedDescription)")
@@ -161,7 +166,7 @@ class AIParsingService {
             throw error
         } catch {
             _ = DebugLogger.shared.endTimer("ai_request")
-            _ = DebugLogger.shared.endTimer("struct_parsing")
+            _ = DebugLogger.shared.endTimer("json_parsing")
             _ = DebugLogger.shared.endTimer("total_parsing")
             
             logError(.parsing, "❌ Parsing error: \(error.localizedDescription)")
@@ -170,191 +175,117 @@ class AIParsingService {
         }
     }
     
-    // MARK: - Struct Parsing (Enhanced with Debug Logging)
+    // MARK: - JSON Parsing (New - Replaces Struct Parsing)
     
     /**
-     * Parse AI-generated Swift struct string into Family object
+     * Parse AI-generated JSON string into Family object
      *
-     * This critical function converts string responses from AI into actual Family structs
-     * with comprehensive error handling and fallback strategies.
+     * Much more robust than custom struct parsing - uses Swift's built-in JSONDecoder
      */
-    private func parseStructString(_ structString: String) throws -> Family {
-        logDebug(.parsing, "🔍 Starting struct string parsing")
-        DebugLogger.shared.parseStep("Clean response", "Removing markdown and formatting")
+    private func parseJSONString(_ jsonString: String) throws -> Family {
+        logDebug(.parsing, "🔍 Starting JSON string parsing")
+        logTrace(.parsing, "JSON string length: \(jsonString.count)")
         
         // Clean the response (remove markdown, extra whitespace)
-        let cleanedString = cleanStructString(structString)
-        logTrace(.parsing, "Cleaned string length: \(cleanedString.count)")
-        logTrace(.parsing, "Cleaned preview: \(String(cleanedString.prefix(200)))...")
+        let cleanedJSON = cleanJSONString(jsonString)
+        logTrace(.parsing, "Cleaned JSON length: \(cleanedJSON.count)")
         
-        // Validate basic structure
-        guard cleanedString.hasPrefix("Family(") && cleanedString.hasSuffix(")") else {
-            logError(.parsing, "❌ Response doesn't match Family(...) format")
-            logTrace(.parsing, "Invalid format - starts with: \(String(cleanedString.prefix(50)))")
-            throw AIServiceError.parsingFailed("Response doesn't match Family(...) format")
+        // Validate basic JSON structure
+        guard cleanedJSON.hasPrefix("{") && cleanedJSON.hasSuffix("}") else {
+            logError(.parsing, "❌ Response doesn't match JSON object format")
+            logTrace(.parsing, "Invalid format - starts with: \(String(cleanedJSON.prefix(50)))")
+            throw AIServiceError.parsingFailed("Response doesn't match JSON object format")
         }
         
-        DebugLogger.shared.parseStep("Validate format", "✅ Family(...) format confirmed")
+        logDebug(.parsing, "✅ JSON format validation passed")
         
-        // Use Swift evaluation to parse the struct
+        // Use JSONDecoder to parse
         do {
-            DebugLogger.shared.parseStep("Evaluate struct", "Using StructParser")
-            let family = try evaluateStructString(cleanedString)
+            logDebug(.parsing, "Using JSONDecoder for parsing")
+            
+            let decoder = JSONDecoder()
+            let data = cleanedJSON.data(using: .utf8)!
+            let family = try decoder.decode(Family.self, from: data)
             
             // Validate the parsed family
             logDebug(.parsing, "Validating parsed family structure")
             let warnings = family.validateStructure()
             DebugLogger.shared.logFamilyValidation(family, warnings: warnings)
             
-            logInfo(.parsing, "✅ Struct parsing successful")
+            logInfo(.parsing, "✅ JSON parsing successful")
             return family
             
-        } catch {
-            logWarn(.parsing, "⚠️ Primary struct parsing failed: \(error)")
+        } catch let decodingError as DecodingError {
+            logError(.parsing, "❌ JSON decoding failed: \(decodingError.localizedDescription)")
+            logTrace(.parsing, "Decoding error details: \(decodingError)")
             
-            // Try fallback parsing if direct evaluation fails
-            DebugLogger.shared.parseStep("Fallback parsing", "Attempting regex-based extraction")
-            return try fallbackParseStruct(cleanedString)
+            // Try to provide more helpful error information
+            let errorDetails = getDecodingErrorDetails(decodingError)
+            logDebug(.parsing, "Error details: \(errorDetails)")
+            
+            throw AIServiceError.parsingFailed("JSON decoding failed: \(errorDetails)")
+            
+        } catch {
+            logError(.parsing, "❌ Unexpected JSON parsing error: \(error)")
+            throw AIServiceError.parsingFailed("JSON parsing failed: \(error.localizedDescription)")
         }
     }
     
     /**
-     * Clean AI response to valid Swift struct format
+     * Clean AI response to valid JSON format
      */
-    private func cleanStructString(_ response: String) -> String {
-        logTrace(.parsing, "Cleaning AI response string")
+    private func cleanJSONString(_ response: String) -> String {
+        logTrace(.parsing, "Cleaning AI JSON response")
         var cleaned = response
         
         // Remove markdown code blocks
-        cleaned = cleaned.replacingOccurrences(of: "```swift", with: "")
+        cleaned = cleaned.replacingOccurrences(of: "```json", with: "")
         cleaned = cleaned.replacingOccurrences(of: "```", with: "")
         
         // Remove extra whitespace and newlines
         cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // Ensure proper formatting
-        if !cleaned.hasPrefix("Family(") {
-            // Try to find the Family( start
-            if let range = cleaned.range(of: "Family(") {
+        // Ensure proper JSON object format
+        if !cleaned.hasPrefix("{") {
+            // Try to find the JSON object start
+            if let range = cleaned.range(of: "{") {
                 cleaned = String(cleaned[range.lowerBound...])
-                logTrace(.parsing, "Found Family( at position, trimmed prefix")
+                logTrace(.parsing, "Found JSON object start, trimmed prefix")
             }
         }
         
-        logTrace(.parsing, "String cleaning complete")
+        // Ensure proper JSON object end
+        if !cleaned.hasSuffix("}") {
+            // Try to find the last } and trim after it
+            if let range = cleaned.range(of: "}", options: .backwards) {
+                cleaned = String(cleaned[..<range.upperBound])
+                logTrace(.parsing, "Found JSON object end, trimmed suffix")
+            }
+        }
+        
+        logTrace(.parsing, "JSON string cleaning complete")
         return cleaned
     }
     
     /**
-     * Evaluate Swift struct string using controlled struct parsing
+     * Get helpful details from JSONDecoder errors
      */
-    private func evaluateStructString(_ structString: String) throws -> Family {
-        logDebug(.parsing, "📝 Evaluating struct string with StructParser")
-        
-        let parser = StructParser(structString)
-        let family = try parser.parseFamily()
-        
-        logDebug(.parsing, "✅ StructParser completed successfully")
-        return family
-    }
-    
-    /**
-     * Fallback parsing when direct evaluation fails
-     */
-    private func fallbackParseStruct(_ structString: String) throws -> Family {
-        logWarn(.parsing, "🔧 Using fallback parsing method")
-        
-        // Extract basic fields using regex patterns
-        let familyId = try extractField(from: structString, field: "familyId") ?? "UNKNOWN"
-        let pageRefs = try extractArrayField(from: structString, field: "pageReferences") ?? ["999"]
-        
-        logDebug(.parsing, "Fallback extracted familyId: \(familyId)")
-        logDebug(.parsing, "Fallback extracted pageRefs: \(pageRefs)")
-        
-        // Create minimal family structure
-        let father = Person(
-            name: try extractNestedField(from: structString, path: "father.name") ?? "Unknown",
-            noteMarkers: []
-        )
-        
-        logWarn(.parsing, "⚠️ Using fallback parsing for family: \(familyId)")
-        
-        return Family(
-            familyId: familyId,
-            pageReferences: pageRefs,
-            father: father,
-            mother: nil,
-            additionalSpouses: [],
-            children: [],
-            notes: ["Fallback parsing used - may be incomplete"],
-            childrenDiedInfancy: nil
-        )
-    }
-    
-    // MARK: - Field Extraction Helpers
-    
-    private func extractField(from text: String, field: String) throws -> String? {
-        logTrace(.parsing, "Extracting field: \(field)")
-        
-        let pattern = "\(field):\\s*\"([^\"]*)\""
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-        
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        guard let match = regex.firstMatch(in: text, range: range) else {
-            logTrace(.parsing, "Field \(field) not found")
-            return nil
+    private func getDecodingErrorDetails(_ error: DecodingError) -> String {
+        switch error {
+        case .dataCorrupted(let context):
+            return "Data corrupted at \(context.codingPath): \(context.debugDescription)"
+        case .keyNotFound(let key, let context):
+            return "Missing required key '\(key)' at \(context.codingPath)"
+        case .typeMismatch(let type, let context):
+            return "Type mismatch for \(type) at \(context.codingPath): \(context.debugDescription)"
+        case .valueNotFound(let type, let context):
+            return "Value not found for \(type) at \(context.codingPath): \(context.debugDescription)"
+        @unknown default:
+            return "Unknown decoding error: \(error.localizedDescription)"
         }
-        
-        let matchRange = Range(match.range(at: 1), in: text)!
-        let value = String(text[matchRange])
-        logTrace(.parsing, "Extracted \(field): \(value)")
-        return value
     }
     
-    private func extractArrayField(from text: String, field: String) throws -> [String]? {
-        logTrace(.parsing, "Extracting array field: \(field)")
-        
-        let pattern = "\(field):\\s*\\[([^\\]]*)\\]"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-        
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        guard let match = regex.firstMatch(in: text, range: range) else { return nil }
-        
-        let matchRange = Range(match.range(at: 1), in: text)!
-        let arrayContent = String(text[matchRange])
-        
-        // Parse array content
-        let array = arrayContent
-            .components(separatedBy: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .map { $0.replacingOccurrences(of: "\"", with: "") }
-            .filter { !$0.isEmpty }
-        
-        logTrace(.parsing, "Extracted \(field) array: \(array)")
-        return array
-    }
-    
-    private func extractNestedField(from text: String, path: String) throws -> String? {
-        logTrace(.parsing, "Extracting nested field: \(path)")
-        
-        // Simple nested field extraction for paths like "father.name"
-        let components = path.components(separatedBy: ".")
-        guard components.count == 2 else { return nil }
-        
-        let objectField = components[0]
-        let propertyField = components[1]
-        
-        // Find the object section
-        let objectPattern = "\(objectField):\\s*Person\\("
-        guard let objectRange = text.range(of: objectPattern, options: .regularExpression) else { return nil }
-        
-        // Extract from that point to the end of the Person(...)
-        let fromObject = String(text[objectRange.lowerBound...])
-        
-        return try extractField(from: fromObject, field: propertyField)
-    }
-    
-    // MARK: - Configuration Persistence
+    // MARK: - Configuration Persistence (Unchanged)
     
     private func autoConfigureServices() {
         logDebug(.ai, "🔧 Auto-configuring services from saved settings")
@@ -386,407 +317,243 @@ class AIParsingService {
     }
 }
 
-// MARK: - Enhanced StructParser with Debug Logging
+// MARK: - Updated MockAIService for JSON
 
 /**
- * Dedicated parser for Swift struct strings with comprehensive logging
- *
- * Handles the complex task of converting AI-generated struct strings
- * into actual Swift struct instances with detailed tracing.
+ * Updated Mock AI service for JSON testing
  */
-private class StructParser {
-    private let structString: String
-    private var position = 0
-    
-    init(_ structString: String) {
-        self.structString = structString
-        logTrace(.parsing, "📝 StructParser initialized with \(structString.count) characters")
-    }
-    
-    func parseFamily() throws -> Family {
-        logDebug(.parsing, "🏗️ Starting Family struct parsing")
+extension MockAIService {
+    func parseFamily(familyId: String, familyText: String) async throws -> String {
+        logInfo(.ai, "🤖 MockAI JSON parsing family: \(familyId)")
+        logTrace(.ai, "Family text length: \(familyText.count) characters")
         
-        // Skip to Family(
-        guard let familyStart = structString.range(of: "Family(") else {
-            logError(.parsing, "❌ No Family( found in response")
-            throw AIServiceError.parsingFailed("No Family( found in response")
-        }
+        DebugLogger.shared.startTimer("mock_ai_processing")
         
-        position = structString.distance(from: structString.startIndex, to: familyStart.upperBound)
-        logTrace(.parsing, "Found Family( at position \(position)")
+        // Simulate AI processing time
+        try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
         
-        // Parse Family fields
-        var familyId: String = ""
-        var pageReferences: [String] = []
-        var father: Person = Person(name: "Unknown", noteMarkers: [])
-        var mother: Person? = nil
-        var additionalSpouses: [Person] = []
-        var children: [Person] = []
-        var notes: [String] = []
-        var childrenDiedInfancy: Int? = nil
+        let duration = DebugLogger.shared.endTimer("mock_ai_processing")
+        logDebug(.ai, "MockAI JSON processing completed in \(String(format: "%.3f", duration))s")
         
-        var fieldsCount = 0
-        
-        while position < structString.count {
-            skipWhitespace()
-            
-            if peek() == ")" {
-                break // End of Family
-            }
-            
-            let fieldName = try parseIdentifier()
-            logTrace(.parsing, "Parsing field: \(fieldName)")
-            try expect(":")
-            skipWhitespace()
-            
-            switch fieldName {
-            case "familyId":
-                familyId = try parseString()
-                logTrace(.parsing, "Parsed familyId: \(familyId)")
-            case "pageReferences":
-                pageReferences = try parseStringArray()
-                logTrace(.parsing, "Parsed pageReferences: \(pageReferences)")
-            case "father":
-                father = try parsePerson()
-                logTrace(.parsing, "Parsed father: \(father.displayName)")
-            case "mother":
-                if peekString() == "nil" {
-                    try expect("nil")
-                    mother = nil
-                    logTrace(.parsing, "Parsed mother: nil")
-                } else {
-                    mother = try parsePerson()
-                    logTrace(.parsing, "Parsed mother: \(mother?.displayName ?? "unknown")")
-                }
-            case "additionalSpouses":
-                additionalSpouses = try parsePersonArray()
-                logTrace(.parsing, "Parsed additionalSpouses: \(additionalSpouses.count)")
-            case "children":
-                children = try parsePersonArray()
-                logTrace(.parsing, "Parsed children: \(children.count)")
-            case "notes":
-                notes = try parseStringArray()
-                logTrace(.parsing, "Parsed notes: \(notes.count)")
-            case "childrenDiedInfancy":
-                if peekString() == "nil" {
-                    try expect("nil")
-                    childrenDiedInfancy = nil
-                } else {
-                    childrenDiedInfancy = try parseNumber()
-                }
-                logTrace(.parsing, "Parsed childrenDiedInfancy: \(childrenDiedInfancy?.description ?? "nil")")
-            default:
-                // Skip unknown fields
-                logTrace(.parsing, "Skipping unknown field: \(fieldName)")
-                try skipValue()
-            }
-            
-            fieldsCount += 1
-            skipWhitespace()
-            if peek() == "," {
-                position += 1
-            }
-        }
-        
-        logDebug(.parsing, "✅ Family parsing complete with \(fieldsCount) fields")
-        
-        return Family(
-            familyId: familyId,
-            pageReferences: pageReferences,
-            father: father,
-            mother: mother,
-            additionalSpouses: additionalSpouses,
-            children: children,
-            notes: notes,
-            childrenDiedInfancy: childrenDiedInfancy
-        )
-    }
-    
-    private func parsePerson() throws -> Person {
-        logTrace(.parsing, "👤 Parsing Person struct")
-        try expect("Person(")
-        
-        var name: String = ""
-        var patronymic: String? = nil
-        var birthDate: String? = nil
-        var deathDate: String? = nil
-        var marriageDate: String? = nil
-        var spouse: String? = nil
-        var asChildReference: String? = nil
-        var asParentReference: String? = nil
-        var familySearchId: String? = nil
-        var noteMarkers: [String] = []
-        var fatherName: String? = nil
-        var motherName: String? = nil
-        
-        while position < structString.count {
-            skipWhitespace()
-            
-            if peek() == ")" {
-                position += 1
-                break
-            }
-            
-            let fieldName = try parseIdentifier()
-            try expect(":")
-            skipWhitespace()
-            
-            switch fieldName {
-            case "name":
-                name = try parseString()
-            case "patronymic":
-                patronymic = try parseOptionalString()
-            case "birthDate":
-                birthDate = try parseOptionalString()
-            case "deathDate":
-                deathDate = try parseOptionalString()
-            case "marriageDate":
-                marriageDate = try parseOptionalString()
-            case "spouse":
-                spouse = try parseOptionalString()
-            case "asChildReference":
-                asChildReference = try parseOptionalString()
-            case "asParentReference":
-                asParentReference = try parseOptionalString()
-            case "familySearchId":
-                familySearchId = try parseOptionalString()
-            case "noteMarkers":
-                noteMarkers = try parseStringArray()
-            case "fatherName":
-                fatherName = try parseOptionalString()
-            case "motherName":
-                motherName = try parseOptionalString()
-            default:
-                try skipValue()
-            }
-            
-            skipWhitespace()
-            if peek() == "," {
-                position += 1
-            }
-        }
-        
-        logTrace(.parsing, "✅ Person parsed: \(name)")
-        
-        return Person(
-            name: name,
-            patronymic: patronymic,
-            birthDate: birthDate,
-            deathDate: deathDate,
-            marriageDate: marriageDate,
-            spouse: spouse,
-            asChildReference: asChildReference,
-            asParentReference: asParentReference,
-            familySearchId: familySearchId,
-            noteMarkers: noteMarkers,
-            fatherName: fatherName,
-            motherName: motherName
-        )
-    }
-    
-    private func parsePersonArray() throws -> [Person] {
-        try expect("[")
-        var persons: [Person] = []
-        
-        while position < structString.count {
-            skipWhitespace()
-            
-            if peek() == "]" {
-                position += 1
-                break
-            }
-            
-            let person = try parsePerson()
-            persons.append(person)
-            
-            skipWhitespace()
-            if peek() == "," {
-                position += 1
-            }
-        }
-        
-        return persons
-    }
-    
-    private func parseString() throws -> String {
-        try expect("\"")
-        let start = position
-        
-        while position < structString.count && peek() != "\"" {
-            if peek() == "\\" {
-                position += 1 // Skip escape character
-            }
-            position += 1
-        }
-        
-        let endPos = position
-        try expect("\"")
-        
-        let startIndex = structString.index(structString.startIndex, offsetBy: start)
-        let endIndex = structString.index(structString.startIndex, offsetBy: endPos)
-        
-        return String(structString[startIndex..<endIndex])
-    }
-    
-    private func parseOptionalString() throws -> String? {
-        if peekString() == "nil" {
-            try expect("nil")
-            return nil
-        } else {
-            return try parseString()
-        }
-    }
-    
-    private func parseStringArray() throws -> [String] {
-        try expect("[")
-        var strings: [String] = []
-        
-        while position < structString.count {
-            skipWhitespace()
-            
-            if peek() == "]" {
-                position += 1
-                break
-            }
-            
-            let string = try parseString()
-            strings.append(string)
-            
-            skipWhitespace()
-            if peek() == "," {
-                position += 1
-            }
-        }
-        
-        return strings
-    }
-    
-    private func parseNumber() throws -> Int {
-        let start = position
-        
-        while position < structString.count && peek().isWholeNumber {
-            position += 1
-        }
-        
-        let startIndex = structString.index(structString.startIndex, offsetBy: start)
-        let endIndex = structString.index(structString.startIndex, offsetBy: position)
-        let numberString = String(structString[startIndex..<endIndex])
-        
-        guard let number = Int(numberString) else {
-            throw AIServiceError.parsingFailed("Invalid number: \(numberString)")
-        }
-        
-        return number
-    }
-    
-    private func parseIdentifier() throws -> String {
-        let start = position
-        
-        while position < structString.count && (peek().isLetter || peek().isWholeNumber || peek() == "_") {
-            position += 1
-        }
-        
-        let startIndex = structString.index(structString.startIndex, offsetBy: start)
-        let endIndex = structString.index(structString.startIndex, offsetBy: position)
-        
-        return String(structString[startIndex..<endIndex])
-    }
-    
-    private func expect(_ expected: String) throws {
-        let endPos = position + expected.count
-        guard endPos <= structString.count else {
-            throw AIServiceError.parsingFailed("Expected '\(expected)' at end of string")
-        }
-        
-        let startIndex = structString.index(structString.startIndex, offsetBy: position)
-        let endIndex = structString.index(structString.startIndex, offsetBy: endPos)
-        let actual = String(structString[startIndex..<endIndex])
-        
-        guard actual == expected else {
-            throw AIServiceError.parsingFailed("Expected '\(expected)' but found '\(actual)'")
-        }
-        
-        position = endPos
-    }
-    
-    private func peek() -> Character {
-        guard position < structString.count else { return "\0" }
-        let index = structString.index(structString.startIndex, offsetBy: position)
-        return structString[index]
-    }
-    
-    private func peekString(length: Int = 10) -> String {
-        guard position < structString.count else { return "" }
-        let startIndex = structString.index(structString.startIndex, offsetBy: position)
-        let endIndex = structString.index(startIndex, offsetBy: min(length, structString.count - position))
-        return String(structString[startIndex..<endIndex])
-    }
-    
-    private func skipWhitespace() {
-        while position < structString.count && peek().isWhitespace {
-            position += 1
-        }
-    }
-    
-    private func skipValue() throws {
-        // Skip any value (string, number, object, array)
-        skipWhitespace()
-
-        // Handle multi-character object prefix
-        if peekString(length: 7) == "Person(" {
-            try skipObject()
-            return
-        }
-
-        let startChar = peek()
-        switch startChar {
-        case "\"":
-            _ = try parseString()
-        case "[":
-            try skipArray()
+        // Return hardcoded JSON responses for known families
+        let response: String
+        switch familyId.uppercased() {
+        case "KORPI 6":
+            response = mockKorpi6JSONResponse()
+            logDebug(.ai, "Returning KORPI 6 mock JSON response")
+        case "TEST 1":
+            response = mockTest1JSONResponse()
+            logDebug(.ai, "Returning TEST 1 mock JSON response")
         default:
-            if startChar.isNumber {
-                _ = try parseNumber()
-            } else if startChar.isLetter {
-                _ = try parseIdentifier()
-            } else {
-                position += 1
-            }
+            response = mockGenericJSONResponse(familyId: familyId)
+            logDebug(.ai, "Returning generic mock JSON response for \(familyId)")
         }
+        
+        logTrace(.ai, "Mock JSON response length: \(response.count) characters")
+        return response
     }
     
-    private func skipArray() throws {
-        try expect("[")
-        var depth = 1
-        
-        while position < structString.count && depth > 0 {
-            let char = peek()
-            if char == "[" {
-                depth += 1
-            } else if char == "]" {
-                depth -= 1
+    private func mockKorpi6JSONResponse() -> String {
+        return """
+        {
+          "familyId": "KORPI 6",
+          "pageReferences": ["105", "106"],
+          "father": {
+            "name": "Matti",
+            "patronymic": "Erikinp.",
+            "birthDate": "09.09.1727",
+            "deathDate": "22.08.1812",
+            "marriageDate": "14.10.1750",
+            "spouse": "Brita Matint.",
+            "asChildReference": "KORPI 5",
+            "asParentReference": null,
+            "familySearchId": "LCJZ-BH3",
+            "noteMarkers": [],
+            "fatherName": null,
+            "motherName": null,
+            "enhancedDeathDate": null,
+            "enhancedMarriageDate": null,
+            "spouseBirthDate": null,
+            "spouseParentsFamilyId": null
+          },
+          "mother": {
+            "name": "Brita",
+            "patronymic": "Matint.",
+            "birthDate": "05.09.1731",
+            "deathDate": "11.07.1769",
+            "marriageDate": "14.10.1750",
+            "spouse": "Matti Erikinp.",
+            "asChildReference": "SIKALA 5",
+            "asParentReference": null,
+            "familySearchId": "KCJW-98X",
+            "noteMarkers": [],
+            "fatherName": null,
+            "motherName": null,
+            "enhancedDeathDate": null,
+            "enhancedMarriageDate": null,
+            "spouseBirthDate": null,
+            "spouseParentsFamilyId": null
+          },
+          "additionalSpouses": [],
+          "children": [
+            {
+              "name": "Maria",
+              "patronymic": null,
+              "birthDate": "10.02.1752",
+              "deathDate": null,
+              "marriageDate": "1773",
+              "spouse": "Elias Iso-Peitso",
+              "asChildReference": null,
+              "asParentReference": "ISO-PEITSO III 2",
+              "familySearchId": "KJJH-2R9",
+              "noteMarkers": [],
+              "fatherName": null,
+              "motherName": null,
+              "enhancedDeathDate": null,
+              "enhancedMarriageDate": null,
+              "spouseBirthDate": null,
+              "spouseParentsFamilyId": null
+            },
+            {
+              "name": "Kaarin",
+              "patronymic": null,
+              "birthDate": "01.02.1753",
+              "deathDate": "17.04.1795",
+              "marriageDate": null,
+              "spouse": null,
+              "asChildReference": null,
+              "asParentReference": null,
+              "familySearchId": "LJKQ-PLT",
+              "noteMarkers": [],
+              "fatherName": null,
+              "motherName": null,
+              "enhancedDeathDate": null,
+              "enhancedMarriageDate": null,
+              "spouseBirthDate": null,
+              "spouseParentsFamilyId": null
+            },
+            {
+              "name": "Abraham",
+              "patronymic": null,
+              "birthDate": "08.01.1764",
+              "deathDate": null,
+              "marriageDate": "1787",
+              "spouse": "Anna Sikala",
+              "asChildReference": null,
+              "asParentReference": "JÄNESNIEMI 5",
+              "familySearchId": null,
+              "noteMarkers": [],
+              "fatherName": null,
+              "motherName": null,
+              "enhancedDeathDate": null,
+              "enhancedMarriageDate": null,
+              "spouseBirthDate": null,
+              "spouseParentsFamilyId": null
             }
-            position += 1
+          ],
+          "notes": ["Lapsena kuollut 4."],
+          "childrenDiedInfancy": 4
         }
+        """
     }
     
-    private func skipObject() throws {
-        // Skip Person(...) or similar
-        var depth = 0
-        
-        while position < structString.count {
-            let char = peek()
-            if char == "(" {
-                depth += 1
-            } else if char == ")" {
-                depth -= 1
-                position += 1
-                if depth == 0 {
-                    break
-                }
-            } else {
-                position += 1
+    private func mockTest1JSONResponse() -> String {
+        return """
+        {
+          "familyId": "TEST 1",
+          "pageReferences": ["1"],
+          "father": {
+            "name": "Test",
+            "patronymic": "Matinp.",
+            "birthDate": "01.01.1700",
+            "deathDate": null,
+            "marriageDate": null,
+            "spouse": null,
+            "asChildReference": null,
+            "asParentReference": null,
+            "familySearchId": null,
+            "noteMarkers": [],
+            "fatherName": null,
+            "motherName": null,
+            "enhancedDeathDate": null,
+            "enhancedMarriageDate": null,
+            "spouseBirthDate": null,
+            "spouseParentsFamilyId": null
+          },
+          "mother": {
+            "name": "Example",
+            "patronymic": "Juhont.",
+            "birthDate": "01.01.1705",
+            "deathDate": null,
+            "marriageDate": null,
+            "spouse": null,
+            "asChildReference": null,
+            "asParentReference": null,
+            "familySearchId": null,
+            "noteMarkers": [],
+            "fatherName": null,
+            "motherName": null,
+            "enhancedDeathDate": null,
+            "enhancedMarriageDate": null,
+            "spouseBirthDate": null,
+            "spouseParentsFamilyId": null
+          },
+          "additionalSpouses": [],
+          "children": [
+            {
+              "name": "Child",
+              "patronymic": null,
+              "birthDate": "01.01.1725",
+              "deathDate": null,
+              "marriageDate": null,
+              "spouse": null,
+              "asChildReference": null,
+              "asParentReference": null,
+              "familySearchId": null,
+              "noteMarkers": [],
+              "fatherName": null,
+              "motherName": null,
+              "enhancedDeathDate": null,
+              "enhancedMarriageDate": null,
+              "spouseBirthDate": null,
+              "spouseParentsFamilyId": null
             }
+          ],
+          "notes": ["Mock family for testing"],
+          "childrenDiedInfancy": 0
         }
+        """
+    }
+    
+    private func mockGenericJSONResponse(familyId: String) -> String {
+        return """
+        {
+          "familyId": "\(familyId)",
+          "pageReferences": ["999"],
+          "father": {
+            "name": "Unknown",
+            "patronymic": "Matinp.",
+            "birthDate": "01.01.1700",
+            "deathDate": null,
+            "marriageDate": null,
+            "spouse": null,
+            "asChildReference": null,
+            "asParentReference": null,
+            "familySearchId": null,
+            "noteMarkers": [],
+            "fatherName": null,
+            "motherName": null,
+            "enhancedDeathDate": null,
+            "enhancedMarriageDate": null,
+            "spouseBirthDate": null,
+            "spouseParentsFamilyId": null
+          },
+          "mother": null,
+          "additionalSpouses": [],
+          "children": [],
+          "notes": ["Mock data for \(familyId)"],
+          "childrenDiedInfancy": 0
+        }
+        """
     }
 }

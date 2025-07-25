@@ -2,7 +2,7 @@
 //  Family.swift
 //  Kalvian Roots
 //
-//  Created by Michael Bendio on 7/11/25.
+//  Updated for JSON parsing with Codable support
 //
 
 import Foundation
@@ -12,16 +12,16 @@ import UniformTypeIdentifiers
  * Family.swift - Core genealogical data structures
  *
  * Contains Family struct for Finnish genealogy data from Juuret Kälviällä.
- * Updated for AI parsing without Foundation Models Framework dependencies.
+ * Updated for JSON parsing - now Codable instead of custom struct parsing.
  */
 
 /**
  * Complete family unit from Juuret Kälviällä genealogical text.
  *
- * Enhanced for cross-reference resolution and AI parsing.
- * Removed @Generable and @Guide annotations for direct AI prompting approach.
+ * Enhanced for cross-reference resolution and JSON parsing.
+ * Now uses Codable for robust AI response parsing.
  */
-struct Family: Hashable, Sendable {
+struct Family: Hashable, Sendable, Codable {
     // MARK: - Core Family Data
     
     /// Family ID like 'KORPI 6' or 'ISO-PEITSO II 3'
@@ -48,6 +48,19 @@ struct Family: Hashable, Sendable {
     /// Number from 'Lapsena kuollut N' notation
     var childrenDiedInfancy: Int?
     
+    // MARK: - JSON Coding Keys (Optional - for custom field names)
+    
+    enum CodingKeys: String, CodingKey {
+        case familyId
+        case pageReferences
+        case father
+        case mother
+        case additionalSpouses
+        case children
+        case notes
+        case childrenDiedInfancy
+    }
+    
     // MARK: - Initializers
     
     init(
@@ -70,7 +83,7 @@ struct Family: Hashable, Sendable {
         self.childrenDiedInfancy = childrenDiedInfancy
     }
     
-    // MARK: - Computed Properties
+    // MARK: - Computed Properties (Unchanged)
     
     /// All persons in family for processing
     var allPersons: [Person] {
@@ -127,7 +140,7 @@ struct Family: Hashable, Sendable {
         }
     }
     
-    // MARK: - Family Relationship Methods
+    // MARK: - Family Relationship Methods (Unchanged)
     
     /// Parent names for Hiski birth queries
     func getParentNames(for child: Person) -> (father: String, mother: String?) {
@@ -154,7 +167,7 @@ struct Family: Hashable, Sendable {
         return allParents.contains { $0.name.lowercased() == person.name.lowercased() }
     }
     
-    // MARK: - Cross-Reference Enhancement
+    // MARK: - Cross-Reference Enhancement (Unchanged)
     
     /// Update family with enhanced person data from cross-references
     mutating func enhanceWithCrossReferences(_ enhancedPersons: [Person]) {
@@ -197,7 +210,7 @@ struct Family: Hashable, Sendable {
         return enhancedFamily
     }
     
-    // MARK: - Validation
+    // MARK: - Validation (Unchanged)
     
     /// Validate family structure for genealogical accuracy
     func validateStructure() -> [String] {
@@ -252,7 +265,7 @@ struct Family: Hashable, Sendable {
         return !father.name.isEmpty && !familyId.isEmpty && !pageReferences.isEmpty
     }
     
-    // MARK: - Citation Support
+    // MARK: - Citation Support (Unchanged)
     
     /// Generate citation data for this family
     func getCitationData() -> FamilyCitationData {
@@ -279,7 +292,7 @@ struct Family: Hashable, Sendable {
         }
     }
     
-    // MARK: - Cross-Reference Query Generation
+    // MARK: - Cross-Reference Query Generation (Unchanged)
     
     /// Generate cross-reference requests for all family members
     func generateCrossReferenceRequests() -> [CrossReferenceRequest] {
@@ -330,7 +343,7 @@ struct Family: Hashable, Sendable {
         return requests
     }
     
-    // MARK: - Sample Data
+    // MARK: - Sample Data (Unchanged)
     
     /// Create sample family for testing
     static func sampleFamily() -> Family {
@@ -443,12 +456,12 @@ struct Family: Hashable, Sendable {
     }
 }
 
-// MARK: - Supporting Data Structures
+// MARK: - Supporting Data Structures (Unchanged but now Codable where needed)
 
 /**
  * Citation data structure for generating Juuret Kälviällä citations
  */
-struct FamilyCitationData {
+struct FamilyCitationData: Codable {
     let familyId: String
     let pageReferences: [String]
     let father: Person
@@ -463,7 +476,7 @@ struct FamilyCitationData {
 /**
  * Cross-reference request for family resolution
  */
-struct CrossReferenceRequest {
+struct CrossReferenceRequest: Codable {
     let personName: String        // "Matti Erikinp."
     let birthDate: String?        // "09.09.1727"
     let asChildReference: String? // "KORPI 5" (from {Korpi 5})
@@ -475,7 +488,7 @@ struct CrossReferenceRequest {
 /**
  * Type of cross-reference resolution needed
  */
-enum CrossRefType {
+enum CrossRefType: String, Codable {
     case asChild      // Find this person's parents' family
     case asParent     // Find this person's family where they're a parent
     case spouseAsChild // Find this person's spouse's parents' family
@@ -484,7 +497,7 @@ enum CrossRefType {
 /**
  * Cross-reference response with confidence scoring
  */
-struct CrossReferenceResponse {
+struct CrossReferenceResponse: Codable {
     let resolvedFamilyId: String  // "KORPI 5"
     let confidence: Double        // 0.0 to 1.0
     let method: String           // "family_reference" or "birth_date_search"
@@ -492,7 +505,7 @@ struct CrossReferenceResponse {
     let warnings: [String]      // Potential issues
 }
 
-// MARK: - Family IDs Extension
+// MARK: - Family IDs Extension (Unchanged)
 
 extension FamilyIDs {
     /// Check if a family ID is valid (case-insensitive)

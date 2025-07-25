@@ -2,7 +2,7 @@
 //  AIService.swift
 //  Kalvian Roots
 //
-//  AI service abstraction with comprehensive debug logging
+//  Complete AI service implementations updated for JSON parsing
 //
 
 import Foundation
@@ -10,7 +10,7 @@ import Foundation
 // MARK: - AI Service Protocol
 
 /**
- * Unified interface for AI services with debug logging integration
+ * Unified interface for AI services with JSON parsing
  */
 protocol AIService {
     var name: String { get }
@@ -51,10 +51,10 @@ enum AIServiceError: LocalizedError {
     }
 }
 
-// MARK: - Mock AI Service
+// MARK: - Mock AI Service (Updated for JSON)
 
 /**
- * Mock AI service for testing with debug logging
+ * Mock AI service for testing with JSON responses
  */
 class MockAIService: AIService {
     let name = "Mock AI"
@@ -65,7 +65,7 @@ class MockAIService: AIService {
     }
     
     func parseFamily(familyId: String, familyText: String) async throws -> String {
-        logInfo(.ai, "🤖 MockAI parsing family: \(familyId)")
+        logInfo(.ai, "🤖 MockAI JSON parsing family: \(familyId)")
         logTrace(.ai, "Family text length: \(familyText.count) characters")
         
         DebugLogger.shared.startTimer("mock_ai_processing")
@@ -74,143 +74,235 @@ class MockAIService: AIService {
         try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
         
         let duration = DebugLogger.shared.endTimer("mock_ai_processing")
-        logDebug(.ai, "MockAI processing completed in \(String(format: "%.3f", duration))s")
+        logDebug(.ai, "MockAI JSON processing completed in \(String(format: "%.3f", duration))s")
         
-        // Return hardcoded responses for known families
+        // Return hardcoded JSON responses for known families
         let response: String
         switch familyId.uppercased() {
         case "KORPI 6":
-            response = mockKorpi6Response()
-            logDebug(.ai, "Returning KORPI 6 mock response")
+            response = mockKorpi6JSONResponse()
+            logDebug(.ai, "Returning KORPI 6 mock JSON response")
         case "TEST 1":
-            response = mockTest1Response()
-            logDebug(.ai, "Returning TEST 1 mock response")
+            response = mockTest1JSONResponse()
+            logDebug(.ai, "Returning TEST 1 mock JSON response")
         default:
-            response = mockGenericResponse(familyId: familyId)
-            logDebug(.ai, "Returning generic mock response for \(familyId)")
+            response = mockGenericJSONResponse(familyId: familyId)
+            logDebug(.ai, "Returning generic mock JSON response for \(familyId)")
         }
         
-        logTrace(.ai, "Mock response length: \(response.count) characters")
+        logTrace(.ai, "Mock JSON response length: \(response.count) characters")
         return response
     }
     
-    private func mockKorpi6Response() -> String {
+    private func mockKorpi6JSONResponse() -> String {
         return """
-        Family(
-            familyId: "KORPI 6",
-            pageReferences: ["105", "106"],
-            father: Person(
-                name: "Matti",
-                patronymic: "Erikinp.",
-                birthDate: "09.09.1727",
-                deathDate: "22.08.1812",
-                marriageDate: "14.10.1750",
-                spouse: "Brita Matint.",
-                asChildReference: "KORPI 5",
-                familySearchId: "LCJZ-BH3",
-                noteMarkers: []
-            ),
-            mother: Person(
-                name: "Brita",
-                patronymic: "Matint.",
-                birthDate: "05.09.1731",
-                deathDate: "11.07.1769",
-                marriageDate: "14.10.1750",
-                spouse: "Matti Erikinp.",
-                asChildReference: "SIKALA 5",
-                familySearchId: "KCJW-98X",
-                noteMarkers: []
-            ),
-            additionalSpouses: [],
-            children: [
-                Person(
-                    name: "Maria",
-                    birthDate: "10.02.1752",
-                    marriageDate: "1773",
-                    spouse: "Elias Iso-Peitso",
-                    asParentReference: "ISO-PEITSO III 2",
-                    familySearchId: "KJJH-2R9",
-                    noteMarkers: []
-                ),
-                Person(
-                    name: "Kaarin",
-                    birthDate: "01.02.1753",
-                    deathDate: "17.04.1795",
-                    noteMarkers: []
-                ),
-                Person(
-                    name: "Abraham",
-                    birthDate: "08.01.1764",
-                    marriageDate: "1787",
-                    spouse: "Anna Sikala",
-                    asParentReference: "JÄNESNIEMI 5",
-                    noteMarkers: []
-                )
-            ],
-            notes: ["Lapsena kuollut 4."],
-            childrenDiedInfancy: 4
-        )
+        {
+          "familyId": "KORPI 6",
+          "pageReferences": ["105", "106"],
+          "father": {
+            "name": "Matti",
+            "patronymic": "Erikinp.",
+            "birthDate": "09.09.1727",
+            "deathDate": "22.08.1812",
+            "marriageDate": "14.10.1750",
+            "spouse": "Brita Matint.",
+            "asChildReference": "KORPI 5",
+            "asParentReference": null,
+            "familySearchId": "LCJZ-BH3",
+            "noteMarkers": [],
+            "fatherName": null,
+            "motherName": null,
+            "enhancedDeathDate": null,
+            "enhancedMarriageDate": null,
+            "spouseBirthDate": null,
+            "spouseParentsFamilyId": null
+          },
+          "mother": {
+            "name": "Brita",
+            "patronymic": "Matint.",
+            "birthDate": "05.09.1731",
+            "deathDate": "11.07.1769",
+            "marriageDate": "14.10.1750",
+            "spouse": "Matti Erikinp.",
+            "asChildReference": "SIKALA 5",
+            "asParentReference": null,
+            "familySearchId": "KCJW-98X",
+            "noteMarkers": [],
+            "fatherName": null,
+            "motherName": null,
+            "enhancedDeathDate": null,
+            "enhancedMarriageDate": null,
+            "spouseBirthDate": null,
+            "spouseParentsFamilyId": null
+          },
+          "additionalSpouses": [],
+          "children": [
+            {
+              "name": "Maria",
+              "patronymic": null,
+              "birthDate": "10.02.1752",
+              "deathDate": null,
+              "marriageDate": "1773",
+              "spouse": "Elias Iso-Peitso",
+              "asChildReference": null,
+              "asParentReference": "ISO-PEITSO III 2",
+              "familySearchId": "KJJH-2R9",
+              "noteMarkers": [],
+              "fatherName": null,
+              "motherName": null,
+              "enhancedDeathDate": null,
+              "enhancedMarriageDate": null,
+              "spouseBirthDate": null,
+              "spouseParentsFamilyId": null
+            },
+            {
+              "name": "Kaarin",
+              "patronymic": null,
+              "birthDate": "01.02.1753",
+              "deathDate": "17.04.1795",
+              "marriageDate": null,
+              "spouse": null,
+              "asChildReference": null,
+              "asParentReference": null,
+              "familySearchId": "LJKQ-PLT",
+              "noteMarkers": [],
+              "fatherName": null,
+              "motherName": null,
+              "enhancedDeathDate": null,
+              "enhancedMarriageDate": null,
+              "spouseBirthDate": null,
+              "spouseParentsFamilyId": null
+            },
+            {
+              "name": "Abraham",
+              "patronymic": null,
+              "birthDate": "08.01.1764",
+              "deathDate": null,
+              "marriageDate": "1787",
+              "spouse": "Anna Sikala",
+              "asChildReference": null,
+              "asParentReference": "JÄNESNIEMI 5",
+              "familySearchId": null,
+              "noteMarkers": [],
+              "fatherName": null,
+              "motherName": null,
+              "enhancedDeathDate": null,
+              "enhancedMarriageDate": null,
+              "spouseBirthDate": null,
+              "spouseParentsFamilyId": null
+            }
+          ],
+          "notes": ["Lapsena kuollut 4."],
+          "childrenDiedInfancy": 4
+        }
         """
     }
     
-    private func mockTest1Response() -> String {
+    private func mockTest1JSONResponse() -> String {
         return """
-        Family(
-            familyId: "TEST 1",
-            pageReferences: ["1"],
-            father: Person(
-                name: "Test",
-                patronymic: "Matinp.",
-                birthDate: "01.01.1700",
-                noteMarkers: []
-            ),
-            mother: Person(
-                name: "Example",
-                patronymic: "Juhont.",
-                birthDate: "01.01.1705",
-                noteMarkers: []
-            ),
-            additionalSpouses: [],
-            children: [
-                Person(
-                    name: "Child",
-                    birthDate: "01.01.1725",
-                    noteMarkers: []
-                )
-            ],
-            notes: ["Mock family for testing"],
-            childrenDiedInfancy: 0
-        )
+        {
+          "familyId": "TEST 1",
+          "pageReferences": ["1"],
+          "father": {
+            "name": "Test",
+            "patronymic": "Matinp.",
+            "birthDate": "01.01.1700",
+            "deathDate": null,
+            "marriageDate": null,
+            "spouse": null,
+            "asChildReference": null,
+            "asParentReference": null,
+            "familySearchId": null,
+            "noteMarkers": [],
+            "fatherName": null,
+            "motherName": null,
+            "enhancedDeathDate": null,
+            "enhancedMarriageDate": null,
+            "spouseBirthDate": null,
+            "spouseParentsFamilyId": null
+          },
+          "mother": {
+            "name": "Example",
+            "patronymic": "Juhont.",
+            "birthDate": "01.01.1705",
+            "deathDate": null,
+            "marriageDate": null,
+            "spouse": null,
+            "asChildReference": null,
+            "asParentReference": null,
+            "familySearchId": null,
+            "noteMarkers": [],
+            "fatherName": null,
+            "motherName": null,
+            "enhancedDeathDate": null,
+            "enhancedMarriageDate": null,
+            "spouseBirthDate": null,
+            "spouseParentsFamilyId": null
+          },
+          "additionalSpouses": [],
+          "children": [
+            {
+              "name": "Child",
+              "patronymic": null,
+              "birthDate": "01.01.1725",
+              "deathDate": null,
+              "marriageDate": null,
+              "spouse": null,
+              "asChildReference": null,
+              "asParentReference": null,
+              "familySearchId": null,
+              "noteMarkers": [],
+              "fatherName": null,
+              "motherName": null,
+              "enhancedDeathDate": null,
+              "enhancedMarriageDate": null,
+              "spouseBirthDate": null,
+              "spouseParentsFamilyId": null
+            }
+          ],
+          "notes": ["Mock family for testing"],
+          "childrenDiedInfancy": 0
+        }
         """
     }
     
-    private func mockGenericResponse(familyId: String) -> String {
+    private func mockGenericJSONResponse(familyId: String) -> String {
         return """
-        Family(
-            familyId: "\(familyId)",
-            pageReferences: ["999"],
-            father: Person(
-                name: "Unknown",
-                patronymic: "Matinp.",
-                birthDate: "01.01.1700",
-                noteMarkers: []
-            ),
-            mother: nil,
-            additionalSpouses: [],
-            children: [],
-            notes: ["Mock data for \(familyId)"],
-            childrenDiedInfancy: 0
-        )
+        {
+          "familyId": "\(familyId)",
+          "pageReferences": ["999"],
+          "father": {
+            "name": "Unknown",
+            "patronymic": "Matinp.",
+            "birthDate": "01.01.1700",
+            "deathDate": null,
+            "marriageDate": null,
+            "spouse": null,
+            "asChildReference": null,
+            "asParentReference": null,
+            "familySearchId": null,
+            "noteMarkers": [],
+            "fatherName": null,
+            "motherName": null,
+            "enhancedDeathDate": null,
+            "enhancedMarriageDate": null,
+            "spouseBirthDate": null,
+            "spouseParentsFamilyId": null
+          },
+          "mother": null,
+          "additionalSpouses": [],
+          "children": [],
+          "notes": ["Mock data for \(familyId)"],
+          "childrenDiedInfancy": 0
+        }
         """
     }
 }
 
-// MARK: - DeepSeek Service (Enhanced with Debug Logging)
+// MARK: - DeepSeek Service (Enhanced with JSON)
 
 /**
- * DeepSeek API service with comprehensive debug logging
- *
- * Primary AI service for genealogical parsing with detailed tracing
+ * DeepSeek API service updated for JSON responses
  */
 class DeepSeekService: AIService {
     let name = "DeepSeek"
@@ -237,7 +329,7 @@ class DeepSeekService: AIService {
     }
     
     func parseFamily(familyId: String, familyText: String) async throws -> String {
-        logInfo(.ai, "🤖 DeepSeek parsing family: \(familyId)")
+        logInfo(.ai, "🤖 DeepSeek JSON parsing family: \(familyId)")
         logDebug(.ai, "Family text length: \(familyText.count) characters")
         logTrace(.ai, "Family text preview: \(String(familyText.prefix(200)))...")
         
@@ -269,7 +361,7 @@ class DeepSeekService: AIService {
             let duration = DebugLogger.shared.endTimer("deepseek_request")
             
             DebugLogger.shared.logAIResponse("DeepSeek", response: response, duration: duration)
-            logInfo(.ai, "✅ DeepSeek response received successfully")
+            logInfo(.ai, "✅ DeepSeek JSON response received successfully")
             
             return response
             
@@ -339,10 +431,10 @@ class DeepSeekService: AIService {
     }
 }
 
-// MARK: - OpenAI Service (With Debug Logging)
+// MARK: - OpenAI Service (Updated for JSON)
 
 /**
- * OpenAI ChatGPT API service with debug logging
+ * OpenAI ChatGPT API service updated for JSON responses
  */
 class OpenAIService: AIService {
     let name = "OpenAI GPT-4"
@@ -368,7 +460,7 @@ class OpenAIService: AIService {
     }
     
     func parseFamily(familyId: String, familyText: String) async throws -> String {
-        logInfo(.ai, "🤖 OpenAI parsing family: \(familyId)")
+        logInfo(.ai, "🤖 OpenAI JSON parsing family: \(familyId)")
         
         guard isConfigured else {
             logError(.ai, "❌ OpenAI not configured")
@@ -380,7 +472,7 @@ class OpenAIService: AIService {
         let prompt = createGenealogyPrompt(familyId: familyId, familyText: familyText)
         
         let request = OpenAIRequest(
-            model: "gpt-4",
+            model: "gpt-4o",  // FIXED: Changed from "gpt-4" to "gpt-4o"
             messages: [
                 OpenAIMessage(role: "system", content: getSystemPrompt()),
                 OpenAIMessage(role: "user", content: prompt)
@@ -445,10 +537,10 @@ class OpenAIService: AIService {
     }
 }
 
-// MARK: - Claude Service (With Debug Logging)
+// MARK: - Claude Service (Updated for JSON)
 
 /**
- * Anthropic Claude API service with debug logging
+ * Anthropic Claude API service updated for JSON responses
  */
 class ClaudeService: AIService {
     let name = "Claude"
@@ -474,7 +566,7 @@ class ClaudeService: AIService {
     }
     
     func parseFamily(familyId: String, familyText: String) async throws -> String {
-        logInfo(.ai, "🤖 Claude parsing family: \(familyId)")
+        logInfo(.ai, "🤖 Claude JSON parsing family: \(familyId)")
         
         guard isConfigured else {
             logError(.ai, "❌ Claude not configured")
@@ -551,15 +643,15 @@ class ClaudeService: AIService {
     }
 }
 
-// MARK: - Shared Prompt Generation (Enhanced)
+// MARK: - Shared JSON Prompt Generation (Updated for JSON)
 
 extension AIService {
     func getSystemPrompt() -> String {
         return """
         You are an expert Finnish genealogist parsing records from "Juuret Kälviällä".
         
-        Your task is to parse genealogical text into Swift struct initialization code.
-        Return ONLY the Swift struct code, no explanations or markdown formatting.
+        Your task is to parse genealogical text into JSON format.
+        Return ONLY valid JSON, no explanations or markdown formatting.
         
         Key Finnish genealogical patterns:
         - ★ = birth date (format DD.MM.YYYY)
@@ -574,60 +666,127 @@ extension AIService {
         - Notes marked with *) or **) appear after family data
         
         Extract all available data including:
-        - All dates in original DD.MM.YYYY format
-        - All names with patronymics
-        - Family cross-references from {FAMILY_ID} notation
-        - FamilySearch IDs from <ID> notation
-        - Marriage partners and dates
-        - Note markers (* or **)
-        - All family notes and historical information
+        - All dates in original DD.MM.YYYY format as strings
+        - All names with patronymics as strings
+        - Family cross-references from {FAMILY_ID} notation as strings
+        - FamilySearch IDs from <ID> notation as strings (without < >)
+        - Marriage partners and dates as strings
+        - Note markers (* or **) as string arrays
+        - All family notes and historical information as string arrays
         
-        Return exactly the Swift Family(...) initialization code with no other text.
+        Return exactly the JSON object with no other text.
         """
     }
     
     func createGenealogyPrompt(familyId: String, familyText: String) -> String {
         return """
-        Parse this Finnish genealogical record into Swift struct format:
+        Parse this Finnish genealogical record into JSON format:
 
         Family ID: \(familyId)
         
         Source Text:
         \(familyText)
         
-        Return Swift struct initialization using these exact structures:
+        Return JSON using this exact structure:
         
-        struct Person {
-            var name: String
-            var patronymic: String?
-            var birthDate: String?
-            var deathDate: String?
-            var marriageDate: String?
-            var spouse: String?
-            var asChildReference: String?
-            var asParentReference: String?
-            var familySearchId: String?
-            var noteMarkers: [String]
-            // Additional fields with nil defaults
+        {
+          "familyId": "string",
+          "pageReferences": ["string"],
+          "father": {
+            "name": "string",
+            "patronymic": "string or null",
+            "birthDate": "string or null",
+            "deathDate": "string or null", 
+            "marriageDate": "string or null",
+            "spouse": "string or null",
+            "asChildReference": "string or null",
+            "asParentReference": "string or null",
+            "familySearchId": "string or null",
+            "noteMarkers": ["string"],
+            "fatherName": null,
+            "motherName": null,
+            "enhancedDeathDate": null,
+            "enhancedMarriageDate": null,
+            "spouseBirthDate": null,
+            "spouseParentsFamilyId": null
+          },
+          "mother": {
+            "name": "string",
+            "patronymic": "string or null",
+            "birthDate": "string or null",
+            "deathDate": "string or null",
+            "marriageDate": "string or null", 
+            "spouse": "string or null",
+            "asChildReference": "string or null",
+            "asParentReference": "string or null",
+            "familySearchId": "string or null",
+            "noteMarkers": ["string"],
+            "fatherName": null,
+            "motherName": null,
+            "enhancedDeathDate": null,
+            "enhancedMarriageDate": null,
+            "spouseBirthDate": null,
+            "spouseParentsFamilyId": null
+          },
+          "additionalSpouses": [
+            {
+              "name": "string",
+              "patronymic": "string or null",
+              "birthDate": "string or null",
+              "deathDate": "string or null",
+              "marriageDate": "string or null",
+              "spouse": "string or null", 
+              "asChildReference": "string or null",
+              "asParentReference": "string or null",
+              "familySearchId": "string or null",
+              "noteMarkers": ["string"],
+              "fatherName": null,
+              "motherName": null,
+              "enhancedDeathDate": null,
+              "enhancedMarriageDate": null,
+              "spouseBirthDate": null,
+              "spouseParentsFamilyId": null
+            }
+          ],
+          "children": [
+            {
+              "name": "string",
+              "patronymic": "string or null",
+              "birthDate": "string or null",
+              "deathDate": "string or null",
+              "marriageDate": "string or null",
+              "spouse": "string or null",
+              "asChildReference": "string or null", 
+              "asParentReference": "string or null",
+              "familySearchId": "string or null",
+              "noteMarkers": ["string"],
+              "fatherName": null,
+              "motherName": null,
+              "enhancedDeathDate": null,
+              "enhancedMarriageDate": null,
+              "spouseBirthDate": null,
+              "spouseParentsFamilyId": null
+            }
+          ],
+          "notes": ["string"],
+          "childrenDiedInfancy": "number or null"
         }
         
-        struct Family {
-            var familyId: String
-            var pageReferences: [String]
-            var father: Person
-            var mother: Person?
-            var additionalSpouses: [Person]
-            var children: [Person]
-            var notes: [String]
-            var childrenDiedInfancy: Int?
-        }
+        Rules:
+        - Use null for missing values, not empty strings
+        - All dates as strings in original format (e.g. "09.09.1727")
+        - Page references as string array (e.g. ["105", "106"])
+        - If no mother, set mother to null
+        - Extract family references from {FAMILY_ID} notation (e.g. {Korpi 5} becomes "KORPI 5")
+        - Extract FamilySearch IDs from <ID> notation (e.g. <LCJZ-BH3> becomes "LCJZ-BH3")
+        - Set enhancement fields (fatherName, motherName, etc.) to null for now
         
-        Return ONLY the Family(...) struct initialization code. No markdown, no explanations.
+        Return ONLY the JSON object. No markdown, no explanations.
         """
     }
 }
 
-// MARK: - API Data Structures (unchanged but documented)
+// MARK: - API Data Structures (unchanged)
 
 // OpenAI API structures
 struct OpenAIRequest: Codable {

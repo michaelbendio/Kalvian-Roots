@@ -2,7 +2,7 @@
 //  Person.swift
 //  Kalvian Roots
 //
-//  Created by Michael Bendio on 7/11/25.
+//  Updated for JSON parsing with Codable support
 //
 
 import Foundation
@@ -11,16 +11,16 @@ import Foundation
  * Person.swift - Individual genealogical person data
  *
  * Individual person with Finnish naming conventions and genealogical data.
- * Updated for AI parsing without Foundation Models Framework dependencies.
+ * Updated for JSON parsing - now Codable instead of custom struct parsing.
  */
 
 /**
  * Individual person with Finnish naming conventions and genealogical data.
  *
- * Enhanced for cross-reference resolution and AI parsing.
- * Removed @Generable and @Guide annotations for direct AI prompting approach.
+ * Enhanced for cross-reference resolution and JSON parsing.
+ * Now uses Codable for robust AI response parsing.
  */
-struct Person: Hashable, Sendable {
+struct Person: Hashable, Sendable, Codable {
     // MARK: - Core Genealogical Data
     
     /// Finnish given name like 'Matti', 'Brita'
@@ -53,7 +53,7 @@ struct Person: Hashable, Sendable {
     /// Note markers like '*' or '**'
     var noteMarkers: [String]
     
-    // MARK: - Cross-Reference Enhancement Fields (NEW)
+    // MARK: - Cross-Reference Enhancement Fields
     
     /// Father's name for Hiski birth record disambiguation
     var fatherName: String?
@@ -111,7 +111,28 @@ struct Person: Hashable, Sendable {
         self.spouseParentsFamilyId = spouseParentsFamilyId
     }
     
-    // MARK: - Computed Properties
+    // MARK: - JSON Coding Keys (Optional - for custom field names)
+    
+    enum CodingKeys: String, CodingKey {
+        case name
+        case patronymic
+        case birthDate
+        case deathDate
+        case marriageDate
+        case spouse
+        case asChildReference
+        case asParentReference
+        case familySearchId
+        case noteMarkers
+        case fatherName
+        case motherName
+        case enhancedDeathDate
+        case enhancedMarriageDate
+        case spouseBirthDate
+        case spouseParentsFamilyId
+    }
+    
+    // MARK: - Computed Properties (Unchanged)
     
     /// Full name with patronymic for display
     var displayName: String {
@@ -152,7 +173,7 @@ struct Person: Hashable, Sendable {
         return DateFormatter.formatGenealogyDate(date)
     }
     
-    // MARK: - Cross-Reference Enhancement
+    // MARK: - Cross-Reference Enhancement (Unchanged)
     
     /// Update person with data from their as_parent family
     mutating func enhanceWithAsParentData(deathDate: String? = nil, marriageDate: String? = nil) {
@@ -184,7 +205,7 @@ struct Person: Hashable, Sendable {
         }
     }
     
-    // MARK: - Validation
+    // MARK: - Validation (Unchanged)
     
     /// Validate person data and return warnings
     func validateData() -> [String] {
@@ -232,7 +253,7 @@ struct Person: Hashable, Sendable {
         return false
     }
     
-    // MARK: - Name Equivalence Support
+    // MARK: - Name Equivalence Support (Unchanged)
     
     /// Check if this person could be the same as another person (for cross-reference resolution)
     func couldBeSamePerson(as other: Person, allowingNameEquivalences: [String: String] = [:]) -> Bool {
@@ -255,7 +276,7 @@ struct Person: Hashable, Sendable {
         return true
     }
     
-    // MARK: - Hiski Query Support
+    // MARK: - Hiski Query Support (Unchanged)
     
     /// Generate parameters for Hiski birth query
     func getHiskiBirthQueryParams() -> (childName: String, birthDate: String?, fatherName: String?, motherName: String?) {
@@ -285,7 +306,7 @@ struct Person: Hashable, Sendable {
     }
 }
 
-// MARK: - Extensions
+// MARK: - Extensions (Unchanged)
 
 extension String {
     /// Check if string matches a regex pattern
