@@ -30,7 +30,7 @@ class JuuretApp {
     let nameEquivalenceManager: NameEquivalenceManager
     
     /// File management service
-    var fileManager: JuuretFileManager
+    var fileManager: FileManager
     
     // MARK: - State Properties
     
@@ -89,7 +89,7 @@ class JuuretApp {
             aiParsingService: aiParsingService,
             nameEquivalenceManager: nameEquivalenceManager
         )
-        self.fileManager = JuuretFileManager()
+        self.fileManager = FileManager()
         
         logInfo(.app, "✅ Core services initialized")
         logInfo(.app, "Current AI service: \(currentServiceName)")

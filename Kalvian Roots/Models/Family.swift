@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import UniformTypeIdentifiers
 
 /**
  * Family.swift - Core genealogical data structures

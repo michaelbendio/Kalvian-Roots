@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var app = JuuretApp()  // Use @State with @Observable
+    @Environment(JuuretApp.self) private var app
     
     var body: some View {
         Group {
@@ -117,14 +117,14 @@ struct SidebarView: View {
             Section("Debug") {
                 Button("Load Sample Family") {
                     Task {
-                        await app.loadSampleFamily()
+                        app.loadSampleFamily()
                     }
                 }
                 .buttonStyle(.borderless)
                 
                 Button("Test Cross-References") {
                     Task {
-                        await app.loadComplexSampleFamily()
+                        app.loadComplexSampleFamily()
                         try? await app.resolveCrossReferences()
                     }
                 }
