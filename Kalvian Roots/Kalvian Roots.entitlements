@@ -17,15 +17,22 @@
     <key>com.apple.security.files.bookmarks.document-scope</key>
     <true/>
     
-    <!-- iCloud Documents support -->
+    <!-- FIXED: Only use your app's iCloud container (not Apple's system container) -->
     <key>com.apple.developer.icloud-container-identifiers</key>
-    <array/>
+    <array>
+        <string>iCloud.com.michael-bendio.Kalvian-Roots</string>
+    </array>
+    
     <key>com.apple.developer.icloud-services</key>
     <array>
         <string>CloudDocuments</string>
     </array>
+    
+    <!-- Use only your app's container for ubiquity -->
     <key>com.apple.developer.ubiquity-container-identifiers</key>
-    <array/>
+    <array>
+        <string>iCloud.com.michael-bendio.Kalvian-Roots</string>
+    </array>
     
     <!-- Network access for AI services -->
     <key>com.apple.security.network.client</key>
