@@ -438,7 +438,7 @@ class DeepSeekService: AIService {
  * OpenAI ChatGPT API service updated for JSON responses
  */
 class OpenAIService: AIService {
-    let name = "OpenAI GPT-4"
+    let name = "OpenAI GPT-4o"
     private var apiKey: String?
     private let baseURL = "https://api.openai.com/v1/chat/completions"
     
@@ -473,7 +473,7 @@ class OpenAIService: AIService {
         let prompt = createGenealogyPrompt(familyId: familyId, familyText: familyText)
         
         let request = OpenAIRequest(
-            model: "gpt-4o",  // FIXED: Changed from "gpt-4" to "gpt-4o"
+            model: "gpt-4o",
             messages: [
                 OpenAIMessage(role: "system", content: getSystemPrompt()),
                 OpenAIMessage(role: "user", content: prompt)
@@ -644,6 +644,263 @@ class ClaudeService: AIService {
     }
 }
 
+// MARK: - Ollama Local LLM Service
+
+/**
+ * Ollama Local LLM Service with debug logging
+ */
+class OllamaService: AIService {
+    let name = "Ollama (Local)"
+    private var selectedModel = "llama3.1:8b"
+    private let baseURL = "http://localhost:11434/api/generate"
+    
+    var isConfigured: Bool {
+        let configured = isOllamaRunning()
+        logTrace(.ai, "Ollama isConfigured: \(configured)")
+        return configured
+    }
+    
+    func configure(apiKey: String) throws {
+        // Use the "API key" field to set the model name
+        if !apiKey.isEmpty {
+            selectedModel = apiKey
+            logInfo(.ai, "🔧 Ollama model set to: \(selectedModel)")
+        } else {
+            selectedModel = "llama3.1:8b" // Default
+        }
+    }
+    
+    func parseFamily(familyId: String, familyText: String) async throws -> String {
+        logInfo(.ai, "🤖 Ollama parsing family: \(familyId) with model: \(selectedModel)")
+        logDebug(.ai, "Family text length: \(familyText.count) characters")
+        
+        guard isConfigured else {
+            logError(.ai, "❌ Ollama not available")
+            throw AIServiceError.notConfigured("Ollama service not running. Run 'ollama serve' in Terminal.")
+        }
+        
+        DebugLogger.shared.startTimer("ollama_request")
+        
+        let systemPrompt = getOllamaSystemPrompt()
+        let userPrompt = createGenealogyPrompt(familyId: familyId, familyText: familyText)
+        let fullPrompt = "\(systemPrompt)\n\n\(userPrompt)"
+        
+        let request = OllamaRequest(
+            model: selectedModel,
+            prompt: fullPrompt,
+            stream: false,
+            options: OllamaOptions(
+                temperature: 0.1,
+                top_p: 0.9,
+                num_predict: 3000  // Allow longer responses
+            )
+        )
+        
+        logDebug(.ai, "Making Ollama API call")
+        DebugLogger.shared.logAIRequest("Ollama", prompt: userPrompt)
+        
+        do {
+            let response = try await makeAPICall(request: request)
+            let duration = DebugLogger.shared.endTimer("ollama_request")
+            
+            DebugLogger.shared.logAIResponse("Ollama", response: response, duration: duration)
+            logInfo(.ai, "✅ Ollama response received successfully")
+            
+            return response
+            
+        } catch {
+            DebugLogger.shared.endTimer("ollama_request")
+            logError(.ai, "❌ Ollama API call failed: \(error)")
+            throw error
+        }
+    }
+    
+    private func makeAPICall(request: OllamaRequest) async throws -> String {
+        guard let url = URL(string: baseURL) else {
+            logError(.network, "❌ Invalid Ollama URL: \(baseURL)")
+            throw AIServiceError.networkError(URLError(.badURL))
+        }
+        
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.timeoutInterval = 300 // 5 minutes for local LLM
+        
+        do {
+            urlRequest.httpBody = try JSONEncoder().encode(request)
+            logTrace(.network, "Request body encoded, size: \(urlRequest.httpBody?.count ?? 0) bytes")
+            
+            logDebug(.network, "Sending request to Ollama")
+            let (data, response) = try await URLSession.shared.data(for: urlRequest)
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                logDebug(.network, "Ollama HTTP response: \(httpResponse.statusCode)")
+                
+                guard httpResponse.statusCode == 200 else {
+                    let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+                    logError(.network, "Ollama HTTP error \(httpResponse.statusCode): \(errorMessage)")
+                    throw AIServiceError.httpError(httpResponse.statusCode, errorMessage)
+                }
+            }
+            
+            logTrace(.network, "Response data size: \(data.count) bytes")
+            
+            let ollamaResponse = try JSONDecoder().decode(OllamaResponse.self, from: data)
+            logTrace(.ai, "Ollama response decoded successfully")
+            
+            // Clean up the response - Ollama sometimes adds explanatory text
+            let cleanedContent = cleanOllamaResponse(ollamaResponse.response)
+            logTrace(.ai, "Ollama content cleaned, final length: \(cleanedContent.count)")
+            
+            return cleanedContent
+            
+        } catch let error as AIServiceError {
+            throw error
+        } catch {
+            logError(.network, "❌ Ollama network error: \(error)")
+            throw AIServiceError.networkError(error)
+        }
+    }
+    
+    private func isOllamaRunning() -> Bool {
+        // Quick sync check if Ollama is running
+        let url = URL(string: "http://localhost:11434/api/tags")!
+        let semaphore = DispatchSemaphore(value: 0)
+        var isRunning = false
+        
+        let task = URLSession.shared.dataTask(with: url) { _, response, _ in
+            if let httpResponse = response as? HTTPURLResponse {
+                isRunning = httpResponse.statusCode == 200
+            }
+            semaphore.signal()
+        }
+        
+        task.resume()
+        _ = semaphore.wait(timeout: .now() + 1) // 1 second timeout
+        
+        logTrace(.ai, "Ollama running status: \(isRunning)")
+        return isRunning
+    }
+    
+    private func cleanOllamaResponse(_ response: String) -> String {
+        let content = response.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // If response contains JSON in code blocks, extract it
+        if content.contains("```json") {
+            let pattern = #"```json\s*(.*?)\s*```"#
+            if let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]),
+               let match = regex.firstMatch(in: content, range: NSRange(content.startIndex..., in: content)) {
+                let jsonRange = Range(match.range(at: 1), in: content)!
+                return String(content[jsonRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        
+        // If response contains JSON in code blocks without language, extract it
+        if content.contains("```") {
+            let pattern = #"```\s*(.*?)\s*```"#
+            if let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]),
+               let match = regex.firstMatch(in: content, range: NSRange(content.startIndex..., in: content)) {
+                let jsonRange = Range(match.range(at: 1), in: content)!
+                let extracted = String(content[jsonRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                // Check if it looks like JSON
+                if extracted.hasPrefix("{") && extracted.hasSuffix("}") {
+                    return extracted
+                }
+            }
+        }
+        
+        // Look for JSON object in the response
+        if let startIndex = content.firstIndex(of: "{"),
+           let endIndex = content.lastIndex(of: "}") {
+            let jsonContent = String(content[startIndex...endIndex])
+            return jsonContent
+        }
+        
+        return content
+    }
+    
+    private func getOllamaSystemPrompt() -> String {
+        return """
+        You are an expert Finnish genealogist parsing records from "Juuret Kälviällä".
+        
+        CRITICAL: You must return ONLY valid JSON. No explanations, no markdown, no code blocks.
+        
+        Parse the genealogical text into this exact JSON structure:
+        {
+          "familyId": "FAMILY NAME NUMBER",
+          "pageReferences": ["page1", "page2"],
+          "father": {
+            "name": "FirstName",
+            "patronymic": "Patronymic",
+            "birthDate": "DD.MM.YYYY",
+            "deathDate": "DD.MM.YYYY",
+            "marriageDate": "DD.MM.YYYY",
+            "spouse": "SpouseName",
+            "asChildReference": "FAMILY_ID",
+            "familySearchId": "ID",
+            "noteMarkers": []
+          },
+          "mother": {
+            "name": "FirstName",
+            "patronymic": "Patronymic", 
+            "birthDate": "DD.MM.YYYY",
+            "deathDate": "DD.MM.YYYY",
+            "marriageDate": "DD.MM.YYYY",
+            "spouse": "SpouseName",
+            "asChildReference": "FAMILY_ID",
+            "familySearchId": "ID",
+            "noteMarkers": []
+          },
+          "additionalSpouses": [],
+          "children": [
+            {
+              "name": "FirstName",
+              "birthDate": "DD.MM.YYYY",
+              "marriageDate": "DD.MM.YYYY",
+              "spouse": "SpouseName",
+              "asParentReference": "FAMILY_ID",
+              "familySearchId": "ID",
+              "noteMarkers": []
+            }
+          ],
+          "notes": ["note text"],
+          "childrenDiedInfancy": null
+        }
+        
+        Finnish genealogical symbols:
+        - ★ = birth date
+        - † = death date
+        - ∞ = marriage date
+        - {FAMILY_ID} = family reference
+        - <ID> = FamilySearch ID
+        - "Lapset" = children section
+        - "II puoliso" = additional spouse
+        - "Lapsena kuollut N" = N children died in infancy
+        
+        Return ONLY the JSON object. No other text.
+        """
+    }
+}
+
+// MARK: - Ollama API Data Structures
+
+struct OllamaRequest: Codable {
+    let model: String
+    let prompt: String
+    let stream: Bool
+    let options: OllamaOptions
+}
+
+struct OllamaOptions: Codable {
+    let temperature: Double
+    let top_p: Double
+    let num_predict: Int
+}
+
+struct OllamaResponse: Codable {
+    let response: String
+    let done: Bool
+}
 // MARK: - Shared JSON Prompt Generation (Updated for JSON)
 
 extension AIService {

@@ -45,9 +45,10 @@ class AIParsingService {
         let openAIService = OpenAIService()
         let claudeService = ClaudeService()
         let deepSeekService = DeepSeekService()
+        let ollamaService = OllamaService()
         
-        self.availableServices = [deepSeekService, mockService, openAIService, claudeService]
-        self.currentAIService = deepSeekService // Start with DeepSeek as primary
+        self.availableServices = [ollamaService, deepSeekService, mockService, openAIService, claudeService]
+        self.currentAIService = ollamaService // Start with ollama as primary
         
         logInfo(.ai, "✅ AIParsingService initialized")
         logDebug(.ai, "Available services: \(availableServiceNames.joined(separator: ", "))")
