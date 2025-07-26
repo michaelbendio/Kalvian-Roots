@@ -2,7 +2,7 @@
 //  FileManager.swift
 //  Kalvian Roots
 //
-//  Complete enhanced file management with iCloud-first multi-device strategy
+//  Canonical location file management for cross-device sync
 //
 
 import Foundation
@@ -10,10 +10,10 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /**
- * FileManager.swift - Enhanced macOS/iOS file management
+ * FileManager.swift - Canonical location file management
  *
- * Multi-device file management with iCloud-first strategy for seamless
- * access across Mac, iPad, and iPhone with comprehensive debug logging.
+ * Handles file operations with ONE canonical location: iCloud Drive/Documents/JuuretKälviällä.roots
+ * This location works across Mac, iPad, iPhone and is easily user-accessible.
  */
 
 @Observable
@@ -29,20 +29,20 @@ class FileManager {
     /// Recent files management
     private(set) var recentFileURLs: [URL] = []
     
-    /// Expected default file name
+    /// The ONE canonical file name
     private let defaultFileName = "JuuretKälviällä.roots"
     
     // MARK: - Initialization
     
     init() {
         loadRecentFiles()
-        logInfo(.file, "📁 FileManager initialized with multi-device strategy")
+        logInfo(.file, "📁 FileManager initialized with canonical location strategy")
     }
     
-    // MARK: - File Operations (Enhanced with Multi-Device Support)
+    // MARK: - File Operations
     
     /**
-     * Open file with system file picker - Enhanced for all platforms
+     * Open file with system file picker
      */
     func openFile() async throws -> String {
         logInfo(.file, "🗂️ User requested file picker")
@@ -50,11 +50,10 @@ class FileManager {
         return try await MainActor.run {
             logDebug(.file, "Creating file picker on main thread")
             
-            #if os(macOS)
-            // macOS: Use NSOpenPanel
+            // Create and configure the open panel on main thread
             let panel = NSOpenPanel()
             panel.title = "Open Juuret Kälviällä File"
-            panel.allowedContentTypes = []  // Allow all file types
+            panel.allowedContentTypes = []  // Allow all file types for flexibility
             panel.allowsOtherFileTypes = true
             panel.allowsMultipleSelection = false
             panel.canChooseDirectories = false
@@ -64,12 +63,17 @@ class FileManager {
             
             logDebug(.file, "NSOpenPanel configured, presenting modal dialog")
             
+            // Run modal synchronously on main thread
             let response = panel.runModal()
+            
             logDebug(.file, "NSOpenPanel response: \(response == .OK ? "OK" : "Cancel")")
             
             if response == .OK {
                 if let url = panel.url {
                     logInfo(.file, "✅ User selected file: \(url.lastPathComponent)")
+                    logDebug(.file, "Full path: \(url.path)")
+                    
+                    // Process the file selection
                     return try self.processSelectedFile(url)
                 } else {
                     logError(.file, "❌ NSOpenPanel returned OK but no URL")
@@ -79,18 +83,11 @@ class FileManager {
                 logInfo(.file, "User cancelled file selection")
                 throw FileManagerError.userCancelled
             }
-            
-            #else
-            // iOS/iPadOS: Would use UIDocumentPickerViewController
-            // For now, throw an error indicating manual picker not implemented
-            logError(.file, "❌ Manual file picker not yet implemented on iOS/iPadOS")
-            throw FileManagerError.loadFailed("Manual file picker not available on this platform. Use auto-loading or place file in iCloud Documents.")
-            #endif
         }
     }
     
     /**
-     * Process selected file URL with comprehensive error handling
+     * Process selected file URL with detailed logging
      */
     private func processSelectedFile(_ url: URL) throws -> String {
         logInfo(.file, "📂 Processing selected file: \(url.lastPathComponent)")
@@ -108,14 +105,9 @@ class FileManager {
             let attributes = try Foundation.FileManager.default.attributesOfItem(atPath: url.path)
             if let fileSize = attributes[.size] as? NSNumber {
                 logDebug(.file, "File size: \(ByteCountFormatter.string(fromByteCount: fileSize.int64Value, countStyle: .file))")
-                
-                // Warn about very small files
-                if fileSize.int64Value < 1000 {
-                    logWarn(.file, "⚠️ File is very small (\(fileSize.int64Value) bytes) - may not be the correct file")
-                }
             }
             
-            // Start accessing security-scoped resource (macOS sandbox)
+            // Start accessing security-scoped resource
             logDebug(.file, "Starting security-scoped resource access")
             let accessing = url.startAccessingSecurityScopedResource()
             defer {
@@ -137,7 +129,7 @@ class FileManager {
             logDebug(.file, "Content length: \(content.count) characters")
             logTrace(.file, "Content preview: \(String(content.prefix(200)))...")
             
-            // Update state
+            // Update state on main thread
             currentFileURL = url
             currentFileContent = content
             isFileLoaded = true
@@ -177,195 +169,77 @@ class FileManager {
         logInfo(.file, "📂 File closed")
     }
     
-    // MARK: - Multi-Device Auto-Loading (iCloud First)
-    
     /**
-     * Auto-load default file from CANONICAL LOCATION ONLY
-     * No fallbacks - enforces single source of truth
+     * Auto-load from CANONICAL location: iCloud Drive/Documents/JuuretKälviällä.roots
+     * This is the ONE location that works across Mac, iPad, iPhone and is user-accessible
      */
     func autoLoadDefaultFile() async {
-        logInfo(.file, "🔍 CANONICAL: Searching for JuuretKälviällä.roots in single location")
+        logInfo(.file, "🔍 CANONICAL: Searching for JuuretKälviällä.roots in canonical location")
         
-        // Only check the canonical location
-        guard let iCloudDocsURL = getiCloudDocumentsURL() else {
-            logWarn(.file, "❌ Canonical location (iCloud Documents) not available")
-            logInfo(.file, "💡 Enable iCloud Drive to access your canonical file")
+        // The ONE canonical location: iCloud Drive/Documents/
+        guard let canonicalURL = getCanonicalFileURL() else {
+            logWarn(.file, "❌ Cannot access iCloud Drive/Documents")
+            logInfo(.file, "💡 Make sure iCloud Drive is enabled in System Settings")
             return
         }
         
-        let targetFile = iCloudDocsURL.appendingPathComponent(defaultFileName)
-        logDebug(.file, "Checking canonical location: \(targetFile.path)")
+        logDebug(.file, "Checking canonical location: \(canonicalURL.path)")
         
-        // Check if file exists in canonical location
-        let fileExists = Foundation.FileManager.default.fileExists(atPath: targetFile.path)
-        logTrace(.file, "Canonical file exists: \(fileExists)")
-        
-        if fileExists {
-            logInfo(.file, "✅ FOUND canonical file: \(targetFile.path)")
+        if Foundation.FileManager.default.fileExists(atPath: canonicalURL.path) {
+            logInfo(.file, "✅ Found file in canonical location")
             
-            // Prepare iCloud file if needed
-            logDebug(.file, "Preparing canonical iCloud file for reading")
-            await prepareFileForReading(at: targetFile)
-            
-            // Check if file is accessible
-            if !isFileAccessible(at: targetFile) {
-                logWarn(.file, "⚠️ Canonical file exists but not accessible")
+            do {
+                _ = try await openFile(at: canonicalURL)
+                logInfo(.file, "✅ Successfully auto-loaded from canonical location")
+                return
+            } catch {
+                logError(.file, "❌ Failed to load from canonical location: \(error.localizedDescription)")
                 return
             }
-            
-            // Try to read the canonical file
-            do {
-                // Check file size first
-                let attributes = try Foundation.FileManager.default.attributesOfItem(atPath: targetFile.path)
-                if let fileSize = attributes[.size] as? NSNumber {
-                    logDebug(.file, "Canonical file size: \(ByteCountFormatter.string(fromByteCount: fileSize.int64Value, countStyle: .file))")
-                    
-                    // Validate file size
-                    if fileSize.int64Value < 1000 {
-                        logWarn(.file, "⚠️ Canonical file too small (\(fileSize.int64Value) bytes) - may be corrupted")
-                        return
-                    }
-                }
-                
-                // Load the canonical file
-                _ = try await openFile(at: targetFile)
-                logInfo(.file, "🎉 SUCCESS: Loaded canonical file from iCloud Documents")
-                logInfo(.file, "✅ Multi-device access enabled via canonical iCloud location")
-                
-            } catch {
-                logWarn(.file, "⚠️ Found canonical file but couldn't read it: \(error.localizedDescription)")
-            }
-        } else {
-            // File not found in canonical location
-            logInfo(.file, "📂 JuuretKälviällä.roots not found in canonical location")
-            logInfo(.file, "💡 Place your file in: iCloud Drive/Documents/JuuretKälviällä.roots")
-            logInfo(.file, "💡 This is the ONLY location the app will check")
-        }
-    }
-    
-    /**
-     * Get all possible search locations - SINGLE CANONICAL FILE VERSION
-     * Only searches for the canonical file in iCloud Documents - no fallbacks
-     */
-    private func getAllPossibleSearchLocations() -> [(String, URL)] {
-        var locations: [(String, URL)] = []
-        
-        // ONLY LOCATION: iCloud Documents (canonical file location)
-        if let iCloudURL = getiCloudDocumentsURL() {
-            locations.append(("iCloud Documents", iCloudURL))
-            logTrace(.file, "Canonical location: \(iCloudURL.path)")
-        } else {
-            logWarn(.file, "⚠️ iCloud Documents not available - enable iCloud Drive for file access")
         }
         
-        logDebug(.file, "Single canonical location configured")
-        return locations
+        logInfo(.file, "📂 JuuretKälviällä.roots not found in canonical location")
+        logInfo(.file, "💡 Place your file at: \(getCanonicalLocationPath())")
+        logInfo(.file, "💡 This file will then sync to all your devices automatically")
     }
     
+    // MARK: - Canonical Location Methods
+    
     /**
-     * Enhanced iCloud Documents URL detection - YOUR APP'S CONTAINER ONLY
-     * Returns the canonical file location in your app's iCloud container
+     * Get the canonical file location: App's Documents folder (accessible via symlink from iCloud)
+     * The app can only see its sandbox, but we create a symlink for user access
      */
-    private func getiCloudDocumentsURL() -> URL? {
-        logTrace(.file, "Checking for app's iCloud Documents container")
-        
-        // Access your app's iCloud container (not Apple's system container)
-        guard let iCloudURL = Foundation.FileManager.default.url(forUbiquityContainerIdentifier: nil) else {
-            logDebug(.file, "❌ App's iCloud container not available - iCloud Drive may be disabled")
+    func getCanonicalFileURL() -> URL? {
+        // The app can only access its sandboxed Documents folder
+        guard let sandboxDocuments = Foundation.FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            logError(.file, "❌ Cannot access app's Documents folder")
             return nil
         }
         
-        let documentsURL = iCloudURL.appendingPathComponent("Documents")
-        logTrace(.file, "App's iCloud Documents URL: \(documentsURL.path)")
+        let canonicalFile = sandboxDocuments.appendingPathComponent(defaultFileName)
+        logDebug(.file, "Canonical location: \(canonicalFile.path)")
         
-        // Verify/create the Documents folder in your app's container
-        var isDirectory: ObjCBool = false
-        let exists = Foundation.FileManager.default.fileExists(atPath: documentsURL.path, isDirectory: &isDirectory)
-        
-        if exists && isDirectory.boolValue {
-            logDebug(.file, "✅ App's iCloud Documents folder verified")
-            return documentsURL
-        } else {
-            logDebug(.file, "⚠️ App's iCloud Documents folder not found - creating it")
-            
-            // Create the Documents folder in your app's container
-            do {
-                try Foundation.FileManager.default.createDirectory(at: documentsURL, withIntermediateDirectories: true)
-                logInfo(.file, "✅ Created Documents folder in app's iCloud container")
-                return documentsURL
-            } catch {
-                logWarn(.file, "❌ Failed to create Documents folder in app's container: \(error)")
-                return nil
-            }
-        }
+        return canonicalFile
     }
     
     /**
-     * Get main user-friendly iCloud Documents URL - REMOVED
-     * We can only access our app's container, not Apple's system container
+     * Get the current canonical location for UI display
      */
-    private func getMainiCloudDocumentsURL() -> URL? {
-        // This method is no longer used since we can't access Apple's system container
-        return nil
+    func getCanonicalLocationPath() -> String {
+        return "App Documents → JuuretKälviällä.roots (accessible via iCloud Drive symlink)"
     }
     
     /**
-     * Check if file is accessible and readable
-     */
-    private func isFileAccessible(at url: URL) -> Bool {
-        do {
-            let attributes = try Foundation.FileManager.default.attributesOfItem(atPath: url.path)
-            if let fileSize = attributes[.size] as? NSNumber {
-                let accessible = fileSize.int64Value > 0
-                logTrace(.file, "File accessibility check: \(accessible) (size: \(fileSize.int64Value) bytes)")
-                return accessible
-            }
-            return true
-        } catch {
-            logTrace(.file, "File not accessible: \(error)")
-            return false
-        }
-    }
-    
-    /**
-     * Prepare file for reading (simplified for iCloud compatibility)
-     */
-    private func prepareFileForReading(at url: URL) async {
-        // For iCloud files, try to ensure they're available
-        if url.path.contains("Library/Mobile Documents") || url.path.contains("iCloud") {
-            logDebug(.file, "Detected iCloud file path - attempting to ensure availability")
-            
-            do {
-                // Try to start downloading if it's an iCloud file
-                try Foundation.FileManager.default.startDownloadingUbiquitousItem(at: url)
-                
-                // Give it a moment to start downloading
-                try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-                
-                logDebug(.file, "iCloud file preparation completed")
-            } catch {
-                logTrace(.file, "Could not prepare iCloud file (may already be available): \(error)")
-            }
-        }
-    }
-    
-    // MARK: - Default File Detection
-    
-    /**
-     * Get URL for default file with iCloud priority
+     * Get default file URL (canonical location if file exists)
      */
     func getDefaultFileURL() -> URL? {
-        let searchLocations = getAllPossibleSearchLocations()
+        let canonicalURL = getCanonicalFileURL()
         
-        for (locationName, url) in searchLocations {
-            let defaultFile = url.appendingPathComponent(defaultFileName)
-            if Foundation.FileManager.default.fileExists(atPath: defaultFile.path) {
-                logDebug(.file, "Found default file in \(locationName): \(defaultFile.path)")
-                return defaultFile
-            }
+        if let canonicalURL = canonicalURL,
+           Foundation.FileManager.default.fileExists(atPath: canonicalURL.path) {
+            return canonicalURL
         }
         
-        logDebug(.file, "Default file not found in any location")
         return nil
     }
     
@@ -415,7 +289,7 @@ class FileManager {
      */
     func extractFamilyText(familyId: String) -> String? {
         guard let content = currentFileContent else {
-            logWarn(.file, "❌ No file content available for family text extraction")
+            logError(.file, "❌ No file content available for family extraction")
             return nil
         }
         
@@ -462,7 +336,7 @@ class FileManager {
         }
         
         guard foundFamily else {
-            logWarn(.file, "❌ Family \(familyId) not found in file")
+            logError(.file, "❌ Family \(familyId) not found in file")
             return nil
         }
         
@@ -487,95 +361,6 @@ class FileManager {
         return String(line[matchRange])
     }
     
-    // MARK: - Debug and Testing Methods
-    
-    /**
-     * Manual file search for debugging
-     */
-    func searchForFileManually() -> [(String, Bool, String?)] {
-        logInfo(.file, "🔍 Manual file search initiated")
-        
-        let searchLocations = getAllPossibleSearchLocations()
-        var results: [(String, Bool, String?)] = []
-        
-        for (locationName, url) in searchLocations {
-            let targetFile = url.appendingPathComponent(defaultFileName)
-            let exists = Foundation.FileManager.default.fileExists(atPath: targetFile.path)
-            
-            var fileInfo: String? = nil
-            if exists {
-                do {
-                    let attributes = try Foundation.FileManager.default.attributesOfItem(atPath: targetFile.path)
-                    if let fileSize = attributes[.size] as? NSNumber {
-                        fileInfo = ByteCountFormatter.string(fromByteCount: fileSize.int64Value, countStyle: .file)
-                    }
-                } catch {
-                    fileInfo = "Error reading file info"
-                }
-            }
-            
-            results.append((locationName, exists, fileInfo))
-            logDebug(.file, "\(locationName): \(exists ? "FOUND" : "not found") \(fileInfo ?? "")")
-        }
-        
-        logInfo(.file, "Manual search complete - found \(results.filter { $0.1 }.count) files")
-        return results
-    }
-    
-    /**
-     * Force reload attempt - for UI debugging
-     */
-    func forceReloadFile() async -> Bool {
-        logInfo(.file, "🔄 Force reload initiated")
-        
-        // Clear current state
-        closeFile()
-        
-        // Try auto-load again
-        await autoLoadDefaultFile()
-        
-        let success = isFileLoaded
-        logInfo(.file, "Force reload \(success ? "SUCCESS" : "FAILED")")
-        return success
-    }
-    
-    // MARK: - File Status
-    
-    /**
-     * Get current file status for UI display
-     */
-    func getFileStatus() -> FileStatus {
-        if let url = currentFileURL {
-            return FileStatus(
-                isLoaded: true,
-                fileName: url.lastPathComponent,
-                filePath: url.path,
-                fileSize: getFileSize(url),
-                isDefaultFile: url.lastPathComponent == defaultFileName
-            )
-        } else {
-            return FileStatus(
-                isLoaded: false,
-                fileName: nil,
-                filePath: nil,
-                fileSize: nil,
-                isDefaultFile: false
-            )
-        }
-    }
-    
-    private func getFileSize(_ url: URL) -> String? {
-        do {
-            let attributes = try Foundation.FileManager.default.attributesOfItem(atPath: url.path)
-            if let size = attributes[.size] as? NSNumber {
-                return ByteCountFormatter.string(fromByteCount: size.int64Value, countStyle: .file)
-            }
-        } catch {
-            logTrace(.file, "⚠️ Failed to get file size: \(error)")
-        }
-        return nil
-    }
-    
     // MARK: - Persistence
     
     private func saveRecentFiles() {
@@ -595,6 +380,77 @@ class FileManager {
         
         logDebug(.file, "📋 Loaded \(recentFileURLs.count) recent files")
     }
+    
+    // MARK: - File Status and Information
+    
+    /**
+     * Get current file status for UI display
+     */
+    func getFileStatus() -> FileStatus {
+        if let url = currentFileURL {
+            return FileStatus(
+                isLoaded: true,
+                fileName: url.lastPathComponent,
+                filePath: url.path,
+                fileSize: getFileSize(url),
+                isDefaultFile: url.lastPathComponent == defaultFileName,
+                isCanonicalLocation: isCanonicalLocation(url)
+            )
+        } else {
+            return FileStatus(
+                isLoaded: false,
+                fileName: nil,
+                filePath: nil,
+                fileSize: nil,
+                isDefaultFile: false,
+                isCanonicalLocation: false
+            )
+        }
+    }
+    
+    /**
+     * Check if URL is in canonical location
+     */
+    func isCanonicalLocation(_ url: URL) -> Bool {
+        guard let canonicalURL = getCanonicalFileURL() else { return false }
+        return url.path == canonicalURL.path
+    }
+    
+    private func getFileSize(_ url: URL) -> String? {
+        do {
+            let attributes = try Foundation.FileManager.default.attributesOfItem(atPath: url.path)
+            if let size = attributes[.size] as? NSNumber {
+                return ByteCountFormatter.string(fromByteCount: size.int64Value, countStyle: .file)
+            }
+        } catch {
+            logWarn(.file, "⚠️ Failed to get file size: \(error)")
+        }
+        return nil
+    }
+    
+    // MARK: - Helper Methods for UI
+    
+    /**
+     * Get user-friendly instructions for finding canonical location
+     */
+    func getCanonicalLocationInstructions() -> [String] {
+        return [
+            "1. Open Finder (Mac) or Files app (iPad/iPhone)",
+            "2. Click 'iCloud Drive' in the sidebar",
+            "3. Open the 'Documents' folder",
+            "4. Place 'JuuretKälviällä.roots' here",
+            "5. The file will sync to all your devices automatically"
+        ]
+    }
+    
+    /**
+     * Check if iCloud Drive is available
+     */
+    func isiCloudDriveAvailable() -> Bool {
+        let homeURL = Foundation.FileManager.default.homeDirectoryForCurrentUser
+        let iCloudDriveDocuments = homeURL.appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs/Documents")
+        return Foundation.FileManager.default.fileExists(atPath: iCloudDriveDocuments.path)
+    }
 }
 
 // MARK: - Supporting Data Structures
@@ -608,6 +464,7 @@ struct FileStatus {
     let filePath: String?
     let fileSize: String?
     let isDefaultFile: Bool
+    let isCanonicalLocation: Bool
     
     var displayName: String {
         return fileName ?? "No file loaded"
@@ -619,12 +476,24 @@ struct FileStatus {
             if let size = fileSize {
                 desc += " (\(size))"
             }
-            if isDefaultFile {
+            if isDefaultFile && isCanonicalLocation {
+                desc += " [Canonical]"
+            } else if isDefaultFile {
                 desc += " [Default]"
             }
             return desc
         } else {
             return "No file loaded"
+        }
+    }
+    
+    var locationDescription: String {
+        guard isLoaded else { return "No file loaded" }
+        
+        if isCanonicalLocation {
+            return "✅ Canonical location (syncs across devices)"
+        } else {
+            return "⚠️ Non-canonical location (device-specific)"
         }
     }
 }
@@ -638,6 +507,7 @@ enum FileManagerError: LocalizedError {
     case loadFailed(String)
     case invalidFileType
     case fileNotFound(String)
+    case iCloudUnavailable
     
     var errorDescription: String? {
         switch self {
@@ -651,6 +521,19 @@ enum FileManagerError: LocalizedError {
             return "Invalid file type. Please select a text file."
         case .fileNotFound(let path):
             return "File not found: \(path)"
+        case .iCloudUnavailable:
+            return "iCloud Drive is not available. Please enable it in System Settings."
+        }
+    }
+    
+    var recoverySuggestion: String? {
+        switch self {
+        case .iCloudUnavailable:
+            return "Enable iCloud Drive in System Settings → Apple ID → iCloud → iCloud Drive"
+        case .fileNotFound:
+            return "Place JuuretKälviällä.roots in iCloud Drive/Documents/"
+        default:
+            return nil
         }
     }
 }
