@@ -27,7 +27,9 @@ enum JuuretError: LocalizedError {
     case fileManagement(String)
     case parsingFailed(String)
     case networkError(String)
-    
+    case noFileLoaded
+    case familyNotFound(String)
+
     var errorDescription: String? {
         switch self {
         // Existing errors
@@ -51,6 +53,10 @@ enum JuuretError: LocalizedError {
             return "AI parsing failed: \(details)"
         case .networkError(let details):
             return "Network error: \(details)"
+        case .noFileLoaded:
+            return "No file loaded. Please open JuuretKälviällä.txt"
+        case .familyNotFound(let familyId):
+            return "Family \(familyId) not found in file"
         }
     }
     

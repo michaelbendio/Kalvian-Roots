@@ -1,898 +1,683 @@
 //
-//  AIParsingService.swift
+//  FamilyResolver.swift
 //  Kalvian Roots
 //
-//  AI service with cross-platform support and larger fonts
+//  Cross-reference resolution service for genealogical family networks
 //
 
 import Foundation
 
 /**
- * AIParsingService.swift - Cross-platform AI parsing with MLX support on macOS
+ * FamilyResolver.swift - Cross-reference resolution and family network building
  *
- * Provides intelligent service selection based on platform capabilities:
- * - macOS: Full MLX local models + cloud services
- * - iOS/iPadOS: Cloud services only (DeepSeek, Claude)
+ * Resolves family cross-references using two methods:
+ * 1. Family reference resolution ({KORPI 5} notation)
+ * 2. Birth date search with multi-factor validation
+ *
+ * Builds complete family networks with confidence scoring and user validation.
  */
 
 @Observable
-class AIParsingService {
+class FamilyResolver {
     
-    // MARK: - Properties
+    // MARK: - Dependencies
     
-    private var currentAIService: AIService
-    private let availableServices: [AIService]
+    private let aiParsingService: AIParsingService
+    private let nameEquivalenceManager: NameEquivalenceManager
     
-    var currentServiceName: String {
-        currentAIService.name
-    }
+    // MARK: - State Properties
     
-    var availableServiceNames: [String] {
-        availableServices.map { $0.name }
-    }
+    private var fileContent: String?
+    private var resolutionStatistics = ResolutionStatistics()
     
-    var isConfigured: Bool {
-        let configured = currentAIService.isConfigured
-        logTrace(.ai, "AIParsingService isConfigured: \(configured) (\(currentServiceName))")
-        return configured
-    }
+    // MARK: - Computed Properties
     
-    var localServicesAvailable: Bool {
-        #if os(macOS)
-        return true
-        #else
-        return false
-        #endif
+    var hasFileContent: Bool {
+        fileContent != nil && !(fileContent?.isEmpty ?? true)
     }
     
     // MARK: - Initialization
     
-    init() {
-        logInfo(.ai, "🚀 AIParsingService initialization started")
+    init(aiParsingService: AIParsingService, nameEquivalenceManager: NameEquivalenceManager) {
+        logInfo(.resolver, "🔗 FamilyResolver initialization started")
         
-        // Use factory to create platform-appropriate services
-        self.availableServices = AIServiceFactory.createAvailableServices()
+        self.aiParsingService = aiParsingService
+        self.nameEquivalenceManager = nameEquivalenceManager
         
-        // Set recommended default service for platform
-        let recommendedServiceName = AIServiceFactory.getRecommendedService()
-        self.currentAIService = availableServices.first { $0.name == recommendedServiceName }
-                               ?? availableServices.first!
-        
-        logInfo(.ai, "✅ AIParsingService initialized")
-        logDebug(.ai, "Platform: \(platformName)")
-        logDebug(.ai, "Available services: \(availableServiceNames.joined(separator: ", "))")
-        logInfo(.ai, "Default service: \(currentServiceName)")
-        logDebug(.ai, "Local services available: \(localServicesAvailable)")
-        
-        // Try to auto-configure from saved settings
-        autoConfigureServices()
+        logInfo(.resolver, "✅ FamilyResolver initialized")
+        logDebug(.resolver, "AI Service: \(aiParsingService.currentServiceName)")
+        logDebug(.resolver, "Name Equivalence Manager ready")
     }
     
-    private var platformName: String {
-        #if os(macOS)
-        return "macOS"
-        #elseif os(iOS)
-        return "iOS"
-        #elseif os(visionOS)
-        return "visionOS"
-        #else
-        return "Unknown"
-        #endif
-    }
-    
-    // MARK: - Service Management
+    // MARK: - File Content Management
     
     /**
-     * Switch to a different AI service by name
+     * Set the file content for cross-reference search operations
      */
-    func switchToService(named serviceName: String) throws {
-        logInfo(.ai, "🔄 Switching AI service to: \(serviceName)")
+    func setFileContent(_ content: String) {
+        logInfo(.resolver, "📁 Setting file content for cross-reference resolution")
+        logDebug(.resolver, "File content length: \(content.count) characters")
         
-        guard let service = availableServices.first(where: { $0.name == serviceName }) else {
-            logError(.ai, "❌ Service '\(serviceName)' not found")
-            throw AIServiceError.notConfigured("Service '\(serviceName)' not found")
-        }
+        self.fileContent = content
         
-        // Check if it's a local service on non-macOS platform
-        #if !os(macOS)
-        if service.isLocal {
-            logError(.ai, "❌ Local MLX service not available on \(platformName)")
-            throw AIServiceError.serviceUnavailable("MLX services are only available on macOS")
-        }
-        #endif
+        // Pre-process content for efficient searching
+        preprocessFileContent()
         
-        currentAIService = service
-        logInfo(.ai, "✅ Successfully switched to: \(serviceName)")
-        logDebug(.ai, "New service configured: \(service.isConfigured)")
-        logDebug(.ai, "Service type: \(service.isLocal ? "Local MLX" : "Cloud API")")
+        logInfo(.resolver, "✅ File content set and preprocessed")
     }
     
-    /**
-     * Configure the current AI service with an API key
-     */
-    func configureCurrentService(apiKey: String) throws {
-        logInfo(.ai, "🔧 Configuring \(currentAIService.name) with API key")
-        logTrace(.ai, "API key provided with length: \(apiKey.count)")
-        
-        try currentAIService.configure(apiKey: apiKey)
-        
-        // Save to UserDefaults for persistence (only for cloud services)
-        if !currentAIService.isLocal {
-            saveAPIKey(apiKey, for: currentAIService.name)
-        }
-        
-        logInfo(.ai, "✅ Successfully configured \(currentAIService.name)")
+    private func preprocessFileContent() {
+        // Future optimization: Create family ID index, birth date index, etc.
+        logTrace(.resolver, "File content preprocessing completed")
     }
     
-    /**
-     * Get all available services with their configuration status
-     */
-    func getServiceStatus() -> [(name: String, configured: Bool, isLocal: Bool)] {
-        let status = availableServices.map {
-            (name: $0.name, configured: $0.isConfigured, isLocal: $0.isLocal)
-        }
-        logTrace(.ai, "Service status requested: \(status.map { "\($0.name)=\($0.configured)" }.joined(separator: ", "))")
-        return status
-    }
+    // MARK: - Main Cross-Reference Resolution Method
     
     /**
-     * Get services grouped by type for UI display
+     * Resolve all cross-references for a family and build complete family network
      */
-    func getServicesByType() -> (local: [AIService], cloud: [AIService]) {
-        let local = availableServices.filter { $0.isLocal }
-        let cloud = availableServices.filter { !$0.isLocal }
-        return (local: local, cloud: cloud)
-    }
-    
-    // MARK: - Family Parsing (Core Method)
-    
-    /**
-     * Parse a family from genealogical text using the current AI service
-     */
-    func parseFamily(familyId: String, familyText: String) async throws -> Family {
-        logInfo(.parsing, "🤖 Starting AI family parsing for: \(familyId)")
-        logDebug(.parsing, "Using AI service: \(currentAIService.name) (\(currentAIService.isLocal ? "Local" : "Cloud"))")
-        logDebug(.parsing, "Family text length: \(familyText.count) characters")
-        logTrace(.parsing, "Family text preview: \(String(familyText.prefix(300)))...")
+    func resolveCrossReferences(for family: Family) async throws -> FamilyNetwork {
+        logInfo(.resolver, "🔗 Starting cross-reference resolution for family: \(family.familyId)")
+        DebugLogger.shared.startTimer("family_network_resolution")
         
-        DebugLogger.shared.startTimer("total_parsing")
-        
-        guard currentAIService.isConfigured else {
-            logError(.ai, "❌ AI service not configured: \(currentAIService.name)")
-            throw AIServiceError.notConfigured(currentAIService.name)
+        guard hasFileContent else {
+            logError(.resolver, "❌ No file content available for cross-reference resolution")
+            throw FamilyResolverError.noFileContent
         }
+        
+        resolutionStatistics.incrementAttempt()
+        
+        var network = FamilyNetwork(mainFamily: family)
         
         do {
-            // Step 1: Get Swift struct string from AI
-            logDebug(.ai, "Step 1: Requesting AI parsing from \(currentAIService.name)")
-            DebugLogger.shared.startTimer("ai_request")
+            // Step 1: Resolve as-child families (parents' families)
+            logInfo(.resolver, "Step 1: Resolving as-child families")
+            network = try await resolveAsChildFamilies(for: family, network: network)
             
-            let structString = try await currentAIService.parseFamily(
+            // Step 2: Resolve as-parent families (children's families)
+            logInfo(.resolver, "Step 2: Resolving as-parent families")
+            network = try await resolveAsParentFamilies(for: family, network: network)
+            
+            // Step 3: Resolve spouse as-child families
+            logInfo(.resolver, "Step 3: Resolving spouse as-child families")
+            network = try await resolveSpouseAsChildFamilies(for: family, network: network)
+
+            resolutionStatistics.incrementSuccess()
+            
+            let duration = DebugLogger.shared.endTimer("family_network_resolution")
+            logInfo(.resolver, "✅ Cross-reference resolution completed in \(String(format: "%.2f", duration))s")
+            logDebug(.resolver, "Network summary: \(network.totalResolvedFamilies) families resolved")
+            
+            return network
+            
+        } catch {
+            _ = resolutionStatistics.incrementFailure()
+            DebugLogger.shared.endTimer("family_network_resolution")
+            
+            logError(.resolver, "❌ Cross-reference resolution failed: \(error)")
+            throw error
+        }
+    }
+    
+    // MARK: - As-Child Family Resolution
+    
+    private func resolveAsChildFamilies(for family: Family, network: FamilyNetwork) async throws -> FamilyNetwork{
+        logDebug(.resolver, "🔍 Resolving as-child families for parents")
+        
+        // Resolve father's as-child family
+        if let fatherFamily = try await findAsChildFamily(for: family.father) {
+            logInfo(.resolver, "✅ Found father's as-child family: \(fatherFamily.familyId)")
+            network.asChildFamilies[family.father.name] = fatherFamily
+        } else {
+            logWarn(.resolver, "⚠️ Could not resolve father's as-child family")
+        }
+        
+        // Resolve mother's as-child family
+        if let mother = family.mother,
+           let motherFamily = try await findAsChildFamily(for: mother) {
+            logInfo(.resolver, "✅ Found mother's as-child family: \(motherFamily.familyId)")
+            network.asChildFamilies[mother.name] = motherFamily
+        } else if family.mother != nil {
+            logWarn(.resolver, "⚠️ Could not resolve mother's as-child family")
+        }
+        
+        // Resolve additional spouses' as-child families
+        for spouse in family.additionalSpouses {
+            if let spouseFamily = try await findAsChildFamily(for: spouse) {
+                logInfo(.resolver, "✅ Found additional spouse's as-child family: \(spouseFamily.familyId)")
+                network.asChildFamilies[spouse.name] = spouseFamily
+            } else {
+                logWarn(.resolver, "⚠️ Could not resolve additional spouse's as-child family")
+            }
+        }
+    }
+    
+    // MARK: - As-Parent Family Resolution
+    
+    private func resolveAsParentFamilies(for family: Family, into network: inout FamilyNetwork) async throws {
+        logDebug(.resolver, "🔍 Resolving as-parent families for children")
+        
+        for child in family.children {
+            guard child.spouse != nil else {
+                logTrace(.resolver, "Skipping unmarried child: \(child.name)")
+                continue
+            }
+            
+            if let childFamily = try await findAsParentFamily(for: child) {
+                logInfo(.resolver, "✅ Found child's as-parent family: \(childFamily.familyId)")
+                network.asParentFamilies[child.name] = childFamily
+            } else {
+                logWarn(.resolver, "⚠️ Could not resolve as-parent family for child: \(child.name)")
+            }
+        }
+    }
+    
+    // MARK: - Spouse As-Child Family Resolution
+    
+    private func resolveSpouseAsChildFamilies(for family: Family, into network: inout FamilyNetwork) async throws {
+        logDebug(.resolver, "🔍 Resolving spouse as-child families")
+        
+        for child in family.children {
+            guard let spouse = child.spouse else { continue }
+            
+            // Create a temporary Person object for the spouse
+            let spousePerson = Person(
+                name: spouse,
+                birthDate: extractSpouseBirthDate(from: child),
+                spouse: child.name,
+                noteMarkers: []
+            )
+            
+            if let spouseFamily = try await findAsChildFamily(for: spousePerson) {
+                logInfo(.resolver, "✅ Found spouse's as-child family: \(spouseFamily.familyId)")
+                network.spouseAsChildFamilies[spouse] = spouseFamily
+            } else {
+                logTrace(.resolver, "Could not resolve spouse's as-child family for: \(spouse)")
+            }
+        }
+    }
+    
+    // MARK: - Core Resolution Methods
+    
+    /**
+     * Find the family where this person is a child using both resolution methods
+     */
+    private func findAsChildFamily(for person: Person) async throws -> Family? {
+        logDebug(.resolver, "🔍 Finding as-child family for: \(person.name)")
+        
+        var candidates: [FamilyCandidate] = []
+        
+        // Method 1: Family reference resolution
+        if let familyRef = person.asChildReference {
+            logDebug(.resolver, "Trying family reference method: \(familyRef)")
+            
+            if let referencedFamily = try await findFamilyById(familyRef) {
+                let confidence = validateFamilyReference(person, referencedFamily)
+                candidates.append(FamilyCandidate(
+                    family: referencedFamily,
+                    confidence: confidence,
+                    matchMethod: "family_reference",
+                    reasons: ["Direct family reference match"],
+                    warnings: confidence < 0.8 ? ["Low confidence family reference"] : []
+                ))
+                logDebug(.resolver, "Family reference candidate: \(referencedFamily.familyId), confidence: \(String(format: "%.2f", confidence))")
+            }
+        }
+        
+        // Method 2: Birth date search
+        if let birthDate = person.birthDate {
+            logDebug(.resolver, "Trying birth date search method: \(birthDate)")
+            
+            let birthDateCandidates = try await searchByBirthDate(birthDate, targetPerson: person)
+            candidates.append(contentsOf: birthDateCandidates)
+            
+            logDebug(.resolver, "Birth date search found \(birthDateCandidates.count) candidates")
+        }
+        
+        // Sort by confidence and return best match
+        let sortedCandidates = candidates.sorted { $0.confidence > $1.confidence }
+        
+        if let bestCandidate = sortedCandidates.first {
+            logInfo(.resolver, "Best match: \(bestCandidate.family.familyId) (confidence: \(String(format: "%.2f", bestCandidate.confidence)), method: \(bestCandidate.matchMethod))")
+            
+            if bestCandidate.confidence >= 0.8 {
+                return bestCandidate.family
+            } else if bestCandidate.confidence >= 0.5 {
+                logWarn(.resolver, "Medium confidence match - may require user validation")
+                return bestCandidate.family
+            } else {
+                logWarn(.resolver, "Low confidence match - skipping")
+                return nil
+            }
+        }
+        
+        logDebug(.resolver, "No suitable as-child family found for: \(person.name)")
+        return nil
+    }
+    
+    /**
+     * Find the family where this person is a parent using asParentReference
+     */
+    private func findAsParentFamily(for person: Person) async throws -> Family? {
+        logDebug(.resolver, "🔍 Finding as-parent family for: \(person.name)")
+        
+        guard let parentRef = person.asParentReference else {
+            logTrace(.resolver, "No as-parent reference for: \(person.name)")
+            return nil
+        }
+        
+        return try await findFamilyById(parentRef)
+    }
+    
+    // MARK: - Family Search Methods
+    
+    /**
+     * Find family by ID in the file content
+     */
+    private func findFamilyById(_ familyId: String) async throws -> Family? {
+        logDebug(.resolver, "🔍 Searching for family: \(familyId)")
+        
+        guard let fileContent = fileContent else {
+            throw FamilyResolverError.noFileContent
+        }
+        
+        // Extract family text from file content
+        guard let familyText = extractFamilyText(familyId: familyId, from: fileContent) else {
+            logWarn(.resolver, "Family \(familyId) not found in file")
+            return nil
+        }
+        
+        // Parse the family using AI service
+        do {
+            let family = try await aiParsingService.parseFamily(
                 familyId: familyId,
                 familyText: familyText
             )
             
-            let aiDuration = DebugLogger.shared.endTimer("ai_request")
-            logInfo(.ai, "✅ AI response received in \(String(format: "%.2f", aiDuration))s")
-            logDebug(.ai, "Response length: \(structString.count) characters")
-            logTrace(.ai, "Response preview: \(String(structString.prefix(500)))...")
-            
-            // Step 2: Parse the struct string into a Family object
-            logDebug(.parsing, "Step 2: Parsing struct string into Family object")
-            DebugLogger.shared.startTimer("struct_parsing")
-            
-            let family = try parseStructString(structString)
-            
-            let parseDuration = DebugLogger.shared.endTimer("struct_parsing")
-            let totalDuration = DebugLogger.shared.endTimer("total_parsing")
-            
-            logInfo(.parsing, "✅ Struct parsing completed in \(String(format: "%.3f", parseDuration))s")
-            logInfo(.parsing, "🎉 Total parsing completed in \(String(format: "%.2f", totalDuration))s")
-            
-            // Step 3: Log parsing results
-            DebugLogger.shared.logParsingSuccess(family)
-            
-            return family
-            
-        } catch let error as AIServiceError {
-            _ = DebugLogger.shared.endTimer("ai_request")
-            _ = DebugLogger.shared.endTimer("struct_parsing")
-            _ = DebugLogger.shared.endTimer("total_parsing")
-            
-            logError(.ai, "❌ AI service error: \(error.localizedDescription)")
-            DebugLogger.shared.logParsingFailure(error, familyId: familyId)
-            throw error
-        } catch {
-            _ = DebugLogger.shared.endTimer("ai_request")
-            _ = DebugLogger.shared.endTimer("struct_parsing")
-            _ = DebugLogger.shared.endTimer("total_parsing")
-            
-            logError(.parsing, "❌ Parsing error: \(error.localizedDescription)")
-            DebugLogger.shared.logParsingFailure(error, familyId: familyId)
-            throw AIServiceError.parsingFailed(error.localizedDescription)
-        }
-    }
-    
-    // MARK: - MLX Server Health Check
-    
-    /**
-     * Check if MLX server is running (macOS only)
-     */
-    func checkMLXServerStatus() async -> MLXServerStatus {
-        #if os(macOS)
-        do {
-            guard let url = URL(string: "http://127.0.0.1:11434/health") else {
-                return .notAvailable("Invalid MLX server URL")
-            }
-            
-            var request = URLRequest(url: url)
-            request.timeoutInterval = 3.0
-            
-            let (_, response) = try await URLSession.shared.data(for: request)
-            
-            if let httpResponse = response as? HTTPURLResponse,
-               httpResponse.statusCode == 200 {
-                return .running
-            } else {
-                return .notRunning
-            }
-            
-        } catch {
-            return .notRunning
-        }
-        #else
-        return .notAvailable("MLX only available on macOS")
-        #endif
-    }
-    
-    // MARK: - Struct Parsing (Enhanced with Debug Logging)
-    
-    /**
-     * Parse AI-generated Swift struct string into Family object
-     */
-    private func parseStructString(_ structString: String) throws -> Family {
-        logDebug(.parsing, "🔍 Starting struct string parsing")
-        DebugLogger.shared.parseStep("Clean response", "Removing markdown and formatting")
-        
-        // Clean the response (remove markdown, extra whitespace)
-        let cleanedString = cleanStructString(structString)
-        logTrace(.parsing, "Cleaned string length: \(cleanedString.count)")
-        logTrace(.parsing, "Cleaned preview: \(String(cleanedString.prefix(200)))...")
-        
-        // Validate basic structure
-        guard cleanedString.hasPrefix("Family(") && cleanedString.hasSuffix(")") else {
-            logError(.parsing, "❌ Response doesn't match Family(...) format")
-            logTrace(.parsing, "Invalid format - starts with: \(String(cleanedString.prefix(50)))")
-            throw AIServiceError.parsingFailed("Response doesn't match Family(...) format")
-        }
-        
-        DebugLogger.shared.parseStep("Validate format", "✅ Family(...) format confirmed")
-        
-        // Use Swift evaluation to parse the struct
-        do {
-            DebugLogger.shared.parseStep("Evaluate struct", "Using StructParser")
-            let family = try evaluateStructString(cleanedString)
-            
-            // Validate the parsed family
-            logDebug(.parsing, "Validating parsed family structure")
-            let warnings = family.validateStructure()
-            DebugLogger.shared.logFamilyValidation(family, warnings: warnings)
-            
-            logInfo(.parsing, "✅ Struct parsing successful")
+            logInfo(.resolver, "✅ Successfully parsed family: \(familyId)")
             return family
             
         } catch {
-            logWarn(.parsing, "⚠️ Primary struct parsing failed: \(error)")
-            
-            // Try fallback parsing if direct evaluation fails
-            DebugLogger.shared.parseStep("Fallback parsing", "Attempting regex-based extraction")
-            return try fallbackParseStruct(cleanedString)
-        }
-    }
-    
-    /**
-     * Clean AI response to valid Swift struct format
-     */
-    private func cleanStructString(_ response: String) -> String {
-        logTrace(.parsing, "Cleaning AI response string")
-        var cleaned = response
-        
-        // Remove markdown code blocks
-        cleaned = cleaned.replacingOccurrences(of: "```swift", with: "")
-        cleaned = cleaned.replacingOccurrences(of: "```", with: "")
-        
-        // Remove extra whitespace and newlines
-        cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // Ensure proper formatting
-        if !cleaned.hasPrefix("Family(") {
-            // Try to find the Family( start
-            if let range = cleaned.range(of: "Family(") {
-                cleaned = String(cleaned[range.lowerBound...])
-                logTrace(.parsing, "Found Family( at position, trimmed prefix")
-            }
-        }
-        
-        logTrace(.parsing, "String cleaning complete")
-        return cleaned
-    }
-    
-    /**
-     * Evaluate Swift struct string using controlled struct parsing
-     */
-    private func evaluateStructString(_ structString: String) throws -> Family {
-        logDebug(.parsing, "📝 Evaluating struct string with StructParser")
-        
-        let parser = StructParser(structString)
-        let family = try parser.parseFamily()
-        
-        logDebug(.parsing, "✅ StructParser completed successfully")
-        return family
-    }
-    
-    /**
-     * Fallback parsing when direct evaluation fails
-     */
-    private func fallbackParseStruct(_ structString: String) throws -> Family {
-        logWarn(.parsing, "🔧 Using fallback parsing method")
-        
-        // Extract basic fields using regex patterns
-        let familyId = try extractField(from: structString, field: "familyId") ?? "UNKNOWN"
-        let pageRefs = try extractArrayField(from: structString, field: "pageReferences") ?? ["999"]
-        
-        logDebug(.parsing, "Fallback extracted familyId: \(familyId)")
-        logDebug(.parsing, "Fallback extracted pageRefs: \(pageRefs)")
-        
-        // Create minimal family structure
-        let father = Person(
-            name: try extractNestedField(from: structString, path: "father.name") ?? "Unknown",
-            noteMarkers: []
-        )
-        
-        logWarn(.parsing, "⚠️ Using fallback parsing for family: \(familyId)")
-        
-        return Family(
-            familyId: familyId,
-            pageReferences: pageRefs,
-            father: father,
-            mother: nil,
-            additionalSpouses: [],
-            children: [],
-            notes: ["Fallback parsing used - may be incomplete"],
-            childrenDiedInfancy: nil
-        )
-    }
-    
-    // MARK: - Field Extraction Helpers
-    
-    private func extractField(from text: String, field: String) throws -> String? {
-        logTrace(.parsing, "Extracting field: \(field)")
-        
-        let pattern = "\(field):\\s*\"([^\"]*)\""
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-        
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        guard let match = regex.firstMatch(in: text, range: range) else {
-            logTrace(.parsing, "Field \(field) not found")
+            logError(.resolver, "❌ Failed to parse family \(familyId): \(error)")
             return nil
         }
-        
-        let matchRange = Range(match.range(at: 1), in: text)!
-        let value = String(text[matchRange])
-        logTrace(.parsing, "Extracted \(field): \(value)")
-        return value
     }
     
-    private func extractArrayField(from text: String, field: String) throws -> [String]? {
-        logTrace(.parsing, "Extracting array field: \(field)")
+    /**
+     * Search for families by birth date with multi-factor validation
+     */
+    private func searchByBirthDate(_ birthDate: String, targetPerson: Person) async throws -> [FamilyCandidate] {
+        logDebug(.resolver, "🔍 Searching by birth date: \(birthDate)")
         
-        let pattern = "\(field):\\s*\\[([^\\]]*)\\]"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        guard let fileContent = fileContent else {
+            throw FamilyResolverError.noFileContent
+        }
         
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        guard let match = regex.firstMatch(in: text, range: range) else { return nil }
+        var candidates: [FamilyCandidate] = []
         
-        let matchRange = Range(match.range(at: 1), in: text)!
-        let arrayContent = String(text[matchRange])
+        // Find all occurrences of the birth date in the file
+        let birthDateMatches = findBirthDateOccurrences(birthDate, in: fileContent)
         
-        // Parse array content
-        let array = arrayContent
-            .components(separatedBy: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .map { $0.replacingOccurrences(of: "\"", with: "") }
-            .filter { !$0.isEmpty }
+        logDebug(.resolver, "Found \(birthDateMatches.count) birth date matches")
         
-        logTrace(.parsing, "Extracted \(field) array: \(array)")
-        return array
-    }
-    
-    private func extractNestedField(from text: String, path: String) throws -> String? {
-        logTrace(.parsing, "Extracting nested field: \(path)")
-        
-        // Simple nested field extraction for paths like "father.name"
-        let components = path.components(separatedBy: ".")
-        guard components.count == 2 else { return nil }
-        
-        let objectField = components[0]
-        let propertyField = components[1]
-        
-        // Find the object section
-        let objectPattern = "\(objectField):\\s*Person\\("
-        guard let objectRange = text.range(of: objectPattern, options: .regularExpression) else { return nil }
-        
-        // Extract from that point to the end of the Person(...)
-        let fromObject = String(text[objectRange.lowerBound...])
-        
-        return try extractField(from: fromObject, field: propertyField)
-    }
-    
-    // MARK: - Configuration Persistence
-    
-    private func autoConfigureServices() {
-        logDebug(.ai, "🔧 Auto-configuring services from saved settings")
-        
-        // Try to load saved API keys for cloud services only
-        for service in availableServices.filter({ !$0.isLocal }) {
-            if let savedKey = loadAPIKey(for: service.name) {
-                do {
-                    try service.configure(apiKey: savedKey)
-                    logInfo(.ai, "✅ Auto-configured \(service.name) from saved API key")
-                } catch {
-                    logWarn(.ai, "⚠️ Failed to auto-configure \(service.name): \(error)")
+        for match in birthDateMatches {
+            // Extract the family containing this birth date
+            if let familyId = extractFamilyIdFromMatch(match),
+               let family = try await findFamilyById(familyId) {
+                
+                // Find the person in this family with the matching birth date
+                if let matchingPerson = findPersonWithBirthDate(birthDate, in: family) {
+                    
+                    // Validate if this person could be our target person
+                    let confidence = calculateMatchConfidence(targetPerson, matchingPerson, family)
+                    
+                    if confidence > 0.3 { // Minimum threshold
+                        candidates.append(FamilyCandidate(
+                            family: family,
+                            confidence: confidence,
+                            matchMethod: "birth_date_search",
+                            reasons: buildMatchReasons(targetPerson, matchingPerson),
+                            warnings: confidence < 0.8 ? ["Uncertain match - requires validation"] : []
+                        ))
+                    }
                 }
-            } else {
-                logTrace(.ai, "No saved API key for \(service.name)")
             }
         }
         
-        // Log MLX services status on macOS
-        #if os(macOS)
-        Task {
-            let mlxStatus = await checkMLXServerStatus()
-            logInfo(.ai, "MLX server status: \(mlxStatus.description)")
-        }
-        #endif
+        return candidates
     }
     
-    private func saveAPIKey(_ apiKey: String, for serviceName: String) {
-        logTrace(.ai, "💾 Saving API key for \(serviceName)")
-        UserDefaults.standard.set(apiKey, forKey: "AIService_\(serviceName)_APIKey")
-    }
+    // MARK: - Validation and Confidence Scoring
     
-    private func loadAPIKey(for serviceName: String) -> String? {
-        let key = UserDefaults.standard.string(forKey: "AIService_\(serviceName)_APIKey")
-        logTrace(.ai, "📂 Loading API key for \(serviceName): \(key != nil ? "found" : "not found")")
-        return key
-    }
-}
-
-// MARK: - MLX Server Status
-
-enum MLXServerStatus {
-    case running
-    case notRunning
-    case notAvailable(String)
-    
-    var description: String {
-        switch self {
-        case .running:
-            return "Running"
-        case .notRunning:
-            return "Not Running"
-        case .notAvailable(let reason):
-            return "Not Available: \(reason)"
-        }
-    }
-    
-    var isAvailable: Bool {
-        switch self {
-        case .running:
-            return true
-        case .notRunning, .notAvailable:
-            return false
-        }
-    }
-}
-
-// MARK: - Enhanced StructParser with Debug Logging
-
-/**
- * Dedicated parser for Swift struct strings with comprehensive logging
- */
-private class StructParser {
-    private let structString: String
-    private var position = 0
-    
-    init(_ structString: String) {
-        self.structString = structString
-        logTrace(.parsing, "📝 StructParser initialized with \(structString.count) characters")
-    }
-    
-    func parseFamily() throws -> Family {
-        logDebug(.parsing, "🏗️ Starting Family struct parsing")
+    private func validateFamilyReference(_ person: Person, _ family: Family) -> Double {
+        var confidence = 0.5 // Base confidence for family reference
         
-        // Skip to Family(
-        guard let familyStart = structString.range(of: "Family(") else {
-            logError(.parsing, "❌ No Family( found in response")
-            throw AIServiceError.parsingFailed("No Family( found in response")
+        // Check if person appears as child in this family
+        let isChild = family.children.contains { child in
+            isNameMatch(person.name, child.name)
         }
         
-        position = structString.distance(from: structString.startIndex, to: familyStart.upperBound)
-        logTrace(.parsing, "Found Family( at position \(position)")
+        if isChild {
+            confidence += 0.3
+        }
         
-        // Parse Family fields
-        var familyId: String = ""
-        var pageReferences: [String] = []
-        var father: Person = Person(name: "Unknown", noteMarkers: [])
-        var mother: Person? = nil
-        var additionalSpouses: [Person] = []
-        var children: [Person] = []
-        var notes: [String] = []
-        var childrenDiedInfancy: Int? = nil
-        
-        var fieldsCount = 0
-        
-        while position < structString.count {
-            skipWhitespace()
-            
-            if peek() == ")" {
-                break // End of Family
+        // Validate spouse information if available
+        if let personSpouse = person.spouse {
+            let spouseInFamily = family.children.contains { child in
+                child.spouse != nil && isNameMatch(personSpouse, child.spouse!)
             }
-            
-            let fieldName = try parseIdentifier()
-            logTrace(.parsing, "Parsing field: \(fieldName)")
-            try expect(":")
-            skipWhitespace()
-            
-            switch fieldName {
-            case "familyId":
-                familyId = try parseString()
-                logTrace(.parsing, "Parsed familyId: \(familyId)")
-            case "pageReferences":
-                pageReferences = try parseStringArray()
-                logTrace(.parsing, "Parsed pageReferences: \(pageReferences)")
-            case "father":
-                father = try parsePerson()
-                logTrace(.parsing, "Parsed father: \(father.displayName)")
-            case "mother":
-                if peekString() == "nil" {
-                    try expect("nil")
-                    mother = nil
-                    logTrace(.parsing, "Parsed mother: nil")
-                } else {
-                    mother = try parsePerson()
-                    logTrace(.parsing, "Parsed mother: \(mother?.displayName ?? "unknown")")
-                }
-            case "additionalSpouses":
-                additionalSpouses = try parsePersonArray()
-                logTrace(.parsing, "Parsed additionalSpouses: \(additionalSpouses.count)")
-            case "children":
-                children = try parsePersonArray()
-                logTrace(.parsing, "Parsed children: \(children.count)")
-            case "notes":
-                notes = try parseStringArray()
-                logTrace(.parsing, "Parsed notes: \(notes.count)")
-            case "childrenDiedInfancy":
-                if peekString() == "nil" {
-                    try expect("nil")
-                    childrenDiedInfancy = nil
-                } else {
-                    childrenDiedInfancy = try parseNumber()
-                }
-                logTrace(.parsing, "Parsed childrenDiedInfancy: \(childrenDiedInfancy?.description ?? "nil")")
-            default:
-                // Skip unknown fields
-                logTrace(.parsing, "Skipping unknown field: \(fieldName)")
-                try skipValue()
-            }
-            
-            fieldsCount += 1
-            skipWhitespace()
-            if peek() == "," {
-                position += 1
+            if spouseInFamily {
+                confidence += 0.2
             }
         }
         
-        logDebug(.parsing, "✅ Family parsing complete with \(fieldsCount) fields")
-        
-        return Family(
-            familyId: familyId,
-            pageReferences: pageReferences,
-            father: father,
-            mother: mother,
-            additionalSpouses: additionalSpouses,
-            children: children,
-            notes: notes,
-            childrenDiedInfancy: childrenDiedInfancy
-        )
+        return min(confidence, 1.0)
     }
     
-    private func parsePerson() throws -> Person {
-        logTrace(.parsing, "👤 Parsing Person struct")
-        try expect("Person(")
+    private func calculateMatchConfidence(_ target: Person, _ candidate: Person, _ family: Family) -> Double {
+        var confidence = 0.0
         
-        var name: String = ""
-        var patronymic: String? = nil
-        var birthDate: String? = nil
-        var deathDate: String? = nil
-        var marriageDate: String? = nil
-        var spouse: String? = nil
-        var asChildReference: String? = nil
-        var asParentReference: String? = nil
-        var familySearchId: String? = nil
-        var noteMarkers: [String] = []
-        var fatherName: String? = nil
-        var motherName: String? = nil
+        // Birth date match (guaranteed if we found them this way)
+        confidence += 0.3
         
-        while position < structString.count {
-            skipWhitespace()
-            
-            if peek() == ")" {
-                position += 1
-                break
-            }
-            
-            let fieldName = try parseIdentifier()
-            try expect(":")
-            skipWhitespace()
-            
-            switch fieldName {
-            case "name":
-                name = try parseString()
-            case "patronymic":
-                patronymic = try parseOptionalString()
-            case "birthDate":
-                birthDate = try parseOptionalString()
-            case "deathDate":
-                deathDate = try parseOptionalString()
-            case "marriageDate":
-                marriageDate = try parseOptionalString()
-            case "spouse":
-                spouse = try parseOptionalString()
-            case "asChildReference":
-                asChildReference = try parseOptionalString()
-            case "asParentReference":
-                asParentReference = try parseOptionalString()
-            case "familySearchId":
-                familySearchId = try parseOptionalString()
-            case "noteMarkers":
-                noteMarkers = try parseStringArray()
-            case "fatherName":
-                fatherName = try parseOptionalString()
-            case "motherName":
-                motherName = try parseOptionalString()
-            default:
-                try skipValue()
-            }
-            
-            skipWhitespace()
-            if peek() == "," {
-                position += 1
+        // Name match
+        if isNameMatch(target.name, candidate.name) {
+            confidence += 0.4
+        } else if isNameVariant(target.name, candidate.name) {
+            confidence += 0.2
+        }
+        
+        // Spouse match
+        if let targetSpouse = target.spouse,
+           let candidateSpouse = candidate.spouse {
+            if isNameMatch(targetSpouse, candidateSpouse) {
+                confidence += 0.2
+            } else if isNameVariant(targetSpouse, candidateSpouse) {
+                confidence += 0.1
             }
         }
         
-        logTrace(.parsing, "✅ Person parsed: \(name)")
-        
-        return Person(
-            name: name,
-            patronymic: patronymic,
-            birthDate: birthDate,
-            deathDate: deathDate,
-            marriageDate: marriageDate,
-            spouse: spouse,
-            asChildReference: asChildReference,
-            asParentReference: asParentReference,
-            familySearchId: familySearchId,
-            noteMarkers: noteMarkers,
-            fatherName: fatherName,
-            motherName: motherName
-        )
-    }
-    
-    // Additional parsing methods...
-    private func parsePersonArray() throws -> [Person] {
-        try expect("[")
-        var persons: [Person] = []
-        
-        while position < structString.count {
-            skipWhitespace()
-            
-            if peek() == "]" {
-                position += 1
-                break
-            }
-            
-            let person = try parsePerson()
-            persons.append(person)
-            
-            skipWhitespace()
-            if peek() == "," {
-                position += 1
+        // Marriage date/year match
+        if let targetMarriage = target.marriageDate,
+           let candidateMarriage = candidate.marriageDate {
+            if isMarriageDateMatch(targetMarriage, candidateMarriage) {
+                confidence += 0.2
             }
         }
         
-        return persons
+        return min(confidence, 1.0)
     }
     
-    private func parseString() throws -> String {
-        try expect("\"")
-        let start = position
-        
-        while position < structString.count && peek() != "\"" {
-            if peek() == "\\" {
-                position += 1 // Skip escape character
-            }
-            position += 1
-        }
-        
-        let endPos = position
-        try expect("\"")
-        
-        let startIndex = structString.index(structString.startIndex, offsetBy: start)
-        let endIndex = structString.index(structString.startIndex, offsetBy: endPos)
-        
-        return String(structString[startIndex..<endIndex])
-    }
+    // MARK: - Helper Methods
     
-    private func parseOptionalString() throws -> String? {
-        if peekString() == "nil" {
-            try expect("nil")
-            return nil
-        } else {
-            return try parseString()
-        }
-    }
-    
-    private func parseStringArray() throws -> [String] {
-        try expect("[")
-        var strings: [String] = []
+    private func extractFamilyText(familyId: String, from fileContent: String) -> String? {
+        logTrace(.resolver, "Extracting text for family: \(familyId)")
         
-        while position < structString.count {
-            skipWhitespace()
+        let lines = fileContent.components(separatedBy: .newlines)
+        var familyLines: [String] = []
+        var inFamily = false
+        
+        for line in lines {
+            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
             
-            if peek() == "]" {
-                position += 1
-                break
+            // Check if this line starts the target family
+            if trimmedLine.uppercased().hasPrefix(familyId.uppercased()) {
+                inFamily = true
+                familyLines.append(line)
+                continue
             }
             
-            let string = try parseString()
-            strings.append(string)
-            
-            skipWhitespace()
-            if peek() == "," {
-                position += 1
-            }
-        }
-        
-        return strings
-    }
-    
-    private func parseNumber() throws -> Int {
-        let start = position
-        
-        while position < structString.count && peek().isWholeNumber {
-            position += 1
-        }
-        
-        let startIndex = structString.index(structString.startIndex, offsetBy: start)
-        let endIndex = structString.index(structString.startIndex, offsetBy: position)
-        let numberString = String(structString[startIndex..<endIndex])
-        
-        guard let number = Int(numberString) else {
-            throw AIServiceError.parsingFailed("Invalid number: \(numberString)")
-        }
-        
-        return number
-    }
-    
-    private func parseIdentifier() throws -> String {
-        let start = position
-        
-        while position < structString.count && (peek().isLetter || peek().isWholeNumber || peek() == "_") {
-            position += 1
-        }
-        
-        let startIndex = structString.index(structString.startIndex, offsetBy: start)
-        let endIndex = structString.index(structString.startIndex, offsetBy: position)
-        
-        return String(structString[startIndex..<endIndex])
-    }
-    
-    private func expect(_ expected: String) throws {
-        let endPos = position + expected.count
-        guard endPos <= structString.count else {
-            throw AIServiceError.parsingFailed("Expected '\(expected)' at end of string")
-        }
-        
-        let startIndex = structString.index(structString.startIndex, offsetBy: position)
-        let endIndex = structString.index(structString.startIndex, offsetBy: endPos)
-        let actual = String(structString[startIndex..<endIndex])
-        
-        guard actual == expected else {
-            throw AIServiceError.parsingFailed("Expected '\(expected)' but found '\(actual)'")
-        }
-        
-        position = endPos
-    }
-    
-    private func peek() -> Character {
-        guard position < structString.count else { return "\0" }
-        let index = structString.index(structString.startIndex, offsetBy: position)
-        return structString[index]
-    }
-    
-    private func peekString(length: Int = 10) -> String {
-        guard position < structString.count else { return "" }
-        let startIndex = structString.index(structString.startIndex, offsetBy: position)
-        let endIndex = structString.index(startIndex, offsetBy: min(length, structString.count - position))
-        return String(structString[startIndex..<endIndex])
-    }
-    
-    private func skipWhitespace() {
-        while position < structString.count && peek().isWhitespace {
-            position += 1
-        }
-    }
-    
-    private func skipValue() throws {
-        // Skip any value (string, number, object, array)
-        skipWhitespace()
-
-        // Handle multi-character object prefix
-        if peekString(length: 7) == "Person(" {
-            try skipObject()
-            return
-        }
-
-        let startChar = peek()
-        switch startChar {
-        case "\"":
-            _ = try parseString()
-        case "[":
-            try skipArray()
-        default:
-            if startChar.isNumber {
-                _ = try parseNumber()
-            } else if startChar.isLetter {
-                _ = try parseIdentifier()
-            } else {
-                position += 1
-            }
-        }
-    }
-    
-    private func skipArray() throws {
-        try expect("[")
-        var depth = 1
-        
-        while position < structString.count && depth > 0 {
-            let char = peek()
-            if char == "[" {
-                depth += 1
-            } else if char == "]" {
-                depth -= 1
-            }
-            position += 1
-        }
-    }
-    
-    private func skipObject() throws {
-        // Skip Person(...) or similar
-        var depth = 0
-        
-        while position < structString.count {
-            let char = peek()
-            if char == "(" {
-                depth += 1
-            } else if char == ")" {
-                depth -= 1
-                position += 1
-                if depth == 0 {
+            // If we're in a family and hit another family ID, stop
+            if inFamily && trimmedLine.contains(" ") {
+                let firstPart = trimmedLine.components(separatedBy: " ").first ?? ""
+                if FamilyIDs.validFamilyIds.contains(where: { firstPart.uppercased().hasPrefix($0) }) {
                     break
                 }
-            } else {
-                position += 1
             }
+            
+            // Collect lines while in the target family
+            if inFamily {
+                familyLines.append(line)
+            }
+        }
+        
+        guard !familyLines.isEmpty else {
+            return nil
+        }
+        
+        return familyLines.joined(separator: "\n")
+    }
+    
+    private func findBirthDateOccurrences(_ birthDate: String, in content: String) -> [BirthDateMatch] {
+        var matches: [BirthDateMatch] = []
+        let lines = content.components(separatedBy: .newlines)
+        
+        for (index, line) in lines.enumerated() {
+            if line.contains(birthDate) {
+                matches.append(BirthDateMatch(
+                    lineNumber: index,
+                    line: line,
+                    birthDate: birthDate
+                ))
+            }
+        }
+        
+        return matches
+    }
+    
+    private func extractFamilyIdFromMatch(_ match: BirthDateMatch) -> String? {
+        // Implementation to find the family ID that contains this birth date match
+        // This would scan backwards/forwards from the match to find the family header
+        // Simplified implementation for now
+        return nil
+    }
+    
+    private func findPersonWithBirthDate(_ birthDate: String, in family: Family) -> Person? {
+        // Check all family members for matching birth date
+        let allPersons = [family.father] +
+                        (family.mother.map { [$0] } ?? []) +
+                        family.additionalSpouses +
+                        family.children
+        
+        return allPersons.first { person in
+            person.birthDate == birthDate
+        }
+    }
+    
+    private func isNameMatch(_ name1: String, _ name2: String) -> Bool {
+        let normalized1 = name1.lowercased().trimmingCharacters(in: .whitespaces)
+        let normalized2 = name2.lowercased().trimmingCharacters(in: .whitespaces)
+        return normalized1 == normalized2
+    }
+    
+    private func isNameVariant(_ name1: String, _ name2: String) -> Bool {
+        return nameEquivalenceManager.areEquivalent(name1, name2)
+    }
+    
+    private func isMarriageDateMatch(_ date1: String, _ date2: String) -> Bool {
+        // Handle various date formats and partial matches
+        let year1 = extractYear(from: date1)
+        let year2 = extractYear(from: date2)
+        return year1 == year2 && year1 != nil
+    }
+    
+    private func extractYear(from dateString: String) -> String? {
+        // Extract 4-digit year or convert 2-digit year to 4-digit
+        let components = dateString.components(separatedBy: CharacterSet.decimalDigits.inverted)
+        for component in components {
+            if component.count == 4 {
+                return component
+            } else if component.count == 2, let year = Int(component) {
+                return "17\(component)" // Assume 1700s
+            }
+        }
+        return nil
+    }
+    
+    private func extractSpouseBirthDate(from child: Person) -> String? {
+        // Try to extract spouse birth date from marriage information
+        // This would be implemented based on the specific format patterns
+        return nil
+    }
+    
+    private func buildMatchReasons(_ target: Person, _ candidate: Person) -> [String] {
+        var reasons: [String] = []
+        
+        if isNameMatch(target.name, candidate.name) {
+            reasons.append("Exact name match")
+        } else if isNameVariant(target.name, candidate.name) {
+            reasons.append("Name variant match")
+        }
+        
+        if let targetSpouse = target.spouse,
+           let candidateSpouse = candidate.spouse,
+           isNameMatch(targetSpouse, candidateSpouse) {
+            reasons.append("Spouse name match")
+        }
+        
+        return reasons
+    }
+    
+    // MARK: - Statistics and Monitoring
+    
+    func getResolutionStatistics() -> ResolutionStatistics {
+        return resolutionStatistics
+    }
+    
+    func resetStatistics() {
+        resolutionStatistics = ResolutionStatistics()
+        logInfo(.resolver, "Resolution statistics reset")
+    }
+}
+
+// MARK: - Supporting Data Structures
+
+/**
+ * Family candidate with confidence scoring
+ */
+struct FamilyCandidate {
+    let family: Family
+    let confidence: Double
+    let matchMethod: String
+    let reasons: [String]
+    let warnings: [String]
+}
+
+/**
+ * Birth date match information
+ */
+struct BirthDateMatch {
+    let lineNumber: Int
+    let line: String
+    let birthDate: String
+}
+
+/**
+ * Resolution statistics tracking
+ */
+struct ResolutionStatistics {
+    private(set) var totalAttempts: Int = 0
+    private(set) var totalSuccesses: Int = 0
+    private(set) var totalFailures: Int = 0
+    
+    var successRate: Double {
+        guard totalAttempts > 0 else { return 0.0 }
+        return Double(totalSuccesses) / Double(totalAttempts)
+    }
+    
+    mutating func incrementAttempt() {
+        totalAttempts += 1
+    }
+    
+    mutating func incrementSuccess() {
+        totalSuccesses += 1
+    }
+    
+    mutating func incrementFailure() {
+        totalFailures += 1
+    }
+}
+
+/**
+ * Family network structure containing all resolved cross-references
+ */
+struct FamilyNetwork {
+    let mainFamily: Family
+    var asChildFamilies: [String: Family] = [:]      // Person name -> their parent family
+    var asParentFamilies: [String: Family] = [:]     // Person name -> their family as parent
+    var spouseAsChildFamilies: [String: Family] = [:] // Spouse name -> spouse's parent family
+    
+    var totalResolvedFamilies: Int {
+        return 1 + asChildFamilies.count + asParentFamilies.count + spouseAsChildFamilies.count
+    }
+    
+    /**
+     * Create enhanced family with integrated cross-reference data
+     */
+    func createEnhancedFamily() -> Family {
+        var enhanced = mainFamily
+        
+        // Enhance each person with cross-reference data
+        enhanced = Family(
+            familyId: enhanced.familyId,
+            pageReferences: enhanced.pageReferences,
+            father: enhancePersonWithCrossRefData(enhanced.father),
+            mother: enhanced.mother.map { enhancePersonWithCrossRefData($0) },
+            additionalSpouses: enhanced.additionalSpouses.map { enhancePersonWithCrossRefData($0) },
+            children: enhanced.children.map { enhancePersonWithCrossRefData($0) },
+            notes: enhanced.notes,
+            childrenDiedInfancy: enhanced.childrenDiedInfancy
+        )
+        
+        return enhanced
+    }
+    
+    private func enhancePersonWithCrossRefData(_ person: Person) -> Person {
+        var enhanced = person
+        
+        // Add enhanced data from as-parent family
+        if let asParentFamily = asParentFamilies[person.name] {
+            // Find this person in their as-parent family and extract enhanced data
+            if let asParent = asParentFamily.father.name == person.name ? asParentFamily.father :
+                              asParentFamily.mother?.name == person.name ? asParentFamily.mother : nil {
+                enhanced.enhancedDeathDate = asParent.deathDate
+                enhanced.enhancedMarriageDate = asParent.marriageDate
+            }
+        }
+        
+        // Add spouse birth date from spouse's as-child family
+        if let spouseName = person.spouse,
+           let spouseAsChildFamily = spouseAsChildFamilies[spouseName] {
+            // Find spouse birth date in their parent family
+            let allPersons = [spouseAsChildFamily.father] +
+                           (spouseAsChildFamily.mother.map { [$0] } ?? []) +
+                           spouseAsChildFamily.children
+            
+            if let spouseInFamily = allPersons.first(where: { $0.name == spouseName }) {
+                enhanced.spouseBirthDate = spouseInFamily.birthDate
+            }
+        }
+        
+        return enhanced
+    }
+}
+
+/**
+ * FamilyResolver specific errors
+ */
+enum FamilyResolverError: LocalizedError {
+    case noFileContent
+    case familyNotFound(String)
+    case resolutionFailed(String)
+    
+    var errorDescription: String? {
+        switch self {
+        case .noFileContent:
+            return "No file content available for cross-reference resolution"
+        case .familyNotFound(let familyId):
+            return "Family \(familyId) not found in file"
+        case .resolutionFailed(let reason):
+            return "Cross-reference resolution failed: \(reason)"
         }
     }
 }

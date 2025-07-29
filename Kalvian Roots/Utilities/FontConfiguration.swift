@@ -2,173 +2,155 @@
 //  FontConfiguration.swift
 //  Kalvian Roots
 //
-//  Centralized font configuration for larger, more readable interface
-//
-//  Created by Michael Bendio on 7/26/25.
+//  Font configuration and preferences management
 //
 
+import Foundation
 import SwiftUI
+import Combine
 
 /**
- * FontConfiguration.swift - Centralized font sizing
- *
- * Provides larger, more readable fonts throughout the application.
- * All components should use these standardized font sizes.
+ * Font configuration system for accessibility and user preferences
  */
-
-extension Font {
+@Observable
+class FontPreferences {
     
-    // MARK: - Genealogy App Specific Fonts (Larger Sizes)
+    // MARK: - Font Scale Settings
     
-    /// Large title for main screens (28pt)
-    static let genealogyTitle = Font.system(size: 28, weight: .bold, design: .default)
-    
-    /// Section headers (22pt)
-    static let genealogyHeadline = Font.system(size: 22, weight: .semibold, design: .default)
-    
-    /// Sub-section headers (18pt)
-    static let genealogySubheadline = Font.system(size: 18, weight: .medium, design: .default)
-    
-    /// Body text - primary content (16pt)
-    static let genealogyBody = Font.system(size: 16, weight: .regular, design: .default)
-    
-    /// Body text - emphasized (16pt medium)
-    static let genealogyBodyEmphasized = Font.system(size: 16, weight: .medium, design: .default)
-    
-    /// Secondary text (14pt)
-    static let genealogyCaption = Font.system(size: 14, weight: .regular, design: .default)
-    
-    /// Small labels and notes (12pt)
-    static let genealogyFootnote = Font.system(size: 12, weight: .regular, design: .default)
-    
-    /// Monospaced text for code/data (16pt)
-    static let genealogyMono = Font.system(size: 16, weight: .regular, design: .monospaced)
-    
-    /// Small monospaced text (14pt)
-    static let genealogyMonoSmall = Font.system(size: 14, weight: .regular, design: .monospaced)
-    
-    // MARK: - Platform-Specific Adjustments
-    
-    /// Dynamic body font that adjusts per platform
-    static var platformBody: Font {
-        #if os(macOS)
-        return .genealogyBody
-        #elseif os(iOS)
-        return .system(size: 18, weight: .regular) // Slightly larger on mobile
-        #else
-        return .genealogyBody
-        #endif
-    }
-    
-    /// Dynamic caption font that adjusts per platform
-    static var platformCaption: Font {
-        #if os(macOS)
-        return .genealogyCaption
-        #elseif os(iOS)
-        return .system(size: 16, weight: .regular) // Larger on mobile
-        #else
-        return .genealogyCaption
-        #endif
-    }
-}
-
-// MARK: - View Modifier for Consistent Font Application
-
-/**
- * Convenient view modifier for applying genealogy fonts
- */
-struct GenealogyFontModifier: ViewModifier {
-    let fontType: GenealogyFontType
-    
-    func body(content: Content) -> some View {
-        content.font(fontType.font)
-    }
-}
-
-enum GenealogyFontType {
-    case title
-    case headline
-    case subheadline
-    case body
-    case bodyEmphasized
-    case caption
-    case footnote
-    case mono
-    case monoSmall
-    case platformBody
-    case platformCaption
-    
-    var font: Font {
-        switch self {
-        case .title: return .genealogyTitle
-        case .headline: return .genealogyHeadline
-        case .subheadline: return .genealogySubheadline
-        case .body: return .genealogyBody
-        case .bodyEmphasized: return .genealogyBodyEmphasized
-        case .caption: return .genealogyCaption
-        case .footnote: return .genealogyFootnote
-        case .mono: return .genealogyMono
-        case .monoSmall: return .genealogyMonoSmall
-        case .platformBody: return .platformBody
-        case .platformCaption: return .platformCaption
-        }
-    }
-}
-
-extension View {
-    /// Apply a genealogy font type to this view
-    func genealogyFont(_ fontType: GenealogyFontType) -> some View {
-        self.modifier(GenealogyFontModifier(fontType: fontType))
-    }
-}
-
-// MARK: - Text Size Preferences
-
-/**
- * User preference for text size scaling
- */
-class FontPreferences: ObservableObject {
-    @Published var textSizeMultiplier: Double = 1.0 {
+    var fontScale: FontScale = .standard {
         didSet {
-            UserDefaults.standard.set(textSizeMultiplier, forKey: "TextSizeMultiplier")
+            UserDefaults.standard.set(fontScale.rawValue, forKey: "FontScale")
         }
     }
+    
+    var useMonospacedNumbers: Bool = true {
+        didSet {
+            UserDefaults.standard.set(useMonospacedNumbers, forKey: "UseMonospacedNumbers")
+        }
+    }
+    
+    var highContrastText: Bool = false {
+        didSet {
+            UserDefaults.standard.set(highContrastText, forKey: "HighContrastText")
+        }
+    }
+    
+    // MARK: - Font Scale Options
+    
+    enum FontScale: String, CaseIterable {
+        case small = "small"
+        case standard = "standard"
+        case large = "large"
+        case extraLarge = "extraLarge"
+        
+        var displayName: String {
+            switch self {
+            case .small: return "Small"
+            case .standard: return "Standard"
+            case .large: return "Large"
+            case .extraLarge: return "Extra Large"
+            }
+        }
+        
+        var multiplier: CGFloat {
+            switch self {
+            case .small: return 0.85
+            case .standard: return 1.0
+            case .large: return 1.15
+            case .extraLarge: return 1.3
+            }
+        }
+    }
+    
+    // MARK: - Initialization
     
     init() {
-        self.textSizeMultiplier = UserDefaults.standard.double(forKey: "TextSizeMultiplier")
-        if textSizeMultiplier == 0 { textSizeMultiplier = 1.0 } // Default value
+        loadPreferences()
     }
     
-    /// Apply user scaling to a font size
-    func scaledSize(_ baseSize: CGFloat) -> CGFloat {
-        return baseSize * textSizeMultiplier
+    private func loadPreferences() {
+        if let savedScale = UserDefaults.standard.object(forKey: "FontScale") as? String,
+           let scale = FontScale(rawValue: savedScale) {
+            fontScale = scale
+        }
+        
+        useMonospacedNumbers = UserDefaults.standard.bool(forKey: "UseMonospacedNumbers")
+        highContrastText = UserDefaults.standard.bool(forKey: "HighContrastText")
+    }
+    
+    // MARK: - Font Generation
+    
+    func scaledFont(_ baseFont: Font) -> Font {
+        // This is a simplified implementation
+        // In a full implementation, you'd need to extract the base size and scale it
+        return baseFont
+    }
+    
+    func systemFont(size: CGFloat, weight: Font.Weight = .regular, design: Font.Design = .default) -> Font {
+        let scaledSize = size * fontScale.multiplier
+        return Font.system(size: scaledSize, weight: weight, design: design)
+    }
+    
+    // MARK: - Accessibility Support
+    
+    var textColor: Color {
+        return highContrastText ? .primary : .primary
+    }
+    
+    var secondaryTextColor: Color {
+        return highContrastText ? .primary : .secondary
     }
 }
 
-// MARK: - Accessibility Support
+// MARK: - Font Extension with Preferences
 
 extension Font {
-    /// Create a font that respects both our sizing and accessibility settings
-    static func genealogyAccessible(size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        return .system(size: size, weight: weight, design: .default)
+    
+    /// Get genealogy fonts with current preferences applied
+    static func genealogy(_ preferences: FontPreferences) -> GenealgyFonts {
+        return GenealgyFonts(preferences: preferences)
     }
 }
 
-// MARK: - Usage Examples and Guidelines
-
 /**
- * Usage Guidelines:
- *
- * 1. Main titles: .genealogyFont(.title)
- * 2. Section headers: .genealogyFont(.headline)
- * 3. Regular content: .genealogyFont(.body) or .genealogyFont(.platformBody)
- * 4. Secondary info: .genealogyFont(.caption) or .genealogyFont(.platformCaption)
- * 5. API keys, code: .genealogyFont(.mono)
- *
- * Example:
- * Text("Family Information")
- *     .genealogyFont(.headline)
- *
- * Text("Matti Erikinp., b 9 September 1727")
- *     .genealogyFont(.platformBody)
+ * Preference-aware genealogy fonts
  */
+struct GenealgyFonts {
+    private let preferences: FontPreferences
+    
+    init(preferences: FontPreferences) {
+        self.preferences = preferences
+    }
+    
+    var title: Font {
+        preferences.systemFont(size: 28, weight: .bold)
+    }
+    
+    var title2: Font {
+        preferences.systemFont(size: 24, weight: .semibold)
+    }
+    
+    var headline: Font {
+        preferences.systemFont(size: 20, weight: .semibold)
+    }
+    
+    var subheadline: Font {
+        preferences.systemFont(size: 18, weight: .medium)
+    }
+    
+    var body: Font {
+        preferences.systemFont(size: 16, weight: .regular)
+    }
+    
+    var callout: Font {
+        preferences.systemFont(size: 14, weight: .regular)
+    }
+    
+    var caption: Font {
+        preferences.systemFont(size: 12, weight: .regular)
+    }
+    
+    var monospace: Font {
+        preferences.systemFont(size: 16, weight: .regular, design: .monospaced)
+    }
+}
