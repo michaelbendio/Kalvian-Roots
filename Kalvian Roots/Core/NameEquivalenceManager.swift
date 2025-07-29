@@ -302,7 +302,9 @@ class NameEquivalenceManager {
     
     private func saveLearnedEquivalences() {
         do {
-            let data = try JSONEncoder().encode(learnedEquivalences)
+            // Convert Set<String> to [String] for encoding
+            let encodableEquivalences = learnedEquivalences.mapValues { Array($0) }
+            let data = try JSONEncoder().encode(encodableEquivalences)
             UserDefaults.standard.set(data, forKey: "LearnedNameEquivalences")
             print("💾 Saved learned equivalences to UserDefaults")
         } catch {
@@ -317,7 +319,9 @@ class NameEquivalenceManager {
         }
         
         do {
-            learnedEquivalences = try JSONDecoder().decode([String: Set<String>].self, from: data)
+            // Decode [String] and convert back to Set<String>
+            let decodableEquivalences = try JSONDecoder().decode([String: [String]].self, from: data)
+            learnedEquivalences = decodableEquivalences.mapValues { Set($0) }
             print("📂 Loaded \(learnedEquivalences.count) learned equivalences")
         } catch {
             print("❌ Failed to load learned equivalences: \(error)")
@@ -454,20 +458,5 @@ struct EquivalenceReport {
     
     var totalEquivalences: Int {
         return builtInEquivalences + learnedEquivalences
-    }
-}
-
-// MARK: - Extensions for Codable Support
-
-extension Set: Codable where Element: Codable {
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode(Array(self))
-    }
-    
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let array = try container.decode([Element].self)
-        self = Set(array)
     }
 }

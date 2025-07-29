@@ -908,7 +908,7 @@ extension AIService {
         return """
         You are an expert Finnish genealogist parsing records from "Juuret Kälviällä".
         
-        Your task is to parse genealogical text into JSON format.
+        Your task is to parse genealogical text into JSON format matching the provided schema.
         Return ONLY valid JSON, no explanations or markdown formatting.
         
         Key Finnish genealogical patterns:
@@ -923,14 +923,37 @@ extension AIService {
         - "Lapsena kuollut N" = N children died in infancy
         - Notes marked with *) or **) appear after family data
         
+        CRITICAL PARSING RULES:
+        
+        1. For asChildReference, extract ONLY the family ID from {FAMILY_ID} notation:
+           - "{Sikala 5}, synt. Hanhisalo" → extract only "SIKALA 5"
+           - "{Korpi 5}" → extract only "KORPI 5"
+           - Ignore any additional text after the family ID
+        
+        2. For parents' marriage date, find the "∞ DD.MM.YYYY" line and set BOTH father.marriageDate AND mother.marriageDate:
+           - "∞ 14.10.1750." → father.marriageDate: "14.10.1750", mother.marriageDate: "14.10.1750"
+           - Both parents get the SAME marriage date
+        
+        3. For children's marriages, parse "∞ YY Spouse Name" carefully:
+           - "∞ 73 Elias Iso-Peitso" → marriageDate: "1773", spouse: "Elias Iso-Peitso"
+           - "∞ 89 1. Anna Videnoja" → marriageDate: "1789", spouse: "Anna Videnoja"
+           - "∞ 80 Juho Vapola" → marriageDate: "1780", spouse: "Juho Vapola"
+           - Always add "17" prefix to 2-digit years for 1700s
+           - Extract spouse name AFTER the year
+           - Remove ordinal numbers like "1." from spouse names
+        
+        4. For children's asParentReference, extract from the text after spouse name:
+           - "∞ 73 Elias Iso-Peitso <GMG6-NCZ> Iso-Peitso III 2" → asParentReference: "ISO-PEITSO III 2"
+           - Look for family ID at the end of the marriage line
+        
         Extract all available data including:
-        - All dates in original DD.MM.YYYY format as strings
-        - All names with patronymics as strings
-        - Family cross-references from {FAMILY_ID} notation as strings
-        - FamilySearch IDs from <ID> notation as strings (without < >)
-        - Marriage partners and dates as strings
-        - Note markers (* or **) as string arrays
-        - All family notes and historical information as string arrays
+        - All dates in original DD.MM.YYYY format
+        - All names with patronymics
+        - Family cross-references: ONLY the family ID portion, properly formatted
+        - FamilySearch IDs from <ID> notation
+        - Marriage partners and dates (parsed correctly as separate fields)
+        - Note markers (* or **)
+        - All family notes and historical information
         
         Return exactly the JSON object with no other text.
         """

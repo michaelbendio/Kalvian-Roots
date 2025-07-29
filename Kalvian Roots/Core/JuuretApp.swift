@@ -2,17 +2,19 @@
 //  JuuretApp.swift
 //  Kalvian Roots
 //
-//  Updated with comprehensive debug logging and DeepSeek focus
+//  Unified family processing with comprehensive cross-reference resolution
 //
 
 import Foundation
 import SwiftUI
 
 /**
- * JuuretApp.swift - Main application coordinator with comprehensive debugging
+ * JuuretApp.swift - Main application coordinator with unified workflow
  *
- * Updated to use DeepSeek as primary AI service with detailed logging throughout
- * the family extraction and cross-reference resolution workflow.
+ * Single "Process" button workflow that:
+ * 1. Extracts nuclear family with AI
+ * 2. Automatically resolves all cross-references
+ * 3. Provides appropriate citations based on person's role
  */
 
 @Observable
@@ -45,7 +47,6 @@ class JuuretApp {
     
     /// Processing state
     var isProcessing = false
-    var isResolvingCrossReferences = false
     
     /// Error state
     var errorMessage: String? = nil
@@ -84,7 +85,24 @@ class JuuretApp {
         
         // Initialize services
         self.nameEquivalenceManager = NameEquivalenceManager()
+        #if os(macOS)
+        if MLXService.isAvailable() {
+            logInfo(.ai, "🚀 Apple Silicon detected - enabling MLX services")
+            self.aiParsingService = AIParsingService() // Will auto-detect and add MLX services
+            
+            // Set recommended model based on hardware
+            let recommendedModel = MLXService.getRecommendedModel()
+            try? aiParsingService.switchToService(named: recommendedModel.name)
+        } else {
+            logInfo(.ai, "🖥️ Intel Mac detected - using cloud services")
+            self.aiParsingService = AIParsingService()
+        }
+        #else
+        // iOS/iPadOS - DeepSeek only for simplicity
+        logInfo(.ai, "📱 iOS detected - using DeepSeek only")
         self.aiParsingService = AIParsingService()
+        try? aiParsingService.switchToService(named: "DeepSeek")
+        #endif
         self.familyResolver = FamilyResolver(
             aiParsingService: aiParsingService,
             nameEquivalenceManager: nameEquivalenceManager
@@ -94,16 +112,6 @@ class JuuretApp {
         logInfo(.app, "✅ Core services initialized")
         logInfo(.app, "Current AI service: \(currentServiceName)")
         logDebug(.app, "Services available: \(availableServices.joined(separator: ", "))")
-        
-        // Switch to DeepSeek as primary service
-        Task { @MainActor in
-            do {
-                try aiParsingService.switchToService(named: "DeepSeek")
-                logInfo(.ai, "✅ Switched to DeepSeek as primary AI service")
-            } catch {
-                logError(.ai, "❌ Failed to switch to DeepSeek: \(error)")
-            }
-        }
         
         // Auto-load default file
         Task { @MainActor in
@@ -197,14 +205,15 @@ class JuuretApp {
         }
     }
     
-    // MARK: - Family Extraction (Phase 1)
+    // MARK: - Unified Family Processing (Main Workflow)
     
     /**
-     * Extract family using AI parsing service
+     * Complete family processing: extraction + cross-reference resolution
+     * This is the main workflow triggered by the "Process" button
      */
-    func extractFamily(familyId: String) async throws {
-        logInfo(.app, "🔍 Starting family extraction for: \(familyId)")
-        DebugLogger.shared.startTimer("family_extraction")
+    func processFamily(familyId: String) async throws {
+        logInfo(.app, "🎯 Starting complete family processing for: \(familyId)")
+        DebugLogger.shared.startTimer("complete_processing")
         
         let normalizedId = familyId.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
         logDebug(.parsing, "Normalized family ID: \(normalizedId)")
@@ -233,62 +242,90 @@ class JuuretApp {
             Task { @MainActor in
                 isProcessing = false
                 extractionProgress = .idle
-                let duration = DebugLogger.shared.endTimer("family_extraction")
-                logInfo(.app, "Family extraction completed in \(String(format: "%.2f", duration))s")
+                let duration = DebugLogger.shared.endTimer("complete_processing")
+                logInfo(.app, "Complete family processing finished in \(String(format: "%.2f", duration))s")
             }
         }
         
         do {
-            // Extract family text from file
-            logDebug(.file, "Extracting family text for: \(normalizedId)")
-            guard let familyText = fileManager.extractFamilyText(familyId: normalizedId) else {
-                logError(.file, "❌ Family text not found in file for: \(normalizedId)")
-                throw JuuretError.extractionFailed("Family text not found in file")
-            }
+            // Step 1: Extract nuclear family
+            logInfo(.app, "Step 1: Nuclear family extraction")
+            try await extractNuclearFamily(familyId: normalizedId)
             
-            logInfo(.file, "✅ Extracted family text (\(familyText.count) characters)")
-            logTrace(.file, "Family text preview: \(String(familyText.prefix(200)))...")
-            
-            // Parse with AI service
-            logInfo(.ai, "🤖 Starting AI parsing with \(currentServiceName)")
-            let family = try await aiParsingService.parseFamily(
-                familyId: normalizedId,
-                familyText: familyText
-            )
-            
-            // Validate extracted family
-            logDebug(.parsing, "Validating extracted family structure")
-            let warnings = family.validateStructure()
-            DebugLogger.shared.logFamilyValidation(family, warnings: warnings)
+            // Step 2: Resolve cross-references
+            logInfo(.app, "Step 2: Cross-reference resolution")
+            try await resolveCrossReferences()
             
             await MainActor.run {
-                self.currentFamily = family
-                self.extractionProgress = .familyExtracted
+                extractionProgress = .complete
             }
             
-            logInfo(.app, "✅ Family extraction successful: \(family.familyId)")
-            logDebug(.parsing, "Father: \(family.father.displayName)")
-            logDebug(.parsing, "Mother: \(family.mother?.displayName ?? "nil")")
-            logDebug(.parsing, "Children: \(family.children.count)")
-            logDebug(.parsing, "Cross-references needed: \(family.totalCrossReferencesNeeded)")
-            
-            DebugLogger.shared.logParsingSuccess(family)
+            logInfo(.app, "✅ Complete family processing successful")
             
         } catch {
-            logError(.app, "❌ Family extraction failed: \(error)")
-            DebugLogger.shared.logParsingFailure(error, familyId: normalizedId)
+            logError(.app, "❌ Family processing failed: \(error)")
             
             await MainActor.run {
-                self.errorMessage = "Failed to extract family: \(error.localizedDescription)"
+                self.errorMessage = "Failed to process family: \(error.localizedDescription)"
             }
             throw error
         }
     }
     
-    // MARK: - Cross-Reference Resolution (Phase 2)
+    // MARK: - Nuclear Family Extraction
     
     /**
-     * Resolve cross-references for current family
+     * Extract nuclear family using AI parsing service
+     */
+    private func extractNuclearFamily(familyId: String) async throws {
+        logInfo(.parsing, "🔍 Starting nuclear family extraction for: \(familyId)")
+        DebugLogger.shared.startTimer("nuclear_extraction")
+        
+        defer {
+            let duration = DebugLogger.shared.endTimer("nuclear_extraction")
+            logDebug(.parsing, "Nuclear extraction completed in \(String(format: "%.2f", duration))s")
+        }
+        
+        // Extract family text from file
+        logDebug(.file, "Extracting family text for: \(familyId)")
+        guard let familyText = fileManager.extractFamilyText(familyId: familyId) else {
+            logError(.file, "❌ Family text not found in file for: \(familyId)")
+            throw JuuretError.extractionFailed("Family text not found in file")
+        }
+        
+        logInfo(.file, "✅ Extracted family text (\(familyText.count) characters)")
+        logTrace(.file, "Family text preview: \(String(familyText.prefix(200)))...")
+        
+        // Parse with AI service
+        logInfo(.ai, "🤖 Starting AI parsing with \(currentServiceName)")
+        let family = try await aiParsingService.parseFamily(
+            familyId: familyId,
+            familyText: familyText
+        )
+        
+        // Validate extracted family
+        logDebug(.parsing, "Validating extracted family structure")
+        let warnings = family.validateStructure()
+        DebugLogger.shared.logFamilyValidation(family, warnings: warnings)
+        
+        await MainActor.run {
+            self.currentFamily = family
+            self.extractionProgress = .familyExtracted
+        }
+        
+        logInfo(.app, "✅ Nuclear family extraction successful: \(family.familyId)")
+        logDebug(.parsing, "Father: \(family.father.displayName)")
+        logDebug(.parsing, "Mother: \(family.mother?.displayName ?? "nil")")
+        logDebug(.parsing, "Children: \(family.children.count)")
+        logDebug(.parsing, "Cross-references needed: \(family.totalCrossReferencesNeeded)")
+        
+        DebugLogger.shared.logParsingSuccess(family)
+    }
+    
+    // MARK: - Cross-Reference Resolution (Public for testing)
+    
+    /**
+     * Resolve cross-references for current family (public for debug/testing)
      */
     func resolveCrossReferences() async throws {
         guard let family = currentFamily else {
@@ -300,18 +337,12 @@ class JuuretApp {
         DebugLogger.shared.startTimer("cross_reference_resolution")
         
         await MainActor.run {
-            isResolvingCrossReferences = true
             extractionProgress = .resolvingCrossReferences
-            errorMessage = nil
         }
         
         defer {
-            Task { @MainActor in
-                isResolvingCrossReferences = false
-                extractionProgress = .idle
-                let duration = DebugLogger.shared.endTimer("cross_reference_resolution")
-                logInfo(.crossRef, "Cross-reference resolution completed in \(String(format: "%.2f", duration))s")
-            }
+            let duration = DebugLogger.shared.endTimer("cross_reference_resolution")
+            logInfo(.crossRef, "Cross-reference resolution completed in \(String(format: "%.2f", duration))s")
         }
         
         do {
@@ -346,67 +377,62 @@ class JuuretApp {
         }
     }
     
-    /**
-     * Complete extraction with cross-references (combined workflow)
-     */
-    func extractFamilyComplete(familyId: String) async throws {
-        logInfo(.app, "🎯 Starting complete family extraction workflow for: \(familyId)")
-        DebugLogger.shared.startTimer("complete_extraction")
-        
-        defer {
-            let duration = DebugLogger.shared.endTimer("complete_extraction")
-            logInfo(.app, "Complete extraction workflow finished in \(String(format: "%.2f", duration))s")
-        }
-        
-        // Step 1: Extract basic family
-        logInfo(.app, "Step 1: Basic family extraction")
-        try await extractFamily(familyId: familyId)
-        
-        // Step 2: Resolve cross-references
-        logInfo(.app, "Step 2: Cross-reference resolution")
-        try await resolveCrossReferences()
-        
-        logInfo(.app, "✅ Complete family extraction workflow successful")
-    }
-    
-    // MARK: - Citation Generation (Enhanced)
+    // MARK: - Citation Generation (Role-Based)
     
     /**
-     * Generate citation for person using enhanced data
+     * Generate as_child citation for parents
      */
-    func generateCitation(for person: Person, in family: Family) -> String {
-        logInfo(.citation, "📄 Generating citation for: \(person.displayName)")
-        DebugLogger.shared.startTimer("citation_generation")
+    func generateAsChildCitation(for person: Person, in family: Family) -> String {
+        logInfo(.citation, "👨‍👩‍👧‍👦 Generating as_child citation for: \(person.displayName)")
+        DebugLogger.shared.startTimer("as_child_citation")
         
-        // Use enhanced family if available
-        let targetFamily = enhancedFamily ?? family
-        logDebug(.citation, "Using \(enhancedFamily != nil ? "enhanced" : "basic") family data")
-        
-        // Check for as_child family citation
-        if let asChildRef = person.asChildReference,
-           let network = familyNetwork,
+        // Check family network for person's as_child family
+        if let network = familyNetwork,
            let asChildFamily = network.getAsChildFamily(for: person) {
             
-            logDebug(.citation, "Generating as_child citation from family: \(asChildFamily.familyId)")
-            let citation = CitationGenerator.generateAsChildCitation(for: person, in: asChildFamily)
-            let duration = DebugLogger.shared.endTimer("citation_generation")
+            logDebug(.citation, "Found as_child family: \(asChildFamily.familyId)")
+            let citation = EnhancedCitationGenerator.generateAsChildCitation(for: person, in: asChildFamily)
+            let duration = DebugLogger.shared.endTimer("as_child_citation")
             logInfo(.citation, "✅ As_child citation generated (\(citation.count) chars) in \(String(format: "%.3f", duration))s")
             return citation
+            
+        } else {
+            logWarn(.citation, "No as_child family found for \(person.displayName)")
+            let duration = DebugLogger.shared.endTimer("as_child_citation")
+            return "As_child citation for \(person.displayName) not found. Cross-reference resolution may be incomplete."
         }
-        
-        // Generate main family citation with enhanced data
-        logDebug(.citation, "Generating main family citation")
-        let citation = generateEnhancedMainFamilyCitation(family: targetFamily)
-        let duration = DebugLogger.shared.endTimer("citation_generation")
-        logInfo(.citation, "✅ Main family citation generated (\(citation.count) chars) in \(String(format: "%.3f", duration))s")
-        return citation
     }
     
     /**
-     * Generate spouse citation using cross-reference data
+     * Generate as_parent citation for children
+     */
+    func generateAsParentCitation(for person: Person, in family: Family) -> String {
+        logInfo(.citation, "👨‍👩‍👧‍👦 Generating as_parent citation for: \(person.displayName)")
+        DebugLogger.shared.startTimer("as_parent_citation")
+        
+        // Check family network for person's as_parent family
+        if let network = familyNetwork,
+           let asParentFamily = network.getAsParentFamily(for: person) {
+            
+            logDebug(.citation, "Found as_parent family: \(asParentFamily.familyId)")
+            let citation = EnhancedCitationGenerator.generateMainFamilyCitation(family: asParentFamily)
+            let duration = DebugLogger.shared.endTimer("as_parent_citation")
+            logInfo(.citation, "✅ As_parent citation generated (\(citation.count) chars) in \(String(format: "%.3f", duration))s")
+            return citation
+            
+        } else {
+            logWarn(.citation, "No as_parent family found for \(person.displayName)")
+            let duration = DebugLogger.shared.endTimer("as_parent_citation")
+            return "As_parent citation for \(person.displayName) not found. This person may not be married or cross-reference resolution may be incomplete."
+        }
+    }
+    
+    /**
+     * Generate spouse as_child citation
      */
     func generateSpouseCitation(spouseName: String, in family: Family) -> String {
-        logInfo(.citation, "💑 Generating spouse citation for: \(spouseName)")
+        logInfo(.citation, "💑 Generating spouse as_child citation for: \(spouseName)")
+        DebugLogger.shared.startTimer("spouse_citation")
         
         // Check family network for spouse's as_child family
         if let network = familyNetwork,
@@ -417,7 +443,10 @@ class JuuretApp {
             // Find the spouse in their as_child family
             if let spouse = spouseFamily.findChild(named: extractGivenName(from: spouseName)) {
                 logDebug(.citation, "Found spouse as child in family, generating citation")
-                return CitationGenerator.generateAsChildCitation(for: spouse, in: spouseFamily)
+                let citation = EnhancedCitationGenerator.generateAsChildCitation(for: spouse, in: spouseFamily)
+                let duration = DebugLogger.shared.endTimer("spouse_citation")
+                logInfo(.citation, "✅ Spouse citation generated (\(citation.count) chars) in \(String(format: "%.3f", duration))s")
+                return citation
             } else {
                 logWarn(.citation, "Spouse not found as child in resolved family")
             }
@@ -425,153 +454,10 @@ class JuuretApp {
             logWarn(.citation, "No spouse as_child family found in network")
         }
         
-        let fallbackCitation = "Citation for \(spouseName) not found in available records. Additional research needed."
+        let duration = DebugLogger.shared.endTimer("spouse_citation")
+        let fallbackCitation = "Citation for \(spouseName) not found in available records. Additional research needed for spouse's parents' family."
         logInfo(.citation, "Returning fallback citation for spouse")
         return fallbackCitation
-    }
-    
-    /**
-     * Enhanced main family citation with cross-reference data
-     */
-    private func generateEnhancedMainFamilyCitation(family: Family) -> String {
-        logTrace(.citation, "Building enhanced main family citation")
-        
-        var citation = "Information on \(family.pageReferenceString) includes:\n\n"
-        
-        // Father information
-        citation += formatPersonForCitation(family.father)
-        
-        // Mother information
-        if let mother = family.mother {
-            citation += formatPersonForCitation(mother)
-        }
-        
-        // Marriage date
-        if let marriageDate = family.primaryMarriageDate {
-            citation += "m \(normalizeDate(marriageDate))\n"
-        }
-        
-        // Additional spouses
-        if !family.additionalSpouses.isEmpty {
-            citation += "\nAdditional spouse(s):\n"
-            for spouse in family.additionalSpouses {
-                citation += formatPersonForCitation(spouse)
-            }
-        }
-        
-        // Children
-        if !family.children.isEmpty {
-            citation += "\nChildren:\n"
-            for child in family.children {
-                citation += formatChildForCitation(child)
-            }
-        }
-        
-        // Enhanced information from cross-references
-        if let network = familyNetwork {
-            let additionalInfo = generateAdditionalInformation(from: network)
-            if !additionalInfo.isEmpty {
-                citation += "\n\(additionalInfo)"
-                logDebug(.citation, "Added additional information from cross-references")
-            }
-        }
-        
-        // Notes
-        if !family.notes.isEmpty {
-            citation += "\nNotes:\n"
-            for note in family.notes {
-                citation += "• \(note)\n"
-            }
-        }
-        
-        // Child mortality
-        if let childrenDied = family.childrenDiedInfancy, childrenDied > 0 {
-            citation += "\nChildren died in infancy: \(childrenDied)\n"
-        }
-        
-        logTrace(.citation, "Enhanced citation build complete (\(citation.count) characters)")
-        return citation
-    }
-    
-    /**
-     * Generate additional information section from cross-references
-     */
-    private func generateAdditionalInformation(from network: FamilyNetwork) -> String {
-        var additionalInfo: [String] = []
-        
-        logTrace(.citation, "Generating additional information from \(network.totalResolvedFamilies) resolved families")
-        
-        // Check for enhanced death dates
-        for child in network.mainFamily.children {
-            if let asParentFamily = network.getAsParentFamily(for: child),
-               child.enhancedDeathDate != nil && child.deathDate == nil {
-                let pages = asParentFamily.pageReferenceString
-                additionalInfo.append("\(child.name)'s death date: \(pages)")
-                logTrace(.citation, "Added death date info for \(child.name)")
-            }
-        }
-        
-        // Check for enhanced marriage dates
-        for child in network.mainFamily.children {
-            if let asParentFamily = network.getAsParentFamily(for: child),
-               child.enhancedMarriageDate != nil && child.marriageDate != child.enhancedMarriageDate {
-                let pages = asParentFamily.pageReferenceString
-                additionalInfo.append("\(child.name)'s marriage date: \(pages)")
-                logTrace(.citation, "Added marriage date info for \(child.name)")
-            }
-        }
-        
-        if additionalInfo.isEmpty {
-            logTrace(.citation, "No additional information found from cross-references")
-            return ""
-        }
-        
-        logDebug(.citation, "Generated \(additionalInfo.count) additional information items")
-        return "Additional information found elsewhere:\n" + additionalInfo.map { "• \($0)" }.joined(separator: "\n")
-    }
-    
-    // MARK: - Citation Formatting Helpers
-    
-    private func formatPersonForCitation(_ person: Person) -> String {
-        var line = person.displayName
-        
-        if let birthDate = person.birthDate {
-            line += ", b \(normalizeDate(birthDate))"
-        }
-        
-        if let deathDate = person.bestDeathDate {
-            line += ", d \(normalizeDate(deathDate))"
-        }
-        
-        line += "\n"
-        return line
-    }
-    
-    private func formatChildForCitation(_ child: Person) -> String {
-        var line = child.name
-        
-        if let birthDate = child.birthDate {
-            line += ", b \(normalizeDate(birthDate))"
-        }
-        
-        if let marriageDate = child.bestMarriageDate, let spouse = child.spouse {
-            line += ", m \(spouse) \(normalizeDate(marriageDate))"
-        }
-        
-        if let deathDate = child.bestDeathDate {
-            line += ", d \(normalizeDate(deathDate))"
-        }
-        
-        line += "\n"
-        return line
-    }
-    
-    private func normalizeDate(_ date: String) -> String {
-        return DateFormatter.formatGenealogyDate(date) ?? date
-    }
-    
-    private func extractGivenName(from fullName: String) -> String {
-        return fullName.components(separatedBy: " ").first ?? fullName
     }
     
     // MARK: - Hiski Query Generation
@@ -590,6 +476,12 @@ class JuuretApp {
         
         logDebug(.citation, "Generated Hiski URL: \(url)")
         return url
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func extractGivenName(from fullName: String) -> String {
+        return fullName.components(separatedBy: " ").first ?? fullName
     }
     
     // MARK: - Statistics and Monitoring
@@ -684,7 +576,7 @@ enum ExtractionProgress {
         case .crossReferencesResolved:
             return "Cross-references resolved"
         case .complete:
-            return "Complete"
+            return "Complete - ready for citations"
         }
     }
     

@@ -1,8 +1,8 @@
 //
-//  PersonRowView.swift
+//  PersonRowView.swift - UPDATED with Enhanced Fonts
 //  Kalvian Roots
 //
-//  Created by Michael Bendio on 7/11/25.
+//  Enhanced genealogical person display with larger, more readable fonts
 //
 
 import SwiftUI
@@ -15,8 +15,8 @@ struct PersonRowView: View {
     let onSpouseClick: (String) -> Void
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            // Name (clickable for person's citation)
+        VStack(alignment: .leading, spacing: 8) { // Increased spacing
+            // Enhanced name (clickable for person's citation)
             Button(action: {
                 onNameClick(person)
             }) {
@@ -24,15 +24,16 @@ struct PersonRowView: View {
                     Text("• \(person.displayName)")
                         .foregroundColor(.blue)
                         .underline()
+                        .font(.genealogySubheadline) // Enhanced font (18pt)
                     Text("(\(role))")
-                        .font(.caption)
+                        .font(.genealogyCallout) // Enhanced font (14pt)
                         .foregroundColor(.secondary)
                 }
             }
             .buttonStyle(PlainButtonStyle())
             
-            // Dates and Marriage (clickable)
-            VStack(alignment: .leading, spacing: 2) {
+            // Enhanced dates and marriage (clickable)
+            VStack(alignment: .leading, spacing: 4) { // Increased spacing
                 if let birthDate = person.birthDate {
                     dateButton(symbol: "★", date: birthDate, eventType: .birth)
                 }
@@ -45,7 +46,7 @@ struct PersonRowView: View {
                     marriageButton(marriageDate: marriageDate, spouse: spouse)
                 }
             }
-            .padding(.leading, 20)
+            .padding(.leading, 25) // Increased padding for better indentation
         }
     }
     
@@ -56,21 +57,22 @@ struct PersonRowView: View {
             HStack {
                 Text(symbol)
                     .foregroundColor(.primary)
+                    .font(.genealogyCallout) // Enhanced font (14pt)
                 Text(date)
                     .foregroundColor(.blue)
                     .underline()
+                    .font(.genealogyMonospaceSmall) // Enhanced monospace font (14pt)
             }
-            .font(.caption)
         }
         .buttonStyle(PlainButtonStyle())
     }
     
     func marriageButton(marriageDate: String, spouse: String) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 6) { // Increased spacing
             // Marriage symbol
             Text("∞")
                 .foregroundColor(.primary)
-                .font(.caption)
+                .font(.genealogyCallout) // Enhanced font (14pt)
             
             // Marriage date (clickable for Hiski marriage query)
             Button(action: {
@@ -79,7 +81,7 @@ struct PersonRowView: View {
                 Text(marriageDate)
                     .foregroundColor(.blue)
                     .underline()
-                    .font(.caption)
+                    .font(.genealogyMonospaceSmall) // Enhanced monospace font (14pt)
             }
             .buttonStyle(PlainButtonStyle())
             
@@ -92,14 +94,14 @@ struct PersonRowView: View {
                     Text(spouse)
                         .foregroundColor(.purple)
                         .underline()
-                        .font(.caption)
+                        .font(.genealogyCallout) // Enhanced font (14pt)
                         .fontWeight(.medium)
                 }
                 .buttonStyle(PlainButtonStyle())
             } else {
                 Text(spouse)
                     .foregroundColor(.primary)
-                    .font(.caption)
+                    .font(.genealogyCallout) // Enhanced font (14pt)
             }
         }
     }
