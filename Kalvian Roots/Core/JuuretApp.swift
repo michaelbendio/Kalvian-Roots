@@ -2,60 +2,87 @@
 //  JuuretApp.swift
 //  Kalvian Roots
 //
+//  Complete application coordinator with unified workflow and MLX integration
 //
 
 import Foundation
+import SwiftUI
 
 /**
- * JuuretApp.swift - Main application coordinator for genealogical research
- *
- * Single-user application for Michael's Finnish genealogy research.
- * Coordinates AI parsing, file management, and family resolution.
+ * Main application coordinator - simplified to work with actual codebase
  */
-
 @Observable
 class JuuretApp {
     
     // MARK: - Core Services
     
+    /// AI parsing service with configurable providers
     let aiParsingService: AIParsingService
+    
+    /// Cross-reference resolution service
     let familyResolver: FamilyResolver
-    let fileManager: FileManager
-    let nameEquivalenceManager = NameEquivalenceManager()
     
-    // MARK: - Application State
+    /// Name equivalence learning service
+    let nameEquivalenceManager: NameEquivalenceManager
     
-    private(set) var currentFamily: Family?
-    private(set) var enhancedFamily: FamilyNetwork?
-    private(set) var extractionProgress: ExtractionProgress = .idle
-    private(set) var errorMessage: String?
+    /// File management service
+    var fileManager: FileManager
+    
+    // MARK: - State Properties
+    
+    /// Currently extracted family
+    var currentFamily: Family?
+    
+    /// Enhanced family with cross-reference data
+    var enhancedFamily: Family?
+    
+    /// Processing state
+    var isProcessing = false
+    
+    /// Error state
+    var errorMessage: String?
+    
+    /// Extraction progress tracking
+    var extractionProgress: ExtractionProgress = .idle
     
     // MARK: - Computed Properties
     
+    /// Check if app is ready for family extraction
     var isReady: Bool {
         fileManager.isFileLoaded && aiParsingService.isConfigured
     }
     
-    var isProcessing: Bool {
-        extractionProgress != .idle
-    }
-    
-    var currentServiceName: String {
-        aiParsingService.currentServiceName
-    }
-    
+    /// Available AI services for switching
     var availableServices: [String] {
         aiParsingService.availableServiceNames
+    }
+    
+    /// Current AI service name for display
+    var currentServiceName: String {
+        return aiParsingService.currentServiceName
     }
     
     // MARK: - Initialization
     
     init() {
         logInfo(.app, "🚀 JuuretApp initialization started")
-        logDebug(.app, "Platform: Apple Silicon Mac (Michael's genealogy research)")
         
-        // Initialize AI parsing service (handles its own platform detection)
+        // Initialize core services
+        self.nameEquivalenceManager = NameEquivalenceManager()
+        
+        #if os(macOS) && arch(arm64)
+        // Apple Silicon Mac - use enhanced service with MLX support
+        logInfo(.ai, "🧠 Initializing AI services with MLX support (Apple Silicon)")
         self.aiParsingService = AIParsingService()
+        logInfo(.ai, "✅ Enhanced AI parsing service initialized")
+        
+        logDebug(.ai, "Available services: \(aiParsingService.availableServiceNames.joined(separator: ", "))")
+        
+        #else
+        // Fallback for non-Apple Silicon (shouldn't happen in this app)
+        logWarn(.ai, "⚠️ Non-Apple Silicon detected - using cloud services only")
+        self.aiParsingService = AIParsingService()
+        #endif
         
         // Initialize dependent services
         self.familyResolver = FamilyResolver(
@@ -88,27 +115,23 @@ class JuuretApp {
         logDebug(.app, "Ready state: \(isReady)")
     }
     
-    // MARK: - AI Service Management (Fixed Method Signatures)
+    // MARK: - AI Service Management
     
     /**
      * Switch to a different AI service
      */
-    func switchAIService(to serviceName: String) async {
+    func switchAIService(to serviceName: String) async throws {
         logInfo(.ai, "🔄 Switching AI service to: \(serviceName)")
         
-        do {
-            try await aiParsingService.switchToService(named: serviceName)
-            // Clear any error state since service changed
-            if errorMessage?.contains("not configured") == true {
-                errorMessage = nil
-                logDebug(.app, "Cleared configuration error after service switch")
-            }
-        } catch {
-            logError(.ai, "❌ Failed to switch AI service: \(error)")
-            errorMessage = "Failed to switch AI service: \(error.localizedDescription)"
+        try await aiParsingService.switchToService(named: serviceName)
+        
+        // Clear any error state since service changed
+        if errorMessage?.contains("not configured") == true {
+            errorMessage = nil
+            logDebug(.app, "Cleared configuration error after service switch")
         }
         
-        logInfo(.ai, "✅ AI service switch completed")
+        logInfo(.ai, "✅ Successfully switched to: \(serviceName)")
     }
     
     /**
@@ -172,158 +195,235 @@ class JuuretApp {
             throw JuuretError.noFileLoaded
         }
         
-        // Update state
-        extractionProgress = .extractingFamily
-        errorMessage = nil
-        currentFamily = nil
-        enhancedFamily = nil
+        // Clear previous state
+        await MainActor.run {
+            currentFamily = nil
+            enhancedFamily = nil
+            extractionProgress = .extractingFamily
+            errorMessage = nil
+            isProcessing = true
+        }
+        
+        logDebug(.app, "Cleared previous state, starting extraction")
         
         do {
-            // Extract family text
-            guard let familyText = fileManager.extractFamilyText(familyId: normalizedId) else {
-                throw JuuretError.familyNotFound(normalizedId)
+            // Extract family text from file
+            let familyText = try extractFamilyText(familyId: normalizedId, from: fileContent)
+            logDebug(.parsing, "Extracted family text (\(familyText.count) chars)")
+            
+            // Parse using AI service
+            await MainActor.run {
+                extractionProgress = .extractingFamily
             }
             
-            logDebug(.parsing, "Family text extracted (\(familyText.count) characters)")
+            let family = try await aiParsingService.parseFamily(
+                familyId: normalizedId,
+                familyText: familyText
+            )
             
-            // Parse family with AI
-            extractionProgress = .familyExtracted
-            let family = try await aiParsingService.parseFamily(familyId: normalizedId, familyText: familyText)
-            
-            // Update state with successful result
-            currentFamily = family
-            extractionProgress = .complete
-            
-            logInfo(.app, "✅ Family extraction completed: \(family.familyId)")
-            logDebug(.app, "Family contains: \(family.children.count) children, \(family.additionalSpouses.count) additional spouses")
+            // Update UI on main thread
+            await MainActor.run {
+                currentFamily = family
+                extractionProgress = .familyExtracted
+                isProcessing = false
+                logInfo(.app, "✅ Family extraction completed: \(family.familyId)")
+                logDebug(.parsing, "Family has \(family.children.count) children")
+            }
             
         } catch {
-            extractionProgress = .idle
-            errorMessage = "Family extraction failed: \(error.localizedDescription)"
+            await MainActor.run {
+                extractionProgress = .idle
+                isProcessing = false
+                errorMessage = "Extraction failed: \(error.localizedDescription)"
+            }
+            
             logError(.app, "❌ Family extraction failed: \(error)")
             throw error
         }
     }
     
     /**
-     * Extract family with complete cross-reference resolution
+     * Extract family with complete cross-references (future implementation)
+     * For now, delegates to basic extractFamily method
      */
     func extractFamilyComplete(familyId: String) async throws {
         logInfo(.app, "🚀 Starting complete family extraction for: \(familyId)")
+        logInfo(.app, "Note: Complete extraction with cross-references not yet implemented")
         
-        // First extract the basic family
+        // For now, just do basic extraction
         try await extractFamily(familyId: familyId)
         
-        guard let family = currentFamily else {
-            throw JuuretError.noCurrentFamily
-        }
-        
-        // Then resolve cross-references
-        extractionProgress = .resolvingCrossReferences
-        
-        do {
-            let network = try await familyResolver.resolveCrossReferences(for: family)
-            
-            enhancedFamily = network
-            extractionProgress = .complete
-            
-            logInfo(.app, "✅ Complete family extraction finished")
-            logInfo(.app, "Network contains: \(network.totalResolvedFamilies) cross-referenced families")
-            
-        } catch {
-            extractionProgress = .complete // Keep the basic family even if cross-references fail
-            logWarn(.app, "⚠️ Cross-reference resolution failed: \(error)")
-            // Don't throw - partial success is still useful
-        }
+        logDebug(.app, "Complete extraction delegated to basic extraction")
     }
     
-    // MARK: - Citation Generation
+    // MARK: - Family Text Extraction
     
-    /**
-     * Generate citation for current family
-     */
-    func generateCitation() -> String? {
-        guard let family = currentFamily else {
-            logWarn(.citation, "⚠️ No current family for citation generation")
-            return nil
+    private func extractFamilyText(familyId: String, from fileContent: String) throws -> String {
+        logDebug(.parsing, "🔍 Extracting text for family: \(familyId)")
+        
+        let lines = fileContent.components(separatedBy: .newlines)
+        var familyLines: [String] = []
+        var inFamily = false
+        var familyFound = false
+        
+        for line in lines {
+            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+            
+            // Check if this line starts a family
+            if !trimmedLine.isEmpty {
+                let firstPart = trimmedLine.components(separatedBy: " ").first ?? ""
+                if FamilyIDs.validFamilyIds.contains(where: { firstPart.uppercased().hasPrefix($0) }) {
+                    // Found a family line
+                    if firstPart.uppercased().hasPrefix(familyId) {
+                        // This is our target family
+                        inFamily = true
+                        familyFound = true
+                        familyLines.append(line)
+                        continue
+                    } else if inFamily {
+                        // Found a different family, stop collecting
+                        break
+                    }
+                }
+            }
+            
+            // Check for end of family (blank line after family content)
+            if inFamily && trimmedLine.isEmpty {
+                // Blank line - check if next non-blank line is a family
+                let remainingLines = lines.dropFirst(lines.firstIndex(of: line) ?? 0).dropFirst()
+                for nextLine in remainingLines {
+                    let nextTrimmed = nextLine.trimmingCharacters(in: .whitespaces)
+                    if !nextTrimmed.isEmpty {
+                        let firstPart = nextTrimmed.components(separatedBy: " ").first ?? ""
+                        if FamilyIDs.validFamilyIds.contains(where: { firstPart.uppercased().hasPrefix($0) }) {
+                            break
+                        }
+                    }
+                }
+                break
+            }
+            
+            // If we're in the family, collect all lines
+            if inFamily {
+                familyLines.append(line)
+            }
         }
         
-        logInfo(.citation, "📝 Generating citation for family: \(family.familyId)")
+        guard familyFound else {
+            logError(.parsing, "❌ Family \(familyId) not found in file")
+            throw JuuretError.familyNotFound(familyId)
+        }
         
-        // Use enhanced family if available, otherwise basic family
-        let citationFamily = enhancedFamily?.mainFamily ?? family
+        let familyText = familyLines.joined(separator: "\n")
+        logTrace(.parsing, "Extracted \(familyLines.count) lines for family \(familyId)")
         
-        let citation = CitationGenerator.generateMainFamilyCitation(family: family)
+        return familyText
+    }
+    
+    // MARK: - Citation Generation (Simplified)
+    
+    /**
+     * Generate basic citation for person
+     */
+    func generateCitation(for person: Person, in family: Family) -> String {
+        logInfo(.citation, "📖 Generating citation for: \(person.name)")
         
-        logInfo(.citation, "✅ Citation generated (\(citation.count) characters)")
-        logTrace(.citation, "Citation preview: \(String(citation.prefix(100)))...")
+        // Simple citation generation
+        let pages = family.pageReferences.joined(separator: ", ")
+        var citation = "Information from pages \(pages) includes:\n"
+        citation += "\(person.name)"
         
+        if let patronymic = person.patronymic {
+            citation += " \(patronymic)"
+        }
+        
+        if let birthDate = person.birthDate {
+            citation += ", b \(birthDate)"
+        }
+        
+        if let deathDate = person.deathDate {
+            citation += ", d \(deathDate)"
+        }
+        
+        if let spouse = person.spouse {
+            citation += ", m \(spouse)"
+            if let marriageDate = person.marriageDate {
+                citation += " \(marriageDate)"
+            }
+        }
+        
+        logDebug(.citation, "Generated citation length: \(citation.count) characters")
         return citation
     }
     
     /**
-     * Generate citation for specific person in family context
+     * Generate spouse citation (placeholder implementation)
+     * This will be enhanced when cross-reference resolution is implemented
      */
-    func generatePersonCitation(for person: Person) -> String? {
-        guard let family = currentFamily else {
-            logWarn(.citation, "⚠️ No current family for person citation")
-            return nil
-        }
+    func generateSpouseCitation(spouseName: String, in family: Family) -> String {
+        logInfo(.citation, "📖 Generating placeholder spouse citation for: \(spouseName)")
         
-        logInfo(.citation, "📝 Generating person citation for: \(person.displayName)")
+        let pages = family.pageReferences.joined(separator: ", ")
+        var citation = "Spouse citation for \(spouseName) in family \(family.familyId)\n"
+        citation += "Information from pages \(pages)\n\n"
+        citation += "This feature is being developed. The citation will include:\n"
+        citation += "- \(spouseName)'s parents' family information\n"
+        citation += "- Birth date and location\n"
+        citation += "- Parents' names and vital dates\n"
+        citation += "- Cross-referenced family data\n\n"
+        citation += "Cross-reference resolution coming in Phase 2."
         
-        // Find the appropriate family context for this person
-        let contextFamily = findAppropriateFamily(for: person)
-        
-        let citation = CitationGenerator.generateAsChildCitation(for: person, in: contextFamily)
-        
-        logInfo(.citation, "✅ Person citation generated")
+        logDebug(.citation, "Generated placeholder spouse citation length: \(citation.count) characters")
         return citation
     }
     
-    private func findAppropriateFamily(for person: Person) -> Family {
-        // If we have an enhanced family network, try to find the best context
-        if let network = enhancedFamily {
-            // Logic to determine which family provides the best context for this person
-            // For now, return the main family
-            return network.mainFamily
-        }
+    /**
+     * Generate Hiski URL for person verification
+     */
+    func generateHiskiQuery(for date: String, eventType: EventType) -> String {
+        logInfo(.citation, "🔗 Generating Hiski URL for date: \(date), event: \(eventType)")
         
-        return currentFamily!
+        let cleanDate = date.replacingOccurrences(of: ".", with: "")
+        let url = "https://hiski.genealogia.fi/hiski?en+query_\(eventType.rawValue)_\(cleanDate)"
+        
+        logDebug(.citation, "Generated Hiski URL: \(url)")
+        return url
     }
     
-    // MARK: - State Management
+    // MARK: - Debug and Testing
     
     /**
-     * Clear current family and reset state
+     * Load sample family for testing
      */
-    func clearCurrentFamily() {
-        logInfo(.app, "🧹 Clearing current family state")
+    @MainActor
+    func loadSampleFamily() {
+        logInfo(.app, "📋 Loading sample family")
         
-        currentFamily = nil
-        enhancedFamily = nil
-        extractionProgress = .idle
+        currentFamily = Family.sampleFamily()
+        extractionProgress = .familyExtracted
         errorMessage = nil
         
-        logDebug(.app, "Family state cleared")
+        logDebug(.app, "Sample family loaded successfully")
     }
     
+    /// Load complex sample family for cross-reference testing
+    @MainActor
+    func loadComplexSampleFamily() {
+        logInfo(.app, "📋 Loading complex sample family")
+        currentFamily = Family.complexSampleFamily()
+        extractionProgress = .familyExtracted
+        errorMessage = nil
+        logDebug(.app, "Complex sample family loaded successfully")
+    }
+
     /**
-     * Check if a specific family ID is valid
+     * Resolve cross-references for the current family
      */
-    func isValidFamilyId(_ familyId: String) -> Bool {
-        let normalizedId = familyId.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // Basic validation - could be enhanced with actual family ID list
-        let pattern = #"^[A-ZÄÖÅ-]+(?:\s+[IVX]+)?\s+\d+[A-Z]?$"#
-        
-        do {
-            let regex = try NSRegularExpression(pattern: pattern)
-            let range = NSRange(normalizedId.startIndex..<normalizedId.endIndex, in: normalizedId)
-            return regex.firstMatch(in: normalizedId, options: [], range: range) != nil
-        } catch {
-            logWarn(.app, "⚠️ Regex validation failed: \(error)")
-            return false
-        }
+    @MainActor
+    func resolveCrossReferences() async throws {
+        guard let currentFamily = self.currentFamily else { return }
+        let network = try await familyResolver.resolveCrossReferences(for: currentFamily)
+        // Optionally update enhancedFamily or handle network as needed
+        self.enhancedFamily = network.mainFamily // or whatever behavior you want
     }
 }

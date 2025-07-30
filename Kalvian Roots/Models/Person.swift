@@ -19,7 +19,7 @@ import Foundation
  *
  * Enhanced for cross-reference resolution and AI parsing.
  */
-struct Person: Hashable, Sendable, Codable {
+struct Person: Hashable, Sendable, Codable, Identifiable {
     // MARK: - Core Genealogical Data
     
     /// Finnish given name like 'Matti', 'Brita'
@@ -118,6 +118,12 @@ struct Person: Hashable, Sendable, Codable {
             return "\(name) \(patronymic)"
         }
         return name
+    }
+    
+    var id: String {
+        let patronymicPart = patronymic ?? ""
+        let birthPart = birthDate ?? ""
+        return "\(name)-\(patronymicPart)-\(birthPart)"
     }
     
     /// Check if person needs cross-reference resolution
@@ -321,3 +327,4 @@ extension DateFormatter {
         return "\(day) \(months[month]) \(year)"
     }
 }
+

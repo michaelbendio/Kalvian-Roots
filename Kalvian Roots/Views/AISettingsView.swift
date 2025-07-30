@@ -290,7 +290,12 @@ struct AISettingsView: View {
     
     private func switchToService(_ serviceName: String) {
         Task {
-            await juuretApp.switchAIService(to: serviceName)
+            do {
+                try await juuretApp.switchAIService(to: serviceName)
+            } catch {
+                // Handle switching errors silently for now
+                print("Failed to switch AI service: \(error)")
+            }
         }
     }
     
@@ -328,3 +333,4 @@ struct AISettingsView: View {
     AISettingsView()
         .environment(JuuretApp())
 }
+

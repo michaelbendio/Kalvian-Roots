@@ -62,126 +62,103 @@ struct JuuretView: View {
     // MARK: - Family Extraction Interface (Enhanced)
     
     private var familyExtractionInterface: some View {
-        VStack(spacing: 25) { // Increased spacing
-            // Enhanced header
-            HStack {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(.green)
-                    .font(.genealogySubheadline) // Larger icon
-                Text("Ready")
-                    .foregroundColor(.green)
-                    .font(.genealogySubheadline) // Enhanced font
-                Spacer()
-                if let url = juuretApp.fileManager.currentFileURL {
-                    Text(url.lastPathComponent)
-                        .font(.genealogyCallout) // Enhanced font
-                        .foregroundColor(.secondary)
-                }
-            }
-            .padding(.horizontal, 20)
+        VStack(spacing: 20) { // Increased spacing
+            #if os(macOS)
+            mlxSwitchingInterface
+            #endif
             
-            // Enhanced family ID input
-            VStack(alignment: .leading, spacing: 15) { // Increased spacing
-                Text("Family ID?")
-                    .font(.genealogyTitle2) // Much larger title
-                    .fontWeight(.medium)
+            if juuretApp.isProcessing {
+                enhancedProcessingStatusView
+            } else if let errorMessage = juuretApp.errorMessage {
+                enhancedErrorDisplayView(errorMessage)
+            } else if let family = juuretApp.currentFamily {
+                enhancedFamilyDisplaySection(family: family)
+            } else {
+                enhancedFamilyInputSection
+            }
+        }
+    }
+    
+    private var enhancedFamilyInputSection: some View {
+        VStack(spacing: 20) { // Increased spacing
+            Text("Extract Family")
+                .font(.genealogyTitle) // Much larger title
+                .fontWeight(.bold)
+            
+            VStack(spacing: 15) { // Increased spacing
+                TextField("Family ID (e.g., KORPI 6)", text: $familyId)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.genealogySubheadline) // Enhanced font
+                    .frame(height: 40) // Taller text field
                 
                 HStack(spacing: 15) { // Increased spacing
-                    TextField("e.g., Korpi 6", text: $familyId)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .font(.genealogyBody) // Enhanced font
-                        .frame(height: 40) // Taller text field
-                        .onSubmit {
-                            if !familyId.isEmpty && !juuretApp.isProcessing {
-                                Task {
-                                    await extractFamily()
-                                }
-                            }
-                        }
-                    
-                    Button("Extract") {
-                        Task {
-                            await extractFamily()
-                        }
+                    Button("Extract Basic") {
+                        Task { await extractFamily() }
                     }
-                    .disabled(familyId.isEmpty || juuretApp.isProcessing)
                     .buttonStyle(.borderedProminent)
                     .font(.genealogySubheadline) // Enhanced font
                     .frame(height: 40) // Taller button
                     
-                    Button("Complete") {
-                        Task {
-                            await extractFamilyComplete()
-                        }
+                    Button("Extract Complete") {
+                        Task { await extractFamilyComplete() }
                     }
-                    .disabled(familyId.isEmpty || juuretApp.isProcessing)
                     .buttonStyle(.bordered)
                     .font(.genealogySubheadline) // Enhanced font
                     .frame(height: 40) // Taller button
-                    .help("Extract family + resolve cross-references")
                 }
             }
             .padding(20) // Increased padding
-            .background(Color.gray.opacity(0.05))
-            .cornerRadius(12) // Slightly larger corner radius
-            
-            // Enhanced MLX model selection (macOS only)
-            #if os(macOS)
-            if MLXService.isAvailable() {
-                mlxModelSelectionView
-            }
-            #endif
-            
-            // Enhanced processing status
-            if juuretApp.isProcessing {
-                enhancedProcessingStatusView
-            }
-            
-            // Enhanced error display
-            if let errorMessage = juuretApp.errorMessage, !juuretApp.isProcessing {
-                enhancedErrorDisplayView(errorMessage)
-            }
-            
-            // Enhanced family display
-            if let family = juuretApp.currentFamily {
-                enhancedFamilyDisplaySection(family: family)
-            }
-            
-            Spacer()
+            .background(Color.blue.opacity(0.05))
+            .cornerRadius(12)
         }
     }
     
-    // MARK: - MLX Model Selection (macOS Only)
-    
     #if os(macOS)
-    private var mlxModelSelectionView: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "brain.head.profile")
-                    .foregroundColor(.blue)
-                    .font(.genealogySubheadline)
-                Text("Local AI Models")
-                    .font(.genealogyHeadline)
-                    .fontWeight(.medium)
-                Spacer()
-                Text("🖥️ Apple Silicon")
-                    .font(.genealogyCaption)
-                    .foregroundColor(.secondary)
-            }
+    // MARK: - MLX Switching Interface (Enhanced for macOS only)
+    
+    private var mlxSwitchingInterface: some View {
+        VStack(spacing: 12) { // Increased spacing
+            Text("AI Service (Local MLX Available)")
+                .font(.genealogyHeadline) // Enhanced font
+                .fontWeight(.semibold)
             
-            HStack(spacing: 12) {
-                Button("Mistral-7B (Fast)") {
+            HStack(spacing: 10) {
+                Button("GPT-4") {
                     Task {
-                        try? await juuretApp.switchAIService(to: "Mistral-7B (Local MLX)")
+                        do {
+                            try await juuretApp.switchAIService(to: "GPT-4")
+                        } catch {
+                            logError(.ui, "Failed to switch AI Service: \(error)")
+                            juuretApp.errorMessage = "Failed to switch AI Service: \(error.localizedDescription)"
+                        }
                     }
                 }
                 .buttonStyle(.bordered)
                 .font(.genealogyCallout)
                 .controlSize(.small)
                 
-                Button("Llama3.2-8B (Balanced)") {
+                Button("Claude 3.5") {
                     Task {
-                        try? await juuretApp.switchAIService(to: "Llama3.2-8B (Local MLX)")
+                        do {
+                            try await juuretApp.switchAIService(to: "Claude 3.5 Sonnet")
+                        } catch {
+                            logError(.ui, "Failed to switch AI Service: \(error)")
+                            juuretApp.errorMessage = "Failed to switch AI Service: \(error.localizedDescription)"
+                        }
+                    }
+                }
+                .buttonStyle(.bordered)
+                .font(.genealogyCallout)
+                .controlSize(.small)
+                
+                Button("Llama3.2-8B (Local)") {
+                    Task {
+                        do {
+                            try await juuretApp.switchAIService(to: "Llama3.2-8B (Local MLX)")
+                        } catch {
+                            logError(.ui, "Failed to switch AI Service: \(error)")
+                            juuretApp.errorMessage = "Failed to switch AI Service: \(error.localizedDescription)"
+                        }
                     }
                 }
                 .buttonStyle(.bordered)
@@ -190,7 +167,12 @@ struct JuuretView: View {
                 
                 Button("Qwen3-30B (Best)") {
                     Task {
-                        try? await juuretApp.switchAIService(to: "Qwen3-30B (Local MLX)")
+                        do {
+                            try await juuretApp.switchAIService(to: "Qwen3-30B (Local MLX)")
+                        } catch {
+                            logError(.ui, "Failed to switch AI Service: \(error)")
+                            juuretApp.errorMessage = "Failed to switch AI Service: \(error.localizedDescription)"
+                        }
                     }
                 }
                 .buttonStyle(.bordered)
@@ -264,11 +246,9 @@ struct JuuretView: View {
                     logInfo(.ui, "User manually opening file")
                     Task {
                         do {
-                            let content = try await juuretApp.fileManager.openFile()
-                            juuretApp.updateFileContent()
+                            // FIXED: Use correct method that exists in JuuretApp
+                            await juuretApp.loadFile()
                             logInfo(.ui, "✅ File manually opened successfully")
-                        } catch FileManagerError.userCancelled {
-                            logInfo(.ui, "User cancelled file selection")
                         } catch {
                             logError(.ui, "❌ Failed to manually open file: \(error)")
                             juuretApp.errorMessage = "Failed to open file: \(error.localizedDescription)"
@@ -310,115 +290,90 @@ struct JuuretView: View {
                 .background(Color.blue.opacity(0.1))
                 .cornerRadius(8)
             
-            // Enhanced parents section
-            VStack(alignment: .leading, spacing: 15) { // Increased spacing
-                Text("Parents:")
-                    .font(.genealogyHeadline) // Enhanced font
-                
-                // Father
-                PersonRowView(
-                    person: family.father,
-                    role: "Father",
-                    onNameClick: { person in
-                        showCitation(for: person, in: family)
-                    },
-                    onDateClick: { date, eventType in
-                        showHiskiQuery(for: date, eventType: eventType)
-                    },
-                    onSpouseClick: { spouseName in
-                        showSpouseCitation(spouseName: spouseName, in: family)
-                    }
-                )
-                
-                // Mother
-                if let mother = family.mother {
-                    PersonRowView(
-                        person: mother,
-                        role: "Mother",
-                        onNameClick: { person in
-                            showCitation(for: person, in: family)
-                        },
-                        onDateClick: { date, eventType in
-                            showHiskiQuery(for: date, eventType: eventType)
-                        },
-                        onSpouseClick: { spouseName in
-                            showSpouseCitation(spouseName: spouseName, in: family)
-                        }
-                    )
-                }
-                
-                // Additional spouses
-                ForEach(Array(family.additionalSpouses.enumerated()), id: \.offset) { _, spouse in
-                    PersonRowView(
-                        person: spouse,
-                        role: "Additional Spouse",
-                        onNameClick: { person in
-                            showCitation(for: person, in: family)
-                        },
-                        onDateClick: { date, eventType in
-                            showHiskiQuery(for: date, eventType: eventType)
-                        },
-                        onSpouseClick: { spouseName in
-                            showSpouseCitation(spouseName: spouseName, in: family)
-                        }
-                    )
-                }
+            // Enhanced family members display
+            enhancedFamilyMembersView(family: family)
+        }
+    }
+    
+    private func enhancedFamilyMembersView(family: Family) -> some View {
+        VStack(alignment: .leading, spacing: 15) { // Increased spacing
+            // Parents - FIXED: father is not optional in Family struct
+            enhancedPersonView(person: family.father, in: family, role: "Father")
+            
+            if let mother = family.mother {
+                enhancedPersonView(person: mother, in: family, role: "Mother")
             }
             
-            Divider()
-                .padding(.vertical, 5)
-            
-            // Enhanced children section
-            VStack(alignment: .leading, spacing: 15) { // Increased spacing
+            // Children
+            if !family.children.isEmpty {
                 Text("Children:")
                     .font(.genealogyHeadline) // Enhanced font
+                    .fontWeight(.semibold)
+                    .padding(.top, 10)
                 
-                ForEach(Array(family.children.enumerated()), id: \.offset) { _, child in
-                    PersonRowView(
-                        person: child,
-                        role: "Child",
-                        onNameClick: { person in
-                            showCitation(for: person, in: family)
-                        },
-                        onDateClick: { date, eventType in
-                            showHiskiQuery(for: date, eventType: eventType)
-                        },
-                        onSpouseClick: { spouseName in
-                            showSpouseCitation(spouseName: spouseName, in: family)
-                        }
-                    )
+                ForEach(family.children) { child in
+                    enhancedPersonView(person: child, in: family, role: "Child")
                 }
-            }
-            
-            // Enhanced notes section
-            if !family.notes.isEmpty {
-                Divider()
-                    .padding(.vertical, 5)
-                
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Notes:")
-                        .font(.genealogyHeadline) // Enhanced font
-                    
-                    ForEach(family.notes, id: \.self) { note in
-                        Text("• \(note)")
-                            .font(.genealogyCallout) // Enhanced font
-                            .foregroundColor(.secondary)
-                    }
-                }
-            }
-            
-            // Enhanced child mortality info
-            if let childrenDied = family.childrenDiedInfancy {
-                Text("Children died in infancy: \(childrenDied)")
-                    .font(.genealogyCallout) // Enhanced font
-                    .foregroundColor(.secondary)
-                    .padding(.top, 8)
             }
         }
-        .padding(20) // Increased padding
-        .background(Color.white)
-        .cornerRadius(12) // Larger corner radius
-        .shadow(radius: 3) // Slightly larger shadow
+        .padding(16) // Increased padding
+        .background(Color.gray.opacity(0.05))
+        .cornerRadius(10)
+    }
+    
+    private func enhancedPersonView(person: Person, in family: Family, role: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Person name (clickable for citation)
+            Button(action: {
+                showCitation(for: person, in: family)
+            }) {
+                Text("\(role): \(person.displayName)")
+                    .font(.genealogySubheadline) // Enhanced font
+                    .foregroundColor(.primary)
+                    .underline()
+            }
+            .buttonStyle(.plain)
+            
+            // Birth date (clickable for Hiski)
+            if let birthDate = person.birthDate {
+                Button(action: {
+                    showHiskiQuery(for: birthDate, eventType: .birth)
+                }) {
+                    Text("Birth: \(birthDate)")
+                        .font(.genealogyCallout) // Enhanced font
+                        .foregroundColor(.blue)
+                        .underline()
+                }
+                .buttonStyle(.plain)
+            }
+            
+            // Death date (clickable for Hiski)
+            if let deathDate = person.deathDate {
+                Button(action: {
+                    showHiskiQuery(for: deathDate, eventType: .death)
+                }) {
+                    Text("Death: \(deathDate)")
+                        .font(.genealogyCallout) // Enhanced font
+                        .foregroundColor(.blue)
+                        .underline()
+                }
+                .buttonStyle(.plain)
+            }
+            
+            // Spouse (clickable for spouse citation)
+            if let spouse = person.spouse {
+                Button(action: {
+                    showSpouseCitation(spouseName: spouse, in: family)
+                }) {
+                    Text("Spouse: \(spouse)")
+                        .font(.genealogyCallout) // Enhanced font
+                        .foregroundColor(.purple)
+                        .underline()
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 8)
     }
     
     // MARK: - Action Methods (Enhanced)
@@ -476,3 +431,13 @@ struct JuuretView: View {
         logInfo(.ui, "Copied to clipboard: \(text.prefix(50))...")
     }
 }
+
+// MARK: - Preview
+
+#Preview {
+    NavigationView {
+        JuuretView()
+            .environment(JuuretApp())
+    }
+}
+
