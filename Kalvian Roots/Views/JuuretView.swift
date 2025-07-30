@@ -123,38 +123,10 @@ struct JuuretView: View {
                 .fontWeight(.semibold)
             
             HStack(spacing: 10) {
-                Button("GPT-4") {
+                Button("DeepSeek") {
                     Task {
                         do {
-                            try await juuretApp.switchAIService(to: "GPT-4")
-                        } catch {
-                            logError(.ui, "Failed to switch AI Service: \(error)")
-                            juuretApp.errorMessage = "Failed to switch AI Service: \(error.localizedDescription)"
-                        }
-                    }
-                }
-                .buttonStyle(.bordered)
-                .font(.genealogyCallout)
-                .controlSize(.small)
-                
-                Button("Claude 3.5") {
-                    Task {
-                        do {
-                            try await juuretApp.switchAIService(to: "Claude 3.5 Sonnet")
-                        } catch {
-                            logError(.ui, "Failed to switch AI Service: \(error)")
-                            juuretApp.errorMessage = "Failed to switch AI Service: \(error.localizedDescription)"
-                        }
-                    }
-                }
-                .buttonStyle(.bordered)
-                .font(.genealogyCallout)
-                .controlSize(.small)
-                
-                Button("Llama3.2-8B (Local)") {
-                    Task {
-                        do {
-                            try await juuretApp.switchAIService(to: "Llama3.2-8B (Local MLX)")
+                            try await juuretApp.switchAIService(to: "DeepSeek-V3")
                         } catch {
                             logError(.ui, "Failed to switch AI Service: \(error)")
                             juuretApp.errorMessage = "Failed to switch AI Service: \(error.localizedDescription)"
@@ -168,7 +140,35 @@ struct JuuretView: View {
                 Button("Qwen3-30B (Best)") {
                     Task {
                         do {
-                            try await juuretApp.switchAIService(to: "Qwen3-30B (Local MLX)")
+                            try await juuretApp.switchAIService(to: "MLX Qwen3-30B (Local)")
+                        } catch {
+                            logError(.ui, "Failed to switch AI Service: \(error)")
+                            juuretApp.errorMessage = "Failed to switch AI Service: \(error.localizedDescription)"
+                        }
+                    }
+                }
+                .buttonStyle(.bordered)
+                .font(.genealogyCallout)
+                .controlSize(.small)
+                
+                Button("Llama3.2-8B") {
+                    Task {
+                        do {
+                            try await juuretApp.switchAIService(to: "MLX Llama3.2-8B (Local)")
+                        } catch {
+                            logError(.ui, "Failed to switch AI Service: \(error)")
+                            juuretApp.errorMessage = "Failed to switch AI Service: \(error.localizedDescription)"
+                        }
+                    }
+                }
+                .buttonStyle(.bordered)
+                .font(.genealogyCallout)
+                .controlSize(.small)
+                
+                Button("Mistral-7B") {
+                    Task {
+                        do {
+                            try await juuretApp.switchAIService(to: "MLX Mistral-7B (Local)")
                         } catch {
                             logError(.ui, "Failed to switch AI Service: \(error)")
                             juuretApp.errorMessage = "Failed to switch AI Service: \(error.localizedDescription)"
@@ -191,7 +191,6 @@ struct JuuretView: View {
         .cornerRadius(10)
     }
     #endif
-    
     // MARK: - Enhanced Status Views
     
     private var enhancedProcessingStatusView: some View {

@@ -257,68 +257,71 @@ class JuuretApp {
     }
     
     // MARK: - Family Text Extraction
-    
-    private func extractFamilyText(familyId: String, from fileContent: String) throws -> String {
-        logDebug(.parsing, "🔍 Extracting text for family: \(familyId)")
+    // MARK: - Family Text Extraction (FIXED)
         
-        let lines = fileContent.components(separatedBy: .newlines)
-        var familyLines: [String] = []
-        var inFamily = false
-        var familyFound = false
-        
-        for line in lines {
-            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+        private func extractFamilyText(familyId: String, from fileContent: String) throws -> String {
+            logDebug(.parsing, "🔍 Extracting text for family: \(familyId)")
             
-            // Check if this line starts a family
-            if !trimmedLine.isEmpty {
-                let firstPart = trimmedLine.components(separatedBy: " ").first ?? ""
-                if FamilyIDs.validFamilyIds.contains(where: { firstPart.uppercased().hasPrefix($0) }) {
-                    // Found a family line
-                    if firstPart.uppercased().hasPrefix(familyId) {
-                        // This is our target family
-                        inFamily = true
-                        familyFound = true
-                        familyLines.append(line)
-                        continue
-                    } else if inFamily {
-                        // Found a different family, stop collecting
-                        break
-                    }
-                }
-            }
+            let lines = fileContent.components(separatedBy: .newlines)
+            var familyLines: [String] = []
+            var inFamily = false
+            var familyFound = false
             
-            // Check for end of family (blank line after family content)
-            if inFamily && trimmedLine.isEmpty {
-                // Blank line - check if next non-blank line is a family
-                let remainingLines = lines.dropFirst(lines.firstIndex(of: line) ?? 0).dropFirst()
-                for nextLine in remainingLines {
-                    let nextTrimmed = nextLine.trimmingCharacters(in: .whitespaces)
-                    if !nextTrimmed.isEmpty {
-                        let firstPart = nextTrimmed.components(separatedBy: " ").first ?? ""
-                        if FamilyIDs.validFamilyIds.contains(where: { firstPart.uppercased().hasPrefix($0) }) {
+            for line in lines {
+                let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+                
+                // Check if this line starts a family
+                if !trimmedLine.isEmpty {
+                    let firstPart = trimmedLine.components(separatedBy: " ").first ?? ""
+                    // FIXED: Corrected the logic - check if any valid family ID starts with firstPart
+                    if FamilyIDs.validFamilyIds.contains(where: { $0.hasPrefix(firstPart.uppercased()) }) {
+                        // Found a family line
+                        if firstPart.uppercased().hasPrefix(familyId) {
+                            // This is our target family
+                            inFamily = true
+                            familyFound = true
+                            familyLines.append(line)
+                            continue
+                        } else if inFamily {
+                            // Found a different family, stop collecting
                             break
                         }
                     }
                 }
-                break
+                
+                // Check for end of family (blank line after family content)
+                if inFamily && trimmedLine.isEmpty {
+                    // Blank line - check if next non-blank line is a family
+                    let remainingLines = lines.dropFirst(lines.firstIndex(of: line) ?? 0).dropFirst()
+                    for nextLine in remainingLines {
+                        let nextTrimmed = nextLine.trimmingCharacters(in: .whitespaces)
+                        if !nextTrimmed.isEmpty {
+                            let firstPart = nextTrimmed.components(separatedBy: " ").first ?? ""
+                            // FIXED: Same correction here for lookahead logic
+                            if FamilyIDs.validFamilyIds.contains(where: { $0.hasPrefix(firstPart.uppercased()) }) {
+                                break
+                            }
+                        }
+                    }
+                    break
+                }
+                
+                // If we're in the family, collect all lines
+                if inFamily {
+                    familyLines.append(line)
+                }
             }
             
-            // If we're in the family, collect all lines
-            if inFamily {
-                familyLines.append(line)
+            guard familyFound else {
+                logError(.parsing, "❌ Family \(familyId) not found in file")
+                throw JuuretError.familyNotFound(familyId)
             }
+            
+            let familyText = familyLines.joined(separator: "\n")
+            logTrace(.parsing, "Extracted \(familyLines.count) lines for family \(familyId)")
+            
+            return familyText
         }
-        
-        guard familyFound else {
-            logError(.parsing, "❌ Family \(familyId) not found in file")
-            throw JuuretError.familyNotFound(familyId)
-        }
-        
-        let familyText = familyLines.joined(separator: "\n")
-        logTrace(.parsing, "Extracted \(familyLines.count) lines for family \(familyId)")
-        
-        return familyText
-    }
     
     // MARK: - Citation Generation (Simplified)
     
