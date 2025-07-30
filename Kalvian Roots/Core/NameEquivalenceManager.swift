@@ -2,461 +2,389 @@
 //  NameEquivalenceManager.swift
 //  Kalvian Roots
 //
-//  Dynamic name equivalence learning for Finnish genealogical names
-//
-//  Created by Michael Bendio on 7/23/25.
+//  Complete file for name equivalence learning and management
 //
 
 import Foundation
 
 /**
- * NameEquivalenceManager.swift - Dynamic name equivalence learning
+ * NameEquivalenceManager - Learns and manages Finnish name equivalences
  *
- * Manages equivalences between Finnish names (e.g., Liisa = Elisabet, Johan = Juho)
- * with progressive learning that improves accuracy over time through user interaction.
+ * Handles bidirectional name equivalences for genealogical cross-reference resolution.
+ * Examples: Liisa ↔ Elisabet, Johan ↔ Juho, Matti ↔ Matias
  */
 
-/**
- * Service for managing name equivalences in Finnish genealogical research
- *
- * Features:
- * - Dynamic learning through user interaction
- * - Bidirectional equivalence storage
- * - Persistent storage across app sessions
- * - Built-in common Finnish name variants
- */
 @Observable
 class NameEquivalenceManager {
     
     // MARK: - Properties
     
-    /// User-learned equivalences (persistent across sessions)
-    private var learnedEquivalences: [String: Set<String>] = [:]
+    private var equivalences: [String: Set<String>] = [:]
+    private let userDefaultsKey = "NameEquivalences"
     
-    /// Built-in common Finnish name equivalences
-    private let builtInEquivalences: [String: Set<String>] = [
-        "liisa": ["elisabet", "lisa", "elisa"],
-        "elisabet": ["liisa", "lisa", "elisa"],
-        "johan": ["juho", "johannes", "juhana"],
-        "juho": ["johan", "johannes", "juhana"],
-        "johannes": ["johan", "juho", "juhana"],
-        "maria": ["maija", "mari"],
-        "maija": ["maria", "mari"],
-        "erik": ["eero", "erkki"],
-        "eero": ["erik", "erkki"],
-        "erkki": ["erik", "eero"],
-        "kristina": ["kirstin", "kirsti"],
-        "kirsti": ["kristina", "kirstin"],
-        "henrik": ["heikki", "henrikki"],
-        "heikki": ["henrik", "henrikki"],
-        "margareta": ["margeta", "marketta"],
-        "margeta": ["margareta", "marketta"],
-        "katharina": ["katariina", "kaarina"],
-        "katariina": ["katharina", "kaarina"],
-        "gertrud": ["kerttuli", "kerttu"],
-        "kerttu": ["gertrud", "kerttuli"]
-    ]
+    // MARK: - Computed Properties
     
-    /// Pending user confirmations (names waiting for user input)
-    private var pendingConfirmations: Set<NamePair> = []
+    var totalEquivalences: Int {
+        return equivalences.values.reduce(0) { $0 + $1.count }
+    }
     
-    /// Statistics for monitoring learning progress
-    var learningStats = LearningStatistics()
+    var equivalenceGroups: [[String]] {
+        var processed: Set<String> = []
+        var groups: [[String]] = []
+        
+        for (name, equivalentNames) in equivalences {
+            if !processed.contains(name) {
+                let group = [name] + Array(equivalentNames)
+                groups.append(group.sorted())
+                
+                // Mark all names in this group as processed
+                processed.insert(name)
+                for equivalent in equivalentNames {
+                    processed.insert(equivalent)
+                }
+            }
+        }
+        
+        return groups.sorted { $0.first ?? "" < $1.first ?? "" }
+    }
     
     // MARK: - Initialization
     
     init() {
-        loadLearnedEquivalences()
-        print("📚 NameEquivalenceManager initialized")
-        print("   Built-in equivalences: \(builtInEquivalences.count)")
-        print("   Learned equivalences: \(learnedEquivalences.count)")
+        logInfo(.nameEquivalence, "🔤 NameEquivalenceManager initialization started")
+        
+        loadEquivalences()
+        
+        logInfo(.nameEquivalence, "✅ NameEquivalenceManager initialized")
+        logDebug(.nameEquivalence, "Loaded \(totalEquivalences) name equivalences")
     }
     
     // MARK: - Core Equivalence Methods
     
     /**
      * Check if two names are equivalent
-     *
-     * Checks both built-in and learned equivalences
      */
-    func areEquivalent(_ name1: String, _ name2: String) -> Bool {
+    func areNamesEquivalent(_ name1: String, _ name2: String) -> Bool {
         let normalized1 = normalizeName(name1)
         let normalized2 = normalizeName(name2)
         
-        // Exact match
+        // Same name is always equivalent
         if normalized1 == normalized2 {
             return true
         }
         
-        // Check built-in equivalences
-        if checkBuiltInEquivalence(normalized1, normalized2) {
-            return true
-        }
-        
-        // Check learned equivalences
-        if checkLearnedEquivalence(normalized1, normalized2) {
-            return true
+        // Check stored equivalences
+        if let equivalents = equivalences[normalized1] {
+            return equivalents.contains(normalized2)
         }
         
         return false
     }
     
     /**
-     * Check equivalence with learning opportunity
-     *
-     * If names aren't known to be equivalent, may trigger user interaction
+     * Get all equivalent names for a given name
      */
-    func areEquivalentWithLearning(_ name1: String, _ name2: String) async -> Bool {
-        // First check existing equivalences
-        if areEquivalent(name1, name2) {
-            return true
-        }
-        
-        // If not equivalent and names are similar, ask user
-        if shouldAskUser(name1, name2) {
-            return await askUserAboutEquivalence(name1, name2)
-        }
-        
-        return false
-    }
-    
-    /**
-     * Get all known equivalents for a name
-     */
-    func getEquivalents(for name: String) -> Set<String> {
+    func getEquivalentNames(for name: String) -> Set<String> {
         let normalized = normalizeName(name)
-        var equivalents: Set<String> = []
         
-        // Add built-in equivalents
-        if let builtIn = builtInEquivalences[normalized] {
-            equivalents.formUnion(builtIn)
+        var allEquivalents: Set<String> = [normalized]
+        
+        if let directEquivalents = equivalences[normalized] {
+            allEquivalents.formUnion(directEquivalents)
+            
+            // Also get equivalents of equivalents (transitive closure)
+            for equivalent in directEquivalents {
+                if let indirectEquivalents = equivalences[equivalent] {
+                    allEquivalents.formUnion(indirectEquivalents)
+                }
+            }
         }
         
-        // Add learned equivalents
-        if let learned = learnedEquivalences[normalized] {
-            equivalents.formUnion(learned)
-        }
-        
-        // Add the name itself
-        equivalents.insert(normalized)
-        
-        return equivalents
+        return allEquivalents
     }
     
-    // MARK: - Learning Methods
-    
     /**
-     * Learn a new equivalence from user input
+     * Add name equivalence (bidirectional)
      */
-    func learnEquivalence(_ name1: String, _ name2: String) {
+    func addEquivalence(between name1: String, and name2: String) {
         let normalized1 = normalizeName(name1)
         let normalized2 = normalizeName(name2)
         
+        logInfo(.nameEquivalence, "➕ Adding equivalence: \(normalized1) ↔ \(normalized2)")
+        
         // Add bidirectional equivalence
-        addToLearnedEquivalences(normalized1, normalized2)
-        addToLearnedEquivalences(normalized2, normalized1)
+        addDirectionalEquivalence(from: normalized1, to: normalized2)
+        addDirectionalEquivalence(from: normalized2, to: normalized1)
         
-        // Save to persistent storage
-        saveLearnedEquivalences()
+        // Ensure transitivity - if A=B and B=C, then A=C
+        ensureTransitivity(for: normalized1)
+        ensureTransitivity(for: normalized2)
         
-        // Update statistics
-        learningStats.recordLearning(normalized1, normalized2)
+        saveEquivalences()
         
-        print("📖 Learned equivalence: \(normalized1) ↔ \(normalized2)")
+        logDebug(.nameEquivalence, "✅ Equivalence added and saved")
     }
     
     /**
-     * Mark two names as NOT equivalent
+     * Remove name equivalence
      */
-    func markAsNotEquivalent(_ name1: String, _ name2: String) {
-        let pair = NamePair(name1: normalizeName(name1), name2: normalizeName(name2))
-        pendingConfirmations.remove(pair)
+    func removeEquivalence(between name1: String, and name2: String) {
+        let normalized1 = normalizeName(name1)
+        let normalized2 = normalizeName(name2)
         
-        // Could add to a "negative equivalences" set if needed
-        learningStats.recordNonEquivalence(pair.name1, pair.name2)
+        logInfo(.nameEquivalence, "➖ Removing equivalence: \(normalized1) ↔ \(normalized2)")
         
-        print("❌ Marked as not equivalent: \(pair.name1) ↔ \(pair.name2)")
+        // Remove bidirectional equivalence
+        equivalences[normalized1]?.remove(normalized2)
+        equivalences[normalized2]?.remove(normalized1)
+        
+        // Clean up empty sets
+        if equivalences[normalized1]?.isEmpty == true {
+            equivalences.removeValue(forKey: normalized1)
+        }
+        if equivalences[normalized2]?.isEmpty == true {
+            equivalences.removeValue(forKey: normalized2)
+        }
+        
+        saveEquivalences()
+        
+        logDebug(.nameEquivalence, "✅ Equivalence removed and saved")
     }
     
     /**
-     * Ask user about potential name equivalence (async for UI integration)
+     * Check if user has been asked about this name pair before
      */
-    private func askUserAboutEquivalence(_ name1: String, _ name2: String) async -> Bool {
-        let pair = NamePair(name1: normalizeName(name1), name2: normalizeName(name2))
-        
-        // Check if we're already pending on this pair
-        if pendingConfirmations.contains(pair) {
-            return false
-        }
-        
-        pendingConfirmations.insert(pair)
-        
-        // This would integrate with UI - for now, simulate user response
-        let userResponse = await simulateUserResponse(pair)
-        
-        pendingConfirmations.remove(pair)
-        
-        if userResponse {
-            learnEquivalence(name1, name2)
-            return true
-        } else {
-            markAsNotEquivalent(name1, name2)
-            return false
-        }
-    }
-    
-    /**
-     * Simulate user response for testing (replace with real UI)
-     */
-    private func simulateUserResponse(_ pair: NamePair) async -> Bool {
-        // Simulate thinking time
-        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-        
-        // For testing, use some heuristics to simulate reasonable responses
-        let similarity = calculateSimilarity(pair.name1, pair.name2)
-        
-        // If names are very similar, more likely to be equivalent
-        if similarity > 0.7 {
-            print("🤖 Simulated user: YES - \(pair.name1) and \(pair.name2) are equivalent")
-            return true
-        } else {
-            print("🤖 Simulated user: NO - \(pair.name1) and \(pair.name2) are not equivalent")
-            return false
-        }
+    func hasBeenAskedAbout(_ name1: String, _ name2: String) -> Bool {
+        // This could track which name pairs have been presented to the user
+        // For now, return false to always ask
+        return false
     }
     
     // MARK: - Helper Methods
     
     private func normalizeName(_ name: String) -> String {
-        return name.lowercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "ä", with: "a")
-            .replacingOccurrences(of: "ö", with: "o")
-            .replacingOccurrences(of: "å", with: "a")
+        return name.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .folding(options: .diacriticInsensitive, locale: .current)
     }
     
-    private func checkBuiltInEquivalence(_ name1: String, _ name2: String) -> Bool {
-        if let equivalents = builtInEquivalences[name1] {
-            return equivalents.contains(name2)
+    private func addDirectionalEquivalence(from source: String, to target: String) {
+        if equivalences[source] == nil {
+            equivalences[source] = Set<String>()
         }
-        return false
+        equivalences[source]?.insert(target)
     }
     
-    private func checkLearnedEquivalence(_ name1: String, _ name2: String) -> Bool {
-        if let equivalents = learnedEquivalences[name1] {
-            return equivalents.contains(name2)
-        }
-        return false
-    }
-    
-    private func shouldAskUser(_ name1: String, _ name2: String) -> Bool {
-        let normalized1 = normalizeName(name1)
-        let normalized2 = normalizeName(name2)
+    private func ensureTransitivity(for name: String) {
+        guard let directEquivalents = equivalences[name] else { return }
         
-        // Don't ask if names are too different
-        let similarity = calculateSimilarity(normalized1, normalized2)
-        if similarity < 0.3 {
-            return false
+        var allEquivalents = directEquivalents
+        
+        // For each direct equivalent, add all of its equivalents
+        for equivalent in directEquivalents {
+            if let indirectEquivalents = equivalences[equivalent] {
+                allEquivalents.formUnion(indirectEquivalents)
+            }
         }
         
-        // Don't ask if we've already asked about this pair
-        let pair = NamePair(name1: normalized1, name2: normalized2)
-        if pendingConfirmations.contains(pair) {
-            return false
+        // Remove self-reference
+        allEquivalents.remove(name)
+        
+        // Update if changed
+        if allEquivalents != directEquivalents {
+            equivalences[name] = allEquivalents
+            
+            // Recursively ensure transitivity for newly added equivalents
+            for newEquivalent in allEquivalents.subtracting(directEquivalents) {
+                addDirectionalEquivalence(from: newEquivalent, to: name)
+            }
         }
-        
-        // Don't ask too frequently (rate limiting)
-        if learningStats.recentInteractions > 5 {
-            return false
-        }
-        
-        return true
-    }
-    
-    private func calculateSimilarity(_ name1: String, _ name2: String) -> Double {
-        // Simple similarity based on common characters and length
-        let set1 = Set(name1)
-        let set2 = Set(name2)
-        let intersection = set1.intersection(set2)
-        let union = set1.union(set2)
-        
-        guard !union.isEmpty else { return 0.0 }
-        
-        let jaccardSimilarity = Double(intersection.count) / Double(union.count)
-        
-        // Bonus for similar length
-        let lengthDifference = abs(name1.count - name2.count)
-        let lengthSimilarity = 1.0 - (Double(lengthDifference) / Double(max(name1.count, name2.count)))
-        
-        return (jaccardSimilarity + lengthSimilarity) / 2.0
-    }
-    
-    private func addToLearnedEquivalences(_ name1: String, _ name2: String) {
-        if learnedEquivalences[name1] == nil {
-            learnedEquivalences[name1] = Set<String>()
-        }
-        learnedEquivalences[name1]?.insert(name2)
     }
     
     // MARK: - Persistence
     
-    private func saveLearnedEquivalences() {
+    private func saveEquivalences() {
         do {
-            // Convert Set<String> to [String] for encoding
-            let encodableEquivalences = learnedEquivalences.mapValues { Array($0) }
-            let data = try JSONEncoder().encode(encodableEquivalences)
-            UserDefaults.standard.set(data, forKey: "LearnedNameEquivalences")
-            print("💾 Saved learned equivalences to UserDefaults")
+            // Convert to serializable format
+            let serializable = equivalences.mapValues { Array($0) }
+            let data = try JSONEncoder().encode(serializable)
+            UserDefaults.standard.set(data, forKey: userDefaultsKey)
+            
+            logTrace(.nameEquivalence, "💾 Equivalences saved to UserDefaults")
         } catch {
-            print("❌ Failed to save learned equivalences: \(error)")
+            logError(.nameEquivalence, "❌ Failed to save equivalences: \(error)")
         }
     }
     
-    private func loadLearnedEquivalences() {
-        guard let data = UserDefaults.standard.data(forKey: "LearnedNameEquivalences") else {
-            print("📂 No saved equivalences found")
+    private func loadEquivalences() {
+        guard let data = UserDefaults.standard.data(forKey: userDefaultsKey) else {
+            logDebug(.nameEquivalence, "No saved equivalences found")
+            loadDefaultEquivalences()
             return
         }
         
         do {
-            // Decode [String] and convert back to Set<String>
-            let decodableEquivalences = try JSONDecoder().decode([String: [String]].self, from: data)
-            learnedEquivalences = decodableEquivalences.mapValues { Set($0) }
-            print("📂 Loaded \(learnedEquivalences.count) learned equivalences")
+            let serializable = try JSONDecoder().decode([String: [String]].self, from: data)
+            equivalences = serializable.mapValues { Set($0) }
+            
+            logDebug(.nameEquivalence, "📂 Loaded \(equivalences.count) equivalence groups")
         } catch {
-            print("❌ Failed to load learned equivalences: \(error)")
-            learnedEquivalences = [:]
+            logError(.nameEquivalence, "❌ Failed to load equivalences: \(error)")
+            loadDefaultEquivalences()
         }
     }
     
-    // MARK: - Batch Operations
+    private func loadDefaultEquivalences() {
+        logInfo(.nameEquivalence, "📚 Loading default Finnish name equivalences")
+        
+        // Common Finnish name equivalences
+        let defaultPairs = [
+            ("Liisa", "Elisabet"),
+            ("Johan", "Juho"),
+            ("Matti", "Matias"),
+            ("Anna", "Annikki"),
+            ("Kustaa", "Kustavi"),
+            ("Brita", "Birgit"),
+            ("Erik", "Erkki"),
+            ("Henrik", "Heikki"),
+            ("Margareta", "Marketta"),
+            ("Kristina", "Kirstine")
+        ]
+        
+        for (name1, name2) in defaultPairs {
+            addEquivalence(between: name1, and: name2)
+        }
+        
+        logInfo(.nameEquivalence, "✅ Loaded \(defaultPairs.count) default equivalences")
+    }
+    
+    // MARK: - User Interaction Support
     
     /**
-     * Import equivalences from external source
+     * Generate user-friendly question for name equivalence
      */
-    func importEquivalences(_ equivalences: [String: [String]]) {
-        for (name, variants) in equivalences {
-            let normalized = normalizeName(name)
-            let normalizedVariants = variants.map { normalizeName($0) }
-            
-            for variant in normalizedVariants {
-                addToLearnedEquivalences(normalized, variant)
-                addToLearnedEquivalences(variant, normalized)
+    func generateEquivalenceQuestion(for name1: String, and name2: String) -> String {
+        return "Are '\(name1)' and '\(name2)' the same person? (Common Finnish name variations)"
+    }
+    
+    /**
+     * Get suggestion confidence for name similarity
+     */
+    func getSimilarityConfidence(between name1: String, and name2: String) -> Double {
+        let normalized1 = normalizeName(name1)
+        let normalized2 = normalizeName(name2)
+        
+        // Exact match after normalization
+        if normalized1 == normalized2 {
+            return 1.0
+        }
+        
+        // Known equivalence
+        if areNamesEquivalent(name1, name2) {
+            return 0.95
+        }
+        
+        // Simple similarity metrics
+        let similarity = calculateStringSimilarity(normalized1, normalized2)
+        
+        // Boost confidence for names that are likely Finnish variants
+        if isLikelyFinnishVariant(normalized1, normalized2) {
+            return min(similarity + 0.2, 1.0)
+        }
+        
+        return similarity
+    }
+    
+    private func calculateStringSimilarity(_ str1: String, _ str2: String) -> Double {
+        // Simple Levenshtein distance-based similarity
+        let maxLength = max(str1.count, str2.count)
+        guard maxLength > 0 else { return 1.0 }
+        
+        let distance = levenshteinDistance(str1, str2)
+        return 1.0 - (Double(distance) / Double(maxLength))
+    }
+    
+    private func levenshteinDistance(_ str1: String, _ str2: String) -> Int {
+        let array1 = Array(str1)
+        let array2 = Array(str2)
+        let m = array1.count
+        let n = array2.count
+        
+        var matrix = Array(repeating: Array(repeating: 0, count: n + 1), count: m + 1)
+        
+        for i in 0...m { matrix[i][0] = i }
+        for j in 0...n { matrix[0][j] = j }
+        
+        for i in 1...m {
+            for j in 1...n {
+                let cost = array1[i-1] == array2[j-1] ? 0 : 1
+                matrix[i][j] = min(
+                    matrix[i-1][j] + 1,      // deletion
+                    matrix[i][j-1] + 1,      // insertion
+                    matrix[i-1][j-1] + cost  // substitution
+                )
             }
         }
         
-        saveLearnedEquivalences()
-        print("📥 Imported \(equivalences.count) equivalence groups")
+        return matrix[m][n]
     }
     
-    /**
-     * Export learned equivalences
-     */
-    func exportEquivalences() -> [String: [String]] {
-        var exported: [String: [String]] = [:]
+    private func isLikelyFinnishVariant(_ name1: String, _ name2: String) -> Bool {
+        // Simple heuristics for Finnish name patterns
+        let commonPrefixes = ["erik", "johan", "kust", "mati"]
+        let commonSuffixes = ["nen", "ina", "ta", "tti"]
         
-        for (name, equivalents) in learnedEquivalences {
-            exported[name] = Array(equivalents)
+        for prefix in commonPrefixes {
+            if name1.hasPrefix(prefix) && name2.hasPrefix(prefix) {
+                return true
+            }
         }
         
-        return exported
-    }
-    
-    /**
-     * Clear all learned equivalences (keep built-ins)
-     */
-    func clearLearnedEquivalences() {
-        learnedEquivalences.removeAll()
-        saveLearnedEquivalences()
-        learningStats = LearningStatistics()
-        print("🗑️ Cleared all learned equivalences")
-    }
-    
-    // MARK: - Statistics and Monitoring
-    
-    func getLearningStatistics() -> LearningStatistics {
-        return learningStats
-    }
-    
-    func getEquivalenceReport() -> EquivalenceReport {
-        let totalBuiltIn = builtInEquivalences.values.reduce(0) { $0 + $1.count }
-        let totalLearned = learnedEquivalences.values.reduce(0) { $0 + $1.count }
+        for suffix in commonSuffixes {
+            if name1.hasSuffix(suffix) && name2.hasSuffix(suffix) {
+                return true
+            }
+        }
         
-        return EquivalenceReport(
-            builtInCount: builtInEquivalences.count,
-            builtInEquivalences: totalBuiltIn,
-            learnedCount: learnedEquivalences.count,
-            learnedEquivalences: totalLearned,
-            pendingConfirmations: pendingConfirmations.count,
-            learningStats: learningStats
+        return false
+    }
+    
+    // MARK: - Debugging and Statistics
+    
+    func getEquivalenceStatistics() -> EquivalenceStatistics {
+        return EquivalenceStatistics(
+            totalGroups: equivalenceGroups.count,
+            totalNames: totalEquivalences,
+            averageGroupSize: equivalenceGroups.isEmpty ? 0 : Double(totalEquivalences) / Double(equivalenceGroups.count),
+            largestGroupSize: equivalenceGroups.map { $0.count }.max() ?? 0
         )
     }
-}
-
-// MARK: - Supporting Data Structures
-
-/**
- * Name pair for tracking equivalence relationships
- */
-struct NamePair: Hashable, Codable {
-    let name1: String
-    let name2: String
     
-    init(name1: String, name2: String) {
-        // Ensure consistent ordering for comparison
-        if name1 <= name2 {
-            self.name1 = name1
-            self.name2 = name2
-        } else {
-            self.name1 = name2
-            self.name2 = name1
-        }
+    func clearAllEquivalences() {
+        logWarn(.nameEquivalence, "🗑️ Clearing all name equivalences")
+        
+        equivalences.removeAll()
+        UserDefaults.standard.removeObject(forKey: userDefaultsKey)
+        
+        logInfo(.nameEquivalence, "✅ All equivalences cleared")
     }
 }
 
-/**
- * Learning statistics for monitoring progress
- */
-struct LearningStatistics {
-    var totalLearned: Int = 0
-    var totalRejected: Int = 0
-    var recentInteractions: Int = 0
-    var lastInteractionDate: Date?
-    
-    mutating func recordLearning(_ name1: String, _ name2: String) {
-        totalLearned += 1
-        recentInteractions += 1
-        lastInteractionDate = Date()
-    }
-    
-    mutating func recordNonEquivalence(_ name1: String, _ name2: String) {
-        totalRejected += 1
-        recentInteractions += 1
-        lastInteractionDate = Date()
-    }
-    
-    var totalInteractions: Int {
-        return totalLearned + totalRejected
-    }
-    
-    var learningRate: Double {
-        guard totalInteractions > 0 else { return 0.0 }
-        return Double(totalLearned) / Double(totalInteractions)
-    }
-}
+// MARK: - Supporting Structures
 
-/**
- * Report on current equivalence state
- */
-struct EquivalenceReport {
-    let builtInCount: Int
-    let builtInEquivalences: Int
-    let learnedCount: Int
-    let learnedEquivalences: Int
-    let pendingConfirmations: Int
-    let learningStats: LearningStatistics
+struct EquivalenceStatistics {
+    let totalGroups: Int
+    let totalNames: Int
+    let averageGroupSize: Double
+    let largestGroupSize: Int
     
-    var totalEquivalences: Int {
-        return builtInEquivalences + learnedEquivalences
+    var description: String {
+        return """
+        Name Equivalence Statistics:
+        - Total groups: \(totalGroups)
+        - Total names: \(totalNames)
+        - Average group size: \(String(format: "%.1f", averageGroupSize))
+        - Largest group: \(largestGroupSize) names
+        """
     }
 }

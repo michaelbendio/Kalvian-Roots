@@ -2,63 +2,42 @@
 //  JuuretApp.swift
 //  Kalvian Roots
 //
-//  Complete application coordinator with unified workflow and MLX integration
 //
 
 import Foundation
-import SwiftUI
 
 /**
- * Main application coordinator - simplified to work with actual codebase
+ * JuuretApp.swift - Main application coordinator for genealogical research
+ *
+ * Single-user application for Michael's Finnish genealogy research.
+ * Coordinates AI parsing, file management, and family resolution.
  */
+
 @Observable
 class JuuretApp {
     
     // MARK: - Core Services
     
-    /// AI parsing service with configurable providers
     let aiParsingService: AIParsingService
-    
-    /// Cross-reference resolution service
     let familyResolver: FamilyResolver
+    let fileManager: FileManager
+    let nameEquivalenceManager = NameEquivalenceManager()
     
-    /// Name equivalence learning service
-    let nameEquivalenceManager: NameEquivalenceManager
+    // MARK: - Application State
     
-    /// File management service
-    var fileManager: FileManager
-    
-    // MARK: - State Properties
-    
-    /// Currently extracted family
-    var currentFamily: Family?
-    
-    /// Enhanced family with cross-reference data
-    var enhancedFamily: Family?
-    
-    /// Processing state
-    var isProcessing = false
-    
-    /// Error state
-    var errorMessage: String? = nil
-    
-    /// Progress tracking
-    var extractionProgress: ExtractionProgress = .idle
+    private(set) var currentFamily: Family?
+    private(set) var enhancedFamily: FamilyNetwork?
+    private(set) var extractionProgress: ExtractionProgress = .idle
+    private(set) var errorMessage: String?
     
     // MARK: - Computed Properties
     
     var isReady: Bool {
-        let ready = fileManager.isFileLoaded && aiParsingService.isConfigured
-        logTrace(.app, "App ready state: \(ready) (file: \(fileManager.isFileLoaded), ai: \(aiParsingService.isConfigured))")
-        return ready
+        fileManager.isFileLoaded && aiParsingService.isConfigured
     }
     
-    var hasCurrentFamily: Bool {
-        currentFamily != nil
-    }
-    
-    var hasEnhancedFamily: Bool {
-        enhancedFamily != nil
+    var isProcessing: Bool {
+        extractionProgress != .idle
     }
     
     var currentServiceName: String {
@@ -69,45 +48,14 @@ class JuuretApp {
         aiParsingService.availableServiceNames
     }
     
-    var localMLXAvailable: Bool {
-        MLXService.isAvailable()
-    }
-    
-    // MARK: - Initialization (Apple Silicon Optimized)
+    // MARK: - Initialization
     
     init() {
-        logInfo(.app, "🚀 JuuretApp initialization started (Apple Silicon optimized)")
+        logInfo(.app, "🚀 JuuretApp initialization started")
+        logDebug(.app, "Platform: Apple Silicon Mac (Michael's genealogy research)")
         
-        // Initialize core services
-        self.nameEquivalenceManager = NameEquivalenceManager()
-        
-        // Apple Silicon optimized AI service initialization
-        if MLXService.isAvailable() {
-            logInfo(.ai, "🚀 Apple Silicon detected - enabling MLX services")
-            
-            // Initialize AIParsingService with automatic MLX detection
-            self.aiParsingService = AIParsingService()
-            
-            // Set recommended MLX model based on hardware capabilities
-            if let recommendedModel = MLXService.getRecommendedModel() {
-                do {
-                    try aiParsingService.switchToService(named: recommendedModel.name)
-                    logInfo(.ai, "✅ Set recommended MLX model: \(recommendedModel.name)")
-                } catch {
-                    logWarn(.ai, "⚠️ Failed to switch to recommended MLX model: \(error)")
-                    logInfo(.ai, "Will use default service: \(aiParsingService.currentServiceName)")
-                }
-            }
-            
-            // Log hardware-specific information
-            let memory: UInt64 = 64
-            logInfo(.ai, "🖥️ Hardware: Apple Silicon with \(memory)GB RAM - MLX optimized")
-            
-        } else {
-            // Fallback for non-Apple Silicon (shouldn't happen in this app)
-            logWarn(.ai, "⚠️ Non-Apple Silicon detected - using cloud services only")
-            self.aiParsingService = AIParsingService()
-        }
+        // Initialize AI parsing service (handles its own platform detection)
+        self.aiParsingService = AIParsingService()
         
         // Initialize dependent services
         self.familyResolver = FamilyResolver(
@@ -140,7 +88,7 @@ class JuuretApp {
         logDebug(.app, "Ready state: \(isReady)")
     }
     
-    // MARK: - AI Service Management
+    // MARK: - AI Service Management (Fixed Method Signatures)
     
     /**
      * Switch to a different AI service
@@ -150,14 +98,17 @@ class JuuretApp {
         
         do {
             try await aiParsingService.switchToService(named: serviceName)
-        } catch {
             // Clear any error state since service changed
             if errorMessage?.contains("not configured") == true {
                 errorMessage = nil
                 logDebug(.app, "Cleared configuration error after service switch")
             }
+        } catch {
+            logError(.ai, "❌ Failed to switch AI service: \(error)")
+            errorMessage = "Failed to switch AI service: \(error.localizedDescription)"
         }
-        logInfo(.ai, "✅ Successfully switched to: \(serviceName)")
+        
+        logInfo(.ai, "✅ AI service switch completed")
     }
     
     /**
@@ -221,151 +172,158 @@ class JuuretApp {
             throw JuuretError.noFileLoaded
         }
         
-        await MainActor.run {
-            isProcessing = true
-            extractionProgress = .extractingFamily
-            errorMessage = nil
-            currentFamily = nil
-            enhancedFamily = nil
-        }
+        // Update state
+        extractionProgress = .extractingFamily
+        errorMessage = nil
+        currentFamily = nil
+        enhancedFamily = nil
         
-        defer {
-            Task { @MainActor in
-                isProcessing = false
-                extractionProgress = .idle
+        do {
+            // Extract family text
+            guard let familyText = fileManager.extractFamilyText(familyId: normalizedId) else {
+                throw JuuretError.familyNotFound(normalizedId)
             }
+            
+            logDebug(.parsing, "Family text extracted (\(familyText.count) characters)")
+            
+            // Parse family with AI
+            extractionProgress = .familyExtracted
+            let family = try await aiParsingService.parseFamily(familyId: normalizedId, familyText: familyText)
+            
+            // Update state with successful result
+            currentFamily = family
+            extractionProgress = .complete
+            
+            logInfo(.app, "✅ Family extraction completed: \(family.familyId)")
+            logDebug(.app, "Family contains: \(family.children.count) children, \(family.additionalSpouses.count) additional spouses")
+            
+        } catch {
+            extractionProgress = .idle
+            errorMessage = "Family extraction failed: \(error.localizedDescription)"
+            logError(.app, "❌ Family extraction failed: \(error)")
+            throw error
         }
-        
-        // Extract family text from file content
-        let familyText = try extractFamilyText(familyId: normalizedId, from: fileContent)
-        logDebug(.parsing, "Extracted family text length: \(familyText.count) characters")
-        
-        // Parse with AI service
-        let family = try await aiParsingService.parseFamily(
-            familyId: normalizedId,
-            familyText: familyText
-        )
-        
-        await MainActor.run {
-            self.currentFamily = family
-            self.extractionProgress = .familyExtracted
-        }
-        
-        logInfo(.parsing, "✅ Family extraction completed successfully")
-        logInfo(.parsing, "Family summary: \(family.familyId) - \(family.children.count) children")
     }
     
     /**
-     * Extract family text from file content for specific family ID
+     * Extract family with complete cross-reference resolution
      */
-    private func extractFamilyText(familyId: String, from fileContent: String) throws -> String {
-        logDebug(.parsing, "Extracting text for family: \(familyId)")
+    func extractFamilyComplete(familyId: String) async throws {
+        logInfo(.app, "🚀 Starting complete family extraction for: \(familyId)")
         
-        let lines = fileContent.components(separatedBy: .newlines)
+        // First extract the basic family
+        try await extractFamily(familyId: familyId)
         
-        var familyLines: [String] = []
-        var inFamily = false
-        var familyFound = false
-        
-        for line in lines {
-            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
-            
-            // Check if this line starts a family entry
-            if trimmedLine.uppercased().hasPrefix(familyId.uppercased()) {
-                inFamily = true
-                familyFound = true
-                familyLines.append(line)
-                continue
-            }
-            
-            // If we're in a family and hit another family ID, stop
-            if inFamily && trimmedLine.contains(" ") {
-                let firstPart = trimmedLine.components(separatedBy: " ").first ?? ""
-                if FamilyIDs.validFamilyIds.contains(where: { firstPart.uppercased().hasPrefix($0) }) {
-                    break
-                }
-            }
-            
-            // If we're in the family, collect all lines
-            if inFamily {
-                familyLines.append(line)
-            }
+        guard let family = currentFamily else {
+            throw JuuretError.noCurrentFamily
         }
         
-        guard familyFound else {
-            logError(.parsing, "❌ Family \(familyId) not found in file")
-            throw JuuretError.familyNotFound(familyId)
+        // Then resolve cross-references
+        extractionProgress = .resolvingCrossReferences
+        
+        do {
+            let network = try await familyResolver.resolveCrossReferences(for: family)
+            
+            enhancedFamily = network
+            extractionProgress = .complete
+            
+            logInfo(.app, "✅ Complete family extraction finished")
+            logInfo(.app, "Network contains: \(network.totalResolvedFamilies) cross-referenced families")
+            
+        } catch {
+            extractionProgress = .complete // Keep the basic family even if cross-references fail
+            logWarn(.app, "⚠️ Cross-reference resolution failed: \(error)")
+            // Don't throw - partial success is still useful
         }
-        
-        let familyText = familyLines.joined(separator: "\n")
-        logTrace(.parsing, "Extracted \(familyLines.count) lines for family \(familyId)")
-        
-        return familyText
     }
     
-    // MARK: - Citation Generation (Simplified)
+    // MARK: - Citation Generation
     
     /**
-     * Generate basic citation for person
+     * Generate citation for current family
      */
-    func generateCitation(for person: Person, in family: Family) -> String {
-        logInfo(.citation, "📖 Generating citation for: \(person.name)")
-        
-        // Simple citation generation
-        let pages = family.pageReferences.joined(separator: ", ")
-        var citation = "Information from pages \(pages) includes:\n"
-        citation += "\(person.name)"
-        
-        if let patronymic = person.patronymic {
-            citation += " \(patronymic)"
+    func generateCitation() -> String? {
+        guard let family = currentFamily else {
+            logWarn(.citation, "⚠️ No current family for citation generation")
+            return nil
         }
         
-        if let birthDate = person.birthDate {
-            citation += ", b \(birthDate)"
-        }
+        logInfo(.citation, "📝 Generating citation for family: \(family.familyId)")
         
-        if let deathDate = person.deathDate {
-            citation += ", d \(deathDate)"
-        }
+        // Use enhanced family if available, otherwise basic family
+        let citationFamily = enhancedFamily?.mainFamily ?? family
         
-        if let spouse = person.spouse {
-            citation += ", m \(spouse)"
-            if let marriageDate = person.marriageDate {
-                citation += " \(marriageDate)"
-            }
-        }
+        let citation = CitationGenerator.generateMainFamilyCitation(family: family)
         
-        logDebug(.citation, "Generated citation length: \(citation.count) characters")
+        logInfo(.citation, "✅ Citation generated (\(citation.count) characters)")
+        logTrace(.citation, "Citation preview: \(String(citation.prefix(100)))...")
+        
         return citation
     }
     
     /**
-     * Generate Hiski URL for person verification
+     * Generate citation for specific person in family context
      */
-    func generateHiskiQuery(for date: String, eventType: EventType) -> String {
-        logInfo(.citation, "🔗 Generating Hiski URL for date: \(date), event: \(eventType)")
+    func generatePersonCitation(for person: Person) -> String? {
+        guard let family = currentFamily else {
+            logWarn(.citation, "⚠️ No current family for person citation")
+            return nil
+        }
         
-        let cleanDate = date.replacingOccurrences(of: ".", with: "")
-        let url = "https://hiski.genealogia.fi/hiski?en+query_\(eventType.rawValue)_\(cleanDate)"
+        logInfo(.citation, "📝 Generating person citation for: \(person.displayName)")
         
-        logDebug(.citation, "Generated Hiski URL: \(url)")
-        return url
+        // Find the appropriate family context for this person
+        let contextFamily = findAppropriateFamily(for: person)
+        
+        let citation = CitationGenerator.generateAsChildCitation(for: person, in: contextFamily)
+        
+        logInfo(.citation, "✅ Person citation generated")
+        return citation
     }
     
-    // MARK: - Debug and Testing
+    private func findAppropriateFamily(for person: Person) -> Family {
+        // If we have an enhanced family network, try to find the best context
+        if let network = enhancedFamily {
+            // Logic to determine which family provides the best context for this person
+            // For now, return the main family
+            return network.mainFamily
+        }
+        
+        return currentFamily!
+    }
+    
+    // MARK: - State Management
     
     /**
-     * Load sample family for testing
+     * Clear current family and reset state
      */
-    @MainActor
-    func loadSampleFamily() {
-        logInfo(.app, "📋 Loading sample family")
+    func clearCurrentFamily() {
+        logInfo(.app, "🧹 Clearing current family state")
         
-        currentFamily = Family.sampleFamily()
-        extractionProgress = .familyExtracted
+        currentFamily = nil
+        enhancedFamily = nil
+        extractionProgress = .idle
         errorMessage = nil
         
-        logDebug(.app, "Sample family loaded successfully")
+        logDebug(.app, "Family state cleared")
+    }
+    
+    /**
+     * Check if a specific family ID is valid
+     */
+    func isValidFamilyId(_ familyId: String) -> Bool {
+        let normalizedId = familyId.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Basic validation - could be enhanced with actual family ID list
+        let pattern = #"^[A-ZÄÖÅ-]+(?:\s+[IVX]+)?\s+\d+[A-Z]?$"#
+        
+        do {
+            let regex = try NSRegularExpression(pattern: pattern)
+            let range = NSRange(normalizedId.startIndex..<normalizedId.endIndex, in: normalizedId)
+            return regex.firstMatch(in: normalizedId, options: [], range: range) != nil
+        } catch {
+            logWarn(.app, "⚠️ Regex validation failed: \(error)")
+            return false
+        }
     }
 }
-

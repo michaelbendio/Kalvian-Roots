@@ -1,17 +1,16 @@
 //
-//  AISettingsView.swift
+//  AISettingsView.swift - FIXED
 //  Kalvian Roots
 //
-//  AI service configuration view compatible with actual codebase
 //
 
 import SwiftUI
 
 /**
- * AI Settings view that works with your actual MLXService and AIParsingService
+ * AI Settings view - Fixed for clean build
  */
 struct AISettingsView: View {
-    @Bindable var juuretApp: JuuretApp
+    @Environment(JuuretApp.self) private var juuretApp  // FIXED: Use @Environment instead of @Bindable
     @State private var showingAPIKeyInput = false
     @State private var tempAPIKey = ""
     @State private var selectedServiceForConfig: String = ""
@@ -37,9 +36,9 @@ struct AISettingsView: View {
                 availableServicesSection
                 
                 // MLX Status (if available)
-                if MLXService.isAvailable() {
-                    mlxStatusSection
-                }
+                #if os(macOS)
+                mlxStatusSection
+                #endif
                 
                 Spacer()
             }
@@ -141,6 +140,7 @@ struct AISettingsView: View {
     
     // MARK: - MLX Status Section
     
+    #if os(macOS)
     private var mlxStatusSection: some View {
         GroupBox("MLX Local AI") {
             VStack(alignment: .leading, spacing: 12) {
@@ -165,7 +165,7 @@ struct AISettingsView: View {
                     }
                 }
                 
-                Text("Local AI processing on Apple Silicon - no API costs, enhanced privacy")
+                Text("Local AI processing - no API costs, enhanced privacy")
                     .font(.genealogyCallout)
                     .foregroundColor(.secondary)
                 
@@ -174,13 +174,20 @@ struct AISettingsView: View {
                 if !mlxServices.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Available Models:")
-                            .font(.genealogyCallout)
-                            .fontWeight(.medium)
+                            .font(.genealogyCaption)
+                            .foregroundColor(.secondary)
                         
                         ForEach(mlxServices, id: \.self) { service in
-                            Text("• \(service)")
-                                .font(.genealogyCaption)
-                                .foregroundColor(.secondary)
+                            HStack {
+                                Text("• \(service)")
+                                    .font(.genealogyCaption)
+                                Spacer()
+                                if service == juuretApp.currentServiceName {
+                                    Text("Current")
+                                        .font(.genealogyCaption)
+                                        .foregroundColor(.blue)
+                                }
+                            }
                         }
                     }
                 }
@@ -188,51 +195,48 @@ struct AISettingsView: View {
             .padding()
         }
     }
+    #endif
     
     // MARK: - API Key Input Sheet
     
     private var apiKeyInputSheet: some View {
         NavigationView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(spacing: 20) {
                 Text("Configure \(selectedServiceForConfig)")
                     .font(.genealogyTitle)
                 
                 Text("Enter your API key for \(selectedServiceForConfig)")
                     .font(.genealogyBody)
                     .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
                 
                 SecureField("API Key", text: $tempAPIKey)
                     .textFieldStyle(.roundedBorder)
-                    .font(.genealogyMonospace)
+                    .font(.genealogyBody)
                 
-                if !tempAPIKey.isEmpty {
-                    Text("Key length: \(tempAPIKey.count) characters")
-                        .font(.genealogyCaption)
-                        .foregroundColor(.secondary)
+                HStack {
+                    Button("Cancel") {
+                        showingAPIKeyInput = false
+                        tempAPIKey = ""
+                    }
+                    .buttonStyle(.bordered)
+                    
+                    Spacer()
+                    
+                    Button("Save") {
+                        saveAPIKey()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(tempAPIKey.isEmpty)
                 }
                 
                 Spacer()
             }
             .padding()
-            .navigationTitle("API Configuration")
-            #if os(iOS)
+            .navigationTitle("API Key")
+            #if !os(macOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        showingAPIKeyInput = false
-                        tempAPIKey = ""
-                    }
-                }
-                
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        saveAPIKey()
-                    }
-                    .disabled(tempAPIKey.isEmpty)
-                }
-            }
         }
     }
     
@@ -286,19 +290,20 @@ struct AISettingsView: View {
     
     private func switchToService(_ serviceName: String) {
         Task {
-            do {
-                try await juuretApp.switchAIService(to: serviceName)
-            } catch {
-                print("Failed to switch AI service: \(error)")
-            }
+            await juuretApp.switchAIService(to: serviceName)
         }
     }
     
     private func saveAPIKey() {
         Task {
-            await juuretApp.configureAIService(apiKey: tempAPIKey)
-            showingAPIKeyInput = false
-            tempAPIKey = ""
+            do {
+                try await juuretApp.configureAIService(apiKey: tempAPIKey)
+                showingAPIKeyInput = false
+                tempAPIKey = ""
+            } catch {
+                // Handle configuration errors silently for now
+                print("Failed to configure API key: \(error)")
+            }
         }
     }
     
@@ -320,6 +325,6 @@ struct AISettingsView: View {
 // MARK: - Preview
 
 #Preview {
-    AISettingsView(juuretApp: JuuretApp())
+    AISettingsView()
+        .environment(JuuretApp())
 }
-

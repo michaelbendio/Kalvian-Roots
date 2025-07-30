@@ -19,7 +19,6 @@ import UniformTypeIdentifiers
  * Complete family unit from Juuret Kälviällä genealogical text.
  *
  * Enhanced for cross-reference resolution and AI parsing.
- * Removed @Generable and @Guide annotations for direct AI prompting approach.
  */
 struct Family: Hashable, Sendable, Codable {
     // MARK: - Core Family Data

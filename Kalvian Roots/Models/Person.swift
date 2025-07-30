@@ -18,7 +18,6 @@ import Foundation
  * Individual person with Finnish naming conventions and genealogical data.
  *
  * Enhanced for cross-reference resolution and AI parsing.
- * Removed @Generable and @Guide annotations for direct AI prompting approach.
  */
 struct Person: Hashable, Sendable, Codable {
     // MARK: - Core Genealogical Data
