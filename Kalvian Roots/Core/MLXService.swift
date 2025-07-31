@@ -91,6 +91,7 @@ class MLXService: AIService {
     }
     
     func parseFamily(familyId: String, familyText: String) async throws -> String {
+        print("🚨 DEBUG: MLXService.parseFamily called with \(familyId)")  // ### REMOVE THIS LINE
         logInfo(.ai, "🤖 \(name) parsing family: \(familyId)")
         logDebug(.ai, "Using MLX model: \(modelName)")
         logTrace(.ai, "Family text length: \(familyText.count) characters")
