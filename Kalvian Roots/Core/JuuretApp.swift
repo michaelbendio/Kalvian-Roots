@@ -257,71 +257,112 @@ class JuuretApp {
     }
     
     // MARK: - Family Text Extraction
-    // MARK: - Family Text Extraction (FIXED)
+    
+    private func extractFamilyText(familyId: String, from fileContent: String) throws -> String {
+        logDebug(.parsing, "🔍 Extracting text for family: \(familyId)")
         
-        private func extractFamilyText(familyId: String, from fileContent: String) throws -> String {
-            logDebug(.parsing, "🔍 Extracting text for family: \(familyId)")
+        let lines = fileContent.components(separatedBy: .newlines)
+        var familyLines: [String] = []
+        var inTargetFamily = false
+        var familyFound = false
+        
+        let normalizedTargetId = familyId.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        for (index, line) in lines.enumerated() {
+            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
             
-            let lines = fileContent.components(separatedBy: .newlines)
-            var familyLines: [String] = []
-            var inFamily = false
-            var familyFound = false
-            
-            for line in lines {
-                let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+            // Check if this line starts a new family
+            if let currentFamilyId = extractFamilyIdFromLine(trimmedLine) {
+                let normalizedCurrentId = currentFamilyId.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
                 
-                // Check if this line starts a family
-                if !trimmedLine.isEmpty {
-                    let firstPart = trimmedLine.components(separatedBy: " ").first ?? ""
-                    // FIXED: Corrected the logic - check if any valid family ID starts with firstPart
-                    if FamilyIDs.validFamilyIds.contains(where: { $0.hasPrefix(firstPart.uppercased()) }) {
-                        // Found a family line
-                        if firstPart.uppercased().hasPrefix(familyId) {
-                            // This is our target family
-                            inFamily = true
-                            familyFound = true
-                            familyLines.append(line)
-                            continue
-                        } else if inFamily {
-                            // Found a different family, stop collecting
-                            break
-                        }
-                    }
+                if normalizedCurrentId == normalizedTargetId {
+                    // Found our target family
+                    inTargetFamily = true
+                    familyFound = true
+                    familyLines.append(line)
+                    logDebug(.parsing, "Found target family header: \(trimmedLine)")
+                } else if inTargetFamily {
+                    // Started a different family - stop collecting
+                    logDebug(.parsing, "Found next family: \(currentFamilyId), stopping collection")
+                    break
+                } else {
+                    // Not our target family, continue searching
+                    inTargetFamily = false
                 }
+            } else if inTargetFamily {
+                // We're in our target family, collect all lines
+                familyLines.append(line)
                 
-                // Check for end of family (blank line after family content)
-                if inFamily && trimmedLine.isEmpty {
-                    // Blank line - check if next non-blank line is a family
-                    let remainingLines = lines.dropFirst(lines.firstIndex(of: line) ?? 0).dropFirst()
-                    for nextLine in remainingLines {
-                        let nextTrimmed = nextLine.trimmingCharacters(in: .whitespaces)
-                        if !nextTrimmed.isEmpty {
-                            let firstPart = nextTrimmed.components(separatedBy: " ").first ?? ""
-                            // FIXED: Same correction here for lookahead logic
-                            if FamilyIDs.validFamilyIds.contains(where: { $0.hasPrefix(firstPart.uppercased()) }) {
-                                break
+                // Optional: Stop at empty line after substantial content
+                // But only if we have children section and notes
+                if trimmedLine.isEmpty && familyLines.count > 10 {
+                    let content = familyLines.joined(separator: "\n")
+                    if content.contains("Lapset") || content.contains("★") {
+                        // Check if next non-empty line starts a new family
+                        let remainingLines = Array(lines.dropFirst(index + 1))
+                        for nextLine in remainingLines {
+                            let nextTrimmed = nextLine.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !nextTrimmed.isEmpty {
+                                if extractFamilyIdFromLine(nextTrimmed) != nil {
+                                    // Next non-empty line is a family - we can stop
+                                    logDebug(.parsing, "Found end of family at empty line before: \(nextTrimmed)")
+                                    break
+                                } else {
+                                    // Next line is content, keep going
+                                    break
+                                }
                             }
                         }
                     }
-                    break
-                }
-                
-                // If we're in the family, collect all lines
-                if inFamily {
-                    familyLines.append(line)
                 }
             }
-            
-            guard familyFound else {
-                logError(.parsing, "❌ Family \(familyId) not found in file")
-                throw JuuretError.familyNotFound(familyId)
-            }
-            
-            let familyText = familyLines.joined(separator: "\n")
-            logTrace(.parsing, "Extracted \(familyLines.count) lines for family \(familyId)")
-            
-            return familyText
         }
+        
+        guard familyFound else {
+            logError(.parsing, "❌ Family \(familyId) not found in file")
+            throw JuuretError.familyNotFound(familyId)
+        }
+        
+        let familyText = familyLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        logInfo(.parsing, "✅ Extracted family text for \(familyId) (\(familyText.count) characters)")
+        logDebug(.parsing, "Family text preview: \(String(familyText.prefix(200)))...")
+        
+        // Additional validation
+        if familyText.count < 50 {
+            logWarn(.parsing, "⚠️ Extracted family text seems too short: \(familyText.count) characters")
+            logWarn(.parsing, "Full extracted text: '\(familyText)'")
+        }
+        
+        return familyText
+    }
+
+    private func extractFamilyIdFromLine(_ line: String) -> String? {
+        // More robust family ID extraction
+        // Pattern: FAMILY_NAME [ROMAN_NUMERALS] NUMBER[LETTER], page(s) ...
+        // Examples: "KORPI 6, pages 105-106", "SIKALA II 3, page 45", "HANHISALO III 1A, page 200"
+        
+        let patterns = [
+            // Pattern 1: FAMILY_NAME NUMBER, page(s)
+            #"^([A-ZÄÖÅ-]+\s+\d+[A-Z]?)(?:,|\s)"#,
+            // Pattern 2: FAMILY_NAME ROMAN NUMBER, page(s)
+            #"^([A-ZÄÖÅ-]+\s+(?:II|III|IV|V|VI)\s+\d+[A-Z]?)(?:,|\s)"#,
+            // Pattern 3: Just the family name and number (more permissive)
+            #"^([A-ZÄÖÅ-]+(?:\s+(?:II|III|IV|V|VI))?\s+\d+[A-Z]?)"#
+        ]
+        
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern),
+               let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
+               let range = Range(match.range(at: 1), in: line) {
+                let familyId = String(line[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+                logTrace(.parsing, "Extracted family ID: '\(familyId)' from line: '\(line)'")
+                return familyId
+            }
+        }
+        
+        return nil
+    }
     
     // MARK: - Citation Generation (Simplified)
     

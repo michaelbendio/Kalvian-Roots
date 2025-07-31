@@ -126,6 +126,7 @@ class AIParsingService {
     func parseFamily(familyId: String, familyText: String) async throws -> Family {
         logInfo(.parsing, "🔍 Starting family parsing for: \(familyId)")
         logDebug(.parsing, "Using AI service: \(currentServiceName)")
+        logDebug(.parsing, "🔍 ACTUAL SERVICE CLASS: \(type(of: currentAIService))")  // REMOVE THIS LINE
         
         // Validate service configuration
         guard currentAIService.isConfigured else {
