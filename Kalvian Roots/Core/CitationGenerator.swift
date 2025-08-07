@@ -67,6 +67,32 @@ struct EnhancedCitationGenerator {
         
         return citation
     }
+
+    /**
+     * Generate as_child style citation with birth "b." and marriage years only.
+     */
+    static func generateAsChildCitation(for person: Person, in family: Family) -> String {
+        var citation = "Information of \(family.pageReferenceString) includes:\n"
+
+        // Parents
+        citation += formatParent(family.father)
+        if let mother = family.mother { citation += formatParent(mother) }
+        if let marriageDate = extractParentsMarriageDate(from: family) { citation += "m \(normalizeDate(marriageDate))\n" }
+
+        // Children (birth plus marriage year only, no following references)
+        citation += "Children\n"
+        for child in family.children {
+            var line = "\(child.name)"
+            if let birthDate = child.birthDate { line += ", b. \(normalizeDate(birthDate))" }
+            if let spouse = child.spouse {
+                let year = extractMarriageYear(from: child) ?? child.bestMarriageDate?.suffix(4).map(String.init) ?? ""
+                if !year.isEmpty { line += ", m. \(spouse) \(year)" } else { line += ", m. \(spouse)" }
+            }
+            citation += line + "\n"
+        }
+
+        return citation
+    }
     
     /**
      * Generate as_child citation for a person in their parents' family

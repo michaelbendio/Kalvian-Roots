@@ -207,7 +207,7 @@ class FamilyResolver {
         // Method 2: Try birth date search
         if let birthDate = person.birthDate {
             logDebug(.resolver, "Trying birth date search for: \(birthDate)")
-            return try await findFamilyByBirthDate(person: person)
+            if let family = try await findFamilyByBirthDate(person: person) { return family }
         }
         
         logWarn(.resolver, "⚠️ No resolution method available for: \(person.displayName)")
@@ -226,7 +226,7 @@ class FamilyResolver {
         // Method 2: Try spouse-based search
         if let spouse = person.spouse {
             logDebug(.resolver, "Trying spouse-based search for: \(spouse)")
-            return try await findFamilyBySpouse(person: person)
+            if let family = try await findFamilyBySpouse(person: person) { return family }
         }
         
         logWarn(.resolver, "⚠️ No resolution method available for: \(person.displayName)")
@@ -281,7 +281,7 @@ class FamilyResolver {
         }
         
         // Search for birth date in file content
-        let candidates = searchForBirthDate(birthDate, in: fileContent)
+        let candidates = await searchForBirthDate(birthDate, in: fileContent)
         
         if candidates.isEmpty {
             logWarn(.resolver, "⚠️ No families found with birth date: \(birthDate)")
@@ -336,17 +336,109 @@ class FamilyResolver {
         return foundFamily ? familyLines.joined(separator: "\n") : nil
     }
     
-    private func searchForBirthDate(_ birthDate: String, in content: String) -> [Family] {
-        // Simplified implementation - would need to search for birth date and extract surrounding family context
+    private func searchForBirthDate(_ birthDate: String, in content: String) async -> [Family] {
         logDebug(.resolver, "Searching for birth date: \(birthDate)")
-        return []
+        var families: [Family] = []
+        // Grep-like scan: collect family blocks that contain the birthDate string
+        let lines = content.components(separatedBy: .newlines)
+        var buffer: [String] = []
+        var inFamily = false
+        var currentHeader: String?
+
+        func flushIfContainsDate() {
+            guard let header = currentHeader else { return }
+            let block = buffer.joined(separator: "\n")
+            if block.contains(birthDate) {
+                // Extract ID from header, reuse main parser to build Family
+                if let id = extractFamilyIdFromHeader(header), let text = extractFamilyText(familyId: id, from: content) {
+                    if let fam = try? await awaitParse(familyId: id, text: text) { families.append(fam) }
+                }
+            }
+        }
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let headerId = extractFamilyIdFromHeader(trimmed) {
+                if inFamily { flushIfContainsDate() }
+                inFamily = true
+                currentHeader = trimmed
+                buffer = [line]
+            } else if inFamily {
+                buffer.append(line)
+                if trimmed.isEmpty { // family delimiter heuristic
+                    flushIfContainsDate()
+                    inFamily = false
+                    buffer.removeAll()
+                    currentHeader = nil
+                }
+            }
+        }
+        if inFamily { flushIfContainsDate() }
+        return families
+    }
+
+    private func awaitParse(familyId: String, text: String) async -> Family? {
+        do { return try await aiParsingService.parseFamily(familyId: familyId, familyText: text) }
+        catch { return nil }
+    }
+
+    private func extractFamilyIdFromHeader(_ line: String) -> String? {
+        let pattern = #"^([A-ZÄÖÅ-]+(?:\s+[IVX]+)?\s+\d+[A-Z]?)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) else {
+            return nil
+        }
+        let matchRange = Range(match.range(at: 1), in: line)!
+        return String(line[matchRange])
     }
     
     private func scoreCandidates(_ candidates: [Family], for person: Person) -> [FamilyMatch] {
-        // Score candidates based on name similarity, spouse match, etc.
-        return candidates.map { family in
-            FamilyMatch(family: family, confidence: 0.5, reasons: [], warnings: [])
+        // Score on: birth date match, name or name-equivalence, spouse (or variant), marriage year (last two digits)
+        func lastTwo(_ year: String?) -> String? {
+            guard let y = year?.trimmingCharacters(in: .whitespaces), y.count >= 2 else { return nil }
+            return String(y.suffix(2))
         }
+
+        let personYear2 = lastTwo(person.bestMarriageDate)
+        let equivalents = nameEquivalenceManager.getEquivalentNames(for: person.name)
+
+        let scored = candidates.map { family -> FamilyMatch in
+            var score: Double = 0
+            var reasons: [String] = []
+
+            // Check birth date in any person line
+            if family.allPersons.contains(where: { $0.birthDate == person.birthDate }) {
+                score += 0.4; reasons.append("birth date match")
+            }
+
+            // Name similarity in parents/children
+            if family.allPersons.contains(where: { p in
+                p.name.caseInsensitiveCompare(person.name) == .orderedSame || equivalents.contains(p.name.lowercased())
+            }) {
+                score += 0.25; reasons.append("name or variant match")
+            }
+
+            // Spouse name or variant
+            if let spouse = person.spouse, !spouse.isEmpty {
+                let spouseEq = nameEquivalenceManager.getEquivalentNames(for: spouse)
+                if family.allPersons.contains(where: { p in
+                    p.name.caseInsensitiveCompare(spouse) == .orderedSame || spouseEq.contains(p.name.lowercased())
+                }) {
+                    score += 0.2; reasons.append("spouse or variant match")
+                }
+            }
+
+            // Marriage year (last two digits) heuristic
+            if let y2 = personYear2 {
+                if family.allPersons.contains(where: { p in (p.bestMarriageDate?.hasSuffix(y2) ?? false) }) {
+                    score += 0.15; reasons.append("marriage year match (yy)")
+                }
+            }
+
+            return FamilyMatch(family: family, confidence: min(score, 1.0), reasons: reasons, warnings: [])
+        }
+
+        return scored.sorted { $0.confidence > $1.confidence }
     }
     
     // MARK: - Date Utilities (Fixed)
