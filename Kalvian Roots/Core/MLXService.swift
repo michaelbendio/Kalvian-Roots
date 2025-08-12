@@ -56,6 +56,13 @@ class MLXService: AIService {
     
     // MARK: - Static Factory Methods
     
+    /// OpenAI GPT-OSS 20B parameter model
+    static func gpt_oss_20B() throws -> MLXService {
+        guard isAvailable() else {
+            throw AIServiceError.notConfigured("MLX not available on this platform")
+        }
+        return MLXService(name: "MLX GPT-OSS-20B (Local)", modelName: "gpt-oss-20b")
+    }
     /// High-performance 30B parameter model for complex families
     static func qwen3_30B() throws -> MLXService {
         guard isAvailable() else {
@@ -88,7 +95,7 @@ class MLXService: AIService {
         
         do {
             if memory >= 32 {
-                return try qwen3_30B()
+                return try gpt_oss_20B()
             } else if memory >= 16 {
                 return try llama3_2_8B()
             } else {
@@ -203,7 +210,7 @@ class MLXService: AIService {
         // Remove the enable_thinking parameter (doesn't exist)
         let requestBody = [
             "prompt": prompt,
-            "max_tokens": 3500,
+            "max_tokens": 1000,
             "model": modelName
         ] as [String: Any]
         
@@ -440,6 +447,8 @@ Return JSON structure:
     
     private func getModelPath() -> String {
         switch modelName {
+        case "gpt-oss-20b":
+            return "gpt-oss-20b"
         case "Qwen3-30B-A3B-4bit":
             return "Qwen3-30B-A3B-4bit"
         case "Llama3.2-8B-4bit":

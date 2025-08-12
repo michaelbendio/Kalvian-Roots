@@ -248,14 +248,27 @@ class JuuretApp {
      */
     func extractFamilyComplete(familyId: String) async throws {
         logInfo(.app, "🚀 Starting complete family extraction for: \(familyId)")
-        logInfo(.app, "Note: Complete extraction with cross-references not yet implemented")
         
-        // For now, just do basic extraction
-        try await extractFamily(familyId: familyId)
+        // Create family web workflow
+        let workflow = FamilyWebWorkflow(
+            aiParsingService: aiParsingService,
+            familyResolver: familyResolver
+        )
         
-        logDebug(.app, "Complete extraction delegated to basic extraction")
+        // Set up observation of workflow progress
+        // (workflow publishes progress updates that UI can observe)
+        
+        // Start the workflow
+        try await workflow.processFamilyWeb(for: familyId)
+        
+        // Update app state with results
+        await MainActor.run {
+            currentFamily = workflow.getFamilyNetwork()?.mainFamily
+            enhancedFamily = currentFamily  // Or however you want to handle this
+            extractionProgress = .complete
+        }
     }
-    
+
     // MARK: - Family Text Extraction
     
     private func extractFamilyText(familyId: String, from fileContent: String) throws -> String {
