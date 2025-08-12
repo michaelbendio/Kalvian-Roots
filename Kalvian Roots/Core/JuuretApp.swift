@@ -44,6 +44,9 @@ class JuuretApp {
     
     /// Extraction progress tracking
     var extractionProgress: ExtractionProgress = .idle
+
+    // MARK: - Manual Citation Overrides
+    private var manualCitations: [String: String] = [:] // key: familyId|personId
     
     // MARK: - Computed Properties
     
@@ -113,6 +116,9 @@ class JuuretApp {
         
         logInfo(.app, "🎉 JuuretApp initialization complete")
         logDebug(.app, "Ready state: \(isReady)")
+
+        // Load manual citations
+        loadManualCitations()
     }
     
     // MARK: - AI Service Management
@@ -384,31 +390,15 @@ class JuuretApp {
      */
     func generateCitation(for person: Person, in family: Family) -> String {
         logInfo(.citation, "📖 Generating citation for: \(person.name)")
-        
-        // Simple citation generation
-        let pages = family.pageReferences.joined(separator: ", ")
-        var citation = "Information from pages \(pages) includes:\n"
-        citation += "\(person.name)"
-        
-        if let patronymic = person.patronymic {
-            citation += " \(patronymic)"
+
+        // Manual override first
+        if let override = getManualCitation(for: person, in: family) {
+            logDebug(.citation, "Using manual citation override")
+            return override
         }
-        
-        if let birthDate = person.birthDate {
-            citation += ", b \(birthDate)"
-        }
-        
-        if let deathDate = person.deathDate {
-            citation += ", d \(deathDate)"
-        }
-        
-        if let spouse = person.spouse {
-            citation += ", m \(spouse)"
-            if let marriageDate = person.marriageDate {
-                citation += " \(marriageDate)"
-            }
-        }
-        
+
+        // Default to enhanced main-family citation for now
+        let citation = EnhancedCitationGenerator.generateMainFamilyCitation(family: family)
         logDebug(.citation, "Generated citation length: \(citation.count) characters")
         return citation
     }
@@ -437,12 +427,19 @@ class JuuretApp {
     /**
      * Generate Hiski URL for person verification
      */
+    @available(*, deprecated, message: "Use generateHiskiQuery(for:person,eventType:) instead")
     func generateHiskiQuery(for date: String, eventType: EventType) -> String {
-        logInfo(.citation, "🔗 Generating Hiski URL for date: \(date), event: \(eventType)")
-        
         let cleanDate = date.replacingOccurrences(of: ".", with: "")
-        let url = "https://hiski.genealogia.fi/hiski?en+query_\(eventType.rawValue)_\(cleanDate)"
-        
+        return "https://hiski.genealogia.fi/hiski?en+query_\(eventType.rawValue)_\(cleanDate)"
+    }
+
+    func generateHiskiQuery(for person: Person, eventType: EventType) -> String? {
+        logInfo(.citation, "🔗 Generating Hiski URL for person: \(person.displayName), event: \(eventType)")
+        guard let query = HiskiQuery.from(person: person, eventType: eventType) else {
+            logWarn(.citation, "No suitable data to build Hiski query for \(eventType)")
+            return nil
+        }
+        let url = query.queryURL
         logDebug(.citation, "Generated Hiski URL: \(url)")
         return url
     }
@@ -480,7 +477,34 @@ class JuuretApp {
     func resolveCrossReferences() async throws {
         guard let currentFamily = self.currentFamily else { return }
         let network = try await familyResolver.resolveCrossReferences(for: currentFamily)
-        // Optionally update enhancedFamily or handle network as needed
-        self.enhancedFamily = network.mainFamily // or whatever behavior you want
+        self.enhancedFamily = network.mainFamily
+    }
+
+    // MARK: - Manual Citation Persistence
+    private func manualCitationKey(familyId: String, personId: String) -> String { "\(familyId)|\(personId)" }
+
+    private func loadManualCitations() {
+        if let data = UserDefaults.standard.data(forKey: "ManualCitations"),
+           let dict = try? JSONDecoder().decode([String: String].self, from: data) {
+            manualCitations = dict
+            logDebug(.citation, "Loaded \(manualCitations.count) manual citations")
+        }
+    }
+
+    private func saveManualCitations() {
+        if let data = try? JSONEncoder().encode(manualCitations) {
+            UserDefaults.standard.set(data, forKey: "ManualCitations")
+        }
+    }
+
+    func setManualCitation(_ citation: String, for person: Person, in family: Family) {
+        let key = manualCitationKey(familyId: family.familyId, personId: person.id)
+        manualCitations[key] = citation
+        saveManualCitations()
+        logInfo(.citation, "Saved manual citation for \(person.displayName) in \(family.familyId)")
+    }
+
+    func getManualCitation(for person: Person, in family: Family) -> String? {
+        manualCitations[manualCitationKey(familyId: family.familyId, personId: person.id)]
     }
 }

@@ -16,7 +16,7 @@ import Foundation
 class MLXService: AIService {
     let name: String
     private let modelName: String
-    private let baseURL = "http://127.0.0.1:8765"
+    private let baseURL = "http://127.0.0.1:8080"
     
     var isConfigured: Bool {
         // For now, MLX is always configured if it was created

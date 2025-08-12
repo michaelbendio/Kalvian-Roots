@@ -230,7 +230,7 @@ struct Person: Hashable, Sendable, Codable, Identifiable {
         }
         
         // Allow partial dates like "1727" or "∞ 51"
-        if date.matches(regex: #"^\d{4}$"#) || date.contains("∞") {
+        if date.matches(regex: #"^\d{4}$"#) || date.matches(regex: #"^\d{1,2}$"#) || date.contains("∞") || date.matches(regex: #"^n\s+\d{4}$"#) {
             return true
         }
         

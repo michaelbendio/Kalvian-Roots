@@ -126,7 +126,7 @@ struct JuuretView: View {
                 Button("DeepSeek") {
                     Task {
                         do {
-                            try await juuretApp.switchAIService(to: "DeepSeek-V3")
+                            try await juuretApp.switchAIService(to: "DeepSeek")
                         } catch {
                             logError(.ui, "Failed to switch AI Service: \(error)")
                             juuretApp.errorMessage = "Failed to switch AI Service: \(error.localizedDescription)"
@@ -336,7 +336,7 @@ struct JuuretView: View {
             // Birth date (clickable for Hiski)
             if let birthDate = person.birthDate {
                 Button(action: {
-                    showHiskiQuery(for: birthDate, eventType: .birth)
+                    showHiskiQuery(for: person, eventType: .birth)
                 }) {
                     Text("Birth: \(birthDate)")
                         .font(.genealogyCallout) // Enhanced font
@@ -349,7 +349,7 @@ struct JuuretView: View {
             // Death date (clickable for Hiski)
             if let deathDate = person.deathDate {
                 Button(action: {
-                    showHiskiQuery(for: deathDate, eventType: .death)
+                    showHiskiQuery(for: person, eventType: .death)
                 }) {
                     Text("Death: \(deathDate)")
                         .font(.genealogyCallout) // Enhanced font
@@ -406,11 +406,15 @@ struct JuuretView: View {
         logDebug(.citation, "Generated citation length: \(citationText.count) characters")
     }
     
-    private func showHiskiQuery(for date: String, eventType: EventType) {
-        logInfo(.ui, "User requested Hiski query for: \(date) (\(eventType))")
-        hiskiResult = juuretApp.generateHiskiQuery(for: date, eventType: eventType)
-        showingHiskiResult = true
-        logDebug(.citation, "Generated Hiski URL: \(hiskiResult)")
+    private func showHiskiQuery(for person: Person, eventType: EventType) {
+        logInfo(.ui, "User requested Hiski query for: \(person.displayName) (\(eventType))")
+        if let url = juuretApp.generateHiskiQuery(for: person, eventType: eventType) {
+            hiskiResult = url
+            showingHiskiResult = true
+            logDebug(.citation, "Generated Hiski URL: \(hiskiResult)")
+        } else {
+            logWarn(.citation, "Insufficient data to generate Hiski URL")
+        }
     }
     
     private func showSpouseCitation(spouseName: String, in family: Family) {
