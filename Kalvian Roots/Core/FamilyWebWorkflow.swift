@@ -21,7 +21,6 @@ class FamilyWebWorkflow {
     
     private let aiParsingService: AIParsingService
     private let familyResolver: FamilyResolver
-    private let citationGenerator: CitationGenerator
     
     // MARK: - Published State
     
@@ -40,7 +39,6 @@ class FamilyWebWorkflow {
     init(aiParsingService: AIParsingService, familyResolver: FamilyResolver) {
         self.aiParsingService = aiParsingService
         self.familyResolver = familyResolver
-        self.citationGenerator = CitationGenerator()
     }
     
     // MARK: - Main Workflow
@@ -51,8 +49,8 @@ class FamilyWebWorkflow {
     func processFamilyWeb(for familyId: String) async throws {
         isProcessing = true
         progress = 0.0
-        activeCitations.clear()
-        processingErrors.clear()
+        activeCitations.removeAll()
+        processingErrors.removeAll()
         
         defer {
             isProcessing = false
@@ -65,7 +63,7 @@ class FamilyWebWorkflow {
             progress = 0.2
             
             // Generate initial citations for nuclear family
-            await generateAndActivateCitations(for: nuclearFamily, type: .nuclear)
+            generateAndActivateCitations(for: nuclearFamily, type: .nuclear)
             
             // Step 2: Resolve cross-references (60% progress total)
             currentStep = "Resolving family relationships..."
@@ -74,7 +72,7 @@ class FamilyWebWorkflow {
             
             // Step 3: Generate enhanced citations (100% progress)
             currentStep = "Generating enhanced citations..."
-            await generateEnhancedCitations()
+            generateEnhancedCitations()
             progress = 1.0
             
             currentStep = "Complete"
@@ -96,80 +94,124 @@ class FamilyWebWorkflow {
     private func resolveFamilyNetwork(nuclearFamily: Family) async throws -> FamilyNetwork {
         logInfo(.resolver, "🕸️ Building family network for: \(nuclearFamily.familyId)")
         
-        let network = try await familyResolver.resolveFamilyNetwork(for: nuclearFamily)
+        // ✅ FIXED: Use correct method name from FamilyResolver
+        let network = try await familyResolver.resolveCrossReferences(for: nuclearFamily)
         
         // Update UI progressively as families are resolved
-        await updateCitationsFromNetwork(network)
+        updateCitationsFromNetwork(network)
         
         return network
     }
     
-    @MainActor
     private func generateAndActivateCitations(for family: Family, type: CitationType) {
         logInfo(.citation, "📄 Generating \(type) citations for: \(family.familyId)")
         
-        // Generate citations using existing CitationGenerator
-        let familyCitations = citationGenerator.generateFamilyCitations(family: family)
+        // ✅ FIXED: Use static methods that actually exist
+        let mainCitation = CitationGenerator.generateMainFamilyCitation(family: family)
         
-        // Activate citations in UI
-        for (personName, citation) in familyCitations {
-            activeCitations[personName] = citation.displayText
+        // Generate citations for each person in family based on type
+        switch type {
+        case .nuclear:
+            // For nuclear family, use main family citation for the family unit
+            activeCitations[family.familyId] = mainCitation
+            
+            // Generate as-child citations for parents who have references
+            for parent in family.allParents {
+                if parent.asChildReference != nil {
+                    let asChildCitation = CitationGenerator.generateAsChildCitation(for: parent, in: family)
+                    activeCitations[parent.name] = asChildCitation
+                }
+            }
+            
+        case .asChild:
+            // Generate as-child citations for specific person
+            for person in family.allPersons {
+                let citation = CitationGenerator.generateAsChildCitation(for: person, in: family)
+                activeCitations[person.name] = citation
+            }
+            
+        case .asParent:
+            // Generate main family citations (this person as parent)
+            activeCitations[family.familyId] = mainCitation
+            
+        case .enhanced:
+            // Generate enhanced citations with cross-reference data
+            activeCitations[family.familyId] = mainCitation
         }
         
-        logInfo(.citation, "✅ Activated \(familyCitations.count) citations")
+        logInfo(.citation, "✅ Activated citations for family: \(family.familyId)")
     }
     
-    @MainActor
     private func updateCitationsFromNetwork(_ network: FamilyNetwork) {
         logInfo(.citation, "🔄 Updating citations from resolved network")
         
-        // Update citations for as_child families
+        // ✅ FIXED: Use static methods that return String directly
+        
+        // Update citations for as-child families (where parents came from)
         for (personName, asChildFamily) in network.asChildFamilies {
-            let citations = citationGenerator.generateFamilyCitations(family: asChildFamily)
-            for (citationPersonName, citation) in citations {
-                activeCitations[citationPersonName] = citation.displayText
+            if let person = findPersonInMainFamily(named: personName) {
+                let citation = CitationGenerator.generateAsChildCitation(for: person, in: asChildFamily)
+                activeCitations[personName] = citation
             }
         }
         
-        // Update citations for as_parent families
+        // Update citations for as-parent families (where children are parents)
         for (personName, asParentFamily) in network.asParentFamilies {
-            let citations = citationGenerator.generateFamilyCitations(family: asParentFamily)
-            for (citationPersonName, citation) in citations {
-                activeCitations[citationPersonName] = citation.displayText
-            }
+            let citation = CitationGenerator.generateMainFamilyCitation(family: asParentFamily)
+            activeCitations[personName] = citation
         }
         
-        // Update citations for spouse as_child families
+        // Update citations for spouse as-child families
         for (spouseName, spouseFamily) in network.spouseAsChildFamilies {
-            let citations = citationGenerator.generateFamilyCitations(family: spouseFamily)
-            for (citationPersonName, citation) in citations {
-                activeCitations[citationPersonName] = citation.displayText
+            // Check if this spouse exists in our main family
+            if network.mainFamily.children.contains(where: { $0.spouse == spouseName }) {
+                // Generate citation for the spouse's family
+                let citation = CitationGenerator.generateMainFamilyCitation(family: spouseFamily)
+                activeCitations[spouseName] = citation
             }
         }
         
         logInfo(.citation, "✅ Updated citations from network - total active: \(activeCitations.count)")
     }
     
-    @MainActor
     private func generateEnhancedCitations() {
         guard let network = familyNetwork else { return }
         
         logInfo(.citation, "✨ Generating enhanced citations with cross-reference data")
         
-        // Generate enhanced citations for married children who have as_parent families
+        // ✅ FIXED: Use actual methods that exist
         for child in network.mainFamily.marriedChildren {
             if let asParentFamily = network.getAsParentFamily(for: child) {
-                // Generate enhanced citation with death/marriage dates from as_parent family
-                let enhancedCitation = citationGenerator.generateEnhancedChildCitation(
-                    child: child,
-                    nuclearFamily: network.mainFamily,
-                    asParentFamily: asParentFamily
-                )
-                activeCitations[child.displayName] = enhancedCitation.displayText
+                // Generate enhanced citation using the as-parent family where child is a parent
+                let enhancedCitation = CitationGenerator.generateMainFamilyCitation(family: asParentFamily)
+                activeCitations[child.name] = enhancedCitation
+            }
+            
+            // Also generate as-child citation if the child has cross-reference data
+            if child.asChildReference != nil {
+                let asChildCitation = CitationGenerator.generateAsChildCitation(for: child, in: network.mainFamily)
+                activeCitations["\(child.name)_asChild"] = asChildCitation
+            }
+        }
+        
+        // Generate enhanced citations for parents with resolved as-child families
+        for parent in network.mainFamily.allParents {
+            if let asChildFamily = network.asChildFamilies[parent.name] {
+                let asChildCitation = CitationGenerator.generateAsChildCitation(for: parent, in: asChildFamily)
+                activeCitations["\(parent.name)_asChild"] = asChildCitation
             }
         }
         
         logInfo(.citation, "✅ Enhanced citations complete")
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func findPersonInMainFamily(named name: String) -> Person? {
+        guard let family = familyNetwork?.mainFamily else { return nil }
+        
+        // Check all persons in the family
+        return family.allPersons.first { $0.name.lowercased() == name.lowercased() }
     }
     
     // MARK: - Public Access Methods

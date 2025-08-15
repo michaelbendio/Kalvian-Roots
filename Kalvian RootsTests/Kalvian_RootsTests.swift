@@ -48,7 +48,7 @@ struct Kalvian_RootsTests {
     // MARK: - Citation generation (main family)
     @Test func testMainFamilyCitation() async throws {
         let family = Family.sampleFamily()
-        let citation = EnhancedCitationGenerator.generateMainFamilyCitation(family: family)
+        let citation = CitationGenerator.generateMainFamilyCitation(family: family)
 
         // Basic structure checks
         #expect(citation.contains("Information on pages 105, 106 includes:"))
@@ -62,7 +62,7 @@ struct Kalvian_RootsTests {
         let family = Family.sampleFamily()
         // Choose father as the target person in parent's family context
         let person = family.father
-        let citation = EnhancedCitationGenerator.generateAsChildCitation(for: person, in: family)
+        let citation = CitationGenerator.generateAsChildCitation(for: person, in: family)
 
         // Should use b. for birth and show marriage year (not 8-digit date formatting)
         #expect(citation.contains("Children"))

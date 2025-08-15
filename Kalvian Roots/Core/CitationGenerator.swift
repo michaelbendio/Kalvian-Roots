@@ -15,7 +15,7 @@ import Foundation
  * 2. As_child citations (person in their parents' family)
  * 3. Spouse as_child citations (spouse in their parents' family)
  */
-struct EnhancedCitationGenerator {
+struct CitationGenerator {
     
     /**
      * Generate main family citation with proper formatting
@@ -69,34 +69,9 @@ struct EnhancedCitationGenerator {
     }
 
     /**
-     * Generate as_child style citation with birth "b." and marriage years only.
-     */
-    static func generateAsChildCitation(for person: Person, in family: Family) -> String {
-        var citation = "Information of \(family.pageReferenceString) includes:\n"
-
-        // Parents
-        citation += formatParent(family.father)
-        if let mother = family.mother { citation += formatParent(mother) }
-        if let marriageDate = extractParentsMarriageDate(from: family) { citation += "m \(normalizeDate(marriageDate))\n" }
-
-        // Children (birth plus marriage year only, no following references)
-        citation += "Children\n"
-        for child in family.children {
-            var line = "\(child.name)"
-            if let birthDate = child.birthDate { line += ", b. \(normalizeDate(birthDate))" }
-            if let spouse = child.spouse {
-                let year = extractMarriageYear(from: child) ?? child.bestMarriageDate?.suffix(4).map(String.init) ?? ""
-                if !year.isEmpty { line += ", m. \(spouse) \(year)" } else { line += ", m. \(spouse)" }
-            }
-            citation += line + "\n"
-        }
-
-        return citation
-    }
-    
-    /**
      * Generate as_child citation for a person in their parents' family
      * Used for: parents showing where they came from
+     * This is the ONLY generateAsChildCitation method - consolidated from the duplicate
      */
     static func generateAsChildCitation(for person: Person, in family: Family) -> String {
         var citation = "Information on \(family.pageReferenceString) includes:\n\n"
@@ -202,48 +177,17 @@ struct EnhancedCitationGenerator {
      * Extract parents' marriage date from family data
      */
     private static func extractParentsMarriageDate(from family: Family) -> String? {
-        // Try father's marriage date first
-        if let fatherMarriage = family.father.bestMarriageDate, !fatherMarriage.isEmpty {
-            return fatherMarriage
-        }
-        
-        // Try mother's marriage date
-        if let motherMarriage = family.mother?.bestMarriageDate, !motherMarriage.isEmpty {
-            return motherMarriage
-        }
-        
-        // If neither parent has marriage date, the AI parsing may have missed it
-        // This should be improved in the AI prompt, not hardcoded here
-        return nil
+        return family.father.bestMarriageDate ?? family.mother?.bestMarriageDate
     }
     
     /**
-     * Extract marriage year from child's data, handling malformed input
+     * Extract marriage year from person's data
      */
-    private static func extractMarriageYear(from child: Person) -> String? {
-        guard let marriageDate = child.bestMarriageDate else { return nil }
+    private static func extractMarriageYear(from person: Person) -> String? {
+        guard let marriageDate = person.bestMarriageDate else { return nil }
         
-        // Handle various formats:
-        // "73" → "1773"
-        // "1773" → "1773"
-        // "14.10.1750" → "1750"
-        
-        // Try to find a 4-digit year first
-        if let match = marriageDate.range(of: #"\b(1\d{3})\b"#, options: .regularExpression) {
-            return String(marriageDate[match])
-        }
-        
-        // Try to find a 2-digit year that needs century prefix
-        if let match = marriageDate.range(of: #"\b(\d{2})\b"#, options: .regularExpression) {
-            let yearString = String(marriageDate[match])
-            if let year = Int(yearString), year >= 0 && year <= 99 {
-                // Assume 1700s for genealogical data
-                return "17\(String(format: "%02d", year))"
-            }
-        }
-        
-        // Extract year from full date format DD.MM.YYYY
-        if let match = marriageDate.range(of: #"\b\d{1,2}\.\d{1,2}\.(\d{4})\b"#, options: .regularExpression) {
+        // Try to extract 4-digit year
+        if let match = marriageDate.range(of: #"\b(\d{4})\b"#, options: .regularExpression) {
             let fullMatch = String(marriageDate[match])
             let components = fullMatch.components(separatedBy: ".")
             if components.count == 3 {
@@ -273,23 +217,5 @@ struct EnhancedCitationGenerator {
         
         // Handle partial dates or return as-is
         return date
-    }
-}
-
-// MARK: - Legacy CitationGenerator (for backward compatibility)
-
-struct CitationGenerator {
-    /**
-     * Legacy method - redirects to enhanced generator
-     */
-    static func generateMainFamilyCitation(family: Family) -> String {
-        return EnhancedCitationGenerator.generateMainFamilyCitation(family: family)
-    }
-    
-    /**
-     * Legacy method - redirects to enhanced generator
-     */
-    static func generateAsChildCitation(for person: Person, in family: Family) -> String {
-        return EnhancedCitationGenerator.generateAsChildCitation(for: person, in: family)
     }
 }

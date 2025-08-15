@@ -398,7 +398,7 @@ class JuuretApp {
         }
 
         // Default to enhanced main-family citation for now
-        let citation = EnhancedCitationGenerator.generateMainFamilyCitation(family: family)
+        let citation = CitationGenerator.generateMainFamilyCitation(family: family)
         logDebug(.citation, "Generated citation length: \(citation.count) characters")
         return citation
     }

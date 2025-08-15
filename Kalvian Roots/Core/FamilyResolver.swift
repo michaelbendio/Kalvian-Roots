@@ -345,7 +345,7 @@ class FamilyResolver {
         var inFamily = false
         var currentHeader: String?
 
-        func flushIfContainsDate() {
+        func flushIfContainsDate() async {
             guard let header = currentHeader else { return }
             let block = buffer.joined(separator: "\n")
             if block.contains(birthDate) {
@@ -359,21 +359,21 @@ class FamilyResolver {
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if let headerId = extractFamilyIdFromHeader(trimmed) {
-                if inFamily { flushIfContainsDate() }
+                if inFamily { await flushIfContainsDate() }
                 inFamily = true
                 currentHeader = trimmed
                 buffer = [line]
             } else if inFamily {
                 buffer.append(line)
                 if trimmed.isEmpty { // family delimiter heuristic
-                    flushIfContainsDate()
+                    await flushIfContainsDate()
                     inFamily = false
                     buffer.removeAll()
                     currentHeader = nil
                 }
             }
         }
-        if inFamily { flushIfContainsDate() }
+        if inFamily { await flushIfContainsDate() }
         return families
     }
 
@@ -535,3 +535,4 @@ enum FamilyResolverError: LocalizedError {
         }
     }
 }
+
