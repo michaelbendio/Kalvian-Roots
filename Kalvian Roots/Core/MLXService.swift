@@ -132,71 +132,181 @@ class MLXService: AIService {
     func parseFamily(familyId: String, familyText: String) async throws -> String {
         logInfo(.ai, "🤖 \(name) parsing family: \(familyId)")
         logDebug(.ai, "Using MLX model: \(modelName)")
-        logTrace(.ai, "Family text length: \(familyText.count) characters")
         logDebug(.ai, "📝 MLX parseFamily called with real family text")
         
-        // Check if we got a very short family text (likely extraction issue)
+        // Validate family text length
         if familyText.count < 100 {
             logWarn(.ai, "⚠️ Family text unusually short (\(familyText.count) chars)")
-            logWarn(.ai, "⚠️ This suggests a family text extraction issue")
             logWarn(.ai, "📝 Short text: '\(familyText)'")
-            logWarn(.ai, "🔄 Using mock response due to insufficient family text")
             return createMockFamilyJSON(familyId: familyId)
         }
         
-        // Check if MLX server is available before attempting to parse
-        let serverRunning = await isMLXServerRunning()
-        logInfo(.ai, "🏥 MLX server health check result: \(serverRunning ? "RUNNING" : "NOT RUNNING")")
+        // Enhanced server detection
+        logInfo(.ai, "🔍 Checking MLX server availability...")
         
-        if !serverRunning {
-            logWarn(.ai, "⚠️ MLX server not running at \(baseURL)")
-            logInfo(.ai, "💡 Start MLX server with: python -m mlx_lm.server --model ~/.kalvian_roots_mlx/models/\(getModelPath()) --port 8080")
-            logInfo(.ai, "📝 Using mock response for now - see MLX setup guide")
-            return createMockFamilyJSON(familyId: familyId)
-        }
+        let serverWorking = await isMLXServerRunning()
         
-        logInfo(.ai, "✅ MLX server is running, attempting real AI processing...")
-        logDebug(.ai, "📝 Family text to parse (\(familyText.count) chars): \(familyText)")
-        
-        logInfo(.ai, "🚀 Proceeding with real MLX AI processing...")
-        logDebug(.ai, "🔍 Will try multiple endpoints to find working MLX API")
-        
-        do {
-            // Your custom MLX server uses /generate endpoint
-            logDebug(.ai, "🔍 Using custom MLX server /generate endpoint")
-            let request = try createCustomMLXRequest(familyId: familyId, familyText: familyText)
-            let response = try await sendMLXRequest(request)
-            let validatedJSON = try validateCustomMLXResponse(response)
-            logInfo(.ai, "✅ MLX parsing successful with custom /generate endpoint")
-            logDebug(.ai, "🎯 Real AI response received (not mock): \(String(validatedJSON.prefix(100)))...")
-            return validatedJSON
+        if !serverWorking {
+            // Fallback to endpoint detection
+            let serverRunning = await isMLXServerRunning()
             
-        } catch {
-            logError(.ai, "❌ MLX parsing failed for \(familyId): \(error)")
-            // Fallback to mock response if MLX fails
-            logWarn(.ai, "🔄 Using mock response as fallback")
-            return createMockFamilyJSON(familyId: familyId)
+            if !serverRunning {
+                logWarn(.ai, "⚠️ MLX server not running at \(baseURL)")
+                logInfo(.ai, "💡 To start MLX server:")
+                logInfo(.ai, "   cd ~/.kalvian_roots_mlx")
+                logInfo(.ai, "   python -m mlx_lm.server --model models/\(getModelPath()) --port 8080")
+                logInfo(.ai, "📝 Using mock response - start server for real AI processing")
+                return createMockFamilyJSON(familyId: familyId)
+            }
+            
+            logWarn(.ai, "⚠️ MLX server detected but test generation failed")
+            logInfo(.ai, "💡 Server might be starting up or overloaded")
         }
+        
+        // Attempt real AI processing with retries
+        var lastError: Error?
+        let maxRetries = 3
+        
+        for attempt in 1...maxRetries {
+            do {
+                logInfo(.ai, "🚀 Attempt \(attempt)/\(maxRetries): MLX AI processing...")
+                
+                let request = try createCustomMLXRequest(familyId: familyId, familyText: familyText)
+                let response = try await sendMLXRequest(request)
+                let validatedJSON = try validateCustomMLXResponse(response)
+                
+                logInfo(.ai, "✅ MLX parsing successful on attempt \(attempt)")
+                logDebug(.ai, "🎯 Real AI response: \(String(validatedJSON.prefix(100)))...")
+                return validatedJSON
+                
+            } catch AIServiceError.httpError(let code, let message) where code == 422 {
+                // 422 might indicate model loading or invalid request format
+                logWarn(.ai, "⚠️ MLX returned 422 (attempt \(attempt)): \(message)")
+                if attempt < maxRetries {
+                    logInfo(.ai, "🔄 Waiting 2s before retry (model might be loading)...")
+                    try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                }
+                lastError = AIServiceError.httpError(code, message)
+                
+            } catch AIServiceError.httpError(let code, let message) where code >= 500 {
+                // Server errors - retry
+                logWarn(.ai, "⚠️ MLX server error \(code) (attempt \(attempt)): \(message)")
+                if attempt < maxRetries {
+                    logInfo(.ai, "🔄 Waiting 1s before retry...")
+                    try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+                }
+                lastError = AIServiceError.httpError(code, message)
+                
+            } catch {
+                logError(.ai, "❌ MLX parsing failed (attempt \(attempt)): \(error)")
+                lastError = error
+                
+                if attempt < maxRetries {
+                    logInfo(.ai, "🔄 Retrying in 1s...")
+                    try await Task.sleep(nanoseconds: 1_000_000_000)
+                }
+            }
+        }
+        
+        // All retries failed
+        logError(.ai, "❌ All MLX attempts failed. Last error: \(lastError?.localizedDescription ?? "Unknown")")
+        logWarn(.ai, "🔄 Falling back to mock response")
+        
+        // Return mock with more informative message
+        return createDetailedMockFamilyJSON(familyId: familyId, error: lastError)
+    }
+    
+    private func createDetailedMockFamilyJSON(familyId: String, error: Error?) -> String {
+        let errorMessage = error?.localizedDescription ?? "Unknown MLX error"
+        
+        logWarn(.ai, "🔄 Creating detailed mock JSON response")
+        logInfo(.ai, "💡 Error details: \(errorMessage)")
+        logInfo(.ai, "💡 Check that MLX server is running and model is loaded")
+        
+        return """
+        {
+          "familyId": "\(familyId)",
+          "pageReferences": ["999"],
+          "father": {
+            "name": "Mock Father",
+            "patronymic": "Mockp.",
+            "birthDate": "01.01.1700",
+            "noteMarkers": []
+          },
+          "mother": {
+            "name": "Mock Mother", 
+            "patronymic": "Mockt.",
+            "birthDate": "01.01.1705",
+            "noteMarkers": []
+          },
+          "additionalSpouses": [],
+          "children": [
+            {
+              "name": "Mock Child",
+              "birthDate": "01.01.1730",
+              "noteMarkers": []
+            }
+          ],
+          "notes": [
+            "MOCK RESPONSE - MLX processing failed",
+            "Error: \(errorMessage)",
+            "Start MLX server: python -m mlx_lm.server --model ~/.kalvian_roots_mlx/models/\(getModelPath()) --port 8080"
+          ],
+          "childrenDiedInfancy": null
+        }
+        """
     }
     
     // MARK: - MLX Server Communication
     
     private func isMLXServerRunning() async -> Bool {
-        do {
-            let url = URL(string: "\(baseURL)/health")!
-            let (_, response) = try await URLSession.shared.data(from: url)
-            
-            if let httpResponse = response as? HTTPURLResponse {
-                let isRunning = httpResponse.statusCode == 200
-                logDebug(.ai, "MLX server health check: \(isRunning ? "✅ Running" : "❌ Not running")")
-                return isRunning
+        // Try multiple common MLX endpoints to detect if server is actually running
+        let endpointsToTest = [
+            "/generate",     // Your custom endpoint
+            "/v1/chat/completions",  // OpenAI-compatible endpoint
+            "/",             // Root endpoint
+            "/health"        // Health endpoint (if it exists)
+        ]
+        
+        for endpoint in endpointsToTest {
+            do {
+                let url = URL(string: "\(baseURL)\(endpoint)")!
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 5.0  // Quick timeout for health checks
+                
+                // For POST endpoints, we need to send a minimal request
+                if endpoint == "/generate" {
+                    request.httpMethod = "POST"
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    
+                    // Minimal test request
+                    let testBody = [
+                        "prompt": "test",
+                        "max_tokens": 1
+                    ] as [String: Any]
+                    request.httpBody = try JSONSerialization.data(withJSONObject: testBody)
+                } else {
+                    request.httpMethod = "GET"
+                }
+                
+                let (_, response) = try await URLSession.shared.data(for: request)
+                
+                if let httpResponse = response as? HTTPURLResponse {
+                    // Accept any valid HTTP response (not just 200)
+                    // Even 404 or 422 means the server is running
+                    if httpResponse.statusCode < 500 {
+                        logDebug(.ai, "MLX server detected via \(endpoint): HTTP \(httpResponse.statusCode)")
+                        return true
+                    }
+                }
+                
+            } catch {
+                logTrace(.ai, "Endpoint \(endpoint) not responding: \(error.localizedDescription)")
             }
-            
-            return false
-        } catch {
-            logDebug(.ai, "MLX server not reachable: \(error.localizedDescription)")
-            return false
         }
+        
+        logDebug(.ai, "MLX server not reachable on any endpoint")
+        return false
     }
     
     private func createCustomMLXRequest(familyId: String, familyText: String) throws -> URLRequest {
@@ -220,32 +330,15 @@ class MLXService: AIService {
         logTrace(.ai, "Custom MLX request created for /generate endpoint")
         return request
     }
-    
+   
     private func createFamilyParsingPrompt(familyId: String, familyText: String) -> String {
         return """
-<|im_start|>assistant
-/no_think
+    Extract Finnish genealogical data as JSON. Output only the JSON object.
 
-<|im_start|>user
-Extract Finnish genealogical data as JSON. Output only the JSON object.
-
-\(familyText)
-
-Return JSON structure:
-{
-  "familyId": "\(familyId)",
-  "pageReferences": [],
-  "father": {"name": "", "patronymic": "", "birthDate": "", "deathDate": "", "spouse": "", "marriageDate": "", "asChildReference": "", "familySearchId": "", "noteMarkers": []},
-  "mother": {"name": "", "patronymic": "", "birthDate": "", "deathDate": "", "spouse": "", "marriageDate": "", "asChildReference": "", "familySearchId": "", "noteMarkers": []},
-  "additionalSpouses": [],
-  "children": [],
-  "notes": [],
-  "childrenDiedInfancy": null
-}<|im_end|>
-<|im_start|>assistant
-"""
+    \(familyText)
+    """
     }
-    
+
     private func sendMLXRequest(_ request: URLRequest) async throws -> Data {
         let (data, response) = try await URLSession.shared.data(for: request)
         
@@ -260,7 +353,108 @@ Return JSON structure:
         
         return data
     }
-    
+   
+    private func transformQwenResponseToFamily(_ qwenJSON: String, familyId: String) throws -> String {
+        guard let jsonData = qwenJSON.data(using: .utf8),
+              let qwenData = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+            throw AIServiceError.invalidResponse("Could not parse Qwen3 JSON")
+        }
+        
+        // Extract entries array
+        guard let entries = qwenData["entries"] as? [[String: Any]] else {
+            logWarn(.ai, "No entries found in Qwen3 response")
+            throw AIServiceError.invalidResponse("No entries found")
+        }
+        
+        logInfo(.ai, "🔄 Transforming Qwen3 format to Swift Family format")
+        logDebug(.ai, "Found \(entries.count) entries to transform")
+        
+        // Extract father (first entry) and mother (second entry)
+        var father: [String: Any]?
+        var mother: [String: Any]?
+        var children: [[String: Any]] = []
+        
+        for (index, entry) in entries.enumerated() {
+            guard let name = entry["name"] as? String, !name.isEmpty else {
+                continue // Skip entries without names
+            }
+            
+            let person: [String: Any] = [
+                "name": name,
+                "patronymic": NSNull(),
+                "birthDate": entry["date"] as? String ?? NSNull(),
+                "deathDate": entry["death_date"] as? String ?? NSNull(),
+                "marriageDate": NSNull(),
+                "spouse": NSNull(),
+                "asChildReference": extractFamilyReference(from: entry["note"] as? String) ?? NSNull(),
+                "familySearchId": extractFamilySearchId(from: entry["source"] as? String) ?? NSNull(),
+                "noteMarkers": []
+            ]
+            
+            if index == 0 {
+                father = person
+                logDebug(.ai, "Set father: \(name)")
+            } else if index == 1 {
+                mother = person
+                logDebug(.ai, "Set mother: \(name)")
+            } else {
+                children.append(person)
+                logDebug(.ai, "Added child: \(name)")
+            }
+        }
+        
+        // Create Swift Family structure
+        let familyData: [String: Any] = [
+            "familyId": familyId,
+            "pageReferences": [qwenData["pages"] as? String ?? ""],
+            "father": father ?? createEmptyPerson(name: "Unknown Father"),
+            "mother": mother,
+            "additionalSpouses": [],
+            "children": children,
+            "notes": [],
+            "childrenDiedInfancy": NSNull()
+        ]
+        
+        // Convert back to JSON
+        let transformedData = try JSONSerialization.data(withJSONObject: familyData, options: [])
+        let transformedJSON = String(data: transformedData, encoding: .utf8)!
+        
+        logInfo(.ai, "✅ Successfully transformed to Swift format")
+        logDebug(.ai, "Father: \(father?["name"] ?? "None"), Mother: \(mother?["name"] ?? "None"), Children: \(children.count)")
+        
+        return transformedJSON
+    }
+
+    private func extractFamilyReference(from note: String?) -> String? {
+        guard let note = note else { return nil }
+        // Extract {Family Reference} from note
+        let pattern = #"\{([^}]+)\}"#
+        if let range = note.range(of: pattern, options: .regularExpression) {
+            return String(note[range]).replacingOccurrences(of: "{", with: "").replacingOccurrences(of: "}", with: "")
+        }
+        return nil
+    }
+
+    private func extractFamilySearchId(from source: String?) -> String? {
+        guard let source = source else { return nil }
+        // Extract <ID> from source
+        return source.replacingOccurrences(of: "<", with: "").replacingOccurrences(of: ">", with: "")
+    }
+
+    private func createEmptyPerson(name: String) -> [String: Any] {
+        return [
+            "name": name,
+            "patronymic": NSNull(),
+            "birthDate": NSNull(),
+            "deathDate": NSNull(),
+            "marriageDate": NSNull(),
+            "spouse": NSNull(),
+            "asChildReference": NSNull(),
+            "familySearchId": NSNull(),
+            "noteMarkers": []
+        ]
+    }
+
     private func validateCustomMLXResponse(_ data: Data) throws -> String {
         guard let responseString = String(data: data, encoding: .utf8) else {
             throw AIServiceError.invalidResponse("Could not decode custom MLX response as UTF-8")
@@ -268,49 +462,53 @@ Return JSON structure:
         
         logTrace(.ai, "Raw custom MLX response: \(responseString)")
         
-        // Debug: Pretty-print the full response
-        do {
-            if let jsonData = responseString.data(using: .utf8) {
-                let jsonObject = try JSONSerialization.jsonObject(with: jsonData, options: [])
-                if let prettyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: .prettyPrinted),
-                   let prettyString = String(data: prettyData, encoding: .utf8) {
-                    logDebug(.ai, "📝 Pretty-printed MLX response:")
-                    logDebug(.ai, "\(prettyString)")
-                }
-            }
-        } catch {
-            logDebug(.ai, "📝 Could not pretty-print response (not JSON): \(responseString)")
-        }
-        
-        // Your custom server returns JSON with "response" field
         do {
             if let jsonResponse = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 if let generatedText = jsonResponse["response"] as? String {
                     logDebug(.ai, "Found generated text in response field")
                     
-                    // Debug: Log the extracted text before processing
-                    logDebug(.ai, "📝 Generated text from MLX:")
-                    logDebug(.ai, "📝 Length: \(generatedText.count) characters")
-                    logDebug(.ai, "📝 Preview: \(String(generatedText.prefix(200)))...")
+                    // DEBUG: Log the raw generated text
+                    logDebug(.ai, "📝 Raw generated text: \(String(generatedText.prefix(200)))...")
                     
-                    // The response might be JSON-escaped, so try to unescape it
-                    var cleanedText = generatedText
+                    // Try to extract JSON from the generated text
+                    let cleanedJSON = try extractJSONFromGeneratedText(generatedText)
                     
-                    // If it's JSON-escaped, unescape it
-                    if cleanedText.contains("\\\"") {
-                        cleanedText = cleanedText.replacingOccurrences(of: "\\\"", with: "\"")
-                        cleanedText = cleanedText.replacingOccurrences(of: "\\n", with: "\n")
-                        cleanedText = cleanedText.replacingOccurrences(of: "\\\\", with: "\\")
-                        logDebug(.ai, "📝 Text after unescaping: \(String(cleanedText.prefix(200)))...")
+                    // DEBUG: Log the cleaned JSON
+                    logDebug(.ai, "📝 Cleaned JSON: \(String(cleanedJSON.prefix(200)))...")
+                    
+                    // Parse the cleaned JSON to see its structure
+                    if let jsonData = cleanedJSON.data(using: .utf8),
+                       let qwenData = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+                        
+                        // DEBUG: Log all the keys we found
+                        logDebug(.ai, "📝 JSON keys found: \(Array(qwenData.keys))")
+                        
+                        // Check if this is Qwen3's natural format that needs transformation
+                        if qwenData["entries"] != nil {
+                            logInfo(.ai, "🔄 Detected Qwen3 format with entries, transforming to Swift format")
+                            
+                            // Extract family ID from the original request if possible
+                            let familyId = qwenData["name"] as? String ?? "KORPI 6"
+                            let transformedJSON = try transformQwenResponseToFamily(cleanedJSON, familyId: familyId)
+                            
+                            logDebug(.ai, "📝 Transformed JSON: \(String(transformedJSON.prefix(200)))...")
+                            return transformedJSON
+                        } else {
+                            logInfo(.ai, "📝 JSON format doesn't have 'entries' key, using as-is")
+                            logDebug(.ai, "📝 Available keys: \(Array(qwenData.keys))")
+                            return cleanedJSON
+                        }
+                    } else {
+                        logError(.ai, "📝 Could not parse cleaned JSON as dictionary")
+                        return cleanedJSON
                     }
-                    
-                    return try extractJSONFromGeneratedText(cleanedText)
                 } else {
-                    logDebug(.ai, "Custom MLX response keys: \(jsonResponse.keys.sorted())")
-                    throw AIServiceError.invalidResponse("Could not find 'response' field in custom MLX response")
+                    logError(.ai, "📝 No 'response' field found in MLX response")
+                    throw AIServiceError.invalidResponse("Could not find 'response' field")
                 }
             } else {
-                throw AIServiceError.invalidResponse("Custom MLX response is not valid JSON")
+                logError(.ai, "📝 MLX response is not a valid JSON object")
+                throw AIServiceError.invalidResponse("MLX response is not valid JSON")
             }
         } catch {
             logError(.ai, "Failed to parse custom MLX response: \(error)")
@@ -319,101 +517,144 @@ Return JSON structure:
     }
     
     private func extractJSONFromGeneratedText(_ generatedText: String) throws -> String {
-        // First, clean up the generated text
+        // Clean up the generated text first
         var cleanedText = generatedText
         
-        // Remove any <think>...</think> blocks (including incomplete ones)
-        let thinkPattern = try NSRegularExpression(pattern: "<think>.*?(?:</think>|$)", options: [.dotMatchesLineSeparators])
-        cleanedText = thinkPattern.stringByReplacingMatches(in: cleanedText, options: [], range: NSRange(location: 0, length: cleanedText.count), withTemplate: "")
+        // Remove any <think>...</think> blocks
+        cleanedText = cleanedText.replacingOccurrences(of: #"<think>.*?</think>"#, with: "", options: .regularExpression)
+        cleanedText = cleanedText.replacingOccurrences(of: #"<think>.*"#, with: "", options: .regularExpression)
         
-        // Remove any other common AI reasoning patterns
-        cleanedText = cleanedText.replacingOccurrences(of: "Let me think about this...", with: "")
-        cleanedText = cleanedText.replacingOccurrences(of: "Here's the JSON:", with: "")
-        cleanedText = cleanedText.replacingOccurrences(of: "JSON:", with: "")
+        // Remove common prefixes
+        let prefixesToRemove = ["Here's the JSON:", "```json", "```", "The JSON object is:", "Response:", "Answer:"]
+        for prefix in prefixesToRemove {
+            if cleanedText.hasPrefix(prefix) {
+                cleanedText = String(cleanedText.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
         
-        // Clean up whitespace
+        // Remove common suffixes
+        let suffixesToRemove = ["```", "</s>", "<|im_end|>", "<|endoftext|>"]
+        for suffix in suffixesToRemove {
+            if cleanedText.hasSuffix(suffix) {
+                cleanedText = String(cleanedText.dropLast(suffix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        
         cleanedText = cleanedText.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // Look for JSON content - try multiple strategies
+        // Find the FIRST opening brace (start of main JSON object)
+        guard let firstBrace = cleanedText.firstIndex(of: "{") else {
+            logError(.ai, "No opening brace found in generated text")
+            throw AIServiceError.invalidResponse("No JSON object found in generated text")
+        }
         
-        // Strategy 1: Look for the last complete JSON object (most likely to be the final answer)
-        var bestJSON: String?
-        var searchText = cleanedText
+        // Find the MATCHING closing brace (not just any closing brace)
+        var braceCount = 0
+        var jsonEnd: String.Index?
         
-        while let jsonStart = searchText.lastIndex(of: "{") {
-            let jsonPart = String(searchText[jsonStart...])
-            
-            // Find matching closing brace
-            var braceCount = 0
-            var jsonEnd: String.Index?
-            
-            for i in jsonPart.indices {
-                let char = jsonPart[i]
-                if char == "{" {
-                    braceCount += 1
-                } else if char == "}" {
-                    braceCount -= 1
-                    if braceCount == 0 {
-                        jsonEnd = jsonPart.index(after: i)
-                        break
-                    }
+        for index in cleanedText[firstBrace...].indices {
+            let char = cleanedText[index]
+            if char == "{" {
+                braceCount += 1
+            } else if char == "}" {
+                braceCount -= 1
+                if braceCount == 0 {
+                    jsonEnd = index
+                    break
                 }
             }
-            
-            if let endIndex = jsonEnd {
-                let candidateJSON = String(jsonPart[..<endIndex])
-                
-                // Clean up the candidate JSON
-                var cleanedJSON = candidateJSON
-                
-                // Fix common AI JSON mistakes
-                cleanedJSON = cleanedJSON.replacingOccurrences(of: ",\\s*}", with: "}", options: .regularExpression)
-                cleanedJSON = cleanedJSON.replacingOccurrences(of: ",\\s*]", with: "]", options: .regularExpression)
-                
-                // Try to validate this JSON
-                do {
-                    let jsonData = cleanedJSON.data(using: .utf8)!
-                    _ = try JSONSerialization.jsonObject(with: jsonData)
-                    
-                    // If it's valid and contains our expected structure, use it
-                    if cleanedJSON.contains("familyId") && cleanedJSON.contains("father") {
-                        logDebug(.ai, "Successfully extracted and validated JSON from generated text")
-                        return cleanedJSON
-                    } else {
-                        bestJSON = cleanedJSON // Keep as backup
-                    }
-                } catch {
-                    // This JSON is invalid, try searching before this position
-                }
-            }
-            
-            // Move search position backwards
-            searchText = String(searchText[..<jsonStart])
         }
         
-        // If we found some valid JSON but not with the expected structure, use it
-        if let json = bestJSON {
-            logWarn(.ai, "Using JSON without expected structure")
-            return json
+        guard let endIndex = jsonEnd else {
+            logError(.ai, "No matching closing brace found")
+            throw AIServiceError.invalidResponse("Incomplete JSON object in generated text")
         }
         
-        // Strategy 2: If the entire cleaned text looks like JSON, try it
-        if cleanedText.hasPrefix("{") && cleanedText.hasSuffix("}") {
-            do {
-                let jsonData = cleanedText.data(using: .utf8)!
-                _ = try JSONSerialization.jsonObject(with: jsonData)
-                logDebug(.ai, "Using entire cleaned text as JSON")
-                return cleanedText
-            } catch {
-                logWarn(.ai, "Entire text is not valid JSON: \(error)")
-            }
-        }
+        // Extract the complete JSON object
+        let jsonString = String(cleanedText[firstBrace...endIndex])
         
-        // If we get here, we couldn't extract valid JSON
-        logError(.ai, "Could not extract valid JSON. Cleaned text: \(String(cleanedText.prefix(500)))")
-        throw AIServiceError.invalidResponse("Could not extract valid JSON from generated text")
+        // Validate that it's proper JSON
+        do {
+            let jsonData = jsonString.data(using: .utf8)!
+            _ = try JSONSerialization.jsonObject(with: jsonData)
+            logDebug(.ai, "✅ Successfully extracted complete JSON object (\(jsonString.count) characters)")
+            return jsonString
+        } catch {
+            logError(.ai, "❌ Extracted content is not valid JSON: \(error)")
+            logError(.ai, "📝 Extracted content: \(jsonString)")
+            throw AIServiceError.invalidResponse("Extracted content is not valid JSON: \(error.localizedDescription)")
+        }
     }
-    
+
+    private func extrctJSONFromGeneratedText(_ generatedText: String) throws -> String {
+        // Clean up the generated text first
+        var cleanedText = generatedText
+        
+        // Remove any <think>...</think> blocks
+        cleanedText = cleanedText.replacingOccurrences(of: #"<think>.*?</think>"#, with: "", options: .regularExpression)
+        cleanedText = cleanedText.replacingOccurrences(of: #"<think>.*"#, with: "", options: .regularExpression)
+        
+        // Remove common prefixes
+        let prefixesToRemove = ["Here's the JSON:", "```json", "```", "The JSON object is:", "Response:", "Answer:"]
+        for prefix in prefixesToRemove {
+            if cleanedText.hasPrefix(prefix) {
+                cleanedText = String(cleanedText.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        
+        // Remove common suffixes
+        let suffixesToRemove = ["```", "</s>", "<|im_end|>", "<|endoftext|>"]
+        for suffix in suffixesToRemove {
+            if cleanedText.hasSuffix(suffix) {
+                cleanedText = String(cleanedText.dropLast(suffix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        
+        cleanedText = cleanedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Find the FIRST opening brace (start of main JSON object)
+        guard let firstBrace = cleanedText.firstIndex(of: "{") else {
+            logError(.ai, "No opening brace found in generated text")
+            throw AIServiceError.invalidResponse("No JSON object found in generated text")
+        }
+        
+        // Find the MATCHING closing brace (not just any closing brace)
+        var braceCount = 0
+        var jsonEnd: String.Index?
+        
+        for index in cleanedText[firstBrace...].indices {
+            let char = cleanedText[index]
+            if char == "{" {
+                braceCount += 1
+            } else if char == "}" {
+                braceCount -= 1
+                if braceCount == 0 {
+                    jsonEnd = index
+                    break
+                }
+            }
+        }
+        
+        guard let endIndex = jsonEnd else {
+            logError(.ai, "No matching closing brace found")
+            throw AIServiceError.invalidResponse("Incomplete JSON object in generated text")
+        }
+        
+        // Extract the complete JSON object
+        let jsonString = String(cleanedText[firstBrace...endIndex])
+        
+        // Validate that it's proper JSON
+        do {
+            let jsonData = jsonString.data(using: .utf8)!
+            _ = try JSONSerialization.jsonObject(with: jsonData)
+            logDebug(.ai, "✅ Successfully extracted complete JSON object (\(jsonString.count) characters)")
+            return jsonString
+        } catch {
+            logError(.ai, "❌ Extracted content is not valid JSON: \(error)")
+            logError(.ai, "📝 Extracted content: \(jsonString)")
+            throw AIServiceError.invalidResponse("Extracted content is not valid JSON: \(error.localizedDescription)")
+        }
+    }
     private func extractJSONFromText(_ text: String) throws -> String {
         // Try to find JSON within the text
         let lines = text.components(separatedBy: .newlines)
@@ -568,3 +809,4 @@ extension OSLog {
     static let ai = OSLog(subsystem: "com.kalvianroots", category: "ai")
 }
 #endif
+

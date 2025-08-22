@@ -18,7 +18,7 @@ struct JuuretView: View {
     @State private var spouseCitationText = ""
     
     var body: some View {
-        VStack(spacing: 25) { // Increased spacing
+        VStack(spacing: 15) {
             if juuretApp.fileManager.isFileLoaded {
                 familyExtractionInterface
             } else {
@@ -269,9 +269,9 @@ struct JuuretView: View {
     // MARK: - Enhanced Family Display
     
     private func enhancedFamilyDisplaySection(family: Family) -> some View {
-        VStack(alignment: .leading, spacing: 20) { // Increased spacing
+        VStack(alignment: .leading, spacing: 12) { // Increased spacing
             // Enhanced family header
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(family.familyId)
                     .font(.genealogyTitle) // Much larger title
                     .fontWeight(.bold)
@@ -280,11 +280,11 @@ struct JuuretView: View {
                     .foregroundColor(.secondary)
             }
             
-            // Enhanced click instructions
+            // Compace click instructions
             Text("💡 Click names for citations, dates for Hiski queries, purple spouse names for spouse citations")
-                .font(.genealogyCallout) // Enhanced font
+                .font(.genealogyCaption) // Enhanced font
                 .foregroundColor(.blue)
-                .padding(.vertical, 8)
+                .padding(.vertical, 6)
                 .padding(.horizontal, 12)
                 .background(Color.blue.opacity(0.1))
                 .cornerRadius(8)
@@ -295,7 +295,7 @@ struct JuuretView: View {
     }
     
     private func enhancedFamilyMembersView(family: Family) -> some View {
-        VStack(alignment: .leading, spacing: 15) { // Increased spacing
+        VStack(alignment: .leading, spacing: 8) {
             // Parents - FIXED: father is not optional in Family struct
             enhancedPersonView(person: family.father, in: family, role: "Father")
             
@@ -308,20 +308,20 @@ struct JuuretView: View {
                 Text("Children:")
                     .font(.genealogyHeadline) // Enhanced font
                     .fontWeight(.semibold)
-                    .padding(.top, 10)
+                    .padding(.top, 6)
                 
                 ForEach(family.children) { child in
                     enhancedPersonView(person: child, in: family, role: "Child")
                 }
             }
         }
-        .padding(16) // Increased padding
+        .padding(12)
         .background(Color.gray.opacity(0.05))
         .cornerRadius(10)
     }
     
     private func enhancedPersonView(person: Person, in family: Family, role: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             // Person name (clickable for citation)
             Button(action: {
                 showCitation(for: person, in: family)
@@ -333,32 +333,33 @@ struct JuuretView: View {
             }
             .buttonStyle(.plain)
             
-            // Birth date (clickable for Hiski)
-            if let birthDate = person.birthDate {
-                Button(action: {
-                    showHiskiQuery(for: person, eventType: .birth)
-                }) {
-                    Text("Birth: \(birthDate)")
-                        .font(.genealogyCallout) // Enhanced font
-                        .foregroundColor(.blue)
-                        .underline()
+            // Birth and death dates in same line for compactness
+            HStack(spacing: 16) {
+                if let birthDate = person.birthDate {
+                    Button(action: {
+                        showHiskiQuery(for: person, eventType: .birth)
+                    }) {
+                        Text("Birth: \(birthDate)")
+                            .font(.genealogyCallout)
+                            .foregroundColor(.blue)
+                            .underline()
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-            }
-            
-            // Death date (clickable for Hiski)
-            if let deathDate = person.deathDate {
-                Button(action: {
-                    showHiskiQuery(for: person, eventType: .death)
-                }) {
-                    Text("Death: \(deathDate)")
-                        .font(.genealogyCallout) // Enhanced font
-                        .foregroundColor(.blue)
-                        .underline()
+                
+                if let deathDate = person.deathDate {
+                    Button(action: {
+                        showHiskiQuery(for: person, eventType: .death)
+                    }) {
+                        Text("Death: \(deathDate)")
+                            .font(.genealogyCallout)
+                            .foregroundColor(.blue)
+                            .underline()
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
-            
+
             // Spouse (clickable for spouse citation)
             if let spouse = person.spouse {
                 Button(action: {
@@ -372,7 +373,7 @@ struct JuuretView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 4)
     }
     
     // MARK: - Action Methods (Enhanced)
