@@ -44,11 +44,11 @@ class AIServiceFactory {
      */
     static func getRecommendedService() -> String {
         // Check if MLX services are available first
-        let mlxServices = createMLXServicesIfAvailable()
-        if !mlxServices.isEmpty {
-            // Return the first available MLX service
-            return mlxServices[0].name
-        }
+//        let mlxServices = createMLXServicesIfAvailable()
+//        if !mlxServices.isEmpty {
+//            // Return the first available MLX service
+//            return mlxServices[0].name
+//        }
         
         // Fallback to cloud service
         logInfo(.ai, "🖥️ Recommending cloud service")

@@ -24,6 +24,7 @@ protocol AIService {
 
 enum AIServiceError: LocalizedError {
     case notConfigured(String)
+    case unknownService(String)
     case invalidResponse(String)
     case networkError(Error)
     case parsingFailed(String)
@@ -35,6 +36,8 @@ enum AIServiceError: LocalizedError {
         switch self {
         case .notConfigured(let service):
             return "\(service) not configured. Please add API key."
+        case .unknownService(let name):
+            return "Unknown AI service: \(name)"
         case .invalidResponse(let details):
             return "Invalid AI response: \(details)"
         case .networkError(let error):
@@ -1110,3 +1113,4 @@ struct ClaudeResponse: Codable {
 struct ClaudeContent: Codable {
     let text: String
 }
+

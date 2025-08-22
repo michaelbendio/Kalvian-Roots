@@ -126,10 +126,10 @@ class JuuretApp {
     /**
      * Switch to a different AI service
      */
-    func switchAIService(to serviceName: String) async throws {
+    func switchAIService(to serviceName: String) throws {
         logInfo(.ai, "🔄 Switching AI service to: \(serviceName)")
         
-        try await aiParsingService.switchToService(named: serviceName)
+        try aiParsingService.switchService(to: serviceName)
         
         // Clear any error state since service changed
         if errorMessage?.contains("not configured") == true {
@@ -146,7 +146,7 @@ class JuuretApp {
     func configureAIService(apiKey: String) async throws {
         logInfo(.ai, "🔧 Configuring \(currentServiceName) with API key")
         
-        try await aiParsingService.configureCurrentService(apiKey: apiKey)
+        try aiParsingService.configureService(apiKey: apiKey)
         
         errorMessage = nil
         logDebug(.app, "Cleared error state after successful AI configuration")
@@ -250,31 +250,73 @@ class JuuretApp {
     
     /**
      * Extract family with complete cross-references (future implementation)
-     * For now, delegates to basic extractFamily method
      */
     func extractFamilyComplete(familyId: String) async throws {
         logInfo(.app, "🚀 Starting complete family extraction for: \(familyId)")
         
-        // Create family web workflow
-        let workflow = FamilyWebWorkflow(
-            aiParsingService: aiParsingService,
-            familyResolver: familyResolver
-        )
+        let normalizedId = familyId.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        logDebug(.parsing, "Normalized family ID: \(normalizedId)")
         
-        // Set up observation of workflow progress
-        // (workflow publishes progress updates that UI can observe)
+        // Validate prerequisites
+        guard aiParsingService.isConfigured else {
+            logError(.ai, "❌ AI service not configured: \(currentServiceName)")
+            throw JuuretError.aiServiceNotConfigured(currentServiceName)
+        }
         
-        // Start the workflow
-        try await workflow.processFamilyWeb(for: familyId)
+        guard fileManager.isFileLoaded else {
+            logError(.file, "❌ No file loaded")
+            throw JuuretError.noFileLoaded
+        }
         
-        // Update app state with results
+        // Clear previous state
         await MainActor.run {
-            currentFamily = workflow.getFamilyNetwork()?.mainFamily
-            enhancedFamily = currentFamily  // Or however you want to handle this
-            extractionProgress = .complete
+            currentFamily = nil
+            enhancedFamily = nil
+            extractionProgress = .extractingFamily
+            errorMessage = nil
+            isProcessing = true
+        }
+        
+        do {
+            // Create family web workflow with ALL required dependencies
+            let workflow = FamilyWebWorkflow(
+                aiParsingService: aiParsingService,
+                familyResolver: familyResolver,
+                fileManager: fileManager  // FIXED: Pass fileManager to workflow
+            )
+            
+            // Start the workflow
+            try await workflow.processFamilyWeb(for: normalizedId)
+            
+            // Update app state with results
+            await MainActor.run {
+                if let network = workflow.getFamilyNetwork() {
+                    currentFamily = network.mainFamily
+                    enhancedFamily = network.mainFamily
+                    extractionProgress = .complete
+                    isProcessing = false
+                    
+                    logInfo(.app, "✅ Complete family extraction completed: \(network.mainFamily.familyId)")
+                    logInfo(.app, "📊 Resolved \(network.totalResolvedFamilies) cross-references")
+                } else {
+                    extractionProgress = .idle
+                    isProcessing = false
+                    errorMessage = "Failed to build family network"
+                    logError(.app, "❌ Family network was nil after workflow")
+                }
+            }
+        } catch {
+            await MainActor.run {
+                extractionProgress = .idle
+                isProcessing = false
+                errorMessage = "Complete extraction failed: \(error.localizedDescription)"
+            }
+            
+            logError(.app, "❌ Complete family extraction failed: \(error)")
+            throw error
         }
     }
-
+    
     // MARK: - Family Text Extraction
     
     private func extractFamilyText(familyId: String, from fileContent: String) throws -> String {
@@ -508,3 +550,4 @@ class JuuretApp {
         manualCitations[manualCitationKey(familyId: family.familyId, personId: person.id)]
     }
 }
+

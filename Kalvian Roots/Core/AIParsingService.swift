@@ -2,219 +2,183 @@
 //  AIParsingService.swift
 //  Kalvian Roots
 //
+//  AI service orchestration and JSON parsing with enhanced debug logging
 //
 
 import Foundation
 
 /**
- * AIParsingService - JSON-based AI family parsing for Michael's genealogy research
+ * AIParsingService - Manages AI service selection and family text parsing
  *
- * Single-user app architecture:
- * - Mac: MLX (Qwen3-30B) primary + DeepSeek fallback
- * - iOS: DeepSeek only (mobile research)
+ * Provides a unified interface for parsing family text using various AI services.
+ * Handles service selection, configuration, and JSON response processing.
  */
-
 @Observable
 class AIParsingService {
     
     // MARK: - Properties
     
-    private var currentAIService: AIService
-    private let availableServices: [AIService]
+    /// Currently selected AI service
+    private var currentService: AIService
     
-    var currentServiceName: String {
-        currentAIService.name
-    }
+    /// Available AI services
+    private let services: [String: AIService]
     
-    var availableServiceNames: [String] {
-        availableServices.map { $0.name }
-    }
+    // MARK: - Computed Properties
     
+    /// Check if current service is configured
     var isConfigured: Bool {
-        let configured = currentAIService.isConfigured
-        logTrace(.ai, "AIParsingService isConfigured: \(configured) (\(currentServiceName))")
-        return configured
+        currentService.isConfigured
     }
     
-    // MARK: - Single-User Initialization (Michael's Devices Only)
+    /// Get current service name
+    var currentServiceName: String {
+        currentService.name
+    }
+    
+    /// Get all available service names
+    var availableServiceNames: [String] {
+        Array(services.keys).sorted()
+    }
+    
+    // MARK: - Initialization
     
     init() {
-        logInfo(.ai, "🚀 AIParsingService starting (Michael's genealogy research)")
+        logInfo(.ai, "🤖 Initializing AI Parsing Service")
         
-        // Get available services
-        self.availableServices = PlatformAwareServiceManager.getRecommendedServices()
-        self.currentAIService = PlatformAwareServiceManager.getDefaultService()
+        // Initialize service factory
+//        let factory = AIServiceFactory()
         
-        logInfo(.ai, "✅ Platform: \(PlatformAwareServiceManager.getPlatformCapabilities())")
-        logInfo(.ai, "Default service: \(currentServiceName)")
+        // Get available services for platform
+        let platformServices = PlatformAwareServiceManager.getRecommendedServices()
         
-        // Platform-specific setup (no Intel support needed)
-        #if os(macOS)
-        // Apple Silicon Mac - MLX primary, DeepSeek fallback
-        logInfo(.ai, "🖥️ Apple Silicon Mac - MLX (Qwen3-30B) + DeepSeek fallback")
-        Task {
-            await checkMLXServerStatus()
+        // Build services dictionar
+        var servicesDict: [String: AIService] = [:]
+        for service in platformServices {
+            servicesDict[service.name] = service
         }
-        #elseif os(iOS)
-        // iOS - DeepSeek only (simplified)
-        logInfo(.ai, "📱 iOS - DeepSeek only (mobile research)")
-        #endif
+        self.services = servicesDict
         
-        // Auto-load Michael's saved API keys
-        autoConfigureServices()
+        let defaultService = PlatformAwareServiceManager.getDefaultService()
+        self.currentService = defaultService
+        logInfo(.ai, "✅ Selected default AI service: \(defaultService.name)")
         
-        logInfo(.ai, "✅ Ready for Finnish genealogy research")
+        logDebug(.ai, "Available AI services: \(availableServiceNames.joined(separator: ", "))")
     }
     
-    // MARK: - Service Management (Fixed Method Signatures)
+    // MARK: - Service Management
     
-    // FIXED: Method name to match JuuretApp expectations
-    func switchToService(named serviceName: String) async throws {
-        try switchService(to: serviceName)
-    }
-    
-    // Internal method with clearer name
+    /**
+     * Switch to a different AI service
+     */
     func switchService(to serviceName: String) throws {
-        guard let service = availableServices.first(where: { $0.name == serviceName }) else {
-            throw AIServiceError.notConfigured("Service \(serviceName) not available")
+        guard let service = services[serviceName] else {
+            logError(.ai, "❌ Unknown AI service: \(serviceName)")
+            throw AIServiceError.unknownService(serviceName)
         }
         
-        currentAIService = service
-        logInfo(.ai, "🔄 Switched to AI service: \(serviceName)")
-        logDebug(.ai, "Service configured: \(service.isConfigured)")
+        currentService = service
+        logInfo(.ai, "✅ Switched to AI service: \(serviceName)")
     }
     
-    // FIXED: Made async to match JuuretApp expectations
-    func configureCurrentService(apiKey: String) async throws {
-        try currentAIService.configure(apiKey: apiKey)
-        saveAPIKey(apiKey, for: currentServiceName)
-        logInfo(.ai, "🔧 Configured \(currentServiceName) with new API key")
+    /**
+     * Configure the current AI service with API key
+     */
+    func configureService(apiKey: String) throws {
+        try currentService.configure(apiKey: apiKey)
+        logInfo(.ai, "✅ Configured AI service: \(currentServiceName)")
     }
     
-    func getAllServiceStatuses() -> [ServiceStatus] {
-        return availableServices.map { service in
-            ServiceStatus(
-                name: service.name,
-                isConfigured: service.isConfigured,
-                isCurrent: service.name == currentServiceName
-            )
-        }
-    }
+    // MARK: - Family Parsing
     
-    // MARK: - MLX Integration (Simplified)
-    
-    private func checkMLXServerStatus() async {
-        // No need to check platform - this only runs on Apple Silicon
-        logInfo(.ai, "✅ MLX available - Qwen3-30B ready for local parsing")
-        logDebug(.ai, "Local AI: fast, private, no API costs")
-    }
-    
-    func preloadMLXModel() async throws {
-        guard currentAIService is MLXService else {
-            logWarn(.ai, "Current service is not MLX - cannot preload")
-            return
-        }
-        
-        if let mlxService = currentAIService as? MLXService {
-            logInfo(.ai, "🔄 MLX service ready: \(mlxService.name)")
-            logInfo(.ai, "✅ MLX service verified as ready")
-        }
-    }
-    
-    // MARK: - Core Family Parsing (JSON-based)
-    
+    /**
+     * Parse family text using current AI service
+     */
     func parseFamily(familyId: String, familyText: String) async throws -> Family {
-        logInfo(.parsing, "🔍 Starting family parsing for: \(familyId)")
+        logInfo(.parsing, "🎯 Starting family parsing for: \(familyId)")
         logDebug(.parsing, "Using AI service: \(currentServiceName)")
-        logDebug(.parsing, "🔍 ACTUAL SERVICE CLASS: \(type(of: currentAIService))")  // REMOVE THIS LINE
+        logTrace(.parsing, "Family text length: \(familyText.count) characters")
         
-        // Validate service configuration
-        guard currentAIService.isConfigured else {
+        DebugLogger.shared.startTimer("ai_parsing")
+        
+        guard isConfigured else {
             logError(.ai, "❌ AI service not configured: \(currentServiceName)")
             throw AIServiceError.notConfigured(currentServiceName)
         }
         
-        // Start timing
-        DebugLogger.shared.startTimer("total_parsing")
-        DebugLogger.shared.parseStep("AI Request", "Requesting family parsing from \(currentServiceName)")
-        
         do {
-            // Step 1: Get JSON response from AI service
-            DebugLogger.shared.startTimer("ai_request")
-            let jsonResponse = try await currentAIService.parseFamily(familyId: familyId, familyText: familyText)
-            let aiTime = DebugLogger.shared.endTimer("ai_request")
+            // Get JSON response from AI service
+            logDebug(.parsing, "📤 Sending request to AI service...")
+            let jsonResponse = try await currentService.parseFamily(
+                familyId: familyId,
+                familyText: familyText
+            )
             
-            logInfo(.parsing, "✅ AI response received (\(String(format: "%.2f", aiTime))s)")
-            logTrace(.parsing, "JSON Response preview: \(String(jsonResponse.prefix(200)))...")
+            let parsingTime = DebugLogger.shared.endTimer("ai_parsing")
+            logInfo(.parsing, "📥 Received AI response in \(String(format: "%.2f", parsingTime))s")
+            logTrace(.parsing, "Raw JSON response: \(jsonResponse.prefix(500))...")
             
-            // Step 2: Parse the JSON response into a Family struct
-            DebugLogger.shared.parseStep("Parse JSON", "Converting AI JSON response to Family struct")
-            DebugLogger.shared.startTimer("json_parsing")
+            // Parse JSON to Family object
+            let family = try parseJSON(jsonResponse)
             
-            let family = try parseJSONResponse(jsonResponse)
+            // Debug log the parsed family
+            debugLogParsedFamily(family)
             
-            let parseTime = DebugLogger.shared.endTimer("json_parsing")
-            let totalTime = DebugLogger.shared.endTimer("total_parsing")
-            
-            logInfo(.parsing, "✅ Family parsing completed successfully")
-            logInfo(.parsing, "⏱️ Timing: AI=\(String(format: "%.2f", aiTime))s, Parse=\(String(format: "%.2f", parseTime))s, Total=\(String(format: "%.2f", totalTime))s")
-            
-            DebugLogger.shared.logFamilyValidation(family, warnings: family.validateStructure())
+            logInfo(.parsing, "✅ Successfully parsed family: \(familyId)")
+            DebugLogger.shared.parseStep("Parse Complete", "Family: \(familyId), Members: \(family.allPersons.count)")
             
             return family
             
         } catch {
-            // Clean up timers on error
-            _ = DebugLogger.shared.endTimer("ai_request")
-            _ = DebugLogger.shared.endTimer("json_parsing")
-            _ = DebugLogger.shared.endTimer("total_parsing")
-            
-            logError(.parsing, "❌ Parsing error: \(error.localizedDescription)")
-            DebugLogger.shared.logParsingFailure(error, familyId: familyId)
-            throw AIServiceError.parsingFailed(error.localizedDescription)
+            logError(.parsing, "❌ Failed to parse family: \(error)")
+            DebugLogger.shared.parseStep("Parse Failed", error.localizedDescription)
+            throw error
         }
     }
     
-    // MARK: - JSON Parsing Methods (Fixed)
+    // MARK: - JSON Parsing
     
-    private func parseJSONResponse(_ jsonResponse: String) throws -> Family {
-        logDebug(.parsing, "🔍 Starting JSON response parsing")
-        DebugLogger.shared.parseStep("Parse JSON", "Converting AI JSON response to Family struct")
+    private func parseJSON(_ jsonResponse: String) throws -> Family {
+        logTrace(.parsing, "🔄 Starting JSON parsing")
+        DebugLogger.shared.parseStep("JSON Parsing", "Response length: \(jsonResponse.count)")
         
-        // Clean the JSON response (remove markdown, extra whitespace)
+        // Clean the JSON response
         let cleanedJSON = cleanJSONResponse(jsonResponse)
-        logTrace(.parsing, "Cleaned JSON length: \(cleanedJSON.count)")
-        logTrace(.parsing, "Cleaned JSON preview: \(String(cleanedJSON.prefix(200)))...")
         
-        // Parse as JSON
+        guard let jsonData = cleanedJSON.data(using: .utf8) else {
+            logError(.parsing, "❌ Failed to convert JSON string to data")
+            throw AIServiceError.invalidResponse("Could not convert JSON to data")
+        }
+        
         do {
-            DebugLogger.shared.parseStep("JSON Decode", "Using JSONDecoder")
-            
-            guard let jsonData = cleanedJSON.data(using: .utf8) else {
-                throw AIServiceError.parsingFailed("Could not convert JSON response to UTF-8 data")
-            }
-            
+            // Decode the Family object
             let decoder = JSONDecoder()
             let family = try decoder.decode(Family.self, from: jsonData)
             
-            // Validate the parsed family
-            logDebug(.parsing, "Validating parsed family structure")
-            let warnings = family.validateStructure()
-            DebugLogger.shared.logFamilyValidation(family, warnings: warnings)
+            logDebug(.parsing, "✅ JSON decoded successfully")
+            logDebug(.parsing, "Family ID: \(family.familyId)")
+            logDebug(.parsing, "Parents: \(family.allParents.count)")
+            logDebug(.parsing, "Children: \(family.children.count)")
             
-            logInfo(.parsing, "✅ JSON parsing successful")
+            DebugLogger.shared.parseStep("JSON Decoded", "Family: \(family.familyId)")
+            
             return family
             
-        } catch let decodingError as DecodingError {
-            logWarn(.parsing, "⚠️ JSON decoding failed: \(decodingError)")
+        } catch let decodingError {
+            logError(.parsing, "❌ JSON decoding failed: \(decodingError)")
+            logError(.parsing, "JSON structure issue: \(decodingError.localizedDescription)")
             
-            // Try fallback parsing for malformed JSON
-            DebugLogger.shared.parseStep("Fallback parsing", "JSON malformed, attempting recovery")
+            // Log the problematic JSON for debugging
+            if cleanedJSON.count < 5000 {
+                logError(.parsing, "Problematic JSON: \(cleanedJSON)")
+            } else {
+                logError(.parsing, "Problematic JSON (truncated): \(cleanedJSON.prefix(1000))...")
+            }
+            
+            DebugLogger.shared.parseStep("Decode Failed", decodingError.localizedDescription)
+            
+            // Try fallback parsing
             return try fallbackParseJSON(cleanedJSON)
-            
-        } catch {
-            logError(.parsing, "❌ Unexpected JSON parsing error: \(error)")
-            throw AIServiceError.parsingFailed("JSON parsing failed: \(error.localizedDescription)")
         }
     }
     
@@ -279,52 +243,111 @@ class AIParsingService {
     private func extractJSONValue(from jsonString: String, key: String) -> String? {
         let pattern = "\"\(key)\"\\s*:\\s*\"([^\"]*)\""
         guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: jsonString, range: NSRange(jsonString.startIndex..., in: jsonString)),
-              let range = Range(match.range(at: 1), in: jsonString) else {
+              let match = regex.firstMatch(in: jsonString, range: NSRange(jsonString.startIndex..., in: jsonString)) else {
             return nil
         }
         
-        return String(jsonString[range])
+        let matchRange = Range(match.range(at: 1), in: jsonString)!
+        return String(jsonString[matchRange])
     }
     
-    // MARK: - Configuration Persistence
+    // MARK: - Debug Logging
     
-    private func autoConfigureServices() {
-        logDebug(.ai, "🔧 Loading Michael's saved API keys")
+    /// Debug method to log parsed family details
+    private func debugLogParsedFamily(_ family: Family) {
+        logInfo(.parsing, "🔍 === PARSED FAMILY DEBUG INFO ===")
+        logInfo(.parsing, "📋 Family ID: \(family.familyId)")
         
-        // Load saved API keys (skip MLX - doesn't need keys)
-        for service in availableServices {
-            if service.name.contains("MLX") {
-                continue // MLX doesn't need API keys
+        // Log Father
+        logInfo(.parsing, "👨 FATHER: \(family.father.displayName)")
+        logInfo(.parsing, "  - Birth: \(family.father.birthDate ?? "nil")")
+        logInfo(.parsing, "  - Death: \(family.father.deathDate ?? "nil")")
+        logInfo(.parsing, "  - Marriage: \(family.father.marriageDate ?? "nil")")
+        logInfo(.parsing, "  - Spouse: \(family.father.spouse ?? "nil")")
+        logInfo(.parsing, "  - asChildRef: \(family.father.asChildReference ?? "⚠️ MISSING") ⬅️ (where father came from)")
+        
+        // Log Mother
+        if let mother = family.mother {
+            logInfo(.parsing, "👩 MOTHER: \(mother.displayName)")
+            logInfo(.parsing, "  - Birth: \(mother.birthDate ?? "nil")")
+            logInfo(.parsing, "  - Death: \(mother.deathDate ?? "nil")")
+            logInfo(.parsing, "  - Marriage: \(mother.marriageDate ?? "nil")")
+            logInfo(.parsing, "  - Spouse: \(mother.spouse ?? "nil")")
+            logInfo(.parsing, "  - asChildRef: \(mother.asChildReference ?? "⚠️ MISSING") ⬅️ (where mother came from)")
+        }
+        
+        // Log Additional Spouses
+        for (index, spouse) in family.additionalSpouses.enumerated() {
+            logInfo(.parsing, "💑 ADDITIONAL SPOUSE \(index + 1): \(spouse.displayName)")
+            logInfo(.parsing, "  - asChildRef: \(spouse.asChildReference ?? "nil") ⬅️")
+        }
+        
+        // Log Children with emphasis on as-parent references
+        logInfo(.parsing, "👶 CHILDREN: \(family.children.count) total")
+        var childrenWithRefs = 0
+        var childrenWithoutRefs = 0
+        
+        for (index, child) in family.children.enumerated() {
+            logInfo(.parsing, "  [\(index + 1)] \(child.displayName)")
+            logInfo(.parsing, "      - Birth: \(child.birthDate ?? "nil")")
+            logInfo(.parsing, "      - Death: \(child.deathDate ?? "nil")")
+            logInfo(.parsing, "      - Marriage: \(child.marriageDate ?? "nil")")
+            logInfo(.parsing, "      - Spouse: \(child.spouse ?? "nil")")
+            
+            // Children should ONLY have asParentReference (where they went)
+            if let asParentRef = child.asParentReference {
+                logInfo(.parsing, "      - ➡️ AS_PARENT_REF: \(asParentRef) ✅ (family they created)")
+                childrenWithRefs += 1
+            } else if child.spouse != nil {
+                // Married child without reference - this might be a parsing issue
+                logWarn(.parsing, "      - ⚠️ NO AS_PARENT_REF (married child - expected reference!)")
+                childrenWithoutRefs += 1
+            } else {
+                logInfo(.parsing, "      - No reference (unmarried child)")
             }
             
-            if let savedKey = loadAPIKey(for: service.name) {
-                do {
-                    try service.configure(apiKey: savedKey)
-                    logInfo(.ai, "✅ Configured \(service.name)")
-                } catch {
-                    logWarn(.ai, "⚠️ Failed to configure \(service.name): \(error)")
-                }
+            // Flag if child incorrectly has asChildReference
+            if child.asChildReference != nil {
+                logError(.parsing, "      - ❌ ERROR: Child has asChildReference (should not happen!)")
             }
         }
-    }
-    
-    private func saveAPIKey(_ apiKey: String, for serviceName: String) {
-        logTrace(.ai, "💾 Saving API key for \(serviceName)")
-        UserDefaults.standard.set(apiKey, forKey: "AIService_\(serviceName)_APIKey")
-    }
-    
-    private func loadAPIKey(for serviceName: String) -> String? {
-        let key = UserDefaults.standard.string(forKey: "AIService_\(serviceName)_APIKey")
-        logTrace(.ai, "📂 Loading API key for \(serviceName): \(key != nil ? "found" : "not found")")
-        return key
+        
+        // Summary of cross-references
+        logInfo(.parsing, "📊 CROSS-REFERENCE SUMMARY:")
+        logInfo(.parsing, "  - Parents with as_child refs: \(family.parentsNeedingResolution.count)")
+        logInfo(.parsing, "  - Children with as_parent refs: \(childrenWithRefs)")
+        logInfo(.parsing, "  - Married children missing refs: \(childrenWithoutRefs)")
+        
+        // Expected vs Found for KORPI 6
+        if family.familyId.uppercased().contains("KORPI 6") {
+            logInfo(.parsing, "🎯 KORPI 6 SPECIFIC CHECK:")
+            logInfo(.parsing, "  Expected parent refs: KORPI 5 (father), SIKALA 5 (mother)")
+            logInfo(.parsing, "  Expected child refs: ISO-PEITSO III 2, LAXO 4, KORVELA 3, RIMPILÄ 7, JÄNESNIEMI 5")
+            logInfo(.parsing, "  Found parent refs: \(family.father.asChildReference ?? "none"), \(family.mother?.asChildReference ?? "none")")
+            
+            let foundChildRefs = family.children.compactMap { $0.asParentReference }
+            logInfo(.parsing, "  Found child refs: \(foundChildRefs.isEmpty ? "NONE!" : foundChildRefs.joined(separator: ", "))")
+        }
+        
+        // List all cross-references to resolve
+        let totalRefs = family.parentsNeedingResolution.count + childrenWithRefs
+        if totalRefs > 0 {
+            logInfo(.parsing, "📍 REFERENCES TO RESOLVE:")
+            for parent in family.parentsNeedingResolution {
+                if let ref = parent.asChildReference {
+                    logInfo(.parsing, "  - \(parent.displayName) → AS_CHILD in: \(ref)")
+                }
+            }
+            for child in family.children {
+                if let ref = child.asParentReference {
+                    logInfo(.parsing, "  - \(child.displayName) → AS_PARENT in: \(ref)")
+                }
+            }
+        } else {
+            logWarn(.parsing, "  ⚠️ NO CROSS-REFERENCES FOUND TO RESOLVE!")
+        }
+        
+        logInfo(.parsing, "🔍 === END PARSED FAMILY DEBUG ===")
     }
 }
 
-// MARK: - ServiceStatus Support Structure
-
-struct ServiceStatus {
-    let name: String
-    let isConfigured: Bool
-    let isCurrent: Bool
-}

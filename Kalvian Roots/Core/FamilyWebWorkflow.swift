@@ -2,7 +2,7 @@
 //  FamilyWebWorkflow.swift
 //  Kalvian Roots
 //
-//  Coordinates family web processing with progressive UI updates
+//  Coordinates family web processing with progressive UI updates and debug logging
 //
 //  Created by Michael Bendio on 8/7/25.
 //
@@ -21,6 +21,7 @@ class FamilyWebWorkflow {
     
     private let aiParsingService: AIParsingService
     private let familyResolver: FamilyResolver
+    private let fileManager: FileManager
     
     // MARK: - Published State
     
@@ -36,9 +37,10 @@ class FamilyWebWorkflow {
     
     // MARK: - Initializer
     
-    init(aiParsingService: AIParsingService, familyResolver: FamilyResolver) {
+    init(aiParsingService: AIParsingService, familyResolver: FamilyResolver, fileManager: FileManager) {
         self.aiParsingService = aiParsingService
         self.familyResolver = familyResolver
+        self.fileManager = fileManager
     }
     
     // MARK: - Main Workflow
@@ -61,6 +63,7 @@ class FamilyWebWorkflow {
             currentStep = "Parsing nuclear family..."
             let nuclearFamily = try await parseNuclearFamily(familyId: familyId)
             progress = 0.2
+            debugLogWorkflowState("Nuclear family parsed")
             
             // Generate initial citations for nuclear family
             generateAndActivateCitations(for: nuclearFamily, type: .nuclear)
@@ -69,17 +72,21 @@ class FamilyWebWorkflow {
             currentStep = "Resolving family relationships..."
             familyNetwork = try await resolveFamilyNetwork(nuclearFamily: nuclearFamily)
             progress = 0.8
+            debugLogWorkflowState("Cross-references resolved")
             
             // Step 3: Generate enhanced citations (100% progress)
             currentStep = "Generating enhanced citations..."
             generateEnhancedCitations()
             progress = 1.0
+            debugLogWorkflowState("Citations generated")
             
             currentStep = "Complete"
+            debugLogWorkflowState("Workflow complete")
             
         } catch {
             processingErrors.append("Family web processing failed: \(error.localizedDescription)")
             currentStep = "Failed"
+            debugLogWorkflowState("Workflow failed")
             throw error
         }
     }
@@ -88,13 +95,29 @@ class FamilyWebWorkflow {
     
     private func parseNuclearFamily(familyId: String) async throws -> Family {
         logInfo(.parsing, "🔍 Parsing nuclear family: \(familyId)")
-        return try await aiParsingService.parseFamily(familyId: familyId, familyText: "")  // You'll need to extract family text
+        
+        // Extract family text before parsing
+        guard let fileContent = fileManager.currentFileContent else {
+            logError(.parsing, "❌ No file content available")
+            throw JuuretError.noFileLoaded
+        }
+        
+        // Extract family text using FileManager's method
+        guard let familyText = fileManager.extractFamilyText(familyId: familyId, from: fileContent) else {
+            logError(.parsing, "❌ Family \(familyId) not found in file")
+            throw JuuretError.familyNotFound(familyId)
+        }
+        
+        logDebug(.parsing, "📝 Extracted family text (\(familyText.count) characters)")
+        
+        // Parse the family with actual text
+        return try await aiParsingService.parseFamily(familyId: familyId, familyText: familyText)
     }
     
     private func resolveFamilyNetwork(nuclearFamily: Family) async throws -> FamilyNetwork {
         logInfo(.resolver, "🕸️ Building family network for: \(nuclearFamily.familyId)")
         
-        // ✅ FIXED: Use correct method name from FamilyResolver
+        // Use correct method name from FamilyResolver
         let network = try await familyResolver.resolveCrossReferences(for: nuclearFamily)
         
         // Update UI progressively as families are resolved
@@ -106,7 +129,7 @@ class FamilyWebWorkflow {
     private func generateAndActivateCitations(for family: Family, type: CitationType) {
         logInfo(.citation, "📄 Generating \(type) citations for: \(family.familyId)")
         
-        // ✅ FIXED: Use static methods that actually exist
+        // Use static methods that actually exist
         let mainCitation = CitationGenerator.generateMainFamilyCitation(family: family)
         
         // Generate citations for each person in family based on type
@@ -145,7 +168,7 @@ class FamilyWebWorkflow {
     private func updateCitationsFromNetwork(_ network: FamilyNetwork) {
         logInfo(.citation, "🔄 Updating citations from resolved network")
         
-        // ✅ FIXED: Use static methods that return String directly
+        // Use static methods that return String directly
         
         // Update citations for as-child families (where parents came from)
         for (personName, asChildFamily) in network.asChildFamilies {
@@ -179,7 +202,7 @@ class FamilyWebWorkflow {
         
         logInfo(.citation, "✨ Generating enhanced citations with cross-reference data")
         
-        // ✅ FIXED: Use actual methods that exist
+        // Use actual methods that exist
         for child in network.mainFamily.marriedChildren {
             if let asParentFamily = network.getAsParentFamily(for: child) {
                 // Generate enhanced citation using the as-parent family where child is a parent
@@ -212,6 +235,43 @@ class FamilyWebWorkflow {
         
         // Check all persons in the family
         return family.allPersons.first { $0.name.lowercased() == name.lowercased() }
+    }
+    
+    // MARK: - Debug Logging
+    
+    /// Debug the workflow state after each major step
+    private func debugLogWorkflowState(_ step: String) {
+        logInfo(.app, "🔄 === WORKFLOW STATE: \(step) ===")
+        logInfo(.app, "  Progress: \(Int(progress * 100))%")
+        logInfo(.app, "  Current Step: \(currentStep)")
+        logInfo(.app, "  Active Citations: \(activeCitations.count)")
+        
+        if let network = familyNetwork {
+            logInfo(.app, "  📊 Network Stats:")
+            logInfo(.app, "    - As-child families: \(network.asChildFamilies.count)")
+            logInfo(.app, "    - As-parent families: \(network.asParentFamilies.count)")
+            logInfo(.app, "    - Spouse families: \(network.spouseAsChildFamilies.count)")
+            logInfo(.app, "    - Total resolved: \(network.totalResolvedFamilies)")
+            
+            // Log specific families for KORPI 6
+            if network.mainFamily.familyId.uppercased().contains("KORPI 6") {
+                logInfo(.app, "  🎯 KORPI 6 Specific Results:")
+                logInfo(.app, "    Expected: 2 parent origins + 5 child families = 7 total")
+                logInfo(.app, "    Found: \(network.totalResolvedFamilies) families")
+                
+                if network.totalResolvedFamilies < 7 {
+                    logWarn(.app, "    ⚠️ Missing \(7 - network.totalResolvedFamilies) expected families!")
+                } else if network.totalResolvedFamilies == 7 {
+                    logInfo(.app, "    ✅ All expected families resolved!")
+                }
+            }
+        }
+        
+        if !processingErrors.isEmpty {
+            logError(.app, "  ❌ Errors: \(processingErrors.joined(separator: ", "))")
+        }
+        
+        logInfo(.app, "🔄 === END WORKFLOW STATE ===")
     }
     
     // MARK: - Public Access Methods
@@ -261,8 +321,13 @@ class FamilyWebViewModel {
     var activeCitations: [String: String] { workflow.activeCitations }
     var processingErrors: [String] { workflow.processingErrors }
     
-    init(aiParsingService: AIParsingService, familyResolver: FamilyResolver) {
-        self.workflow = FamilyWebWorkflow(aiParsingService: aiParsingService, familyResolver: familyResolver)
+    init(aiParsingService: AIParsingService, familyResolver: FamilyResolver, fileManager: FileManager) {
+        // Pass fileManager to workflow
+        self.workflow = FamilyWebWorkflow(
+            aiParsingService: aiParsingService,
+            familyResolver: familyResolver,
+            fileManager: fileManager
+        )
     }
     
     func startProcessing(familyId: String) {

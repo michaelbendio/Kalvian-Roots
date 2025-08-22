@@ -468,7 +468,7 @@ class MLXService: AIService {
                     logDebug(.ai, "Found generated text in response field")
                     
                     // DEBUG: Log the raw generated text
-                    logDebug(.ai, "📝 Raw generated text: \(String(generatedText.prefix(200)))...")
+                    logDebug(.ai, "📝 Raw generated text: \(String(generatedText.prefix(1200)))...")
                     
                     // Try to extract JSON from the generated text
                     let cleanedJSON = try extractJSONFromGeneratedText(generatedText)
@@ -489,6 +489,7 @@ class MLXService: AIService {
                             
                             // Extract family ID from the original request if possible
                             let familyId = qwenData["name"] as? String ?? "KORPI 6"
+                            
                             let transformedJSON = try transformQwenResponseToFamily(cleanedJSON, familyId: familyId)
                             
                             logDebug(.ai, "📝 Transformed JSON: \(String(transformedJSON.prefix(200)))...")
