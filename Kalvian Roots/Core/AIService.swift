@@ -115,8 +115,7 @@ class MockAIService: AIService {
             "noteMarkers": [],
             "fatherName": null,
             "motherName": null,
-            "enhancedDeathDate": null,
-            "enhancedMarriageDate": null,
+            "fullMarriageDate": null,
             "spouseBirthDate": null,
             "spouseParentsFamilyId": null
           },
@@ -133,8 +132,7 @@ class MockAIService: AIService {
             "noteMarkers": [],
             "fatherName": null,
             "motherName": null,
-            "enhancedDeathDate": null,
-            "enhancedMarriageDate": null,
+            "fullMarriageDate": null,
             "spouseBirthDate": null,
             "spouseParentsFamilyId": null
           },
@@ -153,8 +151,7 @@ class MockAIService: AIService {
               "noteMarkers": [],
               "fatherName": null,
               "motherName": null,
-              "enhancedDeathDate": null,
-              "enhancedMarriageDate": null,
+              "fullMarriageDate": null,
               "spouseBirthDate": null,
               "spouseParentsFamilyId": null
             },
@@ -171,8 +168,7 @@ class MockAIService: AIService {
               "noteMarkers": [],
               "fatherName": null,
               "motherName": null,
-              "enhancedDeathDate": null,
-              "enhancedMarriageDate": null,
+              "fullMarriageDate": null,
               "spouseBirthDate": null,
               "spouseParentsFamilyId": null
             },
@@ -189,8 +185,7 @@ class MockAIService: AIService {
               "noteMarkers": [],
               "fatherName": null,
               "motherName": null,
-              "enhancedDeathDate": null,
-              "enhancedMarriageDate": null,
+              "fullMarriageDate": null,
               "spouseBirthDate": null,
               "spouseParentsFamilyId": null
             }
@@ -219,8 +214,7 @@ class MockAIService: AIService {
             "noteMarkers": [],
             "fatherName": null,
             "motherName": null,
-            "enhancedDeathDate": null,
-            "enhancedMarriageDate": null,
+            "fullMarriageDate": null,
             "spouseBirthDate": null,
             "spouseParentsFamilyId": null
           },
@@ -237,8 +231,7 @@ class MockAIService: AIService {
             "noteMarkers": [],
             "fatherName": null,
             "motherName": null,
-            "enhancedDeathDate": null,
-            "enhancedMarriageDate": null,
+            "fullMarriageDate": null,
             "spouseBirthDate": null,
             "spouseParentsFamilyId": null
           },
@@ -257,8 +250,7 @@ class MockAIService: AIService {
               "noteMarkers": [],
               "fatherName": null,
               "motherName": null,
-              "enhancedDeathDate": null,
-              "enhancedMarriageDate": null,
+              "fullMarriageDate": null,
               "spouseBirthDate": null,
               "spouseParentsFamilyId": null
             }
@@ -287,8 +279,7 @@ class MockAIService: AIService {
             "noteMarkers": [],
             "fatherName": null,
             "motherName": null,
-            "enhancedDeathDate": null,
-            "enhancedMarriageDate": null,
+            "fullMarriageDate": null,
             "spouseBirthDate": null,
             "spouseParentsFamilyId": null
           },
@@ -313,6 +304,18 @@ class DeepSeekService: AIService {
     private var apiKey: String?
     private let baseURL = "https://api.deepseek.com/v1/chat/completions"
     
+    // ADD: Initialize with saved API key from UserDefaults
+    init() {
+        // Try to load saved API key from UserDefaults
+        if let savedKey = UserDefaults.standard.string(forKey: "AIService_DeepSeek_APIKey"),
+           !savedKey.isEmpty {
+            self.apiKey = savedKey
+            logInfo(.ai, "✅ DeepSeek auto-configured with saved API key")
+        } else {
+            logDebug(.ai, "No saved API key found for DeepSeek")
+        }
+    }
+    
     var isConfigured: Bool {
         let configured = apiKey != nil && !apiKey!.isEmpty
         logTrace(.ai, "DeepSeek isConfigured: \(configured)")
@@ -329,7 +332,11 @@ class DeepSeekService: AIService {
         }
         
         self.apiKey = apiKey
-        logInfo(.ai, "✅ DeepSeek configured successfully")
+        
+        // SAVE the API key to UserDefaults for future use
+        UserDefaults.standard.set(apiKey, forKey: "AIService_DeepSeek_APIKey")
+        
+        logInfo(.ai, "✅ DeepSeek configured and API key saved")
     }
     
     func parseFamily(familyId: String, familyText: String) async throws -> String {
@@ -989,8 +996,7 @@ extension AIService {
             "noteMarkers": ["string"],
             "fatherName": null,
             "motherName": null,
-            "enhancedDeathDate": null,
-            "enhancedMarriageDate": null,
+            "fullMarriageDate": null,
             "spouseBirthDate": null,
             "spouseParentsFamilyId": null
           },
@@ -1007,8 +1013,7 @@ extension AIService {
             "noteMarkers": ["string"],
             "fatherName": null,
             "motherName": null,
-            "enhancedDeathDate": null,
-            "enhancedMarriageDate": null,
+            "fullMarriageDate": null,
             "spouseBirthDate": null,
             "spouseParentsFamilyId": null
           },
@@ -1026,8 +1031,7 @@ extension AIService {
               "noteMarkers": ["string"],
               "fatherName": null,
               "motherName": null,
-              "enhancedDeathDate": null,
-              "enhancedMarriageDate": null,
+              "fullMarriageDate": null,
               "spouseBirthDate": null,
               "spouseParentsFamilyId": null
             }
@@ -1046,8 +1050,7 @@ extension AIService {
               "noteMarkers": ["string"],
               "fatherName": null,
               "motherName": null,
-              "enhancedDeathDate": null,
-              "enhancedMarriageDate": null,
+              "fullMarriageDate": null,
               "spouseBirthDate": null,
               "spouseParentsFamilyId": null
             }

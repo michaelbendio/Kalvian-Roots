@@ -130,7 +130,7 @@ class FamilyResolver {
         logInfo(.resolver, "👨‍👩 Resolving as-child families for parents")
         
         for parent in family.allParents {
-            if let asChildRef = parent.asChildReference {
+            if let asChildRef = parent.asChild {
                 logInfo(.resolver, "🔍 Attempting to resolve as_child: \(parent.displayName) from \(asChildRef)")
                 
                 if let resolvedFamily = try await findAsChildFamily(for: parent) {
@@ -156,7 +156,7 @@ class FamilyResolver {
         logInfo(.resolver, "👶 Resolving as-parent families for children")
         
         for child in family.children {
-            if let asParentRef = child.asParentReference {
+            if let asParentRef = child.asParent {
                 logInfo(.resolver, "🔍 Attempting to resolve as_parent: \(child.displayName) to \(asParentRef)")
                 
                 if let resolvedFamily = try await findAsParentFamily(for: child) {
@@ -203,7 +203,7 @@ class FamilyResolver {
         logDebug(.resolver, "🔍 Finding as-child family for: \(person.displayName)")
         
         // Method 1: Try family reference resolution first
-        if let asChildRef = person.asChildReference {
+        if let asChildRef = person.asChild {
             logDebug(.resolver, "Found as-child reference: \(asChildRef)")
             return try await resolveFamilyByReference(asChildRef)
         }
@@ -224,7 +224,7 @@ class FamilyResolver {
         logDebug(.resolver, "🔍 Finding as-parent family for: \(person.displayName)")
         
         // Method 1: Try family reference resolution first
-        if let asParentRef = person.asParentReference {
+        if let asParentRef = person.asParent {
             logDebug(.resolver, "Found as-parent reference: \(asParentRef)")
             return try await resolveFamilyByReference(asParentRef)
         }
@@ -292,7 +292,7 @@ class FamilyResolver {
         
         // Parents as-child references (where they came from)
         let parentRefs = family.allParents.compactMap { parent in
-            parent.asChildReference.map { ref in
+            parent.asChild.map { ref in
                 "\(parent.displayName) came from → \(ref)"
             }
         }
@@ -308,7 +308,7 @@ class FamilyResolver {
         
         // Children as-parent references (where they went)
         let childRefs = family.children.compactMap { child in
-            child.asParentReference.map { ref in
+            child.asParent.map { ref in
                 "\(child.displayName) created family → \(ref)"
             }
         }

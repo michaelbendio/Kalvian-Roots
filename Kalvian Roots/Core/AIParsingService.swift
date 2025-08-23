@@ -264,7 +264,7 @@ class AIParsingService {
         logInfo(.parsing, "  - Death: \(family.father.deathDate ?? "nil")")
         logInfo(.parsing, "  - Marriage: \(family.father.marriageDate ?? "nil")")
         logInfo(.parsing, "  - Spouse: \(family.father.spouse ?? "nil")")
-        logInfo(.parsing, "  - asChildRef: \(family.father.asChildReference ?? "⚠️ MISSING") ⬅️ (where father came from)")
+        logInfo(.parsing, "  - asChildRef: \(family.father.asChild ?? "⚠️ MISSING") ⬅️ (where father came from)")
         
         // Log Mother
         if let mother = family.mother {
@@ -273,13 +273,13 @@ class AIParsingService {
             logInfo(.parsing, "  - Death: \(mother.deathDate ?? "nil")")
             logInfo(.parsing, "  - Marriage: \(mother.marriageDate ?? "nil")")
             logInfo(.parsing, "  - Spouse: \(mother.spouse ?? "nil")")
-            logInfo(.parsing, "  - asChildRef: \(mother.asChildReference ?? "⚠️ MISSING") ⬅️ (where mother came from)")
+            logInfo(.parsing, "  - asChildRef: \(mother.asChild ?? "⚠️ MISSING") ⬅️ (where mother came from)")
         }
         
         // Log Additional Spouses
         for (index, spouse) in family.additionalSpouses.enumerated() {
             logInfo(.parsing, "💑 ADDITIONAL SPOUSE \(index + 1): \(spouse.displayName)")
-            logInfo(.parsing, "  - asChildRef: \(spouse.asChildReference ?? "nil") ⬅️")
+            logInfo(.parsing, "  - asChildRef: \(spouse.asChild ?? "nil") ⬅️")
         }
         
         // Log Children with emphasis on as-parent references
@@ -295,7 +295,7 @@ class AIParsingService {
             logInfo(.parsing, "      - Spouse: \(child.spouse ?? "nil")")
             
             // Children should ONLY have asParentReference (where they went)
-            if let asParentRef = child.asParentReference {
+            if let asParentRef = child.asParent {
                 logInfo(.parsing, "      - ➡️ AS_PARENT_REF: \(asParentRef) ✅ (family they created)")
                 childrenWithRefs += 1
             } else if child.spouse != nil {
@@ -307,7 +307,7 @@ class AIParsingService {
             }
             
             // Flag if child incorrectly has asChildReference
-            if child.asChildReference != nil {
+            if child.asChild != nil {
                 logError(.parsing, "      - ❌ ERROR: Child has asChildReference (should not happen!)")
             }
         }
@@ -323,9 +323,9 @@ class AIParsingService {
             logInfo(.parsing, "🎯 KORPI 6 SPECIFIC CHECK:")
             logInfo(.parsing, "  Expected parent refs: KORPI 5 (father), SIKALA 5 (mother)")
             logInfo(.parsing, "  Expected child refs: ISO-PEITSO III 2, LAXO 4, KORVELA 3, RIMPILÄ 7, JÄNESNIEMI 5")
-            logInfo(.parsing, "  Found parent refs: \(family.father.asChildReference ?? "none"), \(family.mother?.asChildReference ?? "none")")
+            logInfo(.parsing, "  Found parent refs: \(family.father.asChild ?? "none"), \(family.mother?.asChild ?? "none")")
             
-            let foundChildRefs = family.children.compactMap { $0.asParentReference }
+            let foundChildRefs = family.children.compactMap { $0.asParent }
             logInfo(.parsing, "  Found child refs: \(foundChildRefs.isEmpty ? "NONE!" : foundChildRefs.joined(separator: ", "))")
         }
         
@@ -334,12 +334,12 @@ class AIParsingService {
         if totalRefs > 0 {
             logInfo(.parsing, "📍 REFERENCES TO RESOLVE:")
             for parent in family.parentsNeedingResolution {
-                if let ref = parent.asChildReference {
+                if let ref = parent.asChild {
                     logInfo(.parsing, "  - \(parent.displayName) → AS_CHILD in: \(ref)")
                 }
             }
             for child in family.children {
-                if let ref = child.asParentReference {
+                if let ref = child.asParent {
                     logInfo(.parsing, "  - \(child.displayName) → AS_PARENT in: \(ref)")
                 }
             }

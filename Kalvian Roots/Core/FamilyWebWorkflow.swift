@@ -140,7 +140,7 @@ class FamilyWebWorkflow {
             
             // Generate as-child citations for parents who have references
             for parent in family.allParents {
-                if parent.asChildReference != nil {
+                if parent.asChild != nil {
                     let asChildCitation = CitationGenerator.generateAsChildCitation(for: parent, in: family)
                     activeCitations[parent.name] = asChildCitation
                 }
@@ -211,7 +211,7 @@ class FamilyWebWorkflow {
             }
             
             // Also generate as-child citation if the child has cross-reference data
-            if child.asChildReference != nil {
+            if child.asChild != nil {
                 let asChildCitation = CitationGenerator.generateAsChildCitation(for: child, in: network.mainFamily)
                 activeCitations["\(child.name)_asChild"] = asChildCitation
             }
