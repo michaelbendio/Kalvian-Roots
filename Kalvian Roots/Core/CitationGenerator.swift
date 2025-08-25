@@ -24,31 +24,47 @@ struct CitationGenerator {
     static func generateMainFamilyCitation(family: Family) -> String {
         var citation = "Information on \(family.pageReferenceString) includes:\n\n"
         
-        // Parents information with marriage date
-        citation += formatParent(family.father)
+        // Parents information with marriage date (from primary couple)
+        if let father = family.father {
+            citation += formatParent(father)
+        }
         
         if let mother = family.mother {
             citation += formatParent(mother)
         }
         
-        // Marriage date for parents
-        if let marriageDate = extractParentsMarriageDate(from: family) {
+        // Marriage date for primary couple
+        if let primaryCouple = family.primaryCouple,
+           let marriageDate = primaryCouple.marriageDate {
             citation += "m \(normalizeDate(marriageDate))\n"
         }
         
-        // Additional spouses
-        if !family.additionalSpouses.isEmpty {
+        // FIXED: Additional spouses (couples beyond the first)
+        if family.couples.count > 1 {
             citation += "\nAdditional spouse(s):\n"
-            for spouse in family.additionalSpouses {
-                citation += formatParent(spouse)
+            for couple in family.couples.dropFirst() {
+                citation += formatParent(couple.wife)
+                if let marriageDate = couple.marriageDate {
+                    citation += "m \(normalizeDate(marriageDate))\n"
+                }
             }
         }
         
-        // Children
+        // Children from primary couple
         if !family.children.isEmpty {
             citation += "\nChildren:\n"
             for child in family.children {
                 citation += formatChild(child)
+            }
+        }
+        
+        // Children from additional couples
+        for (index, couple) in family.couples.dropFirst().enumerated() {
+            if !couple.children.isEmpty {
+                citation += "\nChildren with spouse \(index + 2):\n"
+                for child in couple.children {
+                    citation += formatChild(child)
+                }
             }
         }
         
@@ -71,27 +87,32 @@ struct CitationGenerator {
     /**
      * Generate as_child citation for a person in their parents' family
      * Used for: parents showing where they came from
-     * This is the ONLY generateAsChildCitation method - consolidated from the duplicate
      */
     static func generateAsChildCitation(for person: Person, in family: Family) -> String {
         var citation = "Information on \(family.pageReferenceString) includes:\n\n"
         
         // Parents
-        citation += formatParent(family.father)
+        if let father = family.father {
+            citation += formatParent(father)
+        }
         if let mother = family.mother {
             citation += formatParent(mother)
         }
         
-        // Marriage date
-        if let marriageDate = extractParentsMarriageDate(from: family) {
+        // Marriage date for primary couple
+        if let primaryCouple = family.primaryCouple,
+           let marriageDate = primaryCouple.marriageDate {
             citation += "m \(normalizeDate(marriageDate))\n"
         }
         
-        // Additional spouses
-        if !family.additionalSpouses.isEmpty {
+        // FIXED: Additional spouses (couples beyond the first)
+        if family.couples.count > 1 {
             citation += "\nAdditional spouse(s):\n"
-            for spouse in family.additionalSpouses {
-                citation += formatParent(spouse)
+            for couple in family.couples.dropFirst() {
+                citation += formatParent(couple.wife)
+                if let marriageDate = couple.marriageDate {
+                    citation += "m \(normalizeDate(marriageDate))\n"
+                }
             }
         }
         
@@ -130,7 +151,7 @@ struct CitationGenerator {
             line += ", b \(normalizeDate(birthDate))"
         }
         
-        if let deathDate = person.bestDeathDate {
+        if let deathDate = person.deathDate {
             line += ", d \(normalizeDate(deathDate))"
         }
         
@@ -149,21 +170,20 @@ struct CitationGenerator {
             line += ", b \(normalizeDate(birthDate))"
         }
         
-        // Marriage info (fix duplicate spouse issue)
+        // Marriage info
         if let spouse = child.spouse, !spouse.isEmpty {
             let marriageYear = extractMarriageYear(from: child)
             if let year = marriageYear {
                 line += ", m \(spouse) \(year)"
             } else if let rawMarriage = child.bestMarriageDate {
-                // Handle cases where we have a marriage date but couldn't extract year
                 line += ", m \(spouse) \(rawMarriage)"
             } else {
                 line += ", m \(spouse)"
             }
         }
         
-        // Death date (enhanced takes priority)
-        if let deathDate = child.bestDeathDate {
+        // Death date
+        if let deathDate = child.deathDate {
             line += ", d \(normalizeDate(deathDate))"
         }
         
@@ -172,13 +192,6 @@ struct CitationGenerator {
     }
     
     // MARK: - Data Extraction and Normalization
-    
-    /**
-     * Extract parents' marriage date from family data
-     */
-    private static func extractParentsMarriageDate(from family: Family) -> String? {
-        return family.father.bestMarriageDate ?? family.mother?.bestMarriageDate
-    }
     
     /**
      * Extract marriage year from person's data
@@ -190,8 +203,18 @@ struct CitationGenerator {
         if let match = marriageDate.range(of: #"\b(\d{4})\b"#, options: .regularExpression) {
             let fullMatch = String(marriageDate[match])
             let components = fullMatch.components(separatedBy: ".")
-            if components.count == 3 {
-                return components[2]
+            if let year = components.last, year.count == 4 {
+                return year
+            }
+        }
+        
+        // Try to extract 2-digit year and convert to 4-digit
+        if let match = marriageDate.range(of: #"\b(\d{2})\b"#, options: .regularExpression) {
+            let twoDigitYear = String(marriageDate[match])
+            if let year = Int(twoDigitYear) {
+                // Convert 2-digit to 4-digit (assuming 18xx for genealogical data)
+                let fourDigitYear = year + 1800
+                return String(fourDigitYear)
             }
         }
         
@@ -199,23 +222,38 @@ struct CitationGenerator {
     }
     
     /**
-     * Check if child matches target person for highlighting
+     * Normalize date format for display
      */
-    private static func isTargetPerson(_ child: Person, _ target: Person) -> Bool {
-        return child.name.lowercased() == target.name.lowercased() &&
-               child.birthDate == target.birthDate
+    private static func normalizeDate(_ date: String) -> String {
+        // Remove extra whitespace and normalize format
+        let trimmed = date.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Check if it's already in DD.MM.YYYY format
+        if trimmed.range(of: #"^\d{1,2}\.\d{1,2}\.\d{4}$"#, options: .regularExpression) != nil {
+            return trimmed
+        }
+        
+        // Check if it's a 4-digit year
+        if trimmed.range(of: #"^\d{4}$"#, options: .regularExpression) != nil {
+            return trimmed
+        }
+        
+        // Check if it starts with "n " (about)
+        if trimmed.hasPrefix("n ") {
+            return "about \(String(trimmed.dropFirst(2)))"
+        }
+        
+        return trimmed
     }
     
     /**
-     * Normalize date format from DD.MM.YYYY to readable format
+     * Check if a child is the target person for highlighting
      */
-    private static func normalizeDate(_ date: String) -> String {
-        // Convert "09.09.1727" to "9 September 1727"
-        if let formatted = DateFormatter.formatGenealogyDate(date) {
-            return formatted
-        }
+    private static func isTargetPerson(_ child: Person, _ target: Person) -> Bool {
+        // Compare by name and birth date for better accuracy
+        let nameMatch = child.name.lowercased() == target.name.lowercased()
+        let birthMatch = child.birthDate == target.birthDate
         
-        // Handle partial dates or return as-is
-        return date
+        return nameMatch && (birthMatch || child.birthDate == nil || target.birthDate == nil)
     }
 }

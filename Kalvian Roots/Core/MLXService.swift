@@ -226,6 +226,19 @@ class MLXService: AIService {
         return """
         {
           "familyId": "\(familyId)",
+          "couples": [
+            {
+                "husband": {...},
+                "wife": {...},
+                "marriageDate": "...",
+                "children": [...],
+                "childrenDiedInfancy": 0,
+                "coupleNotes": []
+            }
+          ],
+          "notes": [],
+          "noteDefinitions": {}
+          }
           "pageReferences": ["999"],
           "father": {
             "name": "Mock Father",

@@ -35,10 +35,10 @@ struct Person: Hashable, Sendable, Codable, Identifiable {
     var spouse: String?
     
     /// Family reference from {family_id} notation where person is a child
-    var asChildReference: String?
+    var asChild: String?
     
     /// Family where person appears as parent
-    var asParentReference: String?
+    var asParent: String?
     
     /// FamilySearch ID from <ID> notation
     var familySearchId: String?
@@ -86,7 +86,7 @@ struct Person: Hashable, Sendable, Codable, Identifiable {
     
     /// Check if person needs cross-reference resolution
     var needsCrossReferenceResolution: Bool {
-        return asChildReference != nil || asParentReference != nil || spouse != nil
+        return asChild != nil || asParent != nil || spouse != nil
     }
     
     /// Check if person has parent information for Hiski queries
@@ -120,8 +120,8 @@ struct Person: Hashable, Sendable, Codable, Identifiable {
         self.marriageDate = marriageDate
         self.fullMarriageDate = fullMarriageDate
         self.spouse = spouse
-        self.asChildReference = asChildReference
-        self.asParentReference = asParentReference
+        self.asChild = asChildReference
+        self.asParent = asParentReference
         self.familySearchId = familySearchId
         self.noteMarkers = noteMarkers
         self.fatherName = fatherName

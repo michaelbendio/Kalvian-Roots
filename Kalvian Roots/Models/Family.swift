@@ -86,6 +86,47 @@ struct Family: Hashable, Sendable, Codable {
         return couples.first?.children ?? []
     }
     
+    // MARK: - FIXED: Missing Computed Properties for Backward Compatibility
+    
+    /// All parents across all couples (for cross-reference resolution)
+    var allParents: [Person] {
+        var parents: [Person] = []
+        for couple in couples {
+            parents.append(couple.husband)
+            parents.append(couple.wife)
+        }
+        return parents
+    }
+    
+    /// All children who are married (have spouse information)
+    var marriedChildren: [Person] {
+        var married: [Person] = []
+        for couple in couples {
+            for child in couple.children {
+                if child.isMarried {
+                    married.append(child)
+                }
+            }
+        }
+        return married
+    }
+    
+    /// Additional spouses (all spouses beyond the first couple)
+    var additionalSpouses: [Person] {
+        guard couples.count > 1 else { return [] }
+        var spouses: [Person] = []
+        for couple in couples.dropFirst() {
+            spouses.append(couple.wife) // Assuming husband is constant, wife changes
+        }
+        return spouses
+    }
+    
+    /// All children who died in infancy across all couples
+    var childrenDiedInfancy: Int? {
+        let total = couples.compactMap { $0.childrenDiedInfancy }.reduce(0, +)
+        return total > 0 ? total : nil
+    }
+    
     // MARK: - Computed Properties
     
     /// Get formatted page reference string

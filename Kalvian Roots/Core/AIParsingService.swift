@@ -46,13 +46,10 @@ class AIParsingService {
     init() {
         logInfo(.ai, "🤖 Initializing AI Parsing Service")
         
-        // Initialize service factory
-//        let factory = AIServiceFactory()
-        
         // Get available services for platform
         let platformServices = PlatformAwareServiceManager.getRecommendedServices()
         
-        // Build services dictionar
+        // Build services dictionary
         var servicesDict: [String: AIService] = [:]
         for service in platformServices {
             servicesDict[service.name] = service
@@ -125,7 +122,8 @@ class AIParsingService {
             debugLogParsedFamily(family)
             
             logInfo(.parsing, "✅ Successfully parsed family: \(familyId)")
-            DebugLogger.shared.parseStep("Parse Complete", "Family: \(familyId), Members: \(family.allPersons.count)")
+            DebugLogger.shared.parseStep(
+                "Parse Complete", "Family: \(familyId), Members: \(family.allPersons.count)")
             
             return family
             
@@ -213,6 +211,7 @@ class AIParsingService {
         return try createMinimalFamilyFromBrokenJSON(malformedJSON)
     }
     
+    // MARK: - FIXED: Updated fallback parser to use new Family initializer
     private func createMinimalFamilyFromBrokenJSON(_ brokenJSON: String) throws -> Family {
         logWarn(.parsing, "⚠️ Creating minimal family structure from broken JSON")
         
@@ -220,23 +219,30 @@ class AIParsingService {
         let familyId = extractJSONValue(from: brokenJSON, key: "familyId") ?? "UNKNOWN"
         let fatherName = extractJSONValue(from: brokenJSON, key: "name") ?? "Unknown Father"
         
-        // Create minimal viable family structure
+        // Create minimal viable family structure using the working initializer
         let father = Person(
             name: fatherName,
             noteMarkers: []
         )
         
+        let mother = Person(
+            name: "Unknown Mother",
+            noteMarkers: []
+        )
+        
         logWarn(.parsing, "⚠️ Created minimal family structure for: \(familyId)")
         
+        // FIXED: Use the correct initializer that exists
         return Family(
             familyId: familyId,
             pageReferences: ["999"], // Default page reference
-            father: father,
-            mother: nil,
-            additionalSpouses: [],
+            husband: father,         // ✅ Use the working initializer
+            wife: Person(name: "Unknown Mother", noteMarkers: []),
+            marriageDate: nil,
             children: [],
+            childrenDiedInfancy: nil,
             notes: ["Minimal parsing used - AI response was malformed"],
-            childrenDiedInfancy: nil
+            noteDefinitions: [:]
         )
     }
     
@@ -259,12 +265,14 @@ class AIParsingService {
         logInfo(.parsing, "📋 Family ID: \(family.familyId)")
         
         // Log Father
-        logInfo(.parsing, "👨 FATHER: \(family.father.displayName)")
-        logInfo(.parsing, "  - Birth: \(family.father.birthDate ?? "nil")")
-        logInfo(.parsing, "  - Death: \(family.father.deathDate ?? "nil")")
-        logInfo(.parsing, "  - Marriage: \(family.father.marriageDate ?? "nil")")
-        logInfo(.parsing, "  - Spouse: \(family.father.spouse ?? "nil")")
-        logInfo(.parsing, "  - asChildRef: \(family.father.asChild ?? "⚠️ MISSING") ⬅️ (where father came from)")
+        if let father = family.father {
+            logInfo(.parsing, "👨 FATHER: \(father.displayName)")
+            logInfo(.parsing, "  - Birth: \(father.birthDate ?? "nil")")
+            logInfo(.parsing, "  - Death: \(father.deathDate ?? "nil")")
+            logInfo(.parsing, "  - Marriage: \(father.marriageDate ?? "nil")")
+            logInfo(.parsing, "  - Spouse: \(father.spouse ?? "nil")")
+            logInfo(.parsing, "  - asChildRef: \(father.asChild ?? "⚠️ MISSING") ⬅️ (where father came from)")
+        }
         
         // Log Mother
         if let mother = family.mother {
@@ -294,46 +302,36 @@ class AIParsingService {
             logInfo(.parsing, "      - Marriage: \(child.marriageDate ?? "nil")")
             logInfo(.parsing, "      - Spouse: \(child.spouse ?? "nil")")
             
-            // Children should ONLY have asParentReference (where they went)
             if let asParentRef = child.asParent {
-                logInfo(.parsing, "      - ➡️ AS_PARENT_REF: \(asParentRef) ✅ (family they created)")
+                logInfo(.parsing, "      - asParentRef: \(asParentRef) ⬅️ (where child became parent)")
                 childrenWithRefs += 1
-            } else if child.spouse != nil {
-                // Married child without reference - this might be a parsing issue
-                logWarn(.parsing, "      - ⚠️ NO AS_PARENT_REF (married child - expected reference!)")
-                childrenWithoutRefs += 1
             } else {
-                logInfo(.parsing, "      - No reference (unmarried child)")
-            }
-            
-            // Flag if child incorrectly has asChildReference
-            if child.asChild != nil {
-                logError(.parsing, "      - ❌ ERROR: Child has asChildReference (should not happen!)")
+                logInfo(.parsing, "      - asParentRef: ⚠️ MISSING")
+                childrenWithoutRefs += 1
             }
         }
         
-        // Summary of cross-references
+        // Summary of cross-references found
         logInfo(.parsing, "📊 CROSS-REFERENCE SUMMARY:")
-        logInfo(.parsing, "  - Parents with as_child refs: \(family.parentsNeedingResolution.count)")
-        logInfo(.parsing, "  - Children with as_parent refs: \(childrenWithRefs)")
-        logInfo(.parsing, "  - Married children missing refs: \(childrenWithoutRefs)")
+        let parentsWithRefs = family.allParents.filter { $0.asChild != nil }
+        logInfo(.parsing, "  - Parents with as_child refs: \(parentsWithRefs.count)/\(family.allParents.count)")
+        if !parentsWithRefs.isEmpty {
+            logInfo(.parsing, "  Found parent refs: \(parentsWithRefs.compactMap { $0.asChild }.joined(separator: ", "))")
+        }
         
-        // Expected vs Found for KORPI 6
-        if family.familyId.uppercased().contains("KORPI 6") {
-            logInfo(.parsing, "🎯 KORPI 6 SPECIFIC CHECK:")
-            logInfo(.parsing, "  Expected parent refs: KORPI 5 (father), SIKALA 5 (mother)")
-            logInfo(.parsing, "  Expected child refs: ISO-PEITSO III 2, LAXO 4, KORVELA 3, RIMPILÄ 7, JÄNESNIEMI 5")
-            logInfo(.parsing, "  Found parent refs: \(family.father.asChild ?? "none"), \(family.mother?.asChild ?? "none")")
-            
+        logInfo(.parsing, "  - Children with as_parent refs: \(childrenWithRefs)/\(family.children.count)")
+        if childrenWithRefs > 0 {
             let foundChildRefs = family.children.compactMap { $0.asParent }
-            logInfo(.parsing, "  Found child refs: \(foundChildRefs.isEmpty ? "NONE!" : foundChildRefs.joined(separator: ", "))")
+            logInfo(.parsing, "  Found child refs: \(foundChildRefs.joined(separator: ", "))")
+        } else {
+            logWarn(.parsing, "  ⚠️ NO CHILD REFS FOUND!")
         }
         
         // List all cross-references to resolve
-        let totalRefs = family.parentsNeedingResolution.count + childrenWithRefs
+        let totalRefs = parentsWithRefs.count + childrenWithRefs
         if totalRefs > 0 {
             logInfo(.parsing, "📍 REFERENCES TO RESOLVE:")
-            for parent in family.parentsNeedingResolution {
+            for parent in parentsWithRefs {
                 if let ref = parent.asChild {
                     logInfo(.parsing, "  - \(parent.displayName) → AS_CHILD in: \(ref)")
                 }
@@ -350,4 +348,3 @@ class AIParsingService {
         logInfo(.parsing, "🔍 === END PARSED FAMILY DEBUG ===")
     }
 }
-
