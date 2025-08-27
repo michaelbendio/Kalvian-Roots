@@ -211,16 +211,20 @@ class FamilyNetworkWorkflow {
         logInfo(.citation, "👥 Generating person-specific citations")
         
         for parent in family.allParents {
+            logInfo(.citation, "🔍 DEBUG: Processing parent '\(parent.name)' with asChild='\(parent.asChild ?? "nil")'")
+            
             if let asChildFamily = network.getAsChildFamily(for: parent) {
-                // FIXED: Use proper asChild citation - no enhancements, no additional info
+                logInfo(.citation, "✅ Found asChild family: \(asChildFamily.familyId)")
                 let citation = CitationGenerator.generateAsChildCitation(for: parent, in: asChildFamily)
                 activeCitations[parent.name] = citation
-                logDebug(.citation, "Generated asChild citation for parent: \(parent.name) from \(asChildFamily.familyId)")
+                // DEBUG: Verify what we just stored
+                logInfo(.citation, "🔍 STORED citation for '\(parent.name)': \(citation.prefix(100))...")
+                logInfo(.citation, "🔍 VERIFY retrieval: \(activeCitations[parent.name]?.prefix(100) ?? "NOT FOUND")...")
             } else {
-                // Fallback: use regular family citation for parents without asChild families
+                logWarn(.citation, "❌ NO asChild family found for '\(parent.name)'")
+                logInfo(.citation, "🔍 Available asChild families: \(Array(network.asChildFamilies.keys))")
                 let citation = CitationGenerator.generateMainFamilyCitation(family: family)
                 activeCitations[parent.name] = citation
-                logDebug(.citation, "Generated fallback nuclear citation for parent: \(parent.name)")
             }
         }
         

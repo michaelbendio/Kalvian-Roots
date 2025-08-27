@@ -458,7 +458,7 @@ class JuuretApp {
             
             // Try to get person-specific citation by name
             if let enhancedCitation = activeCitations[person.name] {
-                logDebug(.citation, "Using enhanced citation from workflow for: \(person.name)")
+                logDebug(.citation, "🔍 RETRIEVED citation for '\(person.name)': \(enhancedCitation.prefix(100))...")
                 return enhancedCitation
             }
             
