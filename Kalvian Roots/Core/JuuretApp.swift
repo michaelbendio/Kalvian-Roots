@@ -297,7 +297,7 @@ class JuuretApp {
             )
             
             // Start the workflow
-            try await workflow.updateCitationsFromNetwork(for: normalizedId)
+            try await workflow.processFamilyNetwork(for: normalizedId)
             
             // Update app state with results
             await MainActor.run {
