@@ -297,10 +297,14 @@ struct JuuretView: View {
     private func enhancedFamilyMembersView(family: Family) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             // Parents - FIXED: father is not optional in Family struct
-            enhancedPersonView(person: family.father, in: family, role: "Father")
+            if let father = family.father {
+                enhancedPersonView(person: father, in: family, role: "Father")
+            }
             
             if let mother = family.mother {
-                enhancedPersonView(person: mother, in: family, role: "Mother")
+                Group {
+                    enhancedPersonView(person: mother, in: family, role: "Mother")
+                }
             }
             
             // Children

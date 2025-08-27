@@ -2,10 +2,43 @@
 //  FamilyResolver.swift
 //  Kalvian Roots
 //
-//  Cross-reference resolution with enhanced debug logging
+//  Cross-reference resolution with enhanced debug logging - MEMORY EFFICIENT VERSION
 //
 
 import Foundation
+
+// MARK: - ResolutionStatistics
+
+/**
+ * Tracks success rates for cross-reference resolution
+ */
+struct ResolutionStatistics {
+    private var attempts = 0
+    private var successes = 0
+    private var failures = 0
+    
+    mutating func incrementAttempt() {
+        attempts += 1
+    }
+    
+    mutating func incrementSuccess() {
+        successes += 1
+    }
+    
+    mutating func incrementFailure() {
+        failures += 1
+    }
+    
+    var successRate: Double {
+        return attempts > 0 ? Double(successes) / Double(attempts) : 0.0
+    }
+    
+    var summary: String {
+        return "Attempts: \(attempts), Successes: \(successes), Failures: \(failures), Rate: \(String(format: "%.1f", successRate * 100))%"
+    }
+}
+
+// MARK: - FamilyResolver
 
 /**
  * FamilyResolver - Cross-reference resolution and family network building
@@ -19,55 +52,37 @@ import Foundation
 @Observable
 class FamilyResolver {
     
-    // MARK: - Dependencies
+    // MARK: - Dependencies (Memory Efficient)
     
     private let aiParsingService: AIParsingService
     private let nameEquivalenceManager: NameEquivalenceManager
+    private let fileManager: Kalvian_Roots.FileManager  // Reference instead of content copy
     
     // MARK: - State Properties
     
-    private var fileContent: String?
     private var resolutionStatistics = ResolutionStatistics()
     
     // MARK: - Computed Properties
     
     var hasFileContent: Bool {
-        fileContent != nil && !(fileContent?.isEmpty ?? true)
+        fileManager.isFileLoaded
     }
     
     // MARK: - Initialization
     
-    init(aiParsingService: AIParsingService, nameEquivalenceManager: NameEquivalenceManager) {
+    init(aiParsingService: AIParsingService,
+         nameEquivalenceManager: NameEquivalenceManager,
+         fileManager: Kalvian_Roots.FileManager) {
         logInfo(.resolver, "🔗 FamilyResolver initialization started")
         
         self.aiParsingService = aiParsingService
         self.nameEquivalenceManager = nameEquivalenceManager
+        self.fileManager = fileManager
         
-        logInfo(.resolver, "✅ FamilyResolver initialized")
+        logInfo(.resolver, "✅ FamilyResolver initialized with FileManager reference")
         logDebug(.resolver, "AI Service: \(aiParsingService.currentServiceName)")
         logDebug(.resolver, "Name Equivalence Manager ready")
-    }
-    
-    // MARK: - File Content Management
-    
-    /**
-     * Set the file content for cross-reference search operations
-     */
-    func setFileContent(_ content: String) {
-        logInfo(.resolver, "📁 Setting file content for cross-reference resolution")
-        logDebug(.resolver, "File content length: \(content.count) characters")
-        
-        self.fileContent = content
-        
-        // Pre-process content for efficient searching
-        preprocessFileContent()
-        
-        logInfo(.resolver, "✅ File content set and preprocessed")
-    }
-    
-    private func preprocessFileContent() {
-        // Future optimization: Create family ID index, birth date index, etc.
-        logTrace(.resolver, "File content preprocessing completed")
+        logDebug(.resolver, "FileManager reference attached - no content stored in memory")
     }
     
     // MARK: - Main Cross-Reference Resolution Method
@@ -84,7 +99,7 @@ class FamilyResolver {
         
         guard hasFileContent else {
             logError(.resolver, "❌ No file content available for cross-reference resolution")
-            throw FamilyResolverError.noFileContent
+            throw JuuretError.noFileContent
         }
         
         resolutionStatistics.incrementAttempt()
@@ -256,19 +271,15 @@ class FamilyResolver {
         return nil
     }
     
-    // MARK: - Resolution Methods
+    // MARK: - Resolution Methods (Using FileManager - MEMORY EFFICIENT)
     
     private func resolveFamilyByReference(_ familyId: String) async throws -> Family? {
         logDebug(.resolver, "🔍 Resolving family by reference: \(familyId)")
         
-        guard let fileContent = fileContent else {
-            throw FamilyResolverError.noFileContent
-        }
-        
-        // Extract family text for the referenced family ID
         let normalizedId = familyId.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
         
-        if let familyText = extractFamilyText(familyId: normalizedId, from: fileContent) {
+        // FIXED: Use FileManager instead of keeping content in memory
+        if let familyText = fileManager.extractFamilyText(familyId: normalizedId) {
             logDebug(.resolver, "Found family text for: \(normalizedId)")
             
             do {
@@ -277,7 +288,7 @@ class FamilyResolver {
                 return family
             } catch {
                 logError(.resolver, "❌ Failed to parse referenced family \(normalizedId): \(error)")
-                throw FamilyResolverError.crossReferenceFailed("Failed to parse family \(normalizedId)")
+                throw JuuretError.crossReferenceFailed("Failed to parse family \(normalizedId)")
             }
         } else {
             logWarn(.resolver, "⚠️ Family text not found for: \(normalizedId)")
@@ -289,7 +300,7 @@ class FamilyResolver {
         logDebug(.resolver, "🔍 Finding family by birth date for: \(person.displayName)")
         
         guard let birthDate = person.birthDate,
-              let fileContent = fileContent else {
+              let fileContent = fileManager.currentFileContent else {
             return nil
         }
         
@@ -320,38 +331,12 @@ class FamilyResolver {
         return nil
     }
     
-    // MARK: - Helper Methods
-    
-    private func extractFamilyText(familyId: String, from content: String) -> String? {
-        // This should use the same family extraction logic as in FileManager
-        // For now, return a simplified implementation
-        
-        let lines = content.components(separatedBy: .newlines)
-        var familyLines: [String] = []
-        var inFamily = false
-        var foundFamily = false
-        
-        for line in lines {
-            if line.uppercased().contains(familyId.uppercased()) {
-                inFamily = true
-                foundFamily = true
-                familyLines.append(line)
-            } else if inFamily {
-                if line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && foundFamily {
-                    // End of family section
-                    break
-                } else {
-                    familyLines.append(line)
-                }
-            }
-        }
-        
-        return foundFamily ? familyLines.joined(separator: "\n") : nil
-    }
+    // MARK: - Helper Methods (Using FileManager)
     
     private func searchForBirthDate(_ birthDate: String, in content: String) async -> [Family] {
         logDebug(.resolver, "Searching for birth date: \(birthDate)")
         var families: [Family] = []
+        
         // Grep-like scan: collect family blocks that contain the birthDate string
         let lines = content.components(separatedBy: .newlines)
         var buffer: [String] = []
@@ -362,8 +347,9 @@ class FamilyResolver {
             guard let header = currentHeader else { return }
             let block = buffer.joined(separator: "\n")
             if block.contains(birthDate) {
-                // Extract ID from header, reuse main parser to build Family
-                if let id = extractFamilyIdFromHeader(header), let text = extractFamilyText(familyId: id, from: content) {
+                // Extract ID from header, use FileManager to get clean family text
+                if let id = extractFamilyIdFromHeader(header),
+                   let text = fileManager.extractFamilyText(familyId: id) {
                     if let fam = try? await aiParsingService.parseFamily(familyId: id, familyText: text) {
                         families.append(fam)
                     }
@@ -401,11 +387,18 @@ class FamilyResolver {
     }
     
     private func validatePersonMatch(person: Person, inFamily family: Family) -> Bool {
-        // Check if person could plausibly be in this family
-        // Look for name matches, birth date matches, etc.
+        // SIMPLIFIED: Check name matches in all family members
+        let allNames = family.allParents.map { $0.name.lowercased() } +
+                       family.children.map { $0.name.lowercased() }
         
-        for familyPerson in family.allPersons {
-            if familyPerson.name.lowercased() == person.name.lowercased() {
+        if allNames.contains(person.name.lowercased()) {
+            return true
+        }
+        
+        // Check birth date matches
+        if let personBirthDate = person.birthDate {
+            let allBirthDates = family.allPersons.compactMap { $0.birthDate }
+            if allBirthDates.contains(personBirthDate) {
                 return true
             }
         }

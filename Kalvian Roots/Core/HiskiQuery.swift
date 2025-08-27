@@ -100,7 +100,7 @@ enum HiskiQuery {
             )
             
         case .death:
-            guard let deathDate = person.bestDeathDate else { return nil }
+            guard let deathDate = person.deathDate else { return nil }
             return .death(
                 personName: person.displayName,
                 deathDate: deathDate
@@ -127,7 +127,7 @@ enum HiskiQuery {
             
         case .burial:
             // Use death date for burial if available
-            guard let deathDate = person.bestDeathDate else { return nil }
+            guard let deathDate = person.deathDate else { return nil }
             return .burial(
                 personName: person.displayName,
                 burialDate: deathDate

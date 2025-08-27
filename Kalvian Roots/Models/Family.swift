@@ -284,4 +284,48 @@ struct Family: Hashable, Sendable, Codable {
         self.notes = notes
         self.noteDefinitions = noteDefinitions
     }
+    
+    // MARK: - Sample Families for Testing and Debugging
+
+    static func sampleFamily() -> Family {
+        let husband = Person(name: "Matti Erikinp.", patronymic: nil, birthDate: "10.02.1725", deathDate: "18.09.1802", noteMarkers: [])
+        let wife = Person(name: "Maria Jaakont.", patronymic: nil, birthDate: "12.04.1727", deathDate: "14.07.1798", noteMarkers: [])
+        let children = [
+            Person(name: "Maria", patronymic: nil, birthDate: "10.02.1752", deathDate: nil, noteMarkers: []),
+            Person(name: "Erkki", patronymic: nil, birthDate: "09.03.1755", deathDate: nil, noteMarkers: []),
+            Person(name: "Helena", patronymic: nil, birthDate: "23.05.1757", deathDate: nil, noteMarkers: [])
+        ]
+        let couple = Couple(husband: husband, wife: wife, marriageDate: "1749", children: children, coupleNotes: [])
+        return Family(
+            familyId: "KORPI 6",
+            pageReferences: ["105", "106"],
+            couples: [couple],
+            notes: ["Perhe muutti Ylivieskaan 1760-luvulla."],
+            noteDefinitions: [:]
+        )
+    }
+
+    static func complexSampleFamily() -> Family {
+        let husband1 = Person(name: "Jaakko Jaakonp.", patronymic: nil, birthDate: "01.07.1698", deathDate: "31.08.1735", noteMarkers: [])
+        let wife1 = Person(name: "Helena Mikont.", patronymic: nil, birthDate: "15.09.1702", deathDate: nil, noteMarkers: [])
+        let children1 = [
+            Person(name: "Maria", patronymic: nil, birthDate: "27.03.1726", deathDate: nil, noteMarkers: []),
+            Person(name: "Jaakko", patronymic: nil, birthDate: "11.07.1728", deathDate: nil, noteMarkers: []),
+            Person(name: "Antti", patronymic: nil, birthDate: "09.04.1731", deathDate: nil, noteMarkers: [])
+        ]
+        let couple1 = Couple(husband: husband1, wife: wife1, marriageDate: "1725", children: children1, coupleNotes: [])
+        let husband2 = Person(name: "Jaakko Jaakonp.", patronymic: nil, birthDate: "11.07.1728", deathDate: nil, noteMarkers: [])
+        let wife2 = Person(name: "Anna Matint.", patronymic: nil, birthDate: "18.02.1735", deathDate: nil, noteMarkers: [])
+        let children2 = [
+            Person(name: "Helena", patronymic: nil, birthDate: "25.05.1757", deathDate: nil, noteMarkers: [])
+        ]
+        let couple2 = Couple(husband: husband2, wife: wife2, marriageDate: "1756", children: children2, coupleNotes: [])
+        return Family(
+            familyId: "HYYPPÄ 5",
+            pageReferences: ["369", "370"],
+            couples: [couple1, couple2],
+            notes: ["Tässä perheessä useita ristiinviittauksia."],
+            noteDefinitions: [:]
+        )
+    }
 }

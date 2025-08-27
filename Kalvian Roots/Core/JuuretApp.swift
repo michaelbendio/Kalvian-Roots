@@ -20,7 +20,7 @@ class JuuretApp {
     let aiParsingService: AIParsingService
     
     /// Cross-reference resolution service
-    let familyResolver: FamilyResolver
+    var familyResolver: FamilyResolver
     
     /// Name equivalence learning service
     let nameEquivalenceManager: NameEquivalenceManager
@@ -67,46 +67,57 @@ class JuuretApp {
     
     // MARK: - Initialization
     
+    // CRITICAL FIX: Update JuuretApp initialization in JuuretApp.swift
+    // Replace the existing init() method with this updated version:
+
+    // MARK: - Initialization
+
     init() {
         logInfo(.app, "🚀 JuuretApp initialization started")
         
-        // Initialize core services
-        self.nameEquivalenceManager = NameEquivalenceManager()
+        // Initialize core services locally first
+        let localNameEquivalenceManager = NameEquivalenceManager()
+        let localFileManager = FileManager()  // Initialize fileManager FIRST
         
+        let localAIParsingService: AIParsingService
         #if os(macOS) && arch(arm64)
         // Apple Silicon Mac - use enhanced service with MLX support
         logInfo(.ai, "🧠 Initializing AI services with MLX support (Apple Silicon)")
-        self.aiParsingService = AIParsingService()
+        localAIParsingService = AIParsingService()
         logInfo(.ai, "✅ Enhanced AI parsing service initialized")
         
-        logDebug(.ai, "Available services: \(aiParsingService.availableServiceNames.joined(separator: ", "))")
+        logDebug(.ai, "Available services: \(localAIParsingService.availableServiceNames.joined(separator: ", "))")
         
         #else
         // Fallback for non-Apple Silicon (shouldn't happen in this app)
         logWarn(.ai, "⚠️ Non-Apple Silicon detected - using cloud services only")
-        self.aiParsingService = AIParsingService()
+        localAIParsingService = AIParsingService()
         #endif
         
-        // Initialize dependent services
-        self.familyResolver = FamilyResolver(
-            aiParsingService: aiParsingService,
-            nameEquivalenceManager: nameEquivalenceManager
+        let localFamilyResolver = FamilyResolver(
+            aiParsingService: localAIParsingService,
+            nameEquivalenceManager: localNameEquivalenceManager,
+            fileManager: localFileManager
         )
-        self.fileManager = FileManager()
         
-        logInfo(.app, "✅ Core services initialized")
-        logInfo(.app, "Current AI service: \(currentServiceName)")
-        logDebug(.app, "Available services: \(availableServices.joined(separator: ", "))")
+        // Assign all to self properties at the end
+        self.nameEquivalenceManager = localNameEquivalenceManager
+        self.fileManager = localFileManager
+        self.aiParsingService = localAIParsingService
+        self.familyResolver = localFamilyResolver
+        
+        logInfo(.app, "✅ Core services initialized with memory-efficient architecture")
+        logInfo(.app, "Current AI service: \(self.currentServiceName)")
+        logDebug(.app, "Available services: \(self.availableServices.joined(separator: ", "))")
         
         // Auto-load default file
         Task { @MainActor in
             logDebug(.file, "Attempting auto-load of default file")
             
-            await fileManager.autoLoadDefaultFile()
+            await self.fileManager.autoLoadDefaultFile()
             
-            if let fileContent = fileManager.currentFileContent {
-                familyResolver.setFileContent(fileContent)
-                logInfo(.file, "✅ Auto-loaded file and updated FamilyResolver")
+            if let fileContent = self.fileManager.currentFileContent {
+                logInfo(.file, "✅ Auto-loaded file - FamilyResolver has direct access")
                 logDebug(.file, "File content length: \(fileContent.count) characters")
             } else {
                 logDebug(.file, "No default file found for auto-loading")
@@ -114,8 +125,8 @@ class JuuretApp {
             }
         }
         
-        logInfo(.app, "🎉 JuuretApp initialization complete")
-        logDebug(.app, "Ready state: \(isReady)")
+        logInfo(.app, "🎉 JuuretApp initialization")
+        logDebug(.app, "Ready state: \(self.isReady)")
 
         // Load manual citations
         loadManualCitations()
@@ -157,22 +168,21 @@ class JuuretApp {
     // MARK: - File Management
     
     /**
-     * Load file via file picker
+     * Load file via file picke
      */
     @MainActor
     func loadFile() async {
         logInfo(.file, "📁 User initiated file loading")
         do {
             let content = try await fileManager.openFile()
-            familyResolver.setFileContent(content)
-
+            
             // Clear any previous family data when new file loaded
             currentFamily = nil
             enhancedFamily = nil
             extractionProgress = .idle
             errorMessage = nil
 
-            logInfo(.file, "✅ File loaded successfully")
+            logInfo(.file, "✅ File loaded successfully with memory-efficient architecture")
             logDebug(.file, "File content length: \(content.count) characters")
         } catch {
             errorMessage = "Failed to load file: \(error.localizedDescription)"
@@ -279,7 +289,7 @@ class JuuretApp {
         
         do {
             // Create family web workflow with ALL required dependencies
-            let workflow = FamilyWebWorkflow(
+            let workflow = FamilyNetworkWorkflow(
                 aiParsingService: aiParsingService,
                 familyResolver: familyResolver,
                 fileManager: fileManager  // FIXED: Pass fileManager to workflow

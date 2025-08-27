@@ -2,21 +2,11 @@
 //  DebugLogger.swift
 //  Kalvian Roots
 //
-//  Comprehensive debug logging system for genealogical parsing
 //
 
 import Foundation
 
-/**
- * Multi-level debug logging system for tracing AI parsing and cross-reference resolution
- *
- * Levels:
- * - ERROR: Critical failures only
- * - WARN: Potential issues and fallbacks
- * - INFO: Major milestones and user actions
- * - DEBUG: Detailed workflow and API calls
- * - TRACE: Extremely detailed - every step
- */
+// MARK: - LogLevel and LogCategory
 
 enum LogLevel: Int, CaseIterable {
     case error = 0
@@ -57,6 +47,7 @@ enum LogCategory: String, CaseIterable {
     case ui = "UI"
     case network = "NET"
     case nameEquivalence = "NAME_EQ"
+    case workflow = "WORKFLOW"
     
     var emoji: String {
         switch self {
@@ -64,19 +55,19 @@ enum LogCategory: String, CaseIterable {
         case .ai: return "🤖"
         case .parsing: return "📝"
         case .crossRef: return "🔗"
-        case .resolver: return "🔍" 
+        case .resolver: return "🔍"
         case .file: return "📁"
         case .citation: return "📄"
         case .ui: return "🖥️"
         case .network: return "🌐"
-        case .nameEquivalence: return "🔤" 
+        case .nameEquivalence: return "🔤"
+        case .workflow: return "🔄"
         }
     }
 }
 
-/**
- * Centralized debug logging with configurable levels and categories
- */
+// MARK: - DebugLogger Class
+
 class DebugLogger {
     static let shared = DebugLogger()
     
@@ -161,7 +152,7 @@ class DebugLogger {
         print(logMessage)
     }
     
-    // MARK: - Specialized Logging
+    // MARK: - Specialized Logging Methods
     
     func logAIRequest(_ service: String, prompt: String) {
         debug(.ai, "AI Request to \(service)")
@@ -181,42 +172,30 @@ class DebugLogger {
     
     func logParsingSuccess(_ family: Family) {
         info(.parsing, "✅ Successfully parsed family: \(family.familyId)")
-        debug(.parsing, "Father: \(family.father.displayName)")
-        debug(.parsing, "Mother: \(family.mother?.displayName ?? "nil")")
+        
+        if let father = family.father {
+            debug(.parsing, "Father: \(father.displayName)")
+        } else {
+            debug(.parsing, "Father: nil")
+        }
+        
+        if let mother = family.mother {
+            debug(.parsing, "Mother: \(mother.displayName)")
+        } else {
+            debug(.parsing, "Mother: nil")
+        }
+        
         debug(.parsing, "Children: \(family.children.count)")
-        debug(.parsing, "Cross-references needed: \(family.totalCrossReferencesNeeded)")
+        
+        let parentsWithRefs = family.allParents.filter { $0.asChild != nil }.count
+        let childrenWithRefs = family.children.filter { $0.asParent != nil }.count
+        let totalRefs = parentsWithRefs + childrenWithRefs
+        
+        debug(.parsing, "Cross-references to resolve: \(totalRefs) (parents: \(parentsWithRefs), children: \(childrenWithRefs))")
     }
     
     func logParsingFailure(_ error: Error, familyId: String) {
         self.error(.parsing, "❌ Parsing failed for \(familyId): \(error.localizedDescription)")
-    }
-    
-    func logCrossRefSearch(_ personName: String, birthDate: String?, searchType: String) {
-        info(.crossRef, "Cross-reference search: \(personName) (\(searchType))")
-        debug(.crossRef, "Birth date: \(birthDate ?? "unknown")")
-    }
-    
-    func logCrossRefResult(_ personName: String, foundFamilies: [String], confidence: Double?) {
-        debug(.crossRef, "Found \(foundFamilies.count) candidates for \(personName)")
-        if let confidence = confidence {
-            debug(.crossRef, "Best match confidence: \(String(format: "%.2f", confidence))")
-        }
-        trace(.crossRef, "Candidate families: \(foundFamilies.joined(separator: ", "))")
-    }
-    
-    func logFileOperation(_ operation: String, fileName: String, success: Bool) {
-        if success {
-            info(.file, "✅ \(operation): \(fileName)")
-        } else {
-            warn(.file, "❌ \(operation) failed: \(fileName)")
-        }
-    }
-    
-    func logUserAction(_ action: String, details: String = "") {
-        info(.ui, "User action: \(action)")
-        if !details.isEmpty {
-            debug(.ui, "Details: \(details)")
-        }
     }
     
     // MARK: - Performance Timing
@@ -240,39 +219,7 @@ class DebugLogger {
         return duration
     }
     
-    // MARK: - Data Inspection
-    
-    func logDataStructure<T>(_ data: T, name: String) {
-        trace(.parsing, "Data structure '\(name)':")
-        trace(.parsing, "\(String(describing: data))")
-    }
-    
-    func logFamilyValidation(_ family: Family, warnings: [String]) {
-        if warnings.isEmpty {
-            debug(.parsing, "✅ Family \(family.familyId) validation passed")
-        } else {
-            warn(.parsing, "⚠️ Family \(family.familyId) validation warnings:")
-            for warning in warnings {
-                warn(.parsing, "  - \(warning)")
-            }
-        }
-    }
-    
-    // MARK: - Statistics
-    
-    func getCurrentSettings() -> (level: LogLevel, categories: Set<LogCategory>) {
-        return (currentLevel, enabledCategories)
-    }
-}
-
-// MARK: - Convenience Extensions
-
-extension DebugLogger {
-    // Quick access methods for common patterns
-    
-    func aiCall(_ service: String, _ action: String) {
-        debug(.ai, "🔄 \(service): \(action)")
-    }
+    // MARK: - Convenience Methods
     
     func parseStep(_ step: String, _ details: String = "") {
         debug(.parsing, "📝 Parse step: \(step)")
@@ -281,13 +228,6 @@ extension DebugLogger {
         }
     }
     
-    func crossRefStep(_ step: String, _ person: String) {
-        debug(.crossRef, "🔗 \(step): \(person)")
-    }
-    
-    func fileStep(_ step: String, _ file: String) {
-        debug(.file, "📁 \(step): \(file)")
-    }
 }
 
 // MARK: - Global Convenience Functions

@@ -257,3 +257,89 @@ struct CitationGenerator {
         return nameMatch && (birthMatch || child.birthDate == nil || target.birthDate == nil)
     }
 }
+
+extension CitationGenerator {
+    
+    /**
+     * Generate enhanced nuclear family citation with cross-reference supplements
+     * Only adds supplement when there's additional date information from asParent families
+     */
+    static func generateNuclearFamilyCitationWithSupplement(
+        family: Family,
+        network: FamilyNetwork
+    ) -> String {
+        
+        // Start with the standard nuclear family citation
+        var citation = generateMainFamilyCitation(family: family)
+        
+        // Collect supplement information from asParent families
+        var supplements: [String] = []
+        
+        for child in family.marriedChildren {
+            if let asParentFamily = network.getAsParentFamily(for: child) {
+                
+                // Find the child as a parent in their asParent family
+                let childInAsParentFamily = asParentFamily.allParents.first { parent in
+                    // Match by name - could be enhanced with birth date matching
+                    parent.name.lowercased() == child.name.lowercased()
+                }
+                
+                // Check what additional date information is available
+                let additionalInfo = collectAdditionalDateInfo(
+                    nuclearChild: child,
+                    asParent: childInAsParentFamily
+                )
+                
+                if !additionalInfo.isEmpty {
+                    let pageRef = asParentFamily.pageReferenceString
+                    let description = formatDateAdditions(additionalInfo)
+                    supplements.append("\(child.name)'s \(description) on \(pageRef)")
+                }
+            }
+        }
+        
+        // Add supplement section only if we have additional information
+        if !supplements.isEmpty {
+            citation += "\nAdditional information:\n"
+            for supplement in supplements {
+                citation += "\(supplement)\n"
+            }
+        }
+        
+        return citation
+    }
+    
+    // MARK: - Helper Methods for Supplements
+    
+    private static func collectAdditionalDateInfo(
+        nuclearChild: Person,
+        asParent: Person?
+    ) -> [String] {
+        guard let asParent = asParent else { return [] }
+        
+        var additions: [String] = []
+        
+        // Death date - only in asParent family, not in nuclear family
+        if asParent.deathDate != nil && nuclearChild.deathDate == nil {
+            additions.append("death date")
+        }
+        
+        // Marriage date - full 8-digit date in asParent vs 2-digit in nuclear
+        if let fullMarriageDate = asParent.fullMarriageDate,
+           let nuclearMarriageDate = nuclearChild.marriageDate,
+           fullMarriageDate.count > nuclearMarriageDate.count + 2 { // Allow some tolerance
+            additions.append("marriage date")
+        }
+        
+        return additions
+    }
+    
+    private static func formatDateAdditions(_ additions: [String]) -> String {
+        switch additions.count {
+        case 0: return ""
+        case 1: return additions[0] + " is"
+        case 2: return "marriage and death dates are"
+        default: return additions.joined(separator: " and ") + " are"
+        }
+    }
+}

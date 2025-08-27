@@ -122,8 +122,11 @@ class AIParsingService {
             debugLogParsedFamily(family)
             
             logInfo(.parsing, "✅ Successfully parsed family: \(familyId)")
+            
             DebugLogger.shared.parseStep(
-                "Parse Complete", "Family: \(familyId), Members: \(family.allPersons.count)")
+                "Parse Complete",
+                "Family: \(familyId), Members: \(family.allPersons.count)"
+            )
             
             return family
             
