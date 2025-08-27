@@ -34,7 +34,6 @@ class FamilyNetworkWorkflow {
     private var familyNetwork: FamilyNetwork?
     
     // MARK: - Initialization
-    
     init(aiParsingService: AIParsingService, familyResolver: FamilyResolver, fileManager: FileManager) {
         logInfo(.workflow, "🕸️ FamilyNetworkWorkflow initialization started")
         
@@ -169,56 +168,87 @@ class FamilyNetworkWorkflow {
         
         switch type {
         case .nuclear:
-            // For nuclear family, use enhanced citation with supplements if network available
+            // Generate enhanced nuclear citation with network context
             if let network = familyNetwork {
+                // First, enhance children with dates from asParent families
+                let enhancedFamily = enhanceChildrenWithAsParentDates(family: family, network: network)
+                
                 let enhancedCitation = CitationGenerator.generateNuclearFamilyCitationWithSupplement(
-                    family: family, 
+                    family: enhancedFamily,
                     network: network
                 )
                 activeCitations[family.familyId] = enhancedCitation
             } else {
-                // Fallback to standard citation if no network context
-                let mainCitation = CitationGenerator.generateMainFamilyCitation(family: family)
-                activeCitations[family.familyId] = mainCitation
+                // Fallback to standard citation
+                let citation = CitationGenerator.generateMainFamilyCitation(family: family)
+                activeCitations[family.familyId] = citation
             }
             
-            // Generate as-child citations for parents who have references
-            for parent in family.allParents {
-                if parent.asChild != nil {
-                    let asChildCitation = CitationGenerator.generateAsChildCitation(for: parent, in: family)
-                    activeCitations[parent.name] = asChildCitation
-                }
-            }
-            
-        case .asChild:
-            // Generate as-child citations for all persons in family
-            for parent in family.allParents {
-                let citation = CitationGenerator.generateAsChildCitation(for: parent, in: family)
-                activeCitations[parent.name] = citation
-            }
-            for child in family.children {
-                let citation = CitationGenerator.generateAsChildCitation(for: child, in: family)
-                activeCitations[child.name] = citation
-            }
-            
-        case .asParent:
-            // Generate main family citations (this person as parent)
-            let mainCitation = CitationGenerator.generateMainFamilyCitation(family: family)
-            activeCitations[family.familyId] = mainCitation
-            
-        case .enhanced:
-            // Generate enhanced citations with cross-reference data
-            let mainCitation = CitationGenerator.generateMainFamilyCitation(family: family)
-            activeCitations[family.familyId] = mainCitation
+        case .asChild, .asParent, .enhanced:
+            let citation = CitationGenerator.generateMainFamilyCitation(family: family)
+            activeCitations[family.familyId] = citation
         }
         
         logInfo(.citation, "✅ Activated citations for family: \(family.familyId)")
     }
 
+    private func enhanceChildrenWithAsParentDates(family: Family, network: FamilyNetwork) -> Family {
+        // Create enhanced copies of children with additional date information
+        var enhancedCouples: [Couple] = []
+        
+        for couple in family.couples {
+            var enhancedChildren: [Person] = []
+            
+            for child in couple.children {
+                var enhancedChild = child
+                
+                // Get additional dates from asParent family
+                if let asParentFamily = network.getAsParentFamily(for: child) {
+                    // Find this child as a parent in their asParent family
+                    if let childAsParent = asParentFamily.allParents.first(where: { $0.name.lowercased() == child.name.lowercased() }) {
+                        
+                        // Enhance with death date if missing in nuclear family
+                        if enhancedChild.deathDate == nil && childAsParent.deathDate != nil {
+                            enhancedChild.deathDate = childAsParent.deathDate
+                        }
+                        
+                        // Enhance with full marriage date if nuclear only has partial
+                        if childAsParent.fullMarriageDate != nil {
+                            enhancedChild.fullMarriageDate = childAsParent.fullMarriageDate
+                        } else if enhancedChild.marriageDate == nil && childAsParent.marriageDate != nil {
+                            enhancedChild.marriageDate = childAsParent.marriageDate
+                        }
+                    }
+                }
+                
+                enhancedChildren.append(enhancedChild)
+            }
+            
+            let enhancedCouple = Couple(
+                husband: couple.husband,
+                wife: couple.wife,
+                marriageDate: couple.marriageDate,
+                children: enhancedChildren,
+                childrenDiedInfancy: couple.childrenDiedInfancy,
+                coupleNotes: couple.coupleNotes
+            )
+            
+            enhancedCouples.append(enhancedCouple)
+        }
+        
+        return Family(
+            familyId: family.familyId,
+            pageReferences: family.pageReferences,
+            couples: enhancedCouples,
+            notes: family.notes,
+            noteDefinitions: family.noteDefinitions
+        )
+    }
+    
     private func updateCitationsFromNetwork(_ network: FamilyNetwork) {
         logInfo(.citation, "🔄 Updating citations from resolved network")
         
-        // Update citations for as-child families (where parents came from)
+        // CORRECT: Generate parent citations from their asChild families (not main family)
         for parent in network.mainFamily.allParents {
             if let asChildFamily = network.getAsChildFamily(for: parent) {
                 let citation = CitationGenerator.generateAsChildCitation(for: parent, in: asChildFamily)
@@ -226,53 +256,59 @@ class FamilyNetworkWorkflow {
             }
         }
         
-        // Update citations for as-parent families (where children are parents)
-        for child in network.mainFamily.marriedChildren {
+        // Generate enhanced child citations with additional date information
+        for child in network.mainFamily.children {
             if let asParentFamily = network.getAsParentFamily(for: child) {
-                let citation = CitationGenerator.generateMainFamilyCitation(family: asParentFamily)
+                let citation = generateEnhancedChildCitation(child: child, asParentFamily: asParentFamily, network: network)
                 activeCitations[child.name] = citation
-            }
-        }
-        
-        // Update citations for spouse as-child families
-        for child in network.mainFamily.marriedChildren {
-            if let spouseName = child.spouse,
-               let spouseFamily = network.getSpouseAsChildFamily(for: spouseName) {
-                let citation = CitationGenerator.generateMainFamilyCitation(family: spouseFamily)
-                activeCitations[spouseName] = citation
             }
         }
         
         logInfo(.citation, "✅ Updated citations from network - total active: \(activeCitations.count)")
     }
-
+    
     private func generateEnhancedCitations() {
         guard let network = familyNetwork else { return }
         
         logInfo(.citation, "✨ Generating enhanced citations with cross-reference data")
         
-        for child in network.mainFamily.marriedChildren {
-            if let asParentFamily = network.getAsParentFamily(for: child) {
-                let enhancedCitation = CitationGenerator.generateMainFamilyCitation(family: asParentFamily)
-                activeCitations[child.name] = enhancedCitation
-            }
-            
-            if child.asChild != nil {
-                let asChildCitation = CitationGenerator.generateAsChildCitation(for: child, in: network.mainFamily)
-                activeCitations["\(child.name)_asChild"] = asChildCitation
-            }
-        }
-        
-        for parent in network.mainFamily.allParents {
-            if let asChildFamily = network.getAsChildFamily(for: parent) {
-                let asChildCitation = CitationGenerator.generateAsChildCitation(for: parent, in: asChildFamily)
-                activeCitations["\(parent.name)_asChild"] = asChildCitation
-            }
-        }
+        // The real work is already done in updateCitationsFromNetwork()
+        // This method is now just for logging/completion
         
         logInfo(.citation, "✅ Enhanced citations complete")
     }
     
+    private func generateEnhancedChildCitation(child: Person, asParentFamily: Family, network: FamilyNetwork) -> String {
+        // Start with basic as-child citation from nuclear family
+        var citation = CitationGenerator.generateAsChildCitation(for: child, in: network.mainFamily)
+        
+        // Find additional date information from asParent family
+        var additionalInfo: [String] = []
+        
+        if let childAsParent = asParentFamily.allParents.first(where: { $0.name.lowercased() == child.name.lowercased() }) {
+            
+            // Check for death date
+            if childAsParent.deathDate != nil && child.deathDate == nil {
+                additionalInfo.append("death date \(childAsParent.deathDate!)")
+            }
+            
+            // Check for enhanced marriage date
+            if let fullMarriage = childAsParent.fullMarriageDate, child.fullMarriageDate == nil {
+                additionalInfo.append("marriage date \(fullMarriage)")
+            } else if let basicMarriage = childAsParent.marriageDate, child.marriageDate == nil {
+                additionalInfo.append("marriage date \(basicMarriage)")
+            }
+        }
+        
+        // Add Additional Information section if we have any
+        if !additionalInfo.isEmpty {
+            citation += "\nAdditional Information:\n"
+            let infoList = additionalInfo.joined(separator: ", ")
+            citation += "\(child.name)'s \(infoList) found on \(asParentFamily.pageReferenceString)\n"
+        }
+        
+        return citation
+    }
     // MARK: - Helper Methods
     
     private func findPersonInMainFamily(named name: String) -> Person? {
@@ -280,3 +316,4 @@ class FamilyNetworkWorkflow {
         return network.mainFamily.findPerson(named: name)
     }
 }
+

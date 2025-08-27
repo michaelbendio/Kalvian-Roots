@@ -294,17 +294,17 @@ class MockAIService: AIService {
 }
 
 
-// MARK: - DeepSeek Service (Enhanced with JSON)
+// MARK: - DeepSeek Service
 
 /**
- * DeepSeek API service updated for JSON responses
+ * DeepSeek API service for  JSON responses
  */
 class DeepSeekService: AIService {
     let name = "DeepSeek"
     private var apiKey: String?
     private let baseURL = "https://api.deepseek.com/v1/chat/completions"
     
-    // ADD: Initialize with saved API key from UserDefaults
+    //  Initialize with saved API key from UserDefaults
     init() {
         // Try to load saved API key from UserDefaults
         if let savedKey = UserDefaults.standard.string(forKey: "AIService_DeepSeek_APIKey"),
@@ -361,7 +361,8 @@ class DeepSeekService: AIService {
                 OpenAIMessage(role: "user", content: prompt)
             ],
             temperature: 0.1,
-            max_tokens: 2000
+            max_tokens: 2000,
+            stream: false
         )
         
         logDebug(.ai, "Making DeepSeek API call")
@@ -393,56 +394,39 @@ class DeepSeekService: AIService {
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("Bearer \(apiKey!)", forHTTPHeaderField: "Authorization")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        logTrace(.network, "DeepSeek request headers configured")
+        urlRequest.timeoutInterval = 120 // Simple timeout only
         
         do {
             urlRequest.httpBody = try JSONEncoder().encode(request)
-            logTrace(.network, "Request body encoded, size: \(urlRequest.httpBody?.count ?? 0) bytes")
             
-            logDebug(.network, "Sending HTTP request to DeepSeek")
             let (data, response) = try await URLSession.shared.data(for: urlRequest)
             
             if let httpResponse = response as? HTTPURLResponse {
-                logDebug(.network, "DeepSeek HTTP response: \(httpResponse.statusCode)")
-                
                 guard httpResponse.statusCode == 200 else {
                     if httpResponse.statusCode == 429 {
-                        logWarn(.network, "DeepSeek rate limit hit (429)")
                         throw AIServiceError.rateLimited
                     }
-                    
                     let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-                    logError(.network, "DeepSeek HTTP error \(httpResponse.statusCode): \(errorMessage)")
                     throw AIServiceError.httpError(httpResponse.statusCode, errorMessage)
                 }
             }
             
-            logTrace(.network, "Response data size: \(data.count) bytes")
-            
             let openAIResponse = try JSONDecoder().decode(OpenAIResponse.self, from: data)
-            logTrace(.ai, "DeepSeek response decoded successfully")
-            
             guard let content = openAIResponse.choices.first?.message.content else {
-                logError(.ai, "❌ No content in DeepSeek response")
                 throw AIServiceError.invalidResponse("No content in response")
             }
             
-            let cleanedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
-            logTrace(.ai, "DeepSeek content cleaned, final length: \(cleanedContent.count)")
-            
-            return cleanedContent
+            return content.trimmingCharacters(in: .whitespacesAndNewlines)
             
         } catch let error as AIServiceError {
             throw error
         } catch {
-            logError(.network, "❌ DeepSeek network error: \(error)")
             throw AIServiceError.networkError(error)
         }
     }
 }
 
-// MARK: - OpenAI Service (Updated for JSON)
+// MARK: - OpenAI Service
 
 /**
  * OpenAI ChatGPT API service updated for JSON responses
@@ -489,7 +473,8 @@ class OpenAIService: AIService {
                 OpenAIMessage(role: "user", content: prompt)
             ],
             temperature: 0.1,
-            max_tokens: 2000
+            max_tokens: 2000,
+            stream: false
         )
         
         DebugLogger.shared.logAIRequest("OpenAI", prompt: prompt)
@@ -548,10 +533,10 @@ class OpenAIService: AIService {
     }
 }
 
-// MARK: - Claude Service (Updated for JSON)
+// MARK: - Claude Service
 
 /**
- * Anthropic Claude API service updated for JSON responses
+ * Anthropic Claude API service
  */
 class ClaudeService: AIService {
     let name = "Claude"
@@ -1012,90 +997,79 @@ extension AIService {
         {
           "familyId": "string",
           "pageReferences": ["string"],
-          "father": {
-            "name": "string",
-            "patronymic": "string or null",
-            "birthDate": "string or null",
-            "deathDate": "string or null", 
-            "marriageDate": "string or null",
-            "spouse": "string or null",
-            "asChildReference": "string or null",
-            "asParentReference": "string or null",
-            "familySearchId": "string or null",
-            "noteMarkers": ["string"],
-            "fatherName": null,
-            "motherName": null,
-            "fullMarriageDate": null,
-            "spouseBirthDate": null,
-            "spouseParentsFamilyId": null
-          },
-          "mother": {
-            "name": "string",
-            "patronymic": "string or null",
-            "birthDate": "string or null",
-            "deathDate": "string or null",
-            "marriageDate": "string or null", 
-            "spouse": "string or null",
-            "asChildReference": "string or null",
-            "asParentReference": "string or null",
-            "familySearchId": "string or null",
-            "noteMarkers": ["string"],
-            "fatherName": null,
-            "motherName": null,
-            "fullMarriageDate": null,
-            "spouseBirthDate": null,
-            "spouseParentsFamilyId": null
-          },
-          "additionalSpouses": [
+          "couples": [
             {
-              "name": "string",
-              "patronymic": "string or null",
-              "birthDate": "string or null",
-              "deathDate": "string or null",
+              "husband": {
+                "name": "string",
+                "patronymic": "string or null",
+                "birthDate": "string or null",
+                "deathDate": "string or null",
+                "marriageDate": "string or null",
+                "spouse": "string or null",
+                "asChild": "string or null",
+                "asParent": "string or null",
+                "familySearchId": "string or null",
+                "noteMarkers": ["string"],
+                "fatherName": null,
+                "motherName": null,
+                "fullMarriageDate": null,
+                "spouseBirthDate": null,
+                "spouseParentsFamilyId": null
+              },
+              "wife": {
+                "name": "string",
+                "patronymic": "string or null",
+                "birthDate": "string or null",
+                "deathDate": "string or null",
+                "marriageDate": "string or null",
+                "spouse": "string or null",
+                "asChild": "string or null",
+                "asParent": "string or null",
+                "familySearchId": "string or null",
+                "noteMarkers": ["string"],
+                "fatherName": null,
+                "motherName": null,
+                "fullMarriageDate": null,
+                "spouseBirthDate": null,
+                "spouseParentsFamilyId": null
+              },
               "marriageDate": "string or null",
-              "spouse": "string or null", 
-              "asChildReference": "string or null",
-              "asParentReference": "string or null",
-              "familySearchId": "string or null",
-              "noteMarkers": ["string"],
-              "fatherName": null,
-              "motherName": null,
-              "fullMarriageDate": null,
-              "spouseBirthDate": null,
-              "spouseParentsFamilyId": null
-            }
-          ],
-          "children": [
-            {
-              "name": "string",
-              "patronymic": "string or null",
-              "birthDate": "string or null",
-              "deathDate": "string or null",
-              "marriageDate": "string or null",
-              "spouse": "string or null",
-              "asChildReference": "string or null", 
-              "asParentReference": "string or null",
-              "familySearchId": "string or null",
-              "noteMarkers": ["string"],
-              "fatherName": null,
-              "motherName": null,
-              "fullMarriageDate": null,
-              "spouseBirthDate": null,
-              "spouseParentsFamilyId": null
+              "children": [
+                {
+                  "name": "string",
+                  "patronymic": "string or null",
+                  "birthDate": "string or null",
+                  "deathDate": "string or null",
+                  "marriageDate": "string or null",
+                  "spouse": "string or null",
+                  "asChild": "string or null",
+                  "asParent": "string or null",
+                  "familySearchId": "string or null",
+                  "noteMarkers": ["string"],
+                  "fatherName": null,
+                  "motherName": null,
+                  "fullMarriageDate": null,
+                  "spouseBirthDate": null,
+                  "spouseParentsFamilyId": null
+                }
+              ],
+              "childrenDiedInfancy": "number or null",
+              "coupleNotes": ["string"]
             }
           ],
           "notes": ["string"],
-          "childrenDiedInfancy": "number or null"
+          "noteDefinitions": {"string": "string"}
         }
         
         Rules:
         - Use null for missing values, not empty strings
         - All dates as strings in original format (e.g. "09.09.1727")
         - Page references as string array (e.g. ["105", "106"])
-        - If no mother, set mother to null
         - Extract family references from {FAMILY_ID} notation (e.g. {Korpi 5} becomes "KORPI 5")
         - Extract FamilySearch IDs from <ID> notation (e.g. <LCJZ-BH3> becomes "LCJZ-BH3")
         - Set enhancement fields (fatherName, motherName, etc.) to null for now
+        - For most families, you'll have one couple in the couples array
+        - Put husband and wife marriage date at couple level, not individual level
         
         Return ONLY the JSON object. No markdown, no explanations.
         """
@@ -1110,6 +1084,7 @@ struct OpenAIRequest: Codable {
     let messages: [OpenAIMessage]
     let temperature: Double
     let max_tokens: Int
+    let stream: Bool
 }
 
 struct OpenAIMessage: Codable {
