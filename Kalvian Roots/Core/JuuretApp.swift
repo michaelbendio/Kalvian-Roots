@@ -47,7 +47,7 @@ class JuuretApp {
 
     // MARK: - Manual Citation Overrides
     private var manualCitations: [String: String] = [:] // key: familyId|personId
-    
+    private var familyNetworkWorkflow: FamilyNetworkWorkflow?
     // MARK: - Computed Properties
     
     /// Check if app is ready for family extraction
@@ -282,6 +282,7 @@ class JuuretApp {
         await MainActor.run {
             currentFamily = nil
             enhancedFamily = nil
+            familyNetworkWorkflow = nil  // FIXED: Clear previous workflow
             extractionProgress = .extractingFamily
             errorMessage = nil
             isProcessing = true
@@ -292,22 +293,24 @@ class JuuretApp {
             let workflow = FamilyNetworkWorkflow(
                 aiParsingService: aiParsingService,
                 familyResolver: familyResolver,
-                fileManager: fileManager  // FIXED: Pass fileManager to workflow
+                fileManager: fileManager
             )
             
             // Start the workflow
-            try await workflow.processFamilyWeb(for: normalizedId)
+            try await workflow.updateCitationsFromNetwork(for: normalizedId)
             
             // Update app state with results
             await MainActor.run {
                 if let network = workflow.getFamilyNetwork() {
                     currentFamily = network.mainFamily
                     enhancedFamily = network.mainFamily
+                    familyNetworkWorkflow = workflow  // FIXED: Store workflow instance
                     extractionProgress = .complete
                     isProcessing = false
                     
                     logInfo(.app, "✅ Complete family extraction completed: \(network.mainFamily.familyId)")
                     logInfo(.app, "📊 Resolved \(network.totalResolvedFamilies) cross-references")
+                    logInfo(.app, "📄 Active citations: \(workflow.getActiveCitations().count)")
                 } else {
                     extractionProgress = .idle
                     isProcessing = false
@@ -435,10 +438,10 @@ class JuuretApp {
         return nil
     }
     
-    // MARK: - Citation Generation (Simplified)
+    // MARK: - Citation Generation
     
     /**
-     * Generate basic citation for person
+     * Generate citation for person
      */
     func generateCitation(for person: Person, in family: Family) -> String {
         logInfo(.citation, "📖 Generating citation for: \(person.name)")
@@ -449,9 +452,30 @@ class JuuretApp {
             return override
         }
 
-        // Default to enhanced main-family citation for now
+        // FIXED: Check for enhanced citations from workflow
+        if let workflow = familyNetworkWorkflow {
+            let activeCitations = workflow.getActiveCitations()
+            
+            // Try to get person-specific citation by name
+            if let enhancedCitation = activeCitations[person.name] {
+                logDebug(.citation, "Using enhanced citation from workflow for: \(person.name)")
+                return enhancedCitation
+            }
+            
+            // If no person-specific citation, try family-level citation
+            if let familyCitation = activeCitations[family.familyId] {
+                logDebug(.citation, "Using enhanced family citation from workflow for: \(family.familyId)")
+                return familyCitation
+            }
+            
+            logDebug(.citation, "No enhanced citation found in workflow, falling back to standard")
+        } else {
+            logDebug(.citation, "No workflow available, using standard citation generation")
+        }
+
+        // Fallback to standard citation generation
         let citation = CitationGenerator.generateMainFamilyCitation(family: family)
-        logDebug(.citation, "Generated citation length: \(citation.count) characters")
+        logDebug(.citation, "Generated standard citation length: \(citation.count) characters")
         return citation
     }
     

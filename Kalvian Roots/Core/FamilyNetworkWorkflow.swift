@@ -47,9 +47,9 @@ class FamilyNetworkWorkflow {
     // MARK: - Public Interface
     
     /**
-     * Process complete family web with progressive updates
+     * Process complete family network with progressive updates
      */
-    func processFamilyWeb(for familyId: String) async throws {
+    func updateCitationsFromNetwork(for familyId: String) async throws {
         logInfo(.workflow, "🚀 Starting family web processing for: \(familyId)")
         
         await MainActor.run {
@@ -68,24 +68,21 @@ class FamilyNetworkWorkflow {
             // Generate initial citations
             generateAndActivateCitations(for: nuclearFamily, type: .nuclear)
             
-            // Step 2: Resolve cross-references (60% progress)
-            await updateProgress(step: "Resolving cross-references...", progress: 0.6)
+            // Step 2: Resolve cross-references and generate enhanced citations (80% progress)
+            await updateProgress(step: "Resolving cross-references...", progress: 0.8)
             let network = try await resolveFamilyNetwork(nuclearFamily: nuclearFamily)
             
             // Store network for retrieval
             familyNetwork = network
             
-            // Step 3: Generate enhanced citations (90% progress)
-            await updateProgress(step: "Generating enhanced citations...", progress: 0.9)
-            generateEnhancedCitations()
-            
-            // Complete
+            // Step 3: Complete (citations already generated in resolveFamilyNetwork)
             await updateProgress(step: "Complete", progress: 1.0)
             await MainActor.run {
                 isProcessing = false
             }
             
             logInfo(.workflow, "✅ Family web processing completed successfully")
+            logInfo(.workflow, "📄 Generated \(activeCitations.count) enhanced citations")
             
         } catch {
             await MainActor.run {
@@ -98,7 +95,7 @@ class FamilyNetworkWorkflow {
             throw error
         }
     }
-    
+
     /**
      * Get the resolved family network
      */
@@ -267,32 +264,22 @@ class FamilyNetworkWorkflow {
         logInfo(.citation, "✅ Updated citations from network - total active: \(activeCitations.count)")
     }
     
-    private func generateEnhancedCitations() {
-        guard let network = familyNetwork else { return }
-        
-        logInfo(.citation, "✨ Generating enhanced citations with cross-reference data")
-        
-        // The real work is already done in updateCitationsFromNetwork()
-        // This method is now just for logging/completion
-        
-        logInfo(.citation, "✅ Enhanced citations complete")
-    }
-    
     private func generateEnhancedChildCitation(child: Person, asParentFamily: Family, network: FamilyNetwork) -> String {
-        // Start with basic as-child citation from nuclear family
-        var citation = CitationGenerator.generateAsChildCitation(for: child, in: network.mainFamily)
+        // FIXED: Start with regular nuclear family citation (not as-child style)
+        // The child should see the family they grew up in, not be highlighted as the target person
+        var citation = CitationGenerator.generateMainFamilyCitation(family: network.mainFamily)
         
         // Find additional date information from asParent family
         var additionalInfo: [String] = []
         
         if let childAsParent = asParentFamily.allParents.first(where: { $0.name.lowercased() == child.name.lowercased() }) {
             
-            // Check for death date
+            // Check for death date not in nuclear family
             if childAsParent.deathDate != nil && child.deathDate == nil {
                 additionalInfo.append("death date \(childAsParent.deathDate!)")
             }
             
-            // Check for enhanced marriage date
+            // Check for enhanced marriage date not in nuclear family
             if let fullMarriage = childAsParent.fullMarriageDate, child.fullMarriageDate == nil {
                 additionalInfo.append("marriage date \(fullMarriage)")
             } else if let basicMarriage = childAsParent.marriageDate, child.marriageDate == nil {
@@ -309,6 +296,7 @@ class FamilyNetworkWorkflow {
         
         return citation
     }
+    
     // MARK: - Helper Methods
     
     private func findPersonInMainFamily(named name: String) -> Person? {
