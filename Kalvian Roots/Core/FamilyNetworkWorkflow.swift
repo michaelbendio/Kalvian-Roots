@@ -209,42 +209,111 @@ class FamilyNetworkWorkflow {
     
     private func generatePersonSpecificCitations(for family: Family, network: FamilyNetwork) {
         logInfo(.citation, "👥 Generating person-specific citations")
+        logInfo(.citation, "📊 Network has \(network.asChildFamilies.count) asChild families")
         
+        // CRITICAL: Process parents first with FULL NAMES
         for parent in family.allParents {
-            logInfo(.citation, "🔍 DEBUG: Processing parent '\(parent.name)' with asChild='\(parent.asChild ?? "nil")'")
+            let citationKey = parent.displayName.trimmingCharacters(in: .whitespaces)
+            
+            logInfo(.citation, "🔍 Processing PARENT '\(parent.displayName)' with asChild='\(parent.asChild ?? "nil")'")
+            logInfo(.citation, "   Storage key: '\(citationKey)' (using displayName)")
             
             if let asChildFamily = network.getAsChildFamily(for: parent) {
                 logInfo(.citation, "✅ Found asChild family: \(asChildFamily.familyId)")
                 let citation = CitationGenerator.generateAsChildCitation(for: parent, in: asChildFamily)
-                activeCitations[parent.name] = citation
-                // DEBUG: Verify what we just stored
-                logInfo(.citation, "🔍 STORED citation for '\(parent.name)': \(citation.prefix(100))...")
-                logInfo(.citation, "🔍 VERIFY retrieval: \(activeCitations[parent.name]?.prefix(100) ?? "NOT FOUND")...")
+                
+                // Store with full displayName as primary key
+                activeCitations[citationKey] = citation
+                
+                // ALSO store with simple name IF no conflict
+                let simpleName = parent.name.trimmingCharacters(in: .whitespaces)
+                if activeCitations[simpleName] == nil {
+                    activeCitations[simpleName] = citation
+                    logDebug(.citation, "   Also stored under simple name: '\(simpleName)'")
+                } else {
+                    logWarn(.citation, "⚠️ Name conflict: '\(simpleName)' already exists, skipping duplicate")
+                }
+                
+                logInfo(.citation, "📄 STORED parent citation from \(asChildFamily.pageReferenceString)")
+                
             } else {
-                logWarn(.citation, "❌ NO asChild family found for '\(parent.name)'")
-                logInfo(.citation, "🔍 Available asChild families: \(Array(network.asChildFamilies.keys))")
+                logWarn(.citation, "❌ NO asChild family found for parent '\(parent.displayName)'")
+                
+                // FALLBACK: Store nuclear citation
                 let citation = CitationGenerator.generateMainFamilyCitation(family: family)
-                activeCitations[parent.name] = citation
+                activeCitations[citationKey] = citation
+                
+                // Try to store with simple name if no conflict
+                let simpleName = parent.name.trimmingCharacters(in: .whitespaces)
+                if activeCitations[simpleName] == nil {
+                    activeCitations[simpleName] = citation
+                }
             }
         }
         
+        // THEN process children with their names
         for child in family.children {
+            // For children, prefer simple name but fall back to displayName if conflict
+            let simpleName = child.name.trimmingCharacters(in: .whitespaces)
+            let displayName = child.displayName.trimmingCharacters(in: .whitespaces)
+            
+            // Choose key based on whether simple name conflicts with a parent
+            let citationKey = activeCitations[simpleName] != nil ? displayName : simpleName
+            
+            logInfo(.citation, "🔍 Processing CHILD '\(child.displayName)'")
+            logInfo(.citation, "   Storage key: '\(citationKey)'")
+            
             if let asParentFamily = network.getAsParentFamily(for: child) {
-                // FIXED: Enhanced citation for married children only
-                let citation = generateEnhancedChildCitation(child: child, asParentFamily: asParentFamily, network: network)
-                activeCitations[child.name] = citation
-                logDebug(.citation, "Generated enhanced citation for married child: \(child.name)")
+                let citation = generateEnhancedChildCitation(
+                    child: child,
+                    asParentFamily: asParentFamily,
+                    network: network
+                )
+                activeCitations[citationKey] = citation
+                logDebug(.citation, "📄 Generated enhanced citation for married child")
             } else {
-                // Regular nuclear family citation for unmarried children
                 let citation = CitationGenerator.generateMainFamilyCitation(family: family)
-                activeCitations[child.name] = citation
-                logDebug(.citation, "Generated nuclear citation for unmarried child: \(child.name)")
+                activeCitations[citationKey] = citation
+                logDebug(.citation, "📄 Generated nuclear citation for unmarried child")
             }
         }
         
         logInfo(.citation, "✅ Generated \(activeCitations.count) person-specific citations")
-    }
+        logInfo(.citation, "📄 Citation keys: \(Array(activeCitations.keys).sorted())")
     
+        // Continue with children...
+        for child in family.children {
+            let citationKey = child.name.trimmingCharacters(in: .whitespaces)
+            
+            if let asParentFamily = network.getAsParentFamily(for: child) {
+                let citation = generateEnhancedChildCitation(
+                    child: child,
+                    asParentFamily: asParentFamily,
+                    network: network
+                )
+                activeCitations[citationKey] = citation
+                
+                if child.displayName != child.name {
+                    activeCitations[child.displayName.trimmingCharacters(in: .whitespaces)] = citation
+                }
+                
+                logDebug(.citation, "Generated enhanced citation for married child: \(citationKey)")
+            } else {
+                let citation = CitationGenerator.generateMainFamilyCitation(family: family)
+                activeCitations[citationKey] = citation
+                
+                if child.displayName != child.name {
+                    activeCitations[child.displayName.trimmingCharacters(in: .whitespaces)] = citation
+                }
+                
+                logDebug(.citation, "Generated nuclear citation for unmarried child: \(citationKey)")
+            }
+        }
+        
+        logInfo(.citation, "✅ Generated \(activeCitations.count) person-specific citations")
+        logInfo(.citation, "📄 Final citation keys: \(Array(activeCitations.keys).sorted())")
+    }
+
     private func enhanceChildrenWithAsParentDates(family: Family, network: FamilyNetwork) -> Family {
         // Create enhanced copies of children with additional date information
         var enhancedCouples: [Couple] = []

@@ -1076,7 +1076,7 @@ extension AIService {
     }
 }
 
-// MARK: - API Data Structures (unchanged)
+// MARK: - API Data Structures
 
 // OpenAI API structures
 struct OpenAIRequest: Codable {

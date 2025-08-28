@@ -49,14 +49,50 @@ struct FamilyNetwork: Hashable, Sendable, Codable {
     
     /// Get the asParent family for a specific child (where child became a parent)
     func getAsParentFamily(for person: Person) -> Family? {
-        return asParentFamilies[person.name]
+        // Try exact match first
+        if let family = asParentFamilies[person.name] {
+            return family
+        }
+        
+        // Try trimmed version
+        let trimmedName = person.name.trimmingCharacters(in: .whitespaces)
+        if let family = asParentFamilies[trimmedName] {
+            return family
+        }
+        
+        // Try case-insensitive match
+        for (key, family) in asParentFamilies {
+            if key.lowercased() == person.name.lowercased() {
+                return family
+            }
+        }
+        
+        return nil
     }
     
-    /// Get the asChild family for a specific parent (where parent came from)
     func getAsChildFamily(for person: Person) -> Family? {
-        return asChildFamilies[person.name]
+        // Try exact match first
+        if let family = asChildFamilies[person.name] {
+            return family
+        }
+        
+        // Try trimmed version
+        let trimmedName = person.name.trimmingCharacters(in: .whitespaces)
+        if let family = asChildFamilies[trimmedName] {
+            return family
+        }
+        
+        // Try case-insensitive match
+        for (key, family) in asChildFamilies {
+            if key.lowercased() == person.name.lowercased() {
+                return family
+            }
+        }
+        // Log failure for debugging
+        logWarn(.citation, "⚠️ No asChild family found for '\(person.name)' in keys: \(Array(asChildFamilies.keys))")
+        return nil
     }
-    
+        
     /// Get the asChild family for a specific spouse (where spouse came from)
     func getSpouseAsChildFamily(for spouseName: String) -> Family? {
         return spouseAsChildFamilies[spouseName]
