@@ -280,7 +280,7 @@ struct JuuretView: View {
                     .foregroundColor(.secondary)
             }
             
-            // Compace click instructions
+            // Compact click instructions
             Text("💡 Click names for citations, dates for Hiski queries, purple spouse names for spouse citations")
                 .font(.genealogyCaption) // Enhanced font
                 .foregroundColor(.blue)
@@ -296,7 +296,7 @@ struct JuuretView: View {
     
     private func enhancedFamilyMembersView(family: Family) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Parents - FIXED: father is not optional in Family struct
+            // Parents
             if let father = family.father {
                 enhancedPersonView(person: father, in: family, role: "Father")
             }
@@ -307,10 +307,66 @@ struct JuuretView: View {
                 }
             }
             
+            // Marriage date for primary couple - NEW ADDITION
+            if let primaryCouple = family.primaryCouple,
+               let marriageDate = primaryCouple.marriageDate {
+                HStack {
+                    Text("Married:")
+                        .font(.genealogyCallout)
+                        .foregroundColor(.secondary)
+                        .padding(.leading, 20)
+                    
+                    Button(action: {
+                        // Show Hiski query for marriage if both parents exist
+                        if let father = family.father {
+                            showHiskiQuery(for: father, eventType: .marriage)
+                        }
+                    }) {
+                        Text(formatMarriageDate(marriageDate))
+                            .font(.genealogyCallout)
+                            .foregroundColor(.blue)
+                            .underline()
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.vertical, 2)
+            }
+            
+            // Additional spouses
+            if family.couples.count > 1 {
+                ForEach(Array(family.couples.dropFirst().enumerated()), id: \.offset) { index, couple in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Additional Spouse \(index + 2):")
+                            .font(.genealogyCallout)
+                            .fontWeight(.semibold)
+                            .padding(.top, 8)
+                        
+                        if let wife = couple.wife {
+                            enhancedPersonView(person: wife, in: family, role: "Wife")
+                        }
+                        
+                        // Marriage date for additional spouse
+                        if let marriageDate = couple.marriageDate {
+                            HStack {
+                                Text("Married:")
+                                    .font(.genealogyCallout)
+                                    .foregroundColor(.secondary)
+                                    .padding(.leading, 20)
+                                
+                                Text(formatMarriageDate(marriageDate))
+                                    .font(.genealogyCallout)
+                                    .foregroundColor(.primary)
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+                }
+            }
+            
             // Children
             if !family.children.isEmpty {
                 Text("Children:")
-                    .font(.genealogyHeadline) // Enhanced font
+                    .font(.genealogyHeadline)
                     .fontWeight(.semibold)
                     .padding(.top, 6)
                 
@@ -324,13 +380,30 @@ struct JuuretView: View {
         .cornerRadius(10)
     }
     
-    private func enhancedPersonView(person: Person, in family: Family, role: String) -> some View {
+    // Helper function to format marriage date
+    private func formatMarriageDate(_ date: String) -> String {
+        // Handle different date formats
+        if date.count == 2 {
+            // Convert 2-digit year to 4-digit (assuming 1700s or 1800s)
+            if let year = Int(date) {
+                // Use 1700s for years > 50, 1800s for years <= 50
+                let century = year > 50 ? 1700 : 1800
+                return String(century + year)
+            }
+        } else if date.count == 8 || date.count == 10 {
+            // Already a full date like 14.10.1750
+            return date
+        }
+        return date
+    }
+    
+    private func enhancedPersonView(person: Person, in family: Family) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             // Person name (clickable for citation)
             Button(action: {
                 showCitation(for: person, in: family)
             }) {
-                Text("\(role): \(person.displayName)")
+                Text("\(person.displayName)")
                     .font(.genealogySubheadline) // Enhanced font
                     .foregroundColor(.primary)
                     .underline()

@@ -16,6 +16,12 @@ class JuuretApp {
     
     // MARK: - Core Services
     
+    private enum PersonRole: String {
+        case parent = "father"
+        case mother = "mother"
+        case child = "child"
+    }
+    
     /// AI parsing service with configurable providers
     let aiParsingService: AIParsingService
     
@@ -259,7 +265,7 @@ class JuuretApp {
     }
     
     /**
-     * Extract family with complete cross-references (future implementation)
+     * Extract family with complete cross-references
      */
     func extractFamilyComplete(familyId: String) async throws {
         logInfo(.app, "🚀 Starting complete family extraction for: \(familyId)")
@@ -278,11 +284,14 @@ class JuuretApp {
             throw JuuretError.noFileLoaded
         }
         
-        // Clear previous state
+        // Clear previous state BUT preserve workflow if it's for the same family
         await MainActor.run {
-            currentFamily = nil
-            enhancedFamily = nil
-            familyNetworkWorkflow = nil  // FIXED: Clear previous workflow
+            // Only clear workflow if we're extracting a different family
+            if currentFamily?.familyId != normalizedId {
+                currentFamily = nil
+                enhancedFamily = nil
+                familyNetworkWorkflow = nil
+            }
             extractionProgress = .extractingFamily
             errorMessage = nil
             isProcessing = true
@@ -304,31 +313,36 @@ class JuuretApp {
                 if let network = workflow.getFamilyNetwork() {
                     currentFamily = network.mainFamily
                     enhancedFamily = network.mainFamily
-                    familyNetworkWorkflow = workflow  // FIXED: Store workflow instance
+                    familyNetworkWorkflow = workflow  // CRITICAL: Store workflow instance
                     extractionProgress = .complete
                     isProcessing = false
                     
-                    logInfo(.app, "✅ Complete family extraction completed: \(network.mainFamily.familyId)")
-                    logInfo(.app, "📊 Resolved \(network.totalResolvedFamilies) cross-references")
-                    logInfo(.app, "📄 Active citations: \(workflow.getActiveCitations().count)")
+                    // DEBUG: Log what citations were generated
+                    let citations = workflow.getActiveCitations()
+                    logInfo(.app, "✅ Complete family extraction completed")
+                    logInfo(.app, "📄 Generated \(citations.count) enhanced citations")
+                    logDebug(.app, "📄 Citation keys: \(Array(citations.keys))")
                 } else {
+                    logError(.app, "❌ No network returned from workflow")
                     extractionProgress = .idle
                     isProcessing = false
                     errorMessage = "Failed to build family network"
-                    logError(.app, "❌ Family network was nil after workflow")
                 }
             }
+            
         } catch {
             await MainActor.run {
                 extractionProgress = .idle
                 isProcessing = false
                 errorMessage = "Complete extraction failed: \(error.localizedDescription)"
+                familyNetworkWorkflow = nil  // Clear on error
             }
             
             logError(.app, "❌ Complete family extraction failed: \(error)")
             throw error
         }
     }
+
     
     // MARK: - Family Text Extraction
     
@@ -441,10 +455,11 @@ class JuuretApp {
     // MARK: - Citation Generation
     
     /**
-     * Generate citation for person
+     * Generate citation for person with simple name disambiguation
+     * Uses displayName (with patronymic) for parents vs name only for children
      */
     func generateCitation(for person: Person, in family: Family) -> String {
-        logInfo(.citation, "📖 Generating citation for: \(person.name)")
+        logInfo(.citation, "📖 Generating citation for: \(person.displayName)")
 
         // Manual override first
         if let override = getManualCitation(for: person, in: family) {
@@ -452,14 +467,24 @@ class JuuretApp {
             return override
         }
 
-        // FIXED: Check for enhanced citations from workflow
+        // Check for enhanced citations from workflow
         if let workflow = familyNetworkWorkflow {
             let activeCitations = workflow.getActiveCitations()
             
-            // Try to get person-specific citation by name
-            if let enhancedCitation = activeCitations[person.name] {
-                logDebug(.citation, "🔍 RETRIEVED citation for '\(person.name)': \(enhancedCitation.prefix(100))...")
+            // Use displayName for parents (includes patronymic), name for children
+            let citationKey = person.displayName
+            
+            if let enhancedCitation = activeCitations[citationKey] {
+                logDebug(.citation, "🔍 RETRIEVED citation for '\(citationKey)': \(enhancedCitation.prefix(100))...")
                 return enhancedCitation
+            }
+            
+            // Also try with just the name as fallback
+            if citationKey != person.name {
+                if let enhancedCitation = activeCitations[person.name] {
+                    logDebug(.citation, "🔍 RETRIEVED citation for '\(person.name)' (fallback): \(enhancedCitation.prefix(100))...")
+                    return enhancedCitation
+                }
             }
             
             // If no person-specific citation, try family-level citation
@@ -478,8 +503,32 @@ class JuuretApp {
         logDebug(.citation, "Generated standard citation length: \(citation.count) characters")
         return citation
     }
-    
+
+
     /**
+     * Get the citation key for a person, handling name disambiguation
+     * This is used to retrieve the correct citation when there are duplicate names
+     */
+    private func getCitationKey(for person: Person, in family: Family) -> String {
+        // Check if there's a name conflict
+        if hasNameConflict(person.name, in: family) {
+            // Determine role
+            let role: PersonRole = family.allParents.contains(where: { 
+                $0.name == person.name && $0.birthDate == person.birthDate 
+            }) ? .parent : .child
+            
+            // Use birth date for disambiguation if available
+            if let birthDate = person.birthDate {
+                return "\(person.name) (\(role.rawValue), b. \(birthDate))"
+            } else {
+                return "\(person.name) (\(role.rawValue))"
+            }
+        }
+        
+        return person.name
+    }
+
+     /**
      * Generate spouse citation (placeholder implementation)
      * This will be enhanced when cross-reference resolution is implemented
      */
@@ -585,3 +634,153 @@ class JuuretApp {
     }
 }
 
+extension JuuretApp {
+    
+    /**
+     * Debug method to check citation storage and retrieval
+     */
+    func debugCitationSystem(for person: Person, in family: Family) {
+        logInfo(.citation, "=== CITATION DEBUG for \(person.displayName) ===")
+        
+        // Check workflow existence
+        if let workflow = familyNetworkWorkflow {
+            logInfo(.citation, "✅ Workflow exists")
+            
+            let citations = workflow.getActiveCitations()
+            logInfo(.citation, "📄 Total citations stored: \(citations.count)")
+            
+            // Check different name formats
+            let namesToCheck = [
+                person.name,
+                person.displayName,
+                person.name.trimmingCharacters(in: .whitespaces),
+                person.displayName.trimmingCharacters(in: .whitespaces)
+            ]
+            
+            for nameKey in namesToCheck {
+                if let citation = citations[nameKey] {
+                    logInfo(.citation, "✅ Found with key '\(nameKey)': \(citation.prefix(100))...")
+                } else {
+                    logInfo(.citation, "❌ Not found with key '\(nameKey)'")
+                }
+            }
+            
+            // List all keys that contain this person's name
+            let matchingKeys = citations.keys.filter { key in
+                key.lowercased().contains(person.name.lowercased().split(separator: " ")[0])
+            }
+            logInfo(.citation, "🔍 Keys containing '\(person.name.split(separator: " ")[0])': \(matchingKeys)")
+            
+        } else {
+            logInfo(.citation, "❌ No workflow available")
+        }
+        
+        logInfo(.citation, "=== END CITATION DEBUG ===")
+    }
+    
+    /**
+     * Clear all cached data and force re-extraction
+     */
+    @MainActor
+    func clearAllCitations() {
+        currentFamily = nil
+        enhancedFamily = nil
+        familyNetworkWorkflow = nil
+        extractionProgress = .idle
+        errorMessage = nil
+        logInfo(.app, "🧹 Cleared all citation data")
+    }
+    
+    /**
+     * Verify citation system integrity
+     */
+    func verifyCitationIntegrity() -> Bool {
+        guard let family = currentFamily,
+              let workflow = familyNetworkWorkflow else {
+            logWarn(.citation, "⚠️ No family or workflow loaded")
+            return false
+        }
+        
+        let citations = workflow.getActiveCitations()
+        var issues: [String] = []
+        
+        // Check all parents have citations
+        for parent in family.allParents {
+            let hasPersonalCitation = citations[parent.name] != nil ||
+                                     citations[parent.displayName] != nil ||
+                                     citations[parent.name.trimmingCharacters(in: .whitespaces)] != nil
+            let hasFamilyCitation = citations[family.familyId] != nil
+            
+            if !hasPersonalCitation && !hasFamilyCitation {
+                issues.append("Missing citation for parent: \(parent.displayName)")
+            }
+        }
+        
+        // Check all children have citations
+        for child in family.children {
+            let hasPersonalCitation = citations[child.name] != nil ||
+                                     citations[child.displayName] != nil ||
+                                     citations[child.name.trimmingCharacters(in: .whitespaces)] != nil
+            let hasFamilyCitation = citations[family.familyId] != nil
+            
+            if !hasPersonalCitation && !hasFamilyCitation {
+                issues.append("Missing citation for child: \(child.displayName)")
+            }
+        }
+        
+        if issues.isEmpty {
+            logInfo(.citation, "✅ Citation integrity verified - all persons have citations")
+            return true
+        } else {
+            logWarn(.citation, "⚠️ Citation integrity issues found:")
+            for issue in issues {
+                logWarn(.citation, "  - \(issue)")
+            }
+            return false
+        }
+    }
+}
+
+extension JuuretApp {
+    
+    /// Check for name conflicts in the current family
+    func checkForNameConflicts() {
+        guard let family = currentFamily else { return }
+        
+        logInfo(.citation, "=== CHECKING FOR NAME CONFLICTS ===")
+        
+        var nameCount: [String: Int] = [:]
+        var nameOwners: [String: [String]] = [:]
+        
+        // Count parent names
+        for parent in family.allParents {
+            let simpleName = parent.name.trimmingCharacters(in: .whitespaces)
+            nameCount[simpleName, default: 0] += 1
+            nameOwners[simpleName, default: []].append("Parent: \(parent.displayName)")
+        }
+        
+        // Count child names
+        for child in family.children {
+            let simpleName = child.name.trimmingCharacters(in: .whitespaces)
+            nameCount[simpleName, default: 0] += 1
+            nameOwners[simpleName, default: []].append("Child: \(child.displayName)")
+        }
+        
+        // Report conflicts
+        let conflicts = nameCount.filter { $0.value > 1 }
+        
+        if conflicts.isEmpty {
+            logInfo(.citation, "✅ No name conflicts found")
+        } else {
+            logWarn(.citation, "⚠️ Found \(conflicts.count) name conflicts:")
+            for (name, count) in conflicts {
+                logWarn(.citation, "   '\(name)' appears \(count) times:")
+                for owner in nameOwners[name] ?? [] {
+                    logWarn(.citation, "      - \(owner)")
+                }
+            }
+        }
+        
+        logInfo(.citation, "=== END NAME CONFLICT CHECK ===")
+    }
+}

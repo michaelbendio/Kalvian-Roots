@@ -1,147 +1,84 @@
 //
-//  FamilyWebWorkflow.swift
+//  FamilyNetworkWorkflow.swift
 //  Kalvian Roots
 //
-//  Coordinates family web processing with progressive UI updates and debug logging
+//  Workflow for building family networks and generating enhanced citations
 //
 
 import Foundation
-import SwiftUI
 
 /**
- * Orchestrates the complete family web processing workflow
- * Using existing FamilyResolver and CitationGenerator components
+ * Complete workflow for processing a nuclear family
+ *
+ * This workflow handles:
+ * 1. Optional cross-reference resolution (as_child, as_parent, spouse families)
+ * 2. Citation generation for all family members
+ * 3. Enhanced citations that include cross-referenced data
  */
-@Observable
 class FamilyNetworkWorkflow {
     
-    // MARK: - Dependencies
+    // MARK: - Properties
     
-    private let aiParsingService: AIParsingService
+    private let nuclearFamily: Family
     private let familyResolver: FamilyResolver
-    private let fileManager: FileManager
-    
-    // MARK: - Published State
-    
-    var isProcessing = false
-    var currentStep = "Ready"
-    var progress: Double = 0.0
-    var activeCitations: [String: String] = [:]  // PersonName -> CitationText
-    var processingErrors: [String] = []
-    
-    // MARK: - Private State
+    private let shouldResolveCrossReferences: Bool
     
     private var familyNetwork: FamilyNetwork?
+    private var activeCitations: [String: String] = [:]
     
     // MARK: - Initialization
-    init(aiParsingService: AIParsingService, familyResolver: FamilyResolver, fileManager: FileManager) {
-        logInfo(.workflow, "🕸️ FamilyNetworkWorkflow initialization started")
-        
-        self.aiParsingService = aiParsingService
+    
+    init(nuclearFamily: Family,
+         familyResolver: FamilyResolver,
+         resolveCrossReferences: Bool = true) {
+        self.nuclearFamily = nuclearFamily
         self.familyResolver = familyResolver
-        self.fileManager = fileManager
+        self.shouldResolveCrossReferences = resolveCrossReferences
         
-        logInfo(.workflow, "✅ FamilyNetworkWorkflow initialized")
+        logInfo(.resolver, "📋 FamilyNetworkWorkflow initialized for: \(nuclearFamily.familyId)")
+        logInfo(.resolver, "  Cross-reference resolution: \(resolveCrossReferences ? "ENABLED" : "DISABLED")")
     }
     
-    // MARK: - Public Interface
+    // MARK: - Public Methods
     
     /**
-     * Process complete family network with enhanced citations
+     * Process the workflow
      */
-    func processFamilyNetwork(for familyId: String) async throws {
-        logInfo(.workflow, "🚀 Starting family web processing for: \(familyId)")
+    func process() async throws {
+        logInfo(.resolver, "🎯 Starting workflow processing for: \(nuclearFamily.familyId)")
         
-        await MainActor.run {
-            isProcessing = true
-            currentStep = "Initializing..."
-            progress = 0.0
-            activeCitations.removeAll()
-            processingErrors.removeAll()
-        }
-        
-        do {
-            // Step 1: Parse nuclear family (20% progress)
-            await updateProgress(step: "Parsing nuclear family...", progress: 0.2)
-            let nuclearFamily = try await parseNuclearFamily(familyId: familyId)
+        if shouldResolveCrossReferences {
+            // Build the complete family network
+            familyNetwork = try await buildFamilyNetwork(for: nuclearFamily)
             
-            // Step 2: Resolve cross-references (60% progress)
-            await updateProgress(step: "Resolving cross-references...", progress: 0.6)
-            let network = try await resolveFamilyNetwork(nuclearFamily: nuclearFamily)
-            
-            // Store network for retrieval
-            familyNetwork = network
-            
-            // Step 3: Generate all citations (90% progress)
-            await updateProgress(step: "Generating enhanced citations...", progress: 0.9)
+            // Generate enhanced citations using the network
             generateAndActivateCitations(for: nuclearFamily, type: .nuclear)
-            
-            // Complete
-            await updateProgress(step: "Complete", progress: 1.0)
-            await MainActor.run {
-                isProcessing = false
-            }
-            
-            logInfo(.workflow, "✅ Family web processing completed successfully")
-            logInfo(.workflow, "📄 Generated \(activeCitations.count) enhanced citations")
-            
-        } catch {
-            await MainActor.run {
-                processingErrors.append("Processing failed: \(error.localizedDescription)")
-                currentStep = "Failed"
-                isProcessing = false
-            }
-            
-            logError(.workflow, "❌ Family web processing failed: \(error)")
-            throw error
+        } else {
+            // Generate basic citations without network
+            generateAndActivateCitations(for: nuclearFamily, type: .nuclear)
         }
+        
+        logInfo(.resolver, "✅ Workflow processing complete for: \(nuclearFamily.familyId)")
+        logInfo(.citation, "📚 Generated \(activeCitations.count) citations")
     }
+    
     /**
-     * Get the resolved family network
+     * Get the family network (if resolved)
      */
     func getFamilyNetwork() -> FamilyNetwork? {
         return familyNetwork
     }
     
     /**
-     * Get active citations
+     * Get the active citations
      */
     func getActiveCitations() -> [String: String] {
         return activeCitations
     }
     
-    // MARK: - Private Implementation
+    // MARK: - Private Methods
     
-    private func updateProgress(step: String, progress: Double) async {
-        await MainActor.run {
-            currentStep = step
-            self.progress = progress
-        }
-        logDebug(.workflow, "Progress: \(Int(progress * 100))% - \(step)")
-    }
-    
-    private func parseNuclearFamily(familyId: String) async throws -> Family {
-        logInfo(.parsing, "🔍 Parsing nuclear family: \(familyId)")
-        
-        // Extract family text before parsing
-        guard let fileContent = fileManager.currentFileContent else {
-            logError(.parsing, "❌ No file content available")
-            throw JuuretError.noFileLoaded
-        }
-        
-        // Extract family text using FileManager's method
-        guard let familyText = fileManager.extractFamilyText(familyId: familyId, from: fileContent) else {
-            logError(.parsing, "❌ Family \(familyId) not found in file")
-            throw JuuretError.familyNotFound(familyId)
-        }
-        
-        logDebug(.parsing, "📝 Extracted family text (\(familyText.count) characters)")
-        
-        // Parse the family with actual text
-        return try await aiParsingService.parseFamily(familyId: familyId, familyText: familyText)
-    }
-    
-    private func resolveFamilyNetwork(nuclearFamily: Family) async throws -> FamilyNetwork {
+    private func buildFamilyNetwork(for nuclearFamily: Family) async throws -> FamilyNetwork {
         logInfo(.resolver, "🕸️ Building family network for: \(nuclearFamily.familyId)")
         
         // Use correct method name from FamilyResolver
@@ -196,11 +133,14 @@ class FamilyNetworkWorkflow {
         let basicCitation = CitationGenerator.generateMainFamilyCitation(family: family)
         
         // Give everyone the same basic family citation as fallback
+        // Use displayName for storage key to avoid ambiguity
         for parent in family.allParents {
-            activeCitations[parent.name] = basicCitation
+            activeCitations[parent.displayName] = basicCitation
+            activeCitations[parent.name] = basicCitation  // Also store by name for compatibility
         }
         
         for child in family.children {
+            activeCitations[child.displayName] = basicCitation
             activeCitations[child.name] = basicCitation
         }
         
@@ -209,111 +149,68 @@ class FamilyNetworkWorkflow {
     
     private func generatePersonSpecificCitations(for family: Family, network: FamilyNetwork) {
         logInfo(.citation, "👥 Generating person-specific citations")
-        logInfo(.citation, "📊 Network has \(network.asChildFamilies.count) asChild families")
         
-        // CRITICAL: Process parents first with FULL NAMES
+        // Generate enhanced asChild citations for parents
         for parent in family.allParents {
-            let citationKey = parent.displayName.trimmingCharacters(in: .whitespaces)
-            
-            logInfo(.citation, "🔍 Processing PARENT '\(parent.displayName)' with asChild='\(parent.asChild ?? "nil")'")
-            logInfo(.citation, "   Storage key: '\(citationKey)' (using displayName)")
+            logInfo(.citation, "🔍 DEBUG: Processing parent '\(parent.displayName)' with asChild='\(parent.asChild ?? "nil")'")
             
             if let asChildFamily = network.getAsChildFamily(for: parent) {
                 logInfo(.citation, "✅ Found asChild family: \(asChildFamily.familyId)")
-                let citation = CitationGenerator.generateAsChildCitation(for: parent, in: asChildFamily)
                 
-                // Store with full displayName as primary key
-                activeCitations[citationKey] = citation
+                // Create a modified network that includes parent's asParent family
+                let modifiedNetwork = createNetworkWithParentAsParent(for: parent, network: network)
                 
-                // ALSO store with simple name IF no conflict
-                let simpleName = parent.name.trimmingCharacters(in: .whitespaces)
-                if activeCitations[simpleName] == nil {
-                    activeCitations[simpleName] = citation
-                    logDebug(.citation, "   Also stored under simple name: '\(simpleName)'")
-                } else {
-                    logWarn(.citation, "⚠️ Name conflict: '\(simpleName)' already exists, skipping duplicate")
-                }
+                // Use enhanced citation that includes asParent information from nuclear family
+                let citation = CitationGenerator.generateAsChildCitation(
+                    for: parent,
+                    in: asChildFamily,
+                    network: modifiedNetwork
+                )
                 
-                logInfo(.citation, "📄 STORED parent citation from \(asChildFamily.pageReferenceString)")
+                // Store with displayName (includes patronymic) to avoid ambiguity
+                activeCitations[parent.displayName] = citation
+                // Also store with just name for backward compatibility
+                activeCitations[parent.name] = citation
                 
+                logInfo(.citation, "🔍 STORED enhanced asChild citation for '\(parent.displayName)'")
+                logInfo(.citation, "📝 Added additional information from nuclear family where '\(parent.displayName)' is a parent")
             } else {
-                logWarn(.citation, "❌ NO asChild family found for parent '\(parent.displayName)'")
+                logWarn(.citation, "❌ NO asChild family found for '\(parent.displayName)'")
+                logInfo(.citation, "🔍 Available asChild families: \(Array(network.asChildFamilies.keys))")
                 
-                // FALLBACK: Store nuclear citation
                 let citation = CitationGenerator.generateMainFamilyCitation(family: family)
-                activeCitations[citationKey] = citation
-                
-                // Try to store with simple name if no conflict
-                let simpleName = parent.name.trimmingCharacters(in: .whitespaces)
-                if activeCitations[simpleName] == nil {
-                    activeCitations[simpleName] = citation
-                }
+                activeCitations[parent.displayName] = citation
+                activeCitations[parent.name] = citation
             }
         }
         
-        // THEN process children with their names
+        // Generate enhanced citations for children
         for child in family.children {
-            // For children, prefer simple name but fall back to displayName if conflict
-            let simpleName = child.name.trimmingCharacters(in: .whitespaces)
-            let displayName = child.displayName.trimmingCharacters(in: .whitespaces)
-            
-            // Choose key based on whether simple name conflicts with a parent
-            let citationKey = activeCitations[simpleName] != nil ? displayName : simpleName
-            
-            logInfo(.citation, "🔍 Processing CHILD '\(child.displayName)'")
-            logInfo(.citation, "   Storage key: '\(citationKey)'")
-            
             if let asParentFamily = network.getAsParentFamily(for: child) {
+                // Enhanced citation for married children
                 let citation = generateEnhancedChildCitation(
                     child: child,
                     asParentFamily: asParentFamily,
                     network: network
                 )
-                activeCitations[citationKey] = citation
-                logDebug(.citation, "📄 Generated enhanced citation for married child")
+                // Children typically don't have patronymics, so displayName == name
+                activeCitations[child.displayName] = citation
+                activeCitations[child.name] = citation
+                
+                logDebug(.citation, "Generated enhanced citation for married child: \(child.displayName)")
             } else {
+                // Regular nuclear family citation for unmarried children
                 let citation = CitationGenerator.generateMainFamilyCitation(family: family)
-                activeCitations[citationKey] = citation
-                logDebug(.citation, "📄 Generated nuclear citation for unmarried child")
+                activeCitations[child.displayName] = citation
+                activeCitations[child.name] = citation
+                
+                logDebug(.citation, "Generated nuclear citation for unmarried child: \(child.displayName)")
             }
         }
         
         logInfo(.citation, "✅ Generated \(activeCitations.count) person-specific citations")
-        logInfo(.citation, "📄 Citation keys: \(Array(activeCitations.keys).sorted())")
-    
-        // Continue with children...
-        for child in family.children {
-            let citationKey = child.name.trimmingCharacters(in: .whitespaces)
-            
-            if let asParentFamily = network.getAsParentFamily(for: child) {
-                let citation = generateEnhancedChildCitation(
-                    child: child,
-                    asParentFamily: asParentFamily,
-                    network: network
-                )
-                activeCitations[citationKey] = citation
-                
-                if child.displayName != child.name {
-                    activeCitations[child.displayName.trimmingCharacters(in: .whitespaces)] = citation
-                }
-                
-                logDebug(.citation, "Generated enhanced citation for married child: \(citationKey)")
-            } else {
-                let citation = CitationGenerator.generateMainFamilyCitation(family: family)
-                activeCitations[citationKey] = citation
-                
-                if child.displayName != child.name {
-                    activeCitations[child.displayName.trimmingCharacters(in: .whitespaces)] = citation
-                }
-                
-                logDebug(.citation, "Generated nuclear citation for unmarried child: \(citationKey)")
-            }
-        }
-        
-        logInfo(.citation, "✅ Generated \(activeCitations.count) person-specific citations")
-        logInfo(.citation, "📄 Final citation keys: \(Array(activeCitations.keys).sorted())")
     }
-
+    
     private func enhanceChildrenWithAsParentDates(family: Family, network: FamilyNetwork) -> Family {
         // Create enhanced copies of children with additional date information
         var enhancedCouples: [Couple] = []
@@ -369,7 +266,7 @@ class FamilyNetworkWorkflow {
     
     private func generateEnhancedChildCitation(child: Person, asParentFamily: Family, network: FamilyNetwork) -> String {
         // VERIFICATION: This should only be called for children, never parents
-        logDebug(.citation, "Generating enhanced citation for child: \(child.name) using asParent family: \(asParentFamily.familyId)")
+        logDebug(.citation, "Generating enhanced citation for child: \(child.displayName) using asParent family: \(asParentFamily.familyId)")
         
         // Start with nuclear family citation (where the child grew up)
         var citation = CitationGenerator.generateMainFamilyCitation(family: network.mainFamily)
@@ -396,12 +293,29 @@ class FamilyNetworkWorkflow {
         if !additionalInfo.isEmpty {
             citation += "\nAdditional Information:\n"
             let infoList = additionalInfo.joined(separator: ", ")
-            citation += "\(child.name)'s \(infoList) found on \(asParentFamily.pageReferenceString)\n"
+            citation += "\(child.displayName)'s \(infoList) found on \(asParentFamily.pageReferenceString)\n"
         }
         
         return citation
     }
-
+    
+    /**
+     * Create a modified network that includes the parent's asParent family information
+     * For a parent in the nuclear family, their asParent family is the nuclear family itself
+     */
+    private func createNetworkWithParentAsParent(for parent: Person, network: FamilyNetwork) -> FamilyNetwork {
+        // Create a modified network that includes the parent's asParent family
+        var modifiedNetwork = network
+        
+        // The parent's asParent family is the main nuclear family where they appear as a parent
+        // We add this to the asParentFamilies dictionary so the citation generator can find it
+        // Use displayName as key for disambiguation
+        modifiedNetwork.asParentFamilies[parent.displayName] = network.mainFamily
+        modifiedNetwork.asParentFamilies[parent.name] = network.mainFamily  // Also store by name
+        
+        return modifiedNetwork
+    }
+    
     // MARK: - Helper Methods
     
     private func findPersonInMainFamily(named name: String) -> Person? {
@@ -409,4 +323,3 @@ class FamilyNetworkWorkflow {
         return network.mainFamily.findPerson(named: name)
     }
 }
-

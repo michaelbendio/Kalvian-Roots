@@ -145,14 +145,16 @@ class FamilyResolver {
         logInfo(.resolver, "👨‍👩 Resolving as-child families for parents")
         
         for parent in family.allParents {
-            // FIXED: Use correct property name
             if let asChildRef = parent.asChild {
                 logInfo(.resolver, "🔍 Attempting to resolve as_child: \(parent.displayName) from \(asChildRef)")
                 
                 if let resolvedFamily = try await findAsChildFamily(for: parent) {
-                    updatedNetwork.asChildFamilies[parent.name] = resolvedFamily
+                    // FIXED: Use trimmed name as consistent key
+                    let storageKey = parent.name.trimmingCharacters(in: .whitespaces)
+                    updatedNetwork.asChildFamilies[storageKey] = resolvedFamily
+                    
                     debugLogResolutionResult(for: parent.displayName, reference: asChildRef, success: true, type: "as_child")
-                    logInfo(.resolver, "  ✅ Resolved: \(asChildRef)")
+                    logInfo(.resolver, "  ✅ Resolved: \(asChildRef) - stored with key '\(storageKey)'")
                 } else {
                     debugLogResolutionResult(for: parent.displayName, reference: asChildRef, success: false, type: "as_child")
                     logWarn(.resolver, "  ⚠️ Not found: \(asChildRef)")
@@ -161,6 +163,7 @@ class FamilyResolver {
         }
         
         logInfo(.resolver, "  Resolved \(updatedNetwork.asChildFamilies.count) as-child families")
+        logInfo(.resolver, "  Storage keys: \(Array(updatedNetwork.asChildFamilies.keys))")
         return updatedNetwork
     }
     
@@ -171,16 +174,17 @@ class FamilyResolver {
         
         logInfo(.resolver, "👶 Resolving as-parent families for married children")
         
-        // FIXED: Use marriedChildren computed property
         for child in family.marriedChildren {
-            // FIXED: Use correct property name
             if let asParentRef = child.asParent {
                 logInfo(.resolver, "🔍 Attempting to resolve as_parent: \(child.displayName) in \(asParentRef)")
                 
                 if let resolvedFamily = try await findAsParentFamily(for: child) {
-                    updatedNetwork.asParentFamilies[child.name] = resolvedFamily
+                    // FIXED: Use trimmed name as consistent key
+                    let storageKey = child.name.trimmingCharacters(in: .whitespaces)
+                    updatedNetwork.asParentFamilies[storageKey] = resolvedFamily
+                    
                     debugLogResolutionResult(for: child.displayName, reference: asParentRef, success: true, type: "as_parent")
-                    logInfo(.resolver, "  ✅ Resolved: \(asParentRef)")
+                    logInfo(.resolver, "  ✅ Resolved: \(asParentRef) - stored with key '\(storageKey)'")
                 } else {
                     debugLogResolutionResult(for: child.displayName, reference: asParentRef, success: false, type: "as_parent")
                     logWarn(.resolver, "  ⚠️ Not found: \(asParentRef)")
