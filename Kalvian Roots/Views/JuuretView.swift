@@ -294,92 +294,6 @@ struct JuuretView: View {
         }
     }
     
-    private func enhancedFamilyMembersView(family: Family) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Parents
-            if let father = family.father {
-                enhancedPersonView(person: father, in: family, role: "Father")
-            }
-            
-            if let mother = family.mother {
-                Group {
-                    enhancedPersonView(person: mother, in: family, role: "Mother")
-                }
-            }
-            
-            // Marriage date for primary couple - NEW ADDITION
-            if let primaryCouple = family.primaryCouple,
-               let marriageDate = primaryCouple.marriageDate {
-                HStack {
-                    Text("Married:")
-                        .font(.genealogyCallout)
-                        .foregroundColor(.secondary)
-                        .padding(.leading, 20)
-                    
-                    Button(action: {
-                        // Show Hiski query for marriage if both parents exist
-                        if let father = family.father {
-                            showHiskiQuery(for: father, eventType: .marriage)
-                        }
-                    }) {
-                        Text(formatMarriageDate(marriageDate))
-                            .font(.genealogyCallout)
-                            .foregroundColor(.blue)
-                            .underline()
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.vertical, 2)
-            }
-            
-            // Additional spouses
-            if family.couples.count > 1 {
-                ForEach(Array(family.couples.dropFirst().enumerated()), id: \.offset) { index, couple in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Additional Spouse \(index + 2):")
-                            .font(.genealogyCallout)
-                            .fontWeight(.semibold)
-                            .padding(.top, 8)
-                        
-                        if let wife = couple.wife {
-                            enhancedPersonView(person: wife, in: family, role: "Wife")
-                        }
-                        
-                        // Marriage date for additional spouse
-                        if let marriageDate = couple.marriageDate {
-                            HStack {
-                                Text("Married:")
-                                    .font(.genealogyCallout)
-                                    .foregroundColor(.secondary)
-                                    .padding(.leading, 20)
-                                
-                                Text(formatMarriageDate(marriageDate))
-                                    .font(.genealogyCallout)
-                                    .foregroundColor(.primary)
-                            }
-                            .padding(.vertical, 2)
-                        }
-                    }
-                }
-            }
-            
-            // Children
-            if !family.children.isEmpty {
-                Text("Children:")
-                    .font(.genealogyHeadline)
-                    .fontWeight(.semibold)
-                    .padding(.top, 6)
-                
-                ForEach(family.children) { child in
-                    enhancedPersonView(person: child, in: family, role: "Child")
-                }
-            }
-        }
-        .padding(12)
-        .background(Color.gray.opacity(0.05))
-        .cornerRadius(10)
-    }
-    
     // Helper function to format marriage date
     private func formatMarriageDate(_ date: String) -> String {
         // Handle different date formats
@@ -519,6 +433,217 @@ struct JuuretView: View {
     NavigationView {
         JuuretView()
             .environment(JuuretApp())
+    }
+}
+
+extension JuuretView {
+    
+    // MARK: - Simplified Family Members View
+    // Breaking up the complex enhancedFamilyMembersView into smaller pieces
+    
+    private func enhancedFamilyMembersView(family: Family) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Parents section
+            parentsSection(family: family)
+            
+            // Marriage section
+            marriageSection(family: family)
+            
+            // Additional spouses section
+            additionalSpousesSection(family: family)
+            
+            // Children section
+            childrenSection(family: family)
+        }
+        .padding(12)
+        .background(Color.gray.opacity(0.05))
+        .cornerRadius(10)
+    }
+    
+    // MARK: - Component Views (Breaking up complex expression)
+    
+    @ViewBuilder
+    private func parentsSection(family: Family) -> some View {
+        if let father = family.father {
+            enhancedPersonView(person: father, in: family, role: "Father")
+        }
+        
+        if let mother = family.mother {
+            enhancedPersonView(person: mother, in: family, role: "Mother")
+        }
+    }
+    
+    @ViewBuilder
+    private func marriageSection(family: Family) -> some View {
+        if let primaryCouple = family.primaryCouple,
+           let marriageDate = primaryCouple.marriageDate {
+            marriageDateView(marriageDate: marriageDate, family: family)
+                .padding(.vertical, 2)
+        }
+    }
+    
+    private func marriageDateView(marriageDate: String, family: Family) -> some View {
+        HStack {
+            Text("Married:")
+                .font(.genealogyCallout)
+                .foregroundColor(.secondary)
+                .padding(.leading, 20)
+            
+            marriageDateButton(marriageDate: marriageDate, family: family)
+        }
+    }
+    
+    private func marriageDateButton(marriageDate: String, family: Family) -> some View {
+        Button(action: {
+            if let father = family.father {
+                showHiskiQuery(for: father, eventType: .marriage)
+            }
+        }) {
+            Text(formatMarriageDate(marriageDate))
+                .font(.genealogyCallout)
+                .foregroundColor(.blue)
+                .underline()
+        }
+        .buttonStyle(.plain)
+    }
+    
+    @ViewBuilder
+    private func additionalSpousesSection(family: Family) -> some View {
+        if family.couples.count > 1 {
+            let additionalCouples = Array(family.couples.dropFirst().enumerated())
+            ForEach(additionalCouples, id: \.offset) { index, couple in
+                additionalSpouseView(index: index, couple: couple, family: family)
+            }
+        }
+    }
+    
+    private func additionalSpouseView(index: Int, couple: Couple, family: Family) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Additional Spouse \(index + 2):")
+                .font(.genealogyCallout)
+                .fontWeight(.semibold)
+                .padding(.top, 8)
+            
+            enhancedPersonView(person: couple.wife, in: family, role: "Wife")
+            
+            additionalSpouseMarriageDate(couple: couple)
+        }
+    }
+    
+    @ViewBuilder
+    private func additionalSpouseMarriageDate(couple: Couple) -> some View {
+        if let marriageDate = couple.marriageDate {
+            HStack {
+                Text("Married:")
+                    .font(.genealogyCallout)
+                    .foregroundColor(.secondary)
+                    .padding(.leading, 20)
+                
+                Text(formatMarriageDate(marriageDate))
+                    .font(.genealogyCallout)
+                    .foregroundColor(.primary)
+            }
+            .padding(.vertical, 2)
+        }
+    }
+    
+    @ViewBuilder
+    private func childrenSection(family: Family) -> some View {
+        if !family.children.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Children:")
+                    .font(.genealogyHeadline)
+                    .fontWeight(.semibold)
+                    .padding(.top, 6)
+                
+                childrenList(children: family.children, family: family)
+            }
+        }
+    }
+    
+    private func childrenList(children: [Person], family: Family) -> some View {
+        ForEach(children) { child in
+            enhancedPersonView(person: child, in: family, role: "Child")
+        }
+    }
+    
+    // MARK: - Simplified Person View with role parameter
+    
+    private func enhancedPersonView(person: Person, in family: Family, role: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            // Person name button
+            personNameButton(person: person, family: family)
+            
+            // Birth and death dates
+            personDatesView(person: person)
+            
+            // Spouse information
+            personSpouseView(person: person, family: family)
+        }
+        .padding(.vertical, 4)
+    }
+    
+    private func personNameButton(person: Person, family: Family) -> some View {
+        Button(action: {
+            showCitation(for: person, in: family)
+        }) {
+            Text(person.displayName)
+                .font(.genealogySubheadline)
+                .foregroundColor(.primary)
+                .underline()
+        }
+        .buttonStyle(.plain)
+    }
+    
+    private func personDatesView(person: Person) -> some View {
+        HStack(spacing: 16) {
+            if let birthDate = person.birthDate {
+                birthDateButton(person: person, birthDate: birthDate)
+            }
+            
+            if let deathDate = person.deathDate {
+                deathDateButton(person: person, deathDate: deathDate)
+            }
+        }
+    }
+    
+    private func birthDateButton(person: Person, birthDate: String) -> some View {
+        Button(action: {
+            showHiskiQuery(for: person, eventType: .birth)
+        }) {
+            Text("Birth: \(birthDate)")
+                .font(.genealogyCallout)
+                .foregroundColor(.blue)
+                .underline()
+        }
+        .buttonStyle(.plain)
+    }
+    
+    private func deathDateButton(person: Person, deathDate: String) -> some View {
+        Button(action: {
+            showHiskiQuery(for: person, eventType: .death)
+        }) {
+            Text("Death: \(deathDate)")
+                .font(.genealogyCallout)
+                .foregroundColor(.blue)
+                .underline()
+        }
+        .buttonStyle(.plain)
+    }
+    
+    @ViewBuilder
+    private func personSpouseView(person: Person, family: Family) -> some View {
+        if let spouse = person.spouse {
+            Button(action: {
+                showSpouseCitation(spouseName: spouse, in: family)
+            }) {
+                Text("Spouse: \(spouse)")
+                    .font(.genealogyCallout)
+                    .foregroundColor(.purple)
+                    .underline()
+            }
+            .buttonStyle(.plain)
+        }
     }
 }
 

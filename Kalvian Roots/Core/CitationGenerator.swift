@@ -160,13 +160,13 @@ struct CitationGenerator {
             
             if let asParentFamily = asParentFamily {
                 // Find the person in their asParent family
-                let personAsParent = asParentFamily.allParents.first { parent in
+                if let personAsParent = asParentFamily.allParents.first(where: { parent in
                     parent.name.lowercased() == person.name.lowercased()
-                }
-                
-                var additionalInfo: [String] = []
-                
-                if let personAsParent = personAsParent {
+                }) {
+                    // Now personAsParent is safely unwrapped within this scope
+                    
+                    var additionalInfo: [String] = []
+                    
                     // Check for marriage date not in asChild family
                     if (personAsParent.fullMarriageDate != nil || personAsParent.marriageDate != nil) &&
                        person.fullMarriageDate == nil && person.marriageDate == nil {
@@ -177,21 +177,25 @@ struct CitationGenerator {
                     if personAsParent.deathDate != nil && person.deathDate == nil {
                         additionalInfo.append("death date")
                     }
-                }
-                
-                // Always add the additional information section if dates are in asParent family
-                if personAsParent != nil && (!additionalInfo.isEmpty ||
-                    (personAsParent.deathDate != nil || personAsParent.marriageDate != nil || personAsParent.fullMarriageDate != nil)) {
-                    citation += "\nAdditional Information:\n"
-                    let spouseName = person.spouse ?? personAsParent?.spouse ?? "spouse"
-                    let dateTypes = additionalInfo.isEmpty ? "marriage and death dates are" : formatDateAdditions(additionalInfo)
-                    citation += "\(person.name)'s \(dateTypes) on \(asParentFamily.pageReferenceString) where \(person.name) and \(spouseName) are parents\n"
+                    
+                    // Always add the additional information section if dates are in asParent family
+                    // FIXED: All property checks are now within the if-let scope
+                    if !additionalInfo.isEmpty ||
+                       personAsParent.deathDate != nil ||
+                       personAsParent.marriageDate != nil ||
+                       personAsParent.fullMarriageDate != nil {
+                        citation += "\nAdditional Information:\n"
+                        let spouseName = person.spouse ?? personAsParent.spouse ?? "spouse"
+                        let dateTypes = additionalInfo.isEmpty ? "marriage and death dates are" : formatDateAdditions(additionalInfo)
+                        citation += "\(person.name)'s \(dateTypes) on \(asParentFamily.pageReferenceString) where \(person.name) and \(spouseName) are parents\n"
+                    }
                 }
             }
         }
         
         return citation
     }
+
     
     /**
      * Format child with enhanced dates from their asParent family

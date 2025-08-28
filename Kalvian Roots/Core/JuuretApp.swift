@@ -284,6 +284,11 @@ class JuuretApp {
             throw JuuretError.noFileLoaded
         }
         
+        guard let fileContent = fileManager.currentFileContent else {
+            logError(.file, "❌ No file content available")
+            throw JuuretError.noFileLoaded
+        }
+        
         // Clear previous state BUT preserve workflow if it's for the same family
         await MainActor.run {
             // Only clear workflow if we're extracting a different family
@@ -298,15 +303,26 @@ class JuuretApp {
         }
         
         do {
-            // Create family web workflow with ALL required dependencies
-            let workflow = FamilyNetworkWorkflow(
-                aiParsingService: aiParsingService,
-                familyResolver: familyResolver,
-                fileManager: fileManager
+            // First extract the family using the AI service
+            let familyText = try extractFamilyText(familyId: normalizedId, from: fileContent)
+            logDebug(.parsing, "Extracted family text (\(familyText.count) chars)")
+            
+            // Parse the family
+            let family = try await aiParsingService.parseFamily(
+                familyId: normalizedId,
+                familyText: familyText
             )
             
-            // Start the workflow
-            try await workflow.processFamilyNetwork(for: normalizedId)
+            // FIX: Create workflow with the correct constructor signature
+            // The original FamilyNetworkWorkflow expects a Family object as the first parameter
+            let workflow = FamilyNetworkWorkflow(
+                nuclearFamily: family,           // Changed from aiParsingService
+                familyResolver: familyResolver,
+                resolveCrossReferences: true     // Removed fileManager parameter
+            )
+            
+            // Process the workflow
+            try await workflow.process()  // Changed from processFamilyNetwork(for:)
             
             // Update app state with results
             await MainActor.run {
@@ -504,7 +520,35 @@ class JuuretApp {
         return citation
     }
 
-
+    /**
+     * Check if a name appears multiple times in a family
+     * Used for citation disambiguation when the same name appears for multiple people
+     */
+    private func hasNameConflict(_ name: String, in family: Family) -> Bool {
+        let cleanName = name.trimmingCharacters(in: .whitespaces).lowercased()
+        
+        // Count occurrences of the name among all family members
+        var nameCount = 0
+        
+        // Check parents
+        for parent in family.allParents {
+            if parent.name.trimmingCharacters(in: .whitespaces).lowercased() == cleanName {
+                nameCount += 1
+                if nameCount > 1 { return true }
+            }
+        }
+        
+        // Check children
+        for child in family.children {
+            if child.name.trimmingCharacters(in: .whitespaces).lowercased() == cleanName {
+                nameCount += 1
+                if nameCount > 1 { return true }
+            }
+        }
+        
+        return false
+    }
+    
     /**
      * Get the citation key for a person, handling name disambiguation
      * This is used to retrieve the correct citation when there are duplicate names
@@ -513,8 +557,8 @@ class JuuretApp {
         // Check if there's a name conflict
         if hasNameConflict(person.name, in: family) {
             // Determine role
-            let role: PersonRole = family.allParents.contains(where: { 
-                $0.name == person.name && $0.birthDate == person.birthDate 
+            let role: PersonRole = family.allParents.contains(where: {
+                $0.name == person.name && $0.birthDate == person.birthDate
             }) ? .parent : .child
             
             // Use birth date for disambiguation if available
