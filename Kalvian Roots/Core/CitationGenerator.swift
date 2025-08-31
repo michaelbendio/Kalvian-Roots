@@ -113,7 +113,6 @@ struct CitationGenerator {
             citation += "m \(normalizeDate(marriageDate))\n"
         }
         
-        // FIXED: Additional spouses (couples beyond the first)
         if asChildFamily.couples.count > 1 {
             citation += "\nAdditional spouse(s):\n"
             for couple in asChildFamily.couples.dropFirst() {
@@ -153,46 +152,56 @@ struct CitationGenerator {
         
         // Additional Information section for the target person's asParent family
         if let network = network {
-            // Try both displayName and name for lookup
             let asParentFamily = network.getAsParentFamily(for: person) ??
                                  network.asParentFamilies[person.displayName] ??
                                  network.asParentFamilies[person.name]
             
             if let asParentFamily = asParentFamily {
+                var additionalInfo: [String] = []
+                
                 // Find the person in their asParent family
                 let personAsParent = asParentFamily.allParents.first { parent in
                     parent.name.lowercased() == person.name.lowercased()
                 }
                 
-                var additionalInfo: [String] = []
+                // Get the couple's marriage date
+                let coupleMarriageDate = asParentFamily.primaryCouple?.marriageDate
                 
-                if let personAsParent = personAsParent {
-                    // Check for death date not in asChild family
-                    if personAsParent.deathDate != nil && person.deathDate == nil {
-                        additionalInfo.append("death date")
-                    }
-                    
-                    // Check for marriage date enhancement
-                    let hasFullMarriageInAsParent = personAsParent.fullMarriageDate != nil || 
-                                                    (personAsParent.marriageDate != nil && 
-                                                     personAsParent.marriageDate!.count > 2)
-                    let hasOnlyPartialInAsChild = person.fullMarriageDate == nil && 
-                                                  (person.marriageDate == nil || 
-                                                   person.marriageDate!.count <= 2)
-                    
-                    if hasFullMarriageInAsParent && hasOnlyPartialInAsChild {
-                        additionalInfo.append("marriage date")
-                    }
+                // Check for death date enhancement
+                // Person has death in asParent but not in asChild
+                if personAsParent?.deathDate != nil {
+                    additionalInfo.append("death date")
                 }
                 
-                // Add the additional information section if applicable
-                if let personAsParent = personAsParent, !additionalInfo.isEmpty {
-                    citation += "\nAdditional Information:\n"
-                    let dateTypes = formatDateAdditions(additionalInfo)
-                    citation += "\(person.name)'s \(dateTypes) found on \(asParentFamily.pageReferenceString)\n"
+                // Check for marriage date enhancement
+                // Check if asParent has full date and asChild only has partial
+                let hasFullMarriageInAsParent = 
+                    (personAsParent?.fullMarriageDate != nil) ||
+                    (personAsParent?.marriageDate != nil && personAsParent!.marriageDate!.count >= 8) ||
+                    (coupleMarriageDate != nil && coupleMarriageDate!.count >= 8)
+                
+                let hasOnlyPartialInAsChild = 
+                    person.fullMarriageDate == nil && 
+                    (person.marriageDate == nil || person.marriageDate!.count <= 2)
+                
+                if hasFullMarriageInAsParent && hasOnlyPartialInAsChild {
+                    additionalInfo.append("marriage date")
+                }
+                
+                // Format the Additional Information section
+                if !additionalInfo.isEmpty {
+                    citation += "\n"  // Blank line for readability
+                    citation += "Additional Information:\n"
                     
-                    let spouseName = person.spouse ?? personAsParent.spouse ?? "spouse"
-                    citation += "\(person.name)'s \(dateTypes) on \(asParentFamily.pageReferenceString) where \(person.name) and \(spouseName) are parents\n"
+                    // Format based on what we found
+                    if additionalInfo.count == 2 {
+                        // Both marriage and death dates
+                        citation += "\(person.name)'s marriage date and death date found on \(asParentFamily.pageReferenceString)\n"
+                    } else if additionalInfo.contains("marriage date") {
+                        citation += "\(person.name)'s marriage date found on \(asParentFamily.pageReferenceString)\n"
+                    } else if additionalInfo.contains("death date") {
+                        citation += "\(person.name)'s death date found on \(asParentFamily.pageReferenceString)\n"
+                    }
                 }
             }
         }
@@ -200,7 +209,6 @@ struct CitationGenerator {
         return citation
     }
 
-    
     /**
      * Format child with enhanced dates from their asParent family
      * Updated to handle the person parameter to get spouse info
@@ -208,48 +216,52 @@ struct CitationGenerator {
     private static func formatChildWithEnhancement(_ child: Person, person: Person, network: FamilyNetwork) -> String {
         var enhancedChild = child
         
-        // For the target person (Maria), look up their asParent family
-        let asParentFamily = network.getAsParentFamily(for: person) ??
-                            network.asParentFamilies[person.displayName] ??
-                            network.asParentFamilies[person.name]
+        // CRITICAL: Use the correct person to look up asParent family
+        // For parents, use 'person' parameter
+        // For children in asChild citations, use 'child' parameter
+        let lookupPerson = isTargetPerson(child, person) ? person : child
+        
+        let asParentFamily = network.getAsParentFamily(for: lookupPerson) ??
+                            network.asParentFamilies[lookupPerson.displayName] ??
+                            network.asParentFamilies[lookupPerson.name]
         
         if let asParentFamily = asParentFamily {
-            // Find Maria as a parent in ISO-PEITSO III 2
-            if let childAsParent = asParentFamily.allParents.first(where: {
-                $0.name.lowercased() == person.name.lowercased()
+            // Find this person as a parent in their asParent family
+            if let personAsParent = asParentFamily.allParents.first(where: {
+                $0.name.lowercased() == lookupPerson.name.lowercased()
             }) {
                 // Enhance with death date if missing
-                if enhancedChild.deathDate == nil && childAsParent.deathDate != nil {
-                    enhancedChild.deathDate = childAsParent.deathDate
+                if enhancedChild.deathDate == nil && personAsParent.deathDate != nil {
+                    enhancedChild.deathDate = personAsParent.deathDate
                 }
                 
-                // Always use the 8-digit marriage date from asParent if available
-                if childAsParent.fullMarriageDate != nil {
-                    enhancedChild.fullMarriageDate = childAsParent.fullMarriageDate
-                    // Clear any partial date to avoid confusion
-                    enhancedChild.marriageDate = nil
-                } else if childAsParent.marriageDate != nil && childAsParent.marriageDate!.count > 2 {
-                    // Use 8-digit marriageDate if that's what we have
-                    enhancedChild.fullMarriageDate = childAsParent.marriageDate
-                    enhancedChild.marriageDate = nil
+                // Enhance with marriage date - check ALL sources
+                if enhancedChild.fullMarriageDate == nil {
+                    if let fullDate = personAsParent.fullMarriageDate {
+                        enhancedChild.fullMarriageDate = fullDate
+                    } else if let marriageDate = personAsParent.marriageDate,
+                              marriageDate.count >= 8 {
+                        enhancedChild.fullMarriageDate = marriageDate
+                    } else if let coupleMarriage = asParentFamily.primaryCouple?.marriageDate,
+                              coupleMarriage.count >= 8 {
+                        enhancedChild.fullMarriageDate = coupleMarriage
+                    }
                 }
                 
                 // Get spouse name if not already present
                 if enhancedChild.spouse == nil || enhancedChild.spouse!.isEmpty {
-                    enhancedChild.spouse = childAsParent.spouse
+                    enhancedChild.spouse = personAsParent.spouse
                 }
             }
         }
         
         // Format the enhanced child with all dates
-        var line = enhancedChild.name
+        var line = child.name
         
-        // Birth date
         if let birthDate = enhancedChild.birthDate {
             line += ", b \(normalizeDate(birthDate))"
         }
         
-        // Marriage info with full date
         if let spouse = enhancedChild.spouse, !spouse.isEmpty {
             if let fullMarriage = enhancedChild.fullMarriageDate {
                 line += ", m \(spouse) \(normalizeDate(fullMarriage))"
@@ -260,7 +272,6 @@ struct CitationGenerator {
             }
         }
         
-        // Death date
         if let deathDate = enhancedChild.deathDate {
             line += ", d \(normalizeDate(deathDate))"
         }
@@ -269,7 +280,6 @@ struct CitationGenerator {
         return line
     }
 
-    
     // MARK: - Formatting Helpers
     
     /**
@@ -301,13 +311,19 @@ struct CitationGenerator {
             line += ", b \(normalizeDate(birthDate))"
         }
         
-        // Marriage info
+        // Marriage info - CHECK FULL DATE FIRST!
         if let spouse = child.spouse, !spouse.isEmpty {
-            let marriageYear = extractMarriageYear(from: child)
-            if let year = marriageYear {
-                line += ", m \(spouse) \(year)"
-            } else if let rawMarriage = child.bestMarriageDate {
-                line += ", m \(spouse) \(rawMarriage)"
+            if let fullMarriage = child.fullMarriageDate {
+                // Use the full date if we have it!
+                line += ", m \(spouse) \(normalizeDate(fullMarriage))"
+            } else if let marriageDate = child.marriageDate {
+                // Otherwise extract year from partial date
+                let marriageYear = extractMarriageYear(from: child)
+                if let year = marriageYear {
+                    line += ", m \(spouse) \(year)"
+                } else {
+                    line += ", m \(spouse) \(marriageDate)"
+                }
             } else {
                 line += ", m \(spouse)"
             }
@@ -330,7 +346,7 @@ struct CitationGenerator {
     private static func extractMarriageYear(from person: Person) -> String? {
         guard let marriageDate = person.bestMarriageDate else { return nil }
         
-        // Try to extract 4-digit year
+        // Try to extract 4-digit year first
         if let match = marriageDate.range(of: #"\b(\d{4})\b"#, options: .regularExpression) {
             let fullMatch = String(marriageDate[match])
             let components = fullMatch.components(separatedBy: ".")
@@ -343,8 +359,9 @@ struct CitationGenerator {
         if let match = marriageDate.range(of: #"\b(\d{2})\b"#, options: .regularExpression) {
             let twoDigitYear = String(marriageDate[match])
             if let year = Int(twoDigitYear) {
-                // Convert 2-digit to 4-digit (assuming 18xx for genealogical data)
-                let fourDigitYear = year + 1800
+                // For genealogical data from Kälviä, most dates are 1700s and early 1800s
+                // Use cutoff: 00-50 = 1800s, 51-99 = 1700s
+                let fourDigitYear = year > 50 ? 1700 + year : 1800 + year
                 return String(fourDigitYear)
             }
         }

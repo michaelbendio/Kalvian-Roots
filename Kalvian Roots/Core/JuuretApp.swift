@@ -313,8 +313,6 @@ class JuuretApp {
                 familyText: familyText
             )
             
-            // FIX: Create workflow with the correct constructor signature
-            // The original FamilyNetworkWorkflow expects a Family object as the first parameter
             let workflow = FamilyNetworkWorkflow(
                 nuclearFamily: family,           // Changed from aiParsingService
                 familyResolver: familyResolver,

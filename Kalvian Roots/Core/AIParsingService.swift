@@ -274,7 +274,7 @@ class AIParsingService {
             logInfo(.parsing, "  - Death: \(father.deathDate ?? "nil")")
             logInfo(.parsing, "  - Marriage: \(father.marriageDate ?? "nil")")
             logInfo(.parsing, "  - Spouse: \(father.spouse ?? "nil")")
-            logInfo(.parsing, "  - asChildRef: \(father.asChild ?? "⚠️ MISSING") ⬅️ (where father came from)")
+            logInfo(.parsing, "  - asChildRef: \(father.asChild ?? "⚠️ MISSING") ⬅️ (as child in parents' family)")
         }
         
         // Log Mother
@@ -284,7 +284,7 @@ class AIParsingService {
             logInfo(.parsing, "  - Death: \(mother.deathDate ?? "nil")")
             logInfo(.parsing, "  - Marriage: \(mother.marriageDate ?? "nil")")
             logInfo(.parsing, "  - Spouse: \(mother.spouse ?? "nil")")
-            logInfo(.parsing, "  - asChildRef: \(mother.asChild ?? "⚠️ MISSING") ⬅️ (where mother came from)")
+            logInfo(.parsing, "  - asChildRef: \(mother.asChild ?? "⚠️ MISSING") ⬅️ (as child in parents' family)")
         }
         
         // Log Additional Spouses
@@ -306,7 +306,7 @@ class AIParsingService {
             logInfo(.parsing, "      - Spouse: \(child.spouse ?? "nil")")
             
             if let asParentRef = child.asParent {
-                logInfo(.parsing, "      - asParentRef: \(asParentRef) ⬅️ (where child became parent)")
+                logInfo(.parsing, "      - asParentRef: \(asParentRef) ⬅️  ")
                 childrenWithRefs += 1
             } else {
                 logInfo(.parsing, "      - asParentRef: ⚠️ MISSING")

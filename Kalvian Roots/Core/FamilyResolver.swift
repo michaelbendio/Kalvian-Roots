@@ -149,7 +149,6 @@ class FamilyResolver {
                 logInfo(.resolver, "🔍 Attempting to resolve as_child: \(parent.displayName) from \(asChildRef)")
                 
                 if let resolvedFamily = try await findAsChildFamily(for: parent) {
-                    // FIXED: Use trimmed name as consistent key
                     let storageKey = parent.name.trimmingCharacters(in: .whitespaces)
                     updatedNetwork.asChildFamilies[storageKey] = resolvedFamily
                     
@@ -275,14 +274,13 @@ class FamilyResolver {
         return nil
     }
     
-    // MARK: - Resolution Methods (Using FileManager - MEMORY EFFICIENT)
+    // MARK: - Resolution Methods
     
     private func resolveFamilyByReference(_ familyId: String) async throws -> Family? {
         logDebug(.resolver, "🔍 Resolving family by reference: \(familyId)")
         
         let normalizedId = familyId.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // FIXED: Use FileManager instead of keeping content in memory
         if let familyText = fileManager.extractFamilyText(familyId: normalizedId) {
             logDebug(.resolver, "Found family text for: \(normalizedId)")
             
@@ -420,15 +418,15 @@ class FamilyResolver {
         // FIXED: Log what we're looking for
         logInfo(.resolver, "🔍 CROSS-REFERENCES TO RESOLVE:")
         
-        // Parents as-child references (where they came from)
+        // Parents as-child references (their parents' families)
         let parentRefs = family.allParents.compactMap { parent in
             parent.asChild.map { ref in
-                "\(parent.displayName) came from → \(ref)"
+                "\(parent.displayName) child in → \(ref)"
             }
         }
         
         if !parentRefs.isEmpty {
-            logInfo(.resolver, "👨‍👩 PARENT ORIGINS (as_child):")
+            logInfo(.resolver, "👨‍👩 PARENT'S PARENTS")
             for ref in parentRefs {
                 logInfo(.resolver, "  - \(ref)")
             }
@@ -436,15 +434,15 @@ class FamilyResolver {
             logWarn(.resolver, "  ⚠️ No parent as_child references found")
         }
         
-        // Children as-parent references (where they went)
+        // Children as-parent references
         let childRefs = family.children.compactMap { child in
             child.asParent.map { ref in
-                "\(child.displayName) created family → \(ref)"
+                "\(child.displayName) parent in → \(ref)"
             }
         }
         
         if !childRefs.isEmpty {
-            logInfo(.resolver, "👶 CHILDREN'S FAMILIES (as_parent):")
+            logInfo(.resolver, "👶 CHILDREN'S FAMILIES")
             for ref in childRefs {
                 logInfo(.resolver, "  - \(ref)")
             }

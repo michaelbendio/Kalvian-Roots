@@ -212,7 +212,6 @@ class FamilyNetworkWorkflow {
     }
     
     private func enhanceChildrenWithAsParentDates(family: Family, network: FamilyNetwork) -> Family {
-        // Create enhanced copies of children with additional date information
         var enhancedCouples: [Couple] = []
         
         for couple in family.couples {
@@ -224,18 +223,25 @@ class FamilyNetworkWorkflow {
                 // Get additional dates from asParent family
                 if let asParentFamily = network.getAsParentFamily(for: child) {
                     // Find this child as a parent in their asParent family
-                    if let childAsParent = asParentFamily.allParents.first(where: { $0.name.lowercased() == child.name.lowercased() }) {
+                    if let childAsParent = asParentFamily.allParents.first(where: {
+                        $0.name.lowercased() == child.name.lowercased()
+                    }) {
                         
                         // Enhance with death date if missing in nuclear family
                         if enhancedChild.deathDate == nil && childAsParent.deathDate != nil {
                             enhancedChild.deathDate = childAsParent.deathDate
                         }
                         
-                        // Enhance with full marriage date if nuclear only has partial
-                        if childAsParent.fullMarriageDate != nil {
-                            enhancedChild.fullMarriageDate = childAsParent.fullMarriageDate
-                        } else if enhancedChild.marriageDate == nil && childAsParent.marriageDate != nil {
-                            enhancedChild.marriageDate = childAsParent.marriageDate
+                        // Enhance with full marriage date - check all possible sources
+                        if let fullDate = childAsParent.fullMarriageDate {
+                            enhancedChild.fullMarriageDate = fullDate
+                        } else if let marriageDate = childAsParent.marriageDate,
+                                  marriageDate.count >= 8 {
+                            enhancedChild.fullMarriageDate = marriageDate
+                        } else if let coupleMarriage = asParentFamily.primaryCouple?.marriageDate,
+                                  coupleMarriage.count >= 8 {
+                            // Check couple-level marriage date
+                            enhancedChild.fullMarriageDate = coupleMarriage
                         }
                     }
                 }
@@ -265,38 +271,148 @@ class FamilyNetworkWorkflow {
     }
     
     private func generateEnhancedChildCitation(child: Person, asParentFamily: Family, network: FamilyNetwork) -> String {
-        // VERIFICATION: This should only be called for children, never parents
         logDebug(.citation, "Generating enhanced citation for child: \(child.displayName) using asParent family: \(asParentFamily.familyId)")
         
-        // Start with nuclear family citation (where the child grew up)
-        var citation = CitationGenerator.generateMainFamilyCitation(family: network.mainFamily)
+        let originalDeathDate = child.deathDate
+        let originalMarriageDate = child.marriageDate
+        let originalFullMarriageDate = child.fullMarriageDate
         
-        // Find additional date information from asParent family (where child became parent)
+        // Create an enhanced version of the main family with dates from asParent families
+        var enhancedMainFamily = network.mainFamily
+        var enhancedCouples: [Couple] = []
+        
+        for couple in enhancedMainFamily.couples {
+            var enhancedChildren: [Person] = []
+            
+            for familyChild in couple.children {
+                var enhancedChild = familyChild
+                
+                // If this is the child we're generating the citation for, enhance with asParent dates
+                if familyChild.name.lowercased() == child.name.lowercased() {
+                    // Get dates from their asParent family
+                    if let childAsParent = asParentFamily.allParents.first(where: {
+                        $0.name.lowercased() == child.name.lowercased()
+                    }) {
+                        // Add death date if missing
+                        if enhancedChild.deathDate == nil && childAsParent.deathDate != nil {
+                            enhancedChild.deathDate = childAsParent.deathDate
+                            logDebug(.citation, "Enhanced \(child.name) with death date: \(childAsParent.deathDate!)")
+                        }
+                        
+                        // Add full marriage date - check all sources
+                        if enhancedChild.fullMarriageDate == nil {
+                            if let fullDate = childAsParent.fullMarriageDate {
+                                enhancedChild.fullMarriageDate = fullDate
+                                logDebug(.citation, "Enhanced \(child.name) with full marriage date: \(fullDate)")
+                            } else if let marriageDate = childAsParent.marriageDate,
+                                      marriageDate.count >= 8 {
+                                enhancedChild.fullMarriageDate = marriageDate
+                                logDebug(.citation, "Enhanced \(child.name) with marriage date: \(marriageDate)")
+                            } else if let coupleMarriage = asParentFamily.primaryCouple?.marriageDate,
+                                      coupleMarriage.count >= 8 {
+                                // Check couple-level marriage date
+                                enhancedChild.fullMarriageDate = coupleMarriage
+                                logDebug(.citation, "Enhanced \(child.name) with couple marriage date: \(coupleMarriage)")
+                            }
+                        }
+                        
+                        // Get spouse name if not already present
+                        if enhancedChild.spouse == nil || enhancedChild.spouse!.isEmpty {
+                            if let spouseName = childAsParent.spouse {
+                                enhancedChild.spouse = spouseName
+                                logDebug(.citation, "Enhanced \(child.name) with spouse: \(spouseName)")
+                            }
+                        }
+                    }
+                }
+                
+                enhancedChildren.append(enhancedChild)
+            }
+            
+            let enhancedCouple = Couple(
+                husband: couple.husband,
+                wife: couple.wife,
+                marriageDate: couple.marriageDate,
+                children: enhancedChildren,
+                childrenDiedInfancy: couple.childrenDiedInfancy,
+                coupleNotes: couple.coupleNotes
+            )
+            enhancedCouples.append(enhancedCouple)
+        }
+        
+        enhancedMainFamily = Family(
+            familyId: enhancedMainFamily.familyId,
+            pageReferences: enhancedMainFamily.pageReferences,
+            couples: enhancedCouples,
+            notes: enhancedMainFamily.notes,
+            noteDefinitions: enhancedMainFamily.noteDefinitions
+        )
+        
+        // Generate citation with the ENHANCED family
+        var citation = CitationGenerator.generateMainFamilyCitation(family: enhancedMainFamily)
+        
+        // Build Additional Information section by comparing ORIGINAL vs ENHANCED
         var additionalInfo: [String] = []
         
-        if let childAsParent = asParentFamily.allParents.first(where: { $0.name.lowercased() == child.name.lowercased() }) {
-            
-            // Check for death date not in nuclear family
-            if childAsParent.deathDate != nil && child.deathDate == nil {
-                additionalInfo.append("death date \(childAsParent.deathDate!)")
+        // Find the child as a parent in their asParent family
+        if let childAsParent = asParentFamily.allParents.first(where: {
+            $0.name.lowercased() == child.name.lowercased()
+        }) {
+            // Check for death date enhancement (compare to ORIGINAL)
+            if childAsParent.deathDate != nil && originalDeathDate == nil {
+                additionalInfo.append("death date")
+                logDebug(.citation, "Death date was enhanced for \(child.name)")
             }
             
-            // Check for enhanced marriage date not in nuclear family
-            if let fullMarriage = childAsParent.fullMarriageDate, child.fullMarriageDate == nil {
-                additionalInfo.append("marriage date \(fullMarriage)")
-            } else if let basicMarriage = childAsParent.marriageDate, child.marriageDate == nil {
-                additionalInfo.append("marriage date \(basicMarriage)")
+            // Check for marriage date enhancement (compare to ORIGINAL)
+            // Check if we enhanced from year-only to full date
+            // First, find the enhanced child in our enhanced family
+            let enhancedChild = enhancedMainFamily.children.first {
+                $0.name.lowercased() == child.name.lowercased()
+            }
+            
+            let marriageWasEnhanced =
+            originalFullMarriageDate == nil &&  // Didn't have full date originally
+            originalMarriageDate != nil &&       // Had something (like "78" or "1778")
+            !originalMarriageDate!.contains(".") &&  // It was year-only (no dots)
+            enhancedChild?.fullMarriageDate != nil &&  // Now has full date
+            enhancedChild!.fullMarriageDate!.contains(".")  // And it's a real date (has dots)
+            
+            if marriageWasEnhanced {
+                additionalInfo.append("marriage date")
+                logDebug(.citation, "Marriage date was enhanced for \(child.name)")
             }
         }
         
-        // Add Additional Information section ONLY if we have additional info
+        // Format the Additional Information section
         if !additionalInfo.isEmpty {
-            citation += "\nAdditional Information:\n"
-            let infoList = additionalInfo.joined(separator: ", ")
-            citation += "\(child.displayName)'s \(infoList) found on \(asParentFamily.pageReferenceString)\n"
+            citation += "\n"  // Blank line for readability
+            citation += "Additional Information:\n"
+            
+            // Format based on what was enhanced
+            if additionalInfo.count == 2 {
+                // Both marriage and death dates were enhanced
+                citation += "\(child.name)'s marriage date and death date found on \(asParentFamily.pageReferenceString)\n"
+            } else if additionalInfo.contains("marriage date") {
+                citation += "\(child.name)'s marriage date found on \(asParentFamily.pageReferenceString)\n"
+            } else if additionalInfo.contains("death date") {
+                citation += "\(child.name)'s death date found on \(asParentFamily.pageReferenceString)\n"
+            }
         }
+        
+        logDebug(.citation, "Completed enhanced citation for \(child.name) with \(additionalInfo.count) enhancements")
         
         return citation
+    }
+
+    // Helper function to format the date types properly
+    private func formatDateAdditions(_ additions: [String]) -> String {
+        switch additions.count {
+        case 0: return ""
+        case 1: return additions[0]
+        case 2: return additions.joined(separator: " and ")
+        default: return additions.joined(separator: ", ")
+        }
     }
     
     /**
