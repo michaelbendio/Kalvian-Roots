@@ -6,8 +6,20 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+#if os(macOS)
+import AppKit
+#endif
+#if os(iOS)
+import UIKit
+#endif
+
 struct FilePickerDiagnosticView: View {
     @State private var result = "No test run yet"
+    
+    #if os(iOS)
+    @State private var showingPicker = false
+    @State private var pickedURL: URL?
+    #endif
     
     var body: some View {
         VStack(spacing: 20) {
@@ -22,6 +34,8 @@ struct FilePickerDiagnosticView: View {
                     .frame(minHeight: 200)
             }
             
+            #if os(macOS)
+            // MARK: macOS Buttons
             Button("Test NSOpenPanel (macOS Native)") {
                 testNSOpenPanel()
             }
@@ -36,6 +50,30 @@ struct FilePickerDiagnosticView: View {
                 testFileSearch()
             }
             .buttonStyle(.bordered)
+            #endif
+            
+            #if os(iOS)
+            // MARK: iOS/iPadOS Button and Document Picker Sheet
+            Button("Test UIDocumentPicker (iOS/iPadOS)") {
+                showingPicker = true
+            }
+            .buttonStyle(.borderedProminent)
+            .sheet(isPresented: $showingPicker) {
+                DocumentPickerView(urlPicked: { url in
+                    pickedURL = url
+                    if let content = try? String(contentsOf: url, encoding: .utf8) {
+                        result = "Picked: \(url.lastPathComponent)\n" + content
+                    } else {
+                        result = "Picked: \(url.lastPathComponent)\nUnable to read file content."
+                    }
+                })
+            }
+            
+            Button("Test File Search") {
+                testFileSearch()
+            }
+            .buttonStyle(.bordered)
+            #endif
             
             Button("Clear Results") {
                 result = "Results cleared"
@@ -46,6 +84,7 @@ struct FilePickerDiagnosticView: View {
         .frame(minWidth: 600, minHeight: 500)
     }
     
+    #if os(macOS)
     private func testNSOpenPanel() {
         print("🧪 Starting NSOpenPanel diagnostic test")
         result = "🧪 Starting NSOpenPanel test...\n"
@@ -126,10 +165,12 @@ struct FilePickerDiagnosticView: View {
             result += "Simple panel URL: \(panel.url?.path ?? "nil")\n"
         }
     }
+    #endif
     
     private func testFileSearch() {
         result = "📁 Searching for JuuretKälviällä.roots...\n"
         
+        #if os(macOS)
         let homeURL = Foundation.FileManager.default.homeDirectoryForCurrentUser
         let searchPaths = [
             ("Desktop", homeURL.appendingPathComponent("Desktop")),
@@ -157,12 +198,76 @@ struct FilePickerDiagnosticView: View {
                 result += "❌ Not found at \(name)\n"
             }
         }
+        #elseif os(iOS)
+        // iOS sandbox Documents folder search
+        let fileManager = Foundation.FileManager.default
+        if let docDir = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first {
+            let targetFile = docDir.appendingPathComponent("JuuretKälviällä.roots")
+            if fileManager.fileExists(atPath: targetFile.path) {
+                result += "✅ FOUND in Documents: \(targetFile.path)\n"
+                do {
+                    let content = try String(contentsOf: targetFile, encoding: .utf8)
+                    result += "   📖 Can read: \(content.count) characters\n"
+                } catch {
+                    result += "   ❌ Cannot read: \(error.localizedDescription)\n"
+                }
+            } else {
+                result += "❌ Not found in Documents\n"
+            }
+        } else {
+            result += "❌ Could not access Documents directory\n"
+        }
+        #endif
     }
     
+    #if os(macOS)
     private func getiCloudDocumentsURL() -> URL? {
         guard let iCloudURL = Foundation.FileManager.default.url(forUbiquityContainerIdentifier: nil) else {
             return nil
         }
         return iCloudURL.appendingPathComponent("Documents")
     }
+    #endif
 }
+
+#if os(iOS)
+// MARK: - DocumentPickerView for iOS/iPadOS
+
+struct DocumentPickerView: UIViewControllerRepresentable {
+    var urlPicked: (URL) -> Void
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let supportedTypes: [UTType] = [UTType.data, UTType.content, UTType.item]
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: supportedTypes, asCopy: true)
+        picker.delegate = context.coordinator
+        picker.allowsMultipleSelection = false
+        return picker
+    }
+    
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {
+        // no update needed
+    }
+    
+    class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let parent: DocumentPickerView
+        
+        init(_ parent: DocumentPickerView) {
+            self.parent = parent
+        }
+        
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            if let first = urls.first {
+                parent.urlPicked(first)
+            }
+        }
+        
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            // Optionally handle cancellation
+        }
+    }
+}
+#endif

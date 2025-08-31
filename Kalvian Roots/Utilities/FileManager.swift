@@ -9,6 +9,12 @@ import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
 
+#if os(macOS)
+import AppKit
+#elseif os(iOS)
+import UIKit
+#endif
+
 /**
  * FileManager.swift - Canonical location file management
  *
@@ -41,50 +47,48 @@ class FileManager {
     
     // MARK: - File Operations
     
+#if os(macOS)
     /**
-     * Open file with system file picker
+     * Open file with system file picker (macOS)
      */
     func openFile() async throws -> String {
-        logInfo(.file, "🗂️ User requested file picker")
-        
+        logInfo(.file, "🗂️ User requested file picker (macOS)")
         return try await MainActor.run {
-            logDebug(.file, "Creating file picker on main thread")
-            
-            // Create and configure the open panel on main thread
+            logDebug(.file, "Creating file picker on main thread (macOS)")
             let panel = NSOpenPanel()
             panel.title = "Open Juuret Kälviällä File"
-            panel.allowedContentTypes = []  // Allow all file types for flexibility
+            panel.allowedContentTypes = []
             panel.allowsOtherFileTypes = true
             panel.allowsMultipleSelection = false
             panel.canChooseDirectories = false
             panel.canChooseFiles = true
             panel.message = "Select your Juuret Kälviällä file (.roots, .txt, or any text file)"
             panel.prompt = "Open File"
-            
             logDebug(.file, "NSOpenPanel configured, presenting modal dialog")
-            
-            // Run modal synchronously on main thread
             let response = panel.runModal()
-            
             logDebug(.file, "NSOpenPanel response: \(response == .OK ? "OK" : "Cancel")")
-            
-            if response == .OK {
-                if let url = panel.url {
-                    logInfo(.file, "✅ User selected file: \(url.lastPathComponent)")
-                    logDebug(.file, "Full path: \(url.path)")
-                    
-                    // Process the file selection
-                    return try self.processSelectedFile(url)
-                } else {
-                    logError(.file, "❌ NSOpenPanel returned OK but no URL")
-                    throw FileManagerError.loadFailed("No file URL returned from picker")
-                }
+            if response == .OK, let url = panel.url {
+                logInfo(.file, "✅ User selected file: \(url.lastPathComponent)")
+                logDebug(.file, "Full path: \(url.path)")
+                return try self.processSelectedFile(url)
+            } else if response == .OK {
+                logError(.file, "❌ NSOpenPanel returned OK but no URL")
+                throw FileManagerError.loadFailed("No file URL returned from picker")
             } else {
                 logInfo(.file, "User cancelled file selection")
                 throw FileManagerError.userCancelled
             }
         }
     }
+#elseif os(iOS)
+    /**
+     * On iPadOS/iOS, file picking must be handled via UIDocumentPickerViewController within a SwiftUI View context. This method provides a stub and guidance for integration.
+     */
+    func openFile() async throws -> String {
+        logWarn(.file, "⚠️ File picking must be handled in the View layer using UIDocumentPickerViewController on iOS/iPadOS.")
+        throw FileManagerError.loadFailed("On iPadOS/iOS, file picking must be handled by presenting a UIDocumentPickerViewController. Integrate a DocumentPicker in your SwiftUI view and call FileManager.processSelectedFile(url) after user selection.")
+    }
+#endif
     
     /**
      * Process selected file URL with detailed logging
@@ -447,9 +451,14 @@ class FileManager {
      * Check if iCloud Drive is available
      */
     func isiCloudDriveAvailable() -> Bool {
+#if os(macOS)
         let homeURL = Foundation.FileManager.default.homeDirectoryForCurrentUser
         let iCloudDriveDocuments = homeURL.appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs/Documents")
         return Foundation.FileManager.default.fileExists(atPath: iCloudDriveDocuments.path)
+#else
+        // iCloud Drive availability can't be checked via file path on iOS; just check for ubiquityIdentityToken
+        return Foundation.FileManager.default.ubiquityIdentityToken != nil
+#endif
     }
 }
 
@@ -537,3 +546,4 @@ enum FileManagerError: LocalizedError {
         }
     }
 }
+
