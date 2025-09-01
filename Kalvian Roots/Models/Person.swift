@@ -104,8 +104,8 @@ struct Person: Hashable, Sendable, Codable, Identifiable {
         marriageDate: String? = nil,
         fullMarriageDate: String? = nil,
         spouse: String? = nil,
-        asChildReference: String? = nil,
-        asParentReference: String? = nil,
+        asChild: String? = nil,
+        asParent: String? = nil,
         familySearchId: String? = nil,
         noteMarkers: [String] = [],
         fatherName: String? = nil,
@@ -120,8 +120,8 @@ struct Person: Hashable, Sendable, Codable, Identifiable {
         self.marriageDate = marriageDate
         self.fullMarriageDate = fullMarriageDate
         self.spouse = spouse
-        self.asChild = asChildReference
-        self.asParent = asParentReference
+        self.asChild = asChild
+        self.asParent = asParent
         self.familySearchId = familySearchId
         self.noteMarkers = noteMarkers
         self.fatherName = fatherName

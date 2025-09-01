@@ -2,16 +2,14 @@
 //  AIServiceFactory.swift
 //  Kalvian Roots
 //
-//  Clean factory for creating platform-appropriate AI services
+//  Streamlined factory for creating AI services
 //
 
 import Foundation
 
 /**
- * Clean factory for creating AI services without duplicate declarations
- *
- * This factory only creates available services - no platform detection logic here.
- * Platform detection is handled by individual service classes.
+ * Factory for creating AI services
+ * Currently focused on DeepSeek with option for local MLX when available
  */
 class AIServiceFactory {
     
@@ -23,15 +21,18 @@ class AIServiceFactory {
         
         var services: [AIService] = []
         
-        // Always add cloud services
-        services.append(OpenAIService())
-        services.append(ClaudeService())
+        // Primary service: DeepSeek
         services.append(DeepSeekService())
-        services.append(OllamaService())
-        services.append(MockAIService()) // For testing
         
-        // Add MLX services if available (MLXService handles its own availability check)
-        services.append(contentsOf: createMLXServicesIfAvailable())
+        // Mock service for testing
+        services.append(MockAIService())
+        
+        // Check for MLX services (for future local AI)
+        #if os(macOS) && arch(arm64)
+        // When a good local model becomes available, add it here
+        // For now, MLX models aren't accurate enough for genealogical JSON
+        // services.append(contentsOf: createMLXServicesIfAvailable())
+        #endif
         
         logInfo(.ai, "✅ Created \(services.count) AI services")
         logDebug(.ai, "Available services: \(services.map { $0.name }.joined(separator: ", "))")
@@ -40,37 +41,16 @@ class AIServiceFactory {
     }
     
     /**
-     * Get the recommended default service name
+     * Get the recommended default service
      */
     static func getRecommendedService() -> String {
+        // DeepSeek is currently the best for Finnish genealogical data
         logInfo(.ai, "🖥️ Recommending DeepSeek as default AI service")
         return "DeepSeek"
     }
     
     /**
-     * Create MLX services if they're available (delegates to MLXService)
-     */
-    private static func createMLXServicesIfAvailable() -> [AIService] {
-        // Try to create MLX services - they handle their own availability
-        let potentialMLXServices: [() -> AIService?] = [
-            { try? MLXService.qwen3_30B() },
-            { try? MLXService.llama3_2_8B() },
-            { try? MLXService.mistral_7B() }
-        ]
-        
-        let availableMLXServices = potentialMLXServices.compactMap { $0() }
-        
-        if !availableMLXServices.isEmpty {
-            logInfo(.ai, "🚀 Added \(availableMLXServices.count) MLX services")
-        } else {
-            logDebug(.ai, "No MLX services available")
-        }
-        
-        return availableMLXServices
-    }
-    
-    /**
-     * Get service by name from available services
+     * Get service by name
      */
     static func getService(named serviceName: String) -> AIService? {
         let services = createAvailableServices()
@@ -78,7 +58,7 @@ class AIServiceFactory {
     }
     
     /**
-     * Check if a service is available on current platform
+     * Check if a service is available
      */
     static func isServiceAvailable(_ serviceName: String) -> Bool {
         return getService(named: serviceName) != nil
@@ -104,19 +84,7 @@ class AIServiceFactory {
      * Get setup instructions for missing services
      */
     static func getSetupInstructions(for serviceName: String) -> String? {
-        if serviceName.contains("MLX") {
-            return """
-            MLX Local AI Setup:
-            
-            1. Ensure you're on Apple Silicon Mac
-            2. Install MLX server (see MLXService documentation)
-            3. Start server and models will be available
-            """
-        } else if serviceName.contains("OpenAI") {
-            return "OpenAI API key required. Get one at: https://platform.openai.com/api-keys"
-        } else if serviceName.contains("Claude") {
-            return "Anthropic API key required. Get one at: https://console.anthropic.com/"
-        } else if serviceName.contains("DeepSeek") {
+        if serviceName.contains("DeepSeek") {
             return "DeepSeek API key required. Get one at: https://platform.deepseek.com/"
         }
         return nil
@@ -135,52 +103,32 @@ class AIServiceFactory {
             issues.append("No AI services are configured. Please add API keys.")
         }
         
+        // Check DeepSeek specifically
+        if let deepSeek = services.first(where: { $0.name == "DeepSeek" }),
+           !deepSeek.isConfigured {
+            issues.append("DeepSeek not configured - add API key in settings")
+        }
+        
         return issues
     }
-}
-
-// MARK: - Simple Platform Manager
-
-/**
- * Simple platform manager that delegates to individual services
- */
-class PlatformAwareServiceManager {
     
     /**
-     * Get services recommended for current platform
+     * Future: Create MLX services when accurate models become available
      */
-    static func getRecommendedServices() -> [AIService] {
-        return AIServiceFactory.createAvailableServices()
-    }
-    
-    /**
-     * Get default service for current platform
-     */
-    static func getDefaultService() -> AIService {
-        let services = getRecommendedServices()
-        let recommendedName = AIServiceFactory.getRecommendedService()
-        return services.first { $0.name == recommendedName } ?? services.first!
-    }
-    
-    /**
-     * Get platform capabilities description
-     */
-    static func getPlatformCapabilities() -> String {
-        let services = getRecommendedServices()
-        let localServices = services.filter { $0.name.contains("MLX") }
+    #if os(macOS) && arch(arm64)
+    private static func createMLXServicesIfAvailable() -> [AIService] {
+        // Placeholder for future local AI models
+        // When a model that can accurately parse Finnish genealogical data
+        // becomes available, add it here
         
-        if !localServices.isEmpty {
-            return "Apple Silicon Mac - Local MLX + Cloud AI available"
-        } else {
-            return "Cloud AI services available"
-        }
+        // For now, return empty array
+        logDebug(.ai, "MLX models not yet accurate enough for genealogical JSON")
+        return []
+        
+        // Future code might look like:
+        // if let service = try? MLXService.finnishGenealogyModel() {
+        //     return [service]
+        // }
     }
-    
-    /**
-     * Check if local AI services are available
-     */
-    static func hasLocalServices() -> Bool {
-        let services = getRecommendedServices()
-        return services.contains { $0.name.contains("MLX") }
-    }
+    #endif
 }

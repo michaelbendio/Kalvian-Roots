@@ -1,18 +1,11 @@
-//
-//  AIParsingService.swift
-//  Kalvian Roots
-//
-//  AI service orchestration and JSON parsing with enhanced debug logging
-//
-
-import Foundation
-
 /**
  * AIParsingService - Manages AI service selection and family text parsing
  *
- * Provides a unified interface for parsing family text using various AI services.
- * Handles service selection, configuration, and JSON response processing.
+ * Converts flat AI JSON (father/mother/children) to Family with Couples array
  */
+
+import Foundation
+
 @Observable
 class AIParsingService {
     
@@ -71,7 +64,7 @@ class AIParsingService {
     func switchService(to serviceName: String) throws {
         guard let service = services[serviceName] else {
             logError(.ai, "❌ Unknown AI service: \(serviceName)")
-            throw AIServiceError.unknownService(serviceName)
+            throw AIServiceError.invalidResponse("Unknown service: \(serviceName)")
         }
         
         currentService = service
@@ -106,7 +99,7 @@ class AIParsingService {
         do {
             // Get JSON response from AI service
             logDebug(.parsing, "📤 Sending request to AI service...")
-            let jsonResponse = try await currentService.parseFamily(
+            let jsonResponse: String = try await currentService.parseFamily(
                 familyId: familyId,
                 familyText: familyText
             )
@@ -115,8 +108,8 @@ class AIParsingService {
             logInfo(.parsing, "📥 Received AI response in \(String(format: "%.2f", parsingTime))s")
             logTrace(.parsing, "Raw JSON response: \(jsonResponse.prefix(500))...")
             
-            // Parse JSON to Family object
-            let family = try parseJSON(jsonResponse)
+            // Parse JSON string to Family object
+            let family = try parseJSON(jsonResponse, familyId: familyId)
             
             // Debug log the parsed family
             debugLogParsedFamily(family)
@@ -137,9 +130,9 @@ class AIParsingService {
         }
     }
     
-    // MARK: - JSON Parsing
+    // MARK: - JSON Parsing with Couples Structure
     
-    private func parseJSON(_ jsonResponse: String) throws -> Family {
+    private func parseJSON(_ jsonResponse: String, familyId: String) throws -> Family {
         logTrace(.parsing, "🔄 Starting JSON parsing")
         DebugLogger.shared.parseStep("JSON Parsing", "Response length: \(jsonResponse.count)")
         
@@ -151,99 +144,218 @@ class AIParsingService {
             throw AIServiceError.invalidResponse("Could not convert JSON to data")
         }
         
+        // Decode into dictionary to handle structure conversion
         do {
-            // Decode the Family object
-            let decoder = JSONDecoder()
-            let family = try decoder.decode(Family.self, from: jsonData)
+            let json = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
+            guard let json = json else {
+                throw AIServiceError.invalidResponse("Invalid JSON structure")
+            }
             
-            logDebug(.parsing, "✅ JSON decoded successfully")
+            // Convert flat JSON to Family with Couples
+            let family = try convertJSONToFamilyWithCouples(json, familyId: familyId)
+            
+            logDebug(.parsing, "✅ JSON converted and decoded successfully")
             logDebug(.parsing, "Family ID: \(family.familyId)")
-            logDebug(.parsing, "Parents: \(family.allParents.count)")
-            logDebug(.parsing, "Children: \(family.children.count)")
-            
-            DebugLogger.shared.parseStep("JSON Decoded", "Family: \(family.familyId)")
+            logDebug(.parsing, "Couples: \(family.couples.count)")
+            logDebug(.parsing, "Total children: \(family.allPersons.filter { _ in true }.count)")
             
             return family
             
-        } catch let decodingError {
-            logError(.parsing, "❌ JSON decoding failed: \(decodingError)")
-            logError(.parsing, "JSON structure issue: \(decodingError.localizedDescription)")
+        } catch {
+            logError(.parsing, "❌ JSON decoding failed: \(error)")
             
-            // Log the problematic JSON for debugging
-            if cleanedJSON.count < 5000 {
-                logError(.parsing, "Problematic JSON: \(cleanedJSON)")
-            } else {
-                logError(.parsing, "Problematic JSON (truncated): \(cleanedJSON.prefix(1000))...")
+            // Try minimal parsing as fallback
+            if let minimalFamily = tryMinimalParsing(jsonString: cleanedJSON, familyId: familyId) {
+                logWarn(.parsing, "⚠️ Used minimal parsing fallback for: \(familyId)")
+                return minimalFamily
             }
             
-            DebugLogger.shared.parseStep("Decode Failed", decodingError.localizedDescription)
-            
-            // Try fallback parsing
-            return try fallbackParseJSON(cleanedJSON)
+            throw AIServiceError.parsingFailed("JSON decoding failed: \(error.localizedDescription)")
         }
     }
     
-    private func cleanJSONResponse(_ jsonResponse: String) -> String {
-        logTrace(.parsing, "🧹 Cleaning JSON response")
+    /// Convert flat JSON structure to Family with Couples array
+    private func convertJSONToFamilyWithCouples(_ json: [String: Any], familyId providedFamilyId: String) throws -> Family {
+        // Extract basic fields
+        let familyId = json["familyId"] as? String ?? providedFamilyId
+        let pageReferences = json["pageReferences"] as? [String] ?? []
+        let notes = json["notes"] as? [String] ?? []
+        let noteDefinitions = json["noteDefinitions"] as? [String: String] ?? [:]
         
-        var cleaned = jsonResponse.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Build couples array
+        var couples: [Couple] = []
         
-        // Remove markdown code block markers if present
-        if cleaned.hasPrefix("```json") {
-            cleaned = String(cleaned.dropFirst(7))
-        }
-        if cleaned.hasPrefix("```") {
-            cleaned = String(cleaned.dropFirst(3))
-        }
-        if cleaned.hasSuffix("```") {
-            cleaned = String(cleaned.dropLast(3))
+        // Primary couple from father/mother
+        if let fatherData = json["father"] as? [String: Any] {
+            let husband = try convertJSONToPerson(fatherData)
+            
+            // Wife from mother field
+            let wife: Person
+            if let motherData = json["mother"] as? [String: Any] {
+                wife = try convertJSONToPerson(motherData)
+            } else {
+                wife = Person(name: "Unknown Mother", noteMarkers: [])
+            }
+            
+            // Children array
+            var children: [Person] = []
+            if let childrenData = json["children"] as? [[String: Any]] {
+                for childData in childrenData {
+                    let child = try convertJSONToPerson(childData)
+                    // Only include children without their own spouse (married children might belong to additional couples)
+                    if child.spouse == nil {
+                        children.append(child)
+                    }
+                }
+            }
+            
+            // Extract marriage date (might be in father data)
+            let marriageDate = fatherData["marriageDate"] as? String
+            
+            // Children died in infancy
+            let childrenDiedInfancy = json["childrenDiedInfancy"] as? Int
+            
+            // Create primary couple
+            let primaryCouple = Couple(
+                husband: husband,
+                wife: wife,
+                marriageDate: marriageDate,
+                children: children,
+                childrenDiedInfancy: childrenDiedInfancy,
+                coupleNotes: []
+            )
+            couples.append(primaryCouple)
+            
+            logDebug(.parsing, "Created primary couple with \(children.count) children")
         }
         
-        // Trim again after removing markdown
+        // Handle additional spouses (creates additional couples)
+        if let additionalSpouses = json["additionalSpouses"] as? [[String: Any]] {
+            for spouseData in additionalSpouses {
+                // For additional spouses, the husband is the same as primary
+                let husband = couples.first?.husband ?? Person(name: "Unknown Father", noteMarkers: [])
+                let wife = try convertJSONToPerson(spouseData)
+                
+                // Find children that belong to this spouse
+                var spouseChildren: [Person] = []
+                if let childrenData = json["children"] as? [[String: Any]] {
+                    for childData in childrenData {
+                        if let childSpouse = childData["motherName"] as? String,
+                           childSpouse == wife.name {
+                            spouseChildren.append(try convertJSONToPerson(childData))
+                        }
+                    }
+                }
+                
+                let additionalCouple = Couple(
+                    husband: husband,
+                    wife: wife,
+                    marriageDate: spouseData["marriageDate"] as? String,
+                    children: spouseChildren,
+                    childrenDiedInfancy: nil,
+                    coupleNotes: []
+                )
+                couples.append(additionalCouple)
+                
+                logDebug(.parsing, "Created additional couple with \(spouseChildren.count) children")
+            }
+        }
+        
+        // If no couples were created, create a minimal one
+        if couples.isEmpty {
+            logWarn(.parsing, "No couples found in JSON, creating minimal couple")
+            let minimalCouple = Couple(
+                husband: Person(name: "Unknown Father", noteMarkers: []),
+                wife: Person(name: "Unknown Mother", noteMarkers: []),
+                marriageDate: nil,
+                children: [],
+                childrenDiedInfancy: nil,
+                coupleNotes: []
+            )
+            couples.append(minimalCouple)
+        }
+        
+        // Create Family with couples array
+        return Family(
+            familyId: familyId,
+            pageReferences: pageReferences,
+            couples: couples,
+            notes: notes,
+            noteDefinitions: noteDefinitions
+        )
+    }
+    
+    /// Convert JSON dictionary to Person
+    private func convertJSONToPerson(_ data: [String: Any]) throws -> Person {
+        return Person(
+            name: data["name"] as? String ?? "Unknown",
+            patronymic: data["patronymic"] as? String,
+            birthDate: data["birthDate"] as? String,
+            deathDate: data["deathDate"] as? String,
+            marriageDate: data["marriageDate"] as? String,
+            fullMarriageDate: data["fullMarriageDate"] as? String,
+            spouse: data["spouse"] as? String,
+            asChild: data["asChild"] as? String,
+            asParent: data["asParent"] as? String,
+            familySearchId: data["familySearchId"] as? String,
+            noteMarkers: data["noteMarkers"] as? [String] ?? [],
+            fatherName: data["fatherName"] as? String,
+            motherName: data["motherName"] as? String,
+            spouseBirthDate: data["spouseBirthDate"] as? String,
+            spouseParentsFamilyId: data["spouseParentsFamilyId"] as? String
+        )
+    }
+    
+    /// Clean JSON response from various AI formatting issues
+    private func cleanJSONResponse(_ response: String) -> String {
+        var cleaned = response
+        
+        // Remove markdown code blocks
+        if cleaned.contains("```json") {
+            cleaned = cleaned.replacingOccurrences(of: "```json", with: "")
+            cleaned = cleaned.replacingOccurrences(of: "```", with: "")
+        }
+        
+        // Remove any leading/trailing whitespace
         cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        logTrace(.parsing, "JSON cleaned: \(cleaned.count) characters")
+        // Extract JSON object if wrapped in other text
+        if let jsonStart = cleaned.firstIndex(of: "{"),
+           let jsonEnd = cleaned.lastIndex(of: "}") {
+            cleaned = String(cleaned[jsonStart...jsonEnd])
+        }
+        
         return cleaned
     }
     
-    private func fallbackParseJSON(_ malformedJSON: String) throws -> Family {
-        logWarn(.parsing, "🔧 Attempting fallback JSON parsing")
-        DebugLogger.shared.parseStep("Fallback JSON", "Attempting to extract minimal family data")
+    /// Attempt minimal parsing for broken JSON responses
+    private func tryMinimalParsing(jsonString: String, familyId: String) -> Family? {
+        logWarn(.parsing, "⚠️ Attempting minimal parsing for malformed JSON")
         
-        // Try to extract basic family information from malformed JSON
-        return try createMinimalFamilyFromBrokenJSON(malformedJSON)
-    }
-    
-    // MARK: - FIXED: Updated fallback parser to use new Family initializer
-    private func createMinimalFamilyFromBrokenJSON(_ brokenJSON: String) throws -> Family {
-        logWarn(.parsing, "⚠️ Creating minimal family structure from broken JSON")
+        // Try to extract at least the family ID
+        let extractedFamilyId = extractJSONValue(from: jsonString, key: "familyId") ?? familyId
+        let fatherName = extractJSONValue(from: jsonString, key: "name") ?? "Unknown Father"
         
-        // Extract family ID if possible
-        let familyId = extractJSONValue(from: brokenJSON, key: "familyId") ?? "UNKNOWN"
-        let fatherName = extractJSONValue(from: brokenJSON, key: "name") ?? "Unknown Father"
+        // Create minimal couple
+        let husband = Person(name: fatherName, noteMarkers: [])
+        let wife = Person(name: "Unknown Mother", noteMarkers: [])
         
-        // Create minimal viable family structure using the working initializer
-        let father = Person(
-            name: fatherName,
-            noteMarkers: []
-        )
-        
-        let mother = Person(
-            name: "Unknown Mother",
-            noteMarkers: []
-        )
-        
-        logWarn(.parsing, "⚠️ Created minimal family structure for: \(familyId)")
-        
-        // FIXED: Use the correct initializer that exists
-        return Family(
-            familyId: familyId,
-            pageReferences: ["999"], // Default page reference
-            husband: father,         // ✅ Use the working initializer
-            wife: Person(name: "Unknown Mother", noteMarkers: []),
+        let minimalCouple = Couple(
+            husband: husband,
+            wife: wife,
             marriageDate: nil,
             children: [],
             childrenDiedInfancy: nil,
+            coupleNotes: []
+        )
+        
+        logWarn(.parsing, "⚠️ Created minimal family structure for: \(extractedFamilyId)")
+        
+        // Use the Family initializer with couples array
+        return Family(
+            familyId: extractedFamilyId,
+            pageReferences: ["999"],
+            couples: [minimalCouple],  // Family expects array of Couples
             notes: ["Minimal parsing used - AI response was malformed"],
             noteDefinitions: [:]
         )
@@ -266,88 +378,52 @@ class AIParsingService {
     private func debugLogParsedFamily(_ family: Family) {
         logInfo(.parsing, "🔍 === PARSED FAMILY DEBUG INFO ===")
         logInfo(.parsing, "📋 Family ID: \(family.familyId)")
+        logInfo(.parsing, "📑 Couples: \(family.couples.count)")
         
-        // Log Father
-        if let father = family.father {
-            logInfo(.parsing, "👨 FATHER: \(father.displayName)")
-            logInfo(.parsing, "  - Birth: \(father.birthDate ?? "nil")")
-            logInfo(.parsing, "  - Death: \(father.deathDate ?? "nil")")
-            logInfo(.parsing, "  - Marriage: \(father.marriageDate ?? "nil")")
-            logInfo(.parsing, "  - Spouse: \(father.spouse ?? "nil")")
-            logInfo(.parsing, "  - asChildRef: \(father.asChild ?? "⚠️ MISSING") ⬅️ (as child in parents' family)")
-        }
-        
-        // Log Mother
-        if let mother = family.mother {
-            logInfo(.parsing, "👩 MOTHER: \(mother.displayName)")
-            logInfo(.parsing, "  - Birth: \(mother.birthDate ?? "nil")")
-            logInfo(.parsing, "  - Death: \(mother.deathDate ?? "nil")")
-            logInfo(.parsing, "  - Marriage: \(mother.marriageDate ?? "nil")")
-            logInfo(.parsing, "  - Spouse: \(mother.spouse ?? "nil")")
-            logInfo(.parsing, "  - asChildRef: \(mother.asChild ?? "⚠️ MISSING") ⬅️ (as child in parents' family)")
-        }
-        
-        // Log Additional Spouses
-        for (index, spouse) in family.additionalSpouses.enumerated() {
-            logInfo(.parsing, "💑 ADDITIONAL SPOUSE \(index + 1): \(spouse.displayName)")
-            logInfo(.parsing, "  - asChildRef: \(spouse.asChild ?? "nil") ⬅️")
-        }
-        
-        // Log Children with emphasis on as-parent references
-        logInfo(.parsing, "👶 CHILDREN: \(family.children.count) total")
-        var childrenWithRefs = 0
-        var childrenWithoutRefs = 0
-        
-        for (index, child) in family.children.enumerated() {
-            logInfo(.parsing, "  [\(index + 1)] \(child.displayName)")
-            logInfo(.parsing, "      - Birth: \(child.birthDate ?? "nil")")
-            logInfo(.parsing, "      - Death: \(child.deathDate ?? "nil")")
-            logInfo(.parsing, "      - Marriage: \(child.marriageDate ?? "nil")")
-            logInfo(.parsing, "      - Spouse: \(child.spouse ?? "nil")")
+        for (index, couple) in family.couples.enumerated() {
+            logInfo(.parsing, "=== COUPLE \(index + 1) ===")
             
-            if let asParentRef = child.asParent {
-                logInfo(.parsing, "      - asParentRef: \(asParentRef) ⬅️  ")
-                childrenWithRefs += 1
-            } else {
-                logInfo(.parsing, "      - asParentRef: ⚠️ MISSING")
-                childrenWithoutRefs += 1
+            // Log Husband
+            logInfo(.parsing, "👨 HUSBAND: \(couple.husband.displayName)")
+            logInfo(.parsing, "  - Birth: \(couple.husband.birthDate ?? "nil")")
+            logInfo(.parsing, "  - Death: \(couple.husband.deathDate ?? "nil")")
+            
+            // Log Wife
+            logInfo(.parsing, "👩 WIFE: \(couple.wife.displayName)")
+            logInfo(.parsing, "  - Birth: \(couple.wife.birthDate ?? "nil")")
+            logInfo(.parsing, "  - Death: \(couple.wife.deathDate ?? "nil")")
+            
+            // Log Marriage
+            if let marriageDate = couple.marriageDate {
+                logInfo(.parsing, "💑 Marriage: \(marriageDate)")
             }
-        }
-        
-        // Summary of cross-references found
-        logInfo(.parsing, "📊 CROSS-REFERENCE SUMMARY:")
-        let parentsWithRefs = family.allParents.filter { $0.asChild != nil }
-        logInfo(.parsing, "  - Parents with as_child refs: \(parentsWithRefs.count)/\(family.allParents.count)")
-        if !parentsWithRefs.isEmpty {
-            logInfo(.parsing, "  Found parent refs: \(parentsWithRefs.compactMap { $0.asChild }.joined(separator: ", "))")
-        }
-        
-        logInfo(.parsing, "  - Children with as_parent refs: \(childrenWithRefs)/\(family.children.count)")
-        if childrenWithRefs > 0 {
-            let foundChildRefs = family.children.compactMap { $0.asParent }
-            logInfo(.parsing, "  Found child refs: \(foundChildRefs.joined(separator: ", "))")
-        } else {
-            logWarn(.parsing, "  ⚠️ NO CHILD REFS FOUND!")
-        }
-        
-        // List all cross-references to resolve
-        let totalRefs = parentsWithRefs.count + childrenWithRefs
-        if totalRefs > 0 {
-            logInfo(.parsing, "📍 REFERENCES TO RESOLVE:")
-            for parent in parentsWithRefs {
-                if let ref = parent.asChild {
-                    logInfo(.parsing, "  - \(parent.displayName) → AS_CHILD in: \(ref)")
+            
+            // Log Children
+            logInfo(.parsing, "👶 CHILDREN: \(couple.children.count)")
+            for (childIndex, child) in couple.children.enumerated() {
+                logInfo(.parsing, "  [\(childIndex + 1)] \(child.displayName)")
+                if let birthDate = child.birthDate {
+                    logInfo(.parsing, "      - Birth: \(birthDate)")
+                }
+                if let spouse = child.spouse {
+                    logInfo(.parsing, "      - Spouse: \(spouse)")
                 }
             }
-            for child in family.children {
-                if let ref = child.asParent {
-                    logInfo(.parsing, "  - \(child.displayName) → AS_PARENT in: \(ref)")
-                }
+            
+            // Children died in infancy
+            if let died = couple.childrenDiedInfancy {
+                logInfo(.parsing, "☠️ Children died in infancy: \(died)")
             }
-        } else {
-            logWarn(.parsing, "  ⚠️ NO CROSS-REFERENCES FOUND TO RESOLVE!")
         }
         
-        logInfo(.parsing, "🔍 === END PARSED FAMILY DEBUG ===")
+        // Log Notes
+        if !family.notes.isEmpty {
+            logInfo(.parsing, "📝 NOTES: \(family.notes.count)")
+            for note in family.notes.prefix(3) {
+                logInfo(.parsing, "  - \(note.prefix(100))...")
+            }
+        }
+        
+        logInfo(.parsing, "=== END FAMILY DEBUG INFO ===")
     }
 }

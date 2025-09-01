@@ -27,10 +27,16 @@ class FileManager {
     
     // MARK: - Properties
     
-    /// Current file state
+    /// Current file state - Made publicly settable for iOS document picker
+    #if os(iOS)
+    var currentFileURL: URL?
+    var currentFileContent: String?
+    var isFileLoaded: Bool = false
+    #else
     private(set) var currentFileURL: URL?
     private(set) var currentFileContent: String?
     private(set) var isFileLoaded: Bool = false
+    #endif
     
     /// Recent files management
     private(set) var recentFileURLs: [URL] = []
@@ -82,17 +88,51 @@ class FileManager {
     }
 #elseif os(iOS)
     /**
-     * On iPadOS/iOS, file picking must be handled via UIDocumentPickerViewController within a SwiftUI View context. This method provides a stub and guidance for integration.
+     * On iPadOS/iOS, file picking must be handled via UIDocumentPickerViewController in the View layer.
+     * This method is kept for API compatibility but shouldn't be called directly on iOS.
      */
     func openFile() async throws -> String {
-        logWarn(.file, "⚠️ File picking must be handled in the View layer using UIDocumentPickerViewController on iOS/iPadOS.")
-        throw FileManagerError.loadFailed("On iPadOS/iOS, file picking must be handled by presenting a UIDocumentPickerViewController. Integrate a DocumentPicker in your SwiftUI view and call FileManager.processSelectedFile(url) after user selection.")
+        logWarn(.file, "⚠️ Use processSelectedFileFromPicker(url:) for iOS/iPadOS file handling")
+        throw FileManagerError.loadFailed("Use the document picker UI on iOS/iPadOS")
+    }
+    
+    /**
+     * Process a file selected from UIDocumentPickerViewController (iOS/iPadOS)
+     * This is called from the View layer after user selects a file
+     */
+    func processSelectedFileFromPicker(_ url: URL) async throws -> String {
+        logInfo(.file, "📂 Processing file from iOS document picker: \(url.lastPathComponent)")
+        
+        // The security-scoped resource access is handled in the View layer
+        // Just read the content here
+        do {
+            let content = try String(contentsOf: url, encoding: .utf8)
+            
+            // Update state
+            await MainActor.run {
+                self.currentFileURL = url
+                self.currentFileContent = content
+                self.isFileLoaded = true
+            }
+            
+            // Update recent files
+            addToRecentFiles(url)
+            
+            logInfo(.file, "✅ File loaded successfully from iOS document picker")
+            logDebug(.file, "Content length: \(content.count) characters")
+            
+            return content
+        } catch {
+            logError(.file, "❌ Failed to read file from iOS picker: \(error)")
+            throw FileManagerError.loadFailed("Failed to read file: \(error.localizedDescription)")
+        }
     }
 #endif
     
     /**
-     * Process selected file URL with detailed logging
+     * Process selected file URL with detailed logging (macOS version)
      */
+    #if os(macOS)
     private func processSelectedFile(_ url: URL) throws -> String {
         logInfo(.file, "📂 Processing selected file: \(url.lastPathComponent)")
         logDebug(.file, "File path: \(url.path)")
@@ -141,110 +181,64 @@ class FileManager {
             // Update recent files
             addToRecentFiles(url)
             
-            logInfo(.file, "✅ File loaded successfully (\(content.count) characters)")
             return content
-            
-        } catch let error as FileManagerError {
-            logError(.file, "❌ FileManager error: \(error.localizedDescription)")
-            throw error
         } catch {
-            logError(.file, "❌ Failed to load file: \(error.localizedDescription)")
-            logDebug(.file, "Error type: \(type(of: error))")
-            throw FileManagerError.loadFailed(error.localizedDescription)
+            logError(.file, "❌ Failed to process file: \(error)")
+            throw FileManagerError.loadFailed("Failed to process file: \(error.localizedDescription)")
         }
     }
+    #endif
+    
+    // MARK: - Auto-Load Default File
     
     /**
-     * Open specific file at URL
-     */
-    func openFile(at url: URL) async throws -> String {
-        return try await MainActor.run {
-            return try self.processSelectedFile(url)
-        }
-    }
-    
-    /**
-     * Close current file
-     */
-    func closeFile() {
-        currentFileURL = nil
-        currentFileContent = nil
-        isFileLoaded = false
-        logInfo(.file, "📂 File closed")
-    }
-    
-    /**
-     * Auto-load from CANONICAL location: iCloud Drive/Documents/JuuretKälviällä.roots
-     * This is the ONE location that works across Mac, iPad, iPhone and is user-accessible
+     * Attempt to auto-load the default file from canonical location
      */
     func autoLoadDefaultFile() async {
-        logInfo(.file, "🔍 CANONICAL: Searching for JuuretKälviällä.roots in canonical location")
+        logInfo(.file, "🔍 CANONICAL: Searching for \(defaultFileName) in canonical location")
         
-        // The ONE canonical location: iCloud Drive/Documents/
-        guard let canonicalURL = getCanonicalFileURL() else {
-            logWarn(.file, "❌ Cannot access iCloud Drive/Documents")
-            logInfo(.file, "💡 Make sure iCloud Drive is enabled in System Settings")
-            return
-        }
+        let canonicalURL = getCanonicalFileURL()
+        logDebug(.file, "Canonical location: \(canonicalURL.path)")
         
-        logDebug(.file, "Checking canonical location: \(canonicalURL.path)")
+        await checkAndLoadFile(at: canonicalURL)
+    }
+    
+    /**
+     * Check and load file at given URL
+     */
+    private func checkAndLoadFile(at url: URL) async {
+        logDebug(.file, "Checking canonical location: \(url.path)")
         
-        if Foundation.FileManager.default.fileExists(atPath: canonicalURL.path) {
-            logInfo(.file, "✅ Found file in canonical location")
+        if Foundation.FileManager.default.fileExists(atPath: url.path) {
+            logInfo(.file, "✅ Found \(defaultFileName) in canonical location!")
             
             do {
-                _ = try await openFile(at: canonicalURL)
-                logInfo(.file, "✅ Successfully auto-loaded from canonical location")
-                return
+                #if os(macOS)
+                _ = try processSelectedFile(url)
+                #else
+                _ = try await processSelectedFileFromPicker(url)
+                #endif
+                logInfo(.file, "🎉 Successfully auto-loaded canonical file")
             } catch {
-                logError(.file, "❌ Failed to load from canonical location: \(error.localizedDescription)")
-                return
+                logError(.file, "❌ Failed to auto-load file: \(error)")
             }
+        } else {
+            logInfo(.file, "📂 \(defaultFileName) not found in canonical location")
+            logInfo(.file, "💡 Place your file at: App Documents → \(defaultFileName) (accessible via iCloud Drive symlink)")
+            logInfo(.file, "💡 This file will then sync to all your devices automatically")
         }
-        
-        logInfo(.file, "📂 JuuretKälviällä.roots not found in canonical location")
-        logInfo(.file, "💡 Place your file at: \(getCanonicalLocationPath())")
-        logInfo(.file, "💡 This file will then sync to all your devices automatically")
     }
     
-    // MARK: - Canonical Location Methods
+    // MARK: - Canonical Location Management
     
     /**
-     * Get the canonical file location: App's Documents folder (accessible via symlink from iCloud)
-     * The app can only see its sandbox, but we create a symlink for user access
+     * Get the ONE canonical file location
+     * Returns: App Documents/JuuretKälviällä.roots
      */
-    func getCanonicalFileURL() -> URL? {
-        // The app can only access its sandboxed Documents folder
-        guard let sandboxDocuments = Foundation.FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
-            logError(.file, "❌ Cannot access app's Documents folder")
-            return nil
-        }
-        
-        let canonicalFile = sandboxDocuments.appendingPathComponent(defaultFileName)
-        logDebug(.file, "Canonical location: \(canonicalFile.path)")
-        
-        return canonicalFile
-    }
-    
-    /**
-     * Get the current canonical location for UI display
-     */
-    func getCanonicalLocationPath() -> String {
-        return "App Documents → JuuretKälviällä.roots (accessible via iCloud Drive symlink)"
-    }
-    
-    /**
-     * Get default file URL (canonical location if file exists)
-     */
-    func getDefaultFileURL() -> URL? {
-        let canonicalURL = getCanonicalFileURL()
-        
-        if let canonicalURL = canonicalURL,
-           Foundation.FileManager.default.fileExists(atPath: canonicalURL.path) {
-            return canonicalURL
-        }
-        
-        return nil
+    private func getCanonicalFileURL() -> URL {
+        let documentsURL = Foundation.FileManager.default.urls(for: .documentDirectory,
+                                                               in: .userDomainMask).first!
+        return documentsURL.appendingPathComponent(defaultFileName)
     }
     
     // MARK: - Recent Files Management
@@ -252,175 +246,129 @@ class FileManager {
     /**
      * Add file to recent files list
      */
-    func addToRecentFiles(_ url: URL) {
-        // Remove if already exists
-        recentFileURLs.removeAll { $0.path == url.path }
+    private func addToRecentFiles(_ url: URL) {
+        // Remove if already exists to move to front
+        recentFileURLs.removeAll { $0 == url }
         
-        // Add to beginning
+        // Add to front
         recentFileURLs.insert(url, at: 0)
         
-        // Limit to 10 recent files
+        // Keep only last 10
         if recentFileURLs.count > 10 {
             recentFileURLs = Array(recentFileURLs.prefix(10))
         }
         
         saveRecentFiles()
-        logDebug(.file, "📋 Added to recent files: \(url.lastPathComponent)")
+        logDebug(.file, "Added to recent files: \(url.lastPathComponent)")
     }
     
     /**
-     * Clear recent files list
+     * Load recent files from UserDefaults
      */
-    func clearRecentFiles() {
-        recentFileURLs.removeAll()
-        saveRecentFiles()
-        logInfo(.file, "🗑️ Cleared recent files")
-    }
-    
-    /**
-     * Get valid recent files (filter out non-existent files)
-     */
-    func getValidRecentFiles() -> [URL] {
-        return recentFileURLs.filter { url in
-            Foundation.FileManager.default.fileExists(atPath: url.path)
+    private func loadRecentFiles() {
+        if let bookmarks = UserDefaults.standard.array(forKey: "RecentFileBookmarks") as? [Data] {
+            recentFileURLs = bookmarks.compactMap { data in
+                var isStale = false
+                if let url = try? URL(resolvingBookmarkData: data,
+                                     bookmarkDataIsStale: &isStale) {
+                    return isStale ? nil : url
+                }
+                return nil
+            }
+            logDebug(.file, "Loaded \(recentFileURLs.count) recent files")
         }
     }
     
-    // MARK: - Family Text Extraction
+    /**
+     * Save recent files to UserDefaults
+     */
+    private func saveRecentFiles() {
+        let bookmarks = recentFileURLs.compactMap { url in
+            try? url.bookmarkData(options: .minimalBookmark)
+        }
+        UserDefaults.standard.set(bookmarks, forKey: "RecentFileBookmarks")
+        logTrace(.file, "Saved \(bookmarks.count) recent file bookmarks")
+    }
+    
+    // MARK: - Text Extraction
     
     /**
-     * Extract specific family text from current file content
+     * Extract family text from the loaded file
      */
     func extractFamilyText(familyId: String) -> String? {
         guard let content = currentFileContent else {
-            logError(.file, "❌ No file content available for family extraction")
+            logWarn(.file, "No file content loaded")
             return nil
         }
         
-        return extractFamilyText(familyId: familyId, from: content)
-    }
-    
-    /**
-     * Extract family text from given content
-     */
-    func extractFamilyText(familyId: String, from content: String) -> String? {
-        logDebug(.file, "📄 Extracting family text for: \(familyId)")
+        logInfo(.file, "🔍 Extracting text for family: \(familyId)")
         
         let lines = content.components(separatedBy: .newlines)
         var familyLines: [String] = []
-        var inTargetFamily = false
-        var foundFamily = false
+        var capturing = false
+        let targetId = familyId.uppercased()
         
         for line in lines {
-            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
             
-            // Check for family header (case-insensitive)
-            if let currentFamilyId = extractFamilyIdFromHeader(trimmedLine) {
-                if currentFamilyId.uppercased() == familyId.uppercased() {
-                    inTargetFamily = true
-                    foundFamily = true
+            if !capturing {
+                // Look for family ID at start of line
+                if trimmedLine.uppercased().hasPrefix(targetId) {
+                    capturing = true
                     familyLines.append(line)
-                } else if inTargetFamily {
-                    // Started a new family, stop collecting
-                    break
-                } else {
-                    inTargetFamily = false
+                    logDebug(.file, "Found family \(targetId) at line: \(trimmedLine.prefix(50))...")
                 }
-            } else if inTargetFamily {
-                familyLines.append(line)
-                
-                // Stop at empty line after sufficient content
-                if trimmedLine.isEmpty && familyLines.count > 3 {
-                    let content = familyLines.joined(separator: "\n")
-                    if content.contains("Lapset") || content.contains("★") {
+            } else {
+                // Check if we've hit the next family
+                if !trimmedLine.isEmpty &&
+                   trimmedLine.first?.isUppercase == true &&
+                   trimmedLine.contains(where: { $0.isNumber }) {
+                    // This looks like a new family ID
+                    let components = trimmedLine.components(separatedBy: .whitespaces)
+                    if components.count >= 2 &&
+                       components[1].contains(where: { $0.isNumber }) {
+                        // Definitely a new family, stop capturing
                         break
                     }
                 }
+                familyLines.append(line)
             }
         }
         
-        guard foundFamily else {
-            logError(.file, "❌ Family \(familyId) not found in file")
+        if familyLines.isEmpty {
+            logWarn(.file, "Family \(familyId) not found in file")
             return nil
         }
         
-        let familyText = familyLines.joined(separator: "\n")
-        logInfo(.file, "✅ Extracted family text for \(familyId) (\(familyText.count) characters)")
+        let familyText = familyLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        logInfo(.file, "✅ Extracted family text: \(familyText.count) characters")
+        logTrace(.file, "Preview: \(familyText.prefix(200))...")
+        
         return familyText
     }
     
-    /**
-     * Extract family ID from header line
-     */
-    private func extractFamilyIdFromHeader(_ line: String) -> String? {
-        // Pattern for "FAMILY_NAME NUMBER" optionally followed by page info
-        let pattern = #"^([A-ZÄÖÅ-]+(?:\s+[IVX]+)?\s+\d+[A-Z]?)"#
-        
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) else {
-            return nil
-        }
-        
-        let matchRange = Range(match.range(at: 1), in: line)!
-        return String(line[matchRange])
-    }
-    
-    // MARK: - Persistence
-    
-    private func saveRecentFiles() {
-        let paths = recentFileURLs.map { $0.path }
-        UserDefaults.standard.set(paths, forKey: "RecentFiles")
-    }
-    
-    private func loadRecentFiles() {
-        guard let paths = UserDefaults.standard.array(forKey: "RecentFiles") as? [String] else {
-            return
-        }
-        
-        recentFileURLs = paths.compactMap { path in
-            let url = URL(fileURLWithPath: path)
-            return Foundation.FileManager.default.fileExists(atPath: path) ? url : nil
-        }
-        
-        logDebug(.file, "📋 Loaded \(recentFileURLs.count) recent files")
-    }
-    
-    // MARK: - File Status and Information
+    // MARK: - File Status
     
     /**
      * Get current file status for UI display
      */
     func getFileStatus() -> FileStatus {
-        if let url = currentFileURL {
-            return FileStatus(
-                isLoaded: true,
-                fileName: url.lastPathComponent,
-                filePath: url.path,
-                fileSize: getFileSize(url),
-                isDefaultFile: url.lastPathComponent == defaultFileName,
-                isCanonicalLocation: isCanonicalLocation(url)
-            )
-        } else {
-            return FileStatus(
-                isLoaded: false,
-                fileName: nil,
-                filePath: nil,
-                fileSize: nil,
-                isDefaultFile: false,
-                isCanonicalLocation: false
-            )
-        }
+        return FileStatus(
+            isLoaded: isFileLoaded,
+            fileName: currentFileURL?.lastPathComponent,
+            filePath: currentFileURL?.path,
+            fileSize: getFileSize(),
+            isDefaultFile: currentFileURL?.lastPathComponent == defaultFileName,
+            isCanonicalLocation: currentFileURL == getCanonicalFileURL()
+        )
     }
     
     /**
-     * Check if URL is in canonical location
+     * Get formatted file size
      */
-    func isCanonicalLocation(_ url: URL) -> Bool {
-        guard let canonicalURL = getCanonicalFileURL() else { return false }
-        return url.path == canonicalURL.path
-    }
-    
-    private func getFileSize(_ url: URL) -> String? {
+    private func getFileSize() -> String? {
+        guard let url = currentFileURL else { return nil }
+        
         do {
             let attributes = try Foundation.FileManager.default.attributesOfItem(atPath: url.path)
             if let size = attributes[.size] as? NSNumber {
@@ -442,7 +390,7 @@ class FileManager {
             "1. Open Finder (Mac) or Files app (iPad/iPhone)",
             "2. Click 'iCloud Drive' in the sidebar",
             "3. Open the 'Documents' folder",
-            "4. Place 'JuuretKälviällä.roots' here",
+            "4. Place '\(defaultFileName)' here",
             "5. The file will sync to all your devices automatically"
         ]
     }
@@ -451,14 +399,14 @@ class FileManager {
      * Check if iCloud Drive is available
      */
     func isiCloudDriveAvailable() -> Bool {
-#if os(macOS)
+        #if os(macOS)
         let homeURL = Foundation.FileManager.default.homeDirectoryForCurrentUser
         let iCloudDriveDocuments = homeURL.appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs/Documents")
         return Foundation.FileManager.default.fileExists(atPath: iCloudDriveDocuments.path)
-#else
-        // iCloud Drive availability can't be checked via file path on iOS; just check for ubiquityIdentityToken
+        #else
+        // iCloud Drive availability can't be checked via file path on iOS
         return Foundation.FileManager.default.ubiquityIdentityToken != nil
-#endif
+        #endif
     }
 }
 
@@ -522,28 +470,16 @@ enum FileManagerError: LocalizedError {
         switch self {
         case .userCancelled:
             return "File selection cancelled"
-        case .accessDenied(let path):
-            return "Access denied to file: \(path)"
-        case .loadFailed(let details):
-            return "Failed to load file: \(details)"
+        case .accessDenied(let reason):
+            return "Access denied: \(reason)"
+        case .loadFailed(let reason):
+            return "Failed to load file: \(reason)"
         case .invalidFileType:
-            return "Invalid file type. Please select a text file."
+            return "Invalid file type"
         case .fileNotFound(let path):
             return "File not found: \(path)"
         case .iCloudUnavailable:
-            return "iCloud Drive is not available. Please enable it in System Settings."
-        }
-    }
-    
-    var recoverySuggestion: String? {
-        switch self {
-        case .iCloudUnavailable:
-            return "Enable iCloud Drive in System Settings → Apple ID → iCloud → iCloud Drive"
-        case .fileNotFound:
-            return "Place JuuretKälviällä.roots in iCloud Drive/Documents/"
-        default:
-            return nil
+            return "iCloud Drive is not available"
         }
     }
 }
-
