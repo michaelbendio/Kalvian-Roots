@@ -1,5 +1,5 @@
 //
-//  JuuretView.swift - Fixed for iOS/iPadOS
+//  JuuretView.swift
 //  Kalvian Roots
 //
 
@@ -69,7 +69,7 @@ struct JuuretView: View {
                 .font(.genealogyCallout)
         }
         .onAppear {
-            logInfo(.ui, "JuuretView appeared (Enhanced version)")
+            logInfo(.ui, "JuuretView appeared")
         }
     }
     
@@ -80,7 +80,6 @@ struct JuuretView: View {
         logInfo(.ui, "📂 Processing selected file: \(url.lastPathComponent)")
         
         do {
-            // Start accessing security-scoped resource
             let accessing = url.startAccessingSecurityScopedResource()
             defer {
                 if accessing {
@@ -88,10 +87,8 @@ struct JuuretView: View {
                 }
             }
             
-            // Read file content
             let content = try String(contentsOf: url, encoding: .utf8)
             
-            // Update FileManager state
             await MainActor.run {
                 juuretApp.fileManager.currentFileContent = content
                 juuretApp.fileManager.currentFileURL = url
@@ -108,56 +105,154 @@ struct JuuretView: View {
     }
     #endif
     
-    // MARK: - Family Extraction Interface (Enhanced)
+    // MARK: - Main Interface Views
     
     private var familyExtractionInterface: some View {
         VStack(spacing: 20) {
+            // Show current file info
+            if let fileURL = juuretApp.fileManager.currentFileURL {
+                HStack {
+                    Image(systemName: "doc.text.fill")
+                        .foregroundColor(.green)
+                    Text(fileURL.lastPathComponent)
+                        .font(.genealogyCaption)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal)
+            }
+            
             #if os(macOS)
             mlxSwitchingInterface
             #endif
             
-            if juuretApp.isProcessing {
-                enhancedProcessingStatusView
-            } else if let errorMessage = juuretApp.errorMessage {
-                enhancedErrorDisplayView(errorMessage)
-            } else {
+            // Always show input section when ready
+            if juuretApp.isReady && !juuretApp.isProcessing {
                 familyInputSection
-                
-                if let family = juuretApp.currentFamily {
-                    ScrollView {
-                        enhancedFamilyDisplaySection(family: family)
-                    }
+            }
+            
+            // Show processing status if processing
+            if juuretApp.isProcessing {
+                processingStatusView
+            }
+            
+            // Show error if there's an error
+            if let errorMessage = juuretApp.errorMessage {
+                errorDisplayView(errorMessage)
+            }
+            
+            // Show family if extracted
+            if let family = juuretApp.currentFamily {
+                ScrollView {
+                    familyDisplaySection(family: family)
                 }
             }
         }
+    }
+    
+    private var fileNotLoadedInterface: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "doc.text.magnifyingglass")
+                .font(.system(size: 60))
+                .foregroundColor(.gray)
+            
+            Text("No file loaded")
+                .font(.genealogyHeadline)
+                .foregroundColor(.primary)
+            
+            Text("Open JuuretKälviällä.txt to begin")
+                .font(.genealogyBody)
+                .foregroundColor(.secondary)
+            
+            #if os(iOS)
+            Button(action: {
+                showingFilePicker = true
+            }) {
+                Label("Open File", systemImage: "folder.open")
+                    .font(.genealogySubheadline)
+                    .frame(width: 200, height: 50)
+            }
+            .buttonStyle(.borderedProminent)
+            #else
+            Button("Open File...") {
+                Task {
+                    do {
+                        try await juuretApp.loadFile()
+                    } catch {
+                        juuretApp.errorMessage = error.localizedDescription
+                    }
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .font(.genealogySubheadline)
+            #endif
+        }
+        .padding(40)
+        .frame(maxWidth: 500)
+        .background(Color.gray.opacity(0.05))
+        .cornerRadius(15)
     }
     
     // MARK: - Family Input Section
     
     private var familyInputSection: some View {
-        HStack(spacing: 12) {
-            TextField("Enter Family ID (e.g., HEIKKILÄ 12)", text: $familyId)
-                .textFieldStyle(.roundedBorder)
-                .font(.genealogySubheadline)
-                .frame(height: 40)
-                .onSubmit {
+        VStack(spacing: 16) {
+            Text("Extract Family")
+                .font(.genealogyHeadline)
+                .foregroundColor(.primary)
+            
+            #if os(iOS)
+            VStack(spacing: 12) {
+                TextField("Enter Family ID (e.g., KORPI 6)", text: $familyId)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.genealogyBody)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .autocapitalization(.allCharacters)
+                    .onSubmit {
+                        extractFamily()
+                    }
+                
+                Button(action: extractFamily) {
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                        Text("Extract Family")
+                    }
+                    .font(.genealogySubheadline)
+                    .fontWeight(.medium)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(familyId.isEmpty || juuretApp.isProcessing || !juuretApp.isReady)
+            }
+            #else
+            HStack(spacing: 12) {
+                TextField("Enter Family ID (e.g., KORPI 6)", text: $familyId)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.genealogySubheadline)
+                    .frame(height: 40)
+                    .onSubmit {
+                        extractFamily()
+                    }
+                
+                Button("Extract Family") {
                     extractFamily()
                 }
-            
-            Button("Extract Family") {
-                extractFamily()
+                .buttonStyle(.borderedProminent)
+                .font(.genealogySubheadline)
+                .frame(height: 40)
+                .disabled(familyId.isEmpty || juuretApp.isProcessing || !juuretApp.isReady)
             }
-            .buttonStyle(.borderedProminent)
-            .font(.genealogySubheadline)
-            .frame(height: 40)
-            .disabled(familyId.isEmpty || juuretApp.isProcessing)
+            #endif
         }
         .padding()
         .background(Color.gray.opacity(0.05))
         .cornerRadius(10)
+        .frame(maxWidth: 600)
     }
     
-    // MARK: - MLX Switching Interface (macOS only)
+    // MARK: - MLX Interface (macOS only)
     
     #if os(macOS)
     private var mlxSwitchingInterface: some View {
@@ -182,9 +277,9 @@ struct JuuretView: View {
     }
     #endif
     
-    // MARK: - Enhanced Status Views
+    // MARK: - Status Views
     
-    private var enhancedProcessingStatusView: some View {
+    private var processingStatusView: some View {
         HStack(spacing: 15) {
             ProgressView()
                 .scaleEffect(1.0)
@@ -197,7 +292,7 @@ struct JuuretView: View {
         .cornerRadius(10)
     }
     
-    private func enhancedErrorDisplayView(_ errorMessage: String) -> some View {
+    private func errorDisplayView(_ errorMessage: String) -> some View {
         VStack(alignment: .leading, spacing: 15) {
             HStack {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -220,48 +315,9 @@ struct JuuretView: View {
         .cornerRadius(12)
     }
     
-    // MARK: - File Not Loaded Interface
+    // MARK: - Family Display
     
-    private var fileNotLoadedInterface: some View {
-        VStack(spacing: 25) {
-            HStack {
-                Image(systemName: "doc.text")
-                    .foregroundColor(.orange)
-                    .font(.genealogySubheadline)
-                Text("No file loaded")
-                    .foregroundColor(.orange)
-                    .font(.genealogySubheadline)
-                Spacer()
-                Button("Open File...") {
-                    #if os(macOS)
-                    Task {
-                        do {
-                            _ = try await juuretApp.fileManager.openFile()
-                            logInfo(.ui, "✅ File opened successfully")
-                        } catch {
-                            logError(.ui, "❌ Failed to open file: \(error)")
-                            juuretApp.errorMessage = "Failed to open file: \(error.localizedDescription)"
-                        }
-                    }
-                    #elseif os(iOS)
-                    showingFilePicker = true
-                    #endif
-                }
-                .buttonStyle(.borderedProminent)
-                .font(.genealogySubheadline)
-                .frame(height: 40)
-            }
-            .padding(20)
-            .background(Color.orange.opacity(0.1))
-            .cornerRadius(12)
-            
-            Spacer()
-        }
-    }
-    
-    // MARK: - Enhanced Family Display
-    
-    private func enhancedFamilyDisplaySection(family: Family) -> some View {
+    private func familyDisplaySection(family: Family) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(family.familyId)
@@ -280,13 +336,11 @@ struct JuuretView: View {
                 .background(Color.blue.opacity(0.1))
                 .cornerRadius(8)
             
-            enhancedFamilyMembersView(family: family)
+            familyMembersView(family: family)
         }
     }
     
-    // MARK: - Family Members View
-    
-    private func enhancedFamilyMembersView(family: Family) -> some View {
+    private func familyMembersView(family: Family) -> some View {
         VStack(alignment: .leading, spacing: 20) {
             // Parents section
             if family.father != nil || family.mother != nil {
@@ -296,11 +350,11 @@ struct JuuretView: View {
                         .fontWeight(.semibold)
                     
                     if let father = family.father {
-                        enhancedPersonView(person: father, role: .father, family: family)
+                        personView(person: father, role: .father, family: family)
                     }
                     
                     if let mother = family.mother {
-                        enhancedPersonView(person: mother, role: .mother, family: family)
+                        personView(person: mother, role: .mother, family: family)
                     }
                 }
                 .padding()
@@ -316,7 +370,7 @@ struct JuuretView: View {
                         .fontWeight(.semibold)
                     
                     ForEach(family.children) { child in
-                        enhancedPersonView(person: child, role: .child, family: family)
+                        personView(person: child, role: .child, family: family)
                     }
                 }
                 .padding()
@@ -326,11 +380,8 @@ struct JuuretView: View {
         }
     }
     
-    // MARK: - Enhanced Person View
-    
-    private func enhancedPersonView(person: Person, role: PersonRole, family: Family) -> some View {
+    private func personView(person: Person, role: PersonRole, family: Family) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Name with citation button
             HStack {
                 Button(action: {
                     generateCitation(for: person, in: family)
@@ -348,7 +399,6 @@ struct JuuretView: View {
                 Spacer()
             }
             
-            // Birth/Death dates with Hiski links
             HStack(spacing: 16) {
                 if let birthDate = person.birthDate {
                     Button(action: {
@@ -481,7 +531,7 @@ enum PersonRole {
     }
 }
 
-// MARK: - Font Extensions (if not already defined)
+// MARK: - Font Extensions
 
 extension Font {
     static let genealogyTitle = Font.system(size: 24, weight: .bold)

@@ -89,12 +89,11 @@ class JuuretApp {
         logInfo(.ai, "✅ Enhanced AI parsing service initialized with MLX support")
         #else
         // iOS/iPadOS/Intel Mac - use cloud services only
-        let platform = detectPlatform()
+        let platform = Self.detectPlatform()  // Changed to Self.detectPlatform()
         logInfo(.ai, "🧠 Initializing AI services for \(platform)")
         localAIParsingService = AIParsingService()
         logInfo(.ai, "✅ AI parsing service initialized (cloud services only)")
         #endif
-        
         logDebug(.ai, "Available services: \(localAIParsingService.availableServiceNames.joined(separator: ", "))")
         
         let localFamilyResolver = FamilyResolver(
@@ -137,7 +136,7 @@ class JuuretApp {
     
     // MARK: - Platform Detection Helper
     
-    private func detectPlatform() -> String {
+    private static func detectPlatform() -> String {
         #if os(iOS)
         if UIDevice.current.userInterfaceIdiom == .pad {
             // Check if it's an Apple Silicon iPad
@@ -168,7 +167,7 @@ class JuuretApp {
         return "Unknown Platform"
         #endif
     }
-    
+
     // MARK: - AI Service Management
     
     /**
@@ -242,14 +241,14 @@ class JuuretApp {
     /**
      * Extract family from loaded file
      */
+    // In JuuretApp.swift - Complete extractFamily method
+
+    // MARK: - Family Extraction
+
     func extractFamily(familyId: String) async {
-        guard fileManager.isFileLoaded else {
-            errorMessage = "No file loaded"
-            return
-        }
-        
+        // Check if AI service is configured
         guard aiParsingService.isConfigured else {
-            errorMessage = "AI service not configured. Please add API key in settings."
+            errorMessage = "\(aiParsingService.currentServiceName) not configured. Please add API key in settings."
             return
         }
         
@@ -263,14 +262,16 @@ class JuuretApp {
         extractionProgress = .extractingText
         
         do {
-            // Extract family text
+            // Step 1: Extract family text from file
             guard let familyText = fileManager.extractFamilyText(familyId: familyId) else {
                 throw ExtractionError.familyNotFound(familyId)
             }
             
+            logDebug(.app, "📄 Extracted text for family \(familyId): \(familyText.prefix(100))...")
+            
+            // Step 2: Parse with AI
             extractionProgress = .parsingWithAI
             
-            // Parse with AI
             let family = try await aiParsingService.parseFamily(
                 familyId: familyId,
                 familyText: familyText
@@ -278,23 +279,76 @@ class JuuretApp {
             
             extractionProgress = .familyExtracted
             
-            // Update state
+            // Step 3: Update state with parsed family
             currentFamily = family
-            isProcessing = false
             
             logInfo(.app, "✅ Successfully extracted family: \(familyId)")
             logDebug(.app, "Family has \(family.children.count) children")
+            logDebug(.app, "Father: \(family.father?.displayName ?? "none") - asChild: \(family.father?.asChild ?? "none")")
+            logDebug(.app, "Mother: \(family.mother?.displayName ?? "none") - asChild: \(family.mother?.asChild ?? "none")")
+            
+            // Step 4: ALWAYS process cross-references for complete citations
+            logInfo(.app, "🔄 Processing cross-references for enhanced citations...")
+            
+            // Create workflow for this family
+            familyNetworkWorkflow = FamilyNetworkWorkflow(
+                nuclearFamily: family,
+                familyResolver: familyResolver,
+                resolveCrossReferences: true  // ALWAYS resolve cross-references
+            )
+            
+            // Step 5: Process the workflow to build the network and generate citations
+            do {
+                try await familyNetworkWorkflow?.process()
+                
+                // Log what we found
+                if let network = familyNetworkWorkflow?.getFamilyNetwork() {
+                    logInfo(.app, "✅ Family network processed successfully")
+                    logInfo(.app, "Found \(network.asChildFamilies.count) asChild families:")
+                    for (person, family) in network.asChildFamilies {
+                        logInfo(.app, "  - \(person): \(family.familyId)")
+                    }
+                    logInfo(.app, "Found \(network.asParentFamilies.count) asParent families:")
+                    for (person, family) in network.asParentFamilies {
+                        logInfo(.app, "  - \(person): \(family.familyId)")
+                    }
+                    
+                    // Store enhanced version
+                    enhancedFamily = network.mainFamily
+                }
+                
+                // Log citation count
+                let citations = familyNetworkWorkflow?.getActiveCitations() ?? [:]
+                logInfo(.app, "📝 Generated \(citations.count) enhanced citations")
+                for (person, _) in citations.prefix(5) {
+                    logDebug(.app, "  - Citation for: \(person)")
+                }
+                
+            } catch {
+                // Log the error but don't fail - we still have basic citations
+                logWarn(.app, "⚠️ Could not fully process cross-references: \(error)")
+                logInfo(.app, "📝 Using basic citations as fallback")
+            }
+            
+            // Step 6: Mark processing complete
+            isProcessing = false
+            extractionProgress = .idle
+            
+            logInfo(.app, "✨ Family extraction complete with citations for: \(familyId)")
             
         } catch {
+            // Handle extraction/parsing errors
             logError(.app, "❌ Failed to extract family: \(error)")
             errorMessage = error.localizedDescription
             isProcessing = false
             extractionProgress = .idle
+            currentFamily = nil
+            enhancedFamily = nil
         }
     }
-    
-    // MARK: - Citation Generation
-    
+
+    // MARK: - Citation Generation (ensure it uses workflow citations)
+
     func generateCitation(for person: Person, in family: Family) -> String {
         logInfo(.citation, "📝 Generating citation for: \(person.displayName)")
         
@@ -304,31 +358,30 @@ class JuuretApp {
             return manualCitation
         }
         
-        let citation = EnhancedCitationGenerator.generateCitation(
-            for: person,
-            in: family,
-            fileURL: fileManager.currentFileURL
-        )
+        // PRIORITY: Check workflow citations first (these have cross-references)
+        if let workflow = familyNetworkWorkflow {
+            let citations = workflow.getActiveCitations()
+            
+            // Try different key variations to find the citation
+            if let citation = citations[person.displayName] ??
+                             citations[person.name] ??
+                             citations["\(person.name) \(person.patronymic ?? "")"] {
+                logInfo(.citation, "✅ Using enhanced citation from workflow for: \(person.displayName)")
+                return citation
+            } else {
+                logWarn(.citation, "⚠️ No workflow citation found for: \(person.displayName)")
+                logDebug(.citation, "Available citation keys: \(Array(citations.keys).prefix(10))")
+            }
+        }
         
-        logDebug(.citation, "Generated citation: \(citation.prefix(100))...")
+        // Fallback to basic citation
+        logInfo(.citation, "📝 Using basic fallback citation for: \(person.displayName)")
+        let citation = CitationGenerator.generateMainFamilyCitation(family: family)
+        
         return citation
     }
-    
-    func generateSpouseCitation(for spouse: Person, marriedTo person: Person, in family: Family) -> String {
-        logInfo(.citation, "📝 Generating spouse citation for: \(spouse.displayName)")
-        
-        let citation = EnhancedCitationGenerator.generateSpouseCitation(
-            for: spouse,
-            marriedTo: person,
-            in: family,
-            fileURL: fileManager.currentFileURL
-        )
-        
-        logDebug(.citation, "Generated spouse citation: \(citation.prefix(100))...")
-        return citation
-    }
-    
-    // MARK: - Hiski Query Generation
+
+        // MARK: - Hiski Query Generation
     
     func generateHiskiURL(for date: String, eventType: EventType) -> String {
         let cleanDate = date.replacingOccurrences(of: ".", with: "")
@@ -449,6 +502,28 @@ enum ExtractionError: LocalizedError {
             return "Family '\(familyId)' not found in file"
         case .parsingFailed(let reason):
             return "Failed to parse family: \(reason)"
+        }
+    }
+}
+
+// Force AI API key sync on launch
+extension JuuretApp {
+    func syncAPIKeys() {
+        let store = NSUbiquitousKeyValueStore.default
+        store.synchronize()
+        logInfo(.app, "🔄 Syncing API keys from iCloud")
+        
+        // Force a check after a short delay to ensure sync completes
+        Task {
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+            store.synchronize()
+            
+            // Re-check configuration
+            if aiParsingService.isConfigured {
+                await MainActor.run {
+                    logInfo(.app, "✅ AI service configured via iCloud sync")
+                }
+            }
         }
     }
 }

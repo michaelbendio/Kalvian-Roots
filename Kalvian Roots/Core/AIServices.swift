@@ -2,7 +2,7 @@
 //  AIServices.swift
 //  Kalvian Roots
 //
-//  Streamlined AI services - just DeepSeek and Mock for now
+//  Streamlined AI services with iCloud sync for API keys
 //
 
 import Foundation
@@ -21,25 +21,50 @@ protocol AIService {
 
 /**
  * DeepSeek API service - excellent for Finnish genealogical data
+ * Now with iCloud Key-Value Storage for syncing API keys across devices
  */
 class DeepSeekService: AIService {
     let name = "DeepSeek"
     private var apiKey: String?
     private let baseURL = "https://api.deepseek.com/v1/chat/completions"
+    
+    // Storage keys
     private let apiKeyStorageKey = "AIService_DeepSeek_APIKey"
+    private let iCloudStore = NSUbiquitousKeyValueStore.default
     
     init() {
-        // Load saved API key
-        #if os(iOS)
-        UserDefaults.standard.synchronize()
-        #endif
-        
-        if let savedKey = UserDefaults.standard.string(forKey: apiKeyStorageKey),
-           !savedKey.isEmpty {
-            self.apiKey = savedKey
-            logInfo(.ai, "✅ DeepSeek auto-configured with saved API key")
+        // First check iCloud store for synced key
+        if let cloudKey = iCloudStore.string(forKey: apiKeyStorageKey),
+           !cloudKey.isEmpty {
+            self.apiKey = cloudKey
+            logInfo(.ai, "✅ DeepSeek auto-configured with iCloud synced API key")
+        }
+        // Fall back to local UserDefaults if no cloud key
+        else if let localKey = UserDefaults.standard.string(forKey: apiKeyStorageKey),
+                !localKey.isEmpty {
+            self.apiKey = localKey
+            // Migrate to iCloud
+            iCloudStore.set(localKey, forKey: apiKeyStorageKey)
+            iCloudStore.synchronize()
+            logInfo(.ai, "📤 Migrated DeepSeek API key to iCloud")
         } else {
             logDebug(.ai, "No saved API key found for DeepSeek")
+        }
+        
+        // Listen for iCloud changes
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(iCloudKeysChanged),
+            name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+            object: iCloudStore
+        )
+    }
+    
+    @objc private func iCloudKeysChanged(_ notification: Notification) {
+        if let cloudKey = iCloudStore.string(forKey: apiKeyStorageKey),
+           !cloudKey.isEmpty {
+            self.apiKey = cloudKey
+            logInfo(.ai, "🔄 DeepSeek API key updated from iCloud")
         }
     }
     
@@ -53,13 +78,17 @@ class DeepSeekService: AIService {
         }
         
         self.apiKey = apiKey
+        
+        // Save to both iCloud and local storage
+        iCloudStore.set(apiKey, forKey: apiKeyStorageKey)
+        iCloudStore.synchronize()
         UserDefaults.standard.set(apiKey, forKey: apiKeyStorageKey)
         
         #if os(iOS)
         UserDefaults.standard.synchronize()
         #endif
         
-        logInfo(.ai, "✅ DeepSeek API key saved")
+        logInfo(.ai, "✅ DeepSeek API key saved to iCloud (will sync to all devices)")
     }
     
     func parseFamily(familyId: String, familyText: String) async throws -> String {
@@ -112,16 +141,20 @@ class DeepSeekService: AIService {
         """
         
         let requestBody: [String: Any] = [
-            "model": "deepseek-chat",
+            "model": "deepseek-chat" as String,
             "messages": [
-                ["role": "system", "content": "You are a genealogy expert. Extract information and return ONLY valid JSON."],
-                ["role": "user", "content": prompt]
-            ],
-            "temperature": 0.1,
-            "max_tokens": 4000
+                ["role": "system" as String, "content": "You are a genealogy expert. Extract information and return ONLY valid JSON." as String] as [String: String],
+                ["role": "user" as String, "content": prompt as String] as [String: String]
+            ] as [[String: String]],
+            "temperature": 0.1 as Double,
+            "max_tokens": 4000 as Int
         ]
         
-        var request = URLRequest(url: URL(string: baseURL)!)
+        guard let url = URL(string: baseURL) else {
+            throw AIServiceError.invalidConfiguration("Invalid API endpoint URL")
+        }
+        
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
@@ -203,6 +236,18 @@ class MockAIService: AIService {
           "childrenDiedInfancy": 0
         }
         """
+    }
+}
+
+// MARK: - Helper Extension for iCloud Availability
+
+extension NSUbiquitousKeyValueStore {
+    static var isAvailable: Bool {
+        // Use Foundation.FileManager explicitly to avoid conflict with custom FileManager class
+        if Foundation.FileManager.default.ubiquityIdentityToken != nil {
+            return true
+        }
+        return false
     }
 }
 

@@ -2,44 +2,31 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>com.apple.security.app-sandbox</key>
-    <true/>
-    
-    <!-- CRITICAL: File access permissions for NSOpenPanel -->
-    <key>com.apple.security.files.user-selected.read-only</key>
-    <true/>
-    
-    <!-- Bookmark support for recent files -->
-    <key>com.apple.security.files.bookmarks.app-scope</key>
-    <true/>
-    
-    <!-- Document-scoped bookmarks for persistent access -->
-    <key>com.apple.security.files.bookmarks.document-scope</key>
-    <true/>
-    
-    <!-- FIXED: Only use your app's iCloud container (not Apple's system container) -->
-    <key>com.apple.developer.icloud-container-identifiers</key>
-    <array>
-        <string>iCloud.com.michael-bendio.Kalvian-Roots</string>
-    </array>
-    
-    <key>com.apple.developer.icloud-services</key>
-    <array>
-        <string>CloudDocuments</string>
-    </array>
-    
-    <!-- Use only your app's container for ubiquity -->
-    <key>com.apple.developer.ubiquity-container-identifiers</key>
-    <array>
-        <string>iCloud.com.michael-bendio.Kalvian-Roots</string>
-    </array>
-    
-    <!-- Network access for AI services -->
-    <key>com.apple.security.network.client</key>
-    <true/>
-    
-    <!-- Outgoing network connections for AI APIs -->
-    <key>com.apple.security.network.server</key>
-    <false/>
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.com.michael-bendio.Kalvian-Roots</string>
+	</array>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudDocuments</string>
+	</array>
+	<key>com.apple.developer.ubiquity-container-identifiers</key>
+	<array>
+		<string>iCloud.com.michael-bendio.Kalvian-Roots</string>
+	</array>
+	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
+	<string>$(TeamIdentifierPrefix)$(CFBundleIdentifier)</string>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.files.bookmarks.app-scope</key>
+	<true/>
+	<key>com.apple.security.files.bookmarks.document-scope</key>
+	<true/>
+	<key>com.apple.security.files.user-selected.read-only</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.network.server</key>
+	<false/>
 </dict>
 </plist>

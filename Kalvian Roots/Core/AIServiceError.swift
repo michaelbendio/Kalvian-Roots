@@ -17,6 +17,7 @@ import Foundation
 // MARK: - AI Service Errors
 
 enum AIServiceError: LocalizedError {
+    case invalidConfiguration(String)
     case notConfigured(String)
     case unknownService(String)
     case invalidResponse(String)
@@ -30,6 +31,8 @@ enum AIServiceError: LocalizedError {
     
     var errorDescription: String? {
         switch self {
+        case .invalidConfiguration(let details):
+            return "Invalid configuration: \(details)"
         case .notConfigured(let service):
             return "\(service) is not configured. Please add API key in settings."
         case .unknownService(let name):

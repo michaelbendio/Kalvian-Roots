@@ -492,3 +492,59 @@ extension CitationGenerator {
     }
 }
 
+extension CitationGenerator {
+    
+    /**
+     * Generate citation for a person in a family
+     * This is the main entry point for citation generation
+     *
+     * @param person The person to generate a citation for
+     * @param family The family context
+     * @param fileURL The source file URL (currently unused but kept for compatibility)
+     */
+    static func generateCitation(
+        for person: Person,
+        in family: Family,
+        fileURL: URL?
+    ) -> String {
+        // For now, just use the main family citation
+        // This can be enhanced later to provide person-specific citations
+        // based on whether the person is a parent or child in the family
+        
+        // Check if this person is a parent in the family
+        let isParent = family.allParents.contains { parent in
+            parent.name.lowercased() == person.name.lowercased() &&
+            (parent.birthDate == person.birthDate || parent.birthDate == nil || person.birthDate == nil)
+        }
+        
+        // Check if this person is a child in the family
+        let isChild = family.children.contains { child in
+            child.name.lowercased() == person.name.lowercased() &&
+            (child.birthDate == person.birthDate || child.birthDate == nil || person.birthDate == nil)
+        }
+        
+        // For now, return the main family citation for everyone
+        // This matches the existing behavior in FamilyNetworkWorkflow
+        return generateMainFamilyCitation(family: family)
+    }
+    
+    /**
+     * Generate citation for a spouse
+     *
+     * @param spouse The spouse to generate a citation for
+     * @param person The person married to the spouse
+     * @param family The family context
+     * @param fileURL The source file URL (currently unused but kept for compatibility)
+     */
+    static func generateSpouseCitation(
+        for spouse: Person,
+        marriedTo person: Person,
+        in family: Family,
+        fileURL: URL?
+    ) -> String {
+        // For spouse citations, we also use the main family citation
+        // In the future, this could be enhanced to look up the spouse's
+        // as_child family if available in the network
+        return generateMainFamilyCitation(family: family)
+    }
+}
