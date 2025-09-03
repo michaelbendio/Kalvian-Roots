@@ -18,7 +18,7 @@ import UIKit
 /**
  * FileManager.swift - Canonical location file management
  *
- * Handles file operations with ONE canonical location: iCloud Drive/Documents/JuuretKälviällä.roots
+ * Handles file operations with ONE canonical location: iCloud Drive/Kalvian Roots/Documents/JuuretKälviällä.roots
  * This location works across Mac, iPad, iPhone and is easily user-accessible.
  */
 
@@ -45,7 +45,7 @@ class FileManager {
     private let defaultFileName = "JuuretKälviällä.roots"
     
     var iCloudDocumentsURL: URL? {
-        FileManager.default.url(forUbiquityContainerIdentifier: nil)?
+        Foundation.FileManager.default.url(forUbiquityContainerIdentifier: nil)?
             .appendingPathComponent("Documents")
     }
         
@@ -205,6 +205,35 @@ class FileManager {
         let canonicalURL = getCanonicalFileURL()
         logDebug(.file, "Canonical location: \(canonicalURL.path)")
         
+        // For iCloud files, we might need to download them first
+        if let _ = iCloudDocumentsURL,
+           canonicalURL.path.contains("Mobile Documents") {
+            
+            var isDownloaded = false
+            do {
+                let resourceValues = try canonicalURL.resourceValues(forKeys: [
+                    .ubiquitousItemDownloadingStatusKey
+                ])
+                
+                if let status = resourceValues.ubiquitousItemDownloadingStatus {
+                    isDownloaded = (status == .current)
+                }
+            } catch {
+                logDebug(.file, "Could not check iCloud download status: \(error)")
+            }
+            
+            if !isDownloaded {
+                logInfo(.file, "📥 Downloading file from iCloud...")
+                do {
+                    try Foundation.FileManager.default.startDownloadingUbiquitousItem(at: canonicalURL)
+                    // Wait a moment for download to start
+                    try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                } catch {
+                    logWarn(.file, "Failed to start iCloud download: \(error)")
+                }
+            }
+        }
+        
         await checkAndLoadFile(at: canonicalURL)
     }
     
@@ -216,7 +245,6 @@ class FileManager {
         
         if Foundation.FileManager.default.fileExists(atPath: url.path) {
             logInfo(.file, "✅ Found \(defaultFileName) in canonical location!")
-            
             do {
                 #if os(macOS)
                 _ = try processSelectedFile(url)
@@ -229,7 +257,7 @@ class FileManager {
             }
         } else {
             logInfo(.file, "📂 \(defaultFileName) not found in canonical location")
-            logInfo(.file, "💡 Place your file at: App Documents → \(defaultFileName) (accessible via iCloud Drive symlink)")
+            logInfo(.file, "💡 Place your file at: iCloud Drive → Kalvian Roots → Documents → \(defaultFileName)")
             logInfo(.file, "💡 This file will then sync to all your devices automatically")
         }
     }
@@ -238,12 +266,25 @@ class FileManager {
     
     /**
      * Get the ONE canonical file location
-     * Returns: App Documents/JuuretKälviällä.roots
+     * Returns: iCloud Drive/Kalvian Roots/Documents/JuuretKälviällä.roots
      */
     private func getCanonicalFileURL() -> URL {
-        let documentsURL = Foundation.FileManager.default.urls(for: .documentDirectory,
-                                                               in: .userDomainMask).first!
-        return documentsURL.appendingPathComponent(defaultFileName)
+        // Use iCloud Documents if available, otherwise fall back to local
+        if let iCloudURL = iCloudDocumentsURL {
+            // Create Documents directory in iCloud if it doesn't exist
+            try? Foundation.FileManager.default.createDirectory(
+                at: iCloudURL,
+                withIntermediateDirectories: true
+            )
+            return iCloudURL.appendingPathComponent(defaultFileName)
+        } else {
+            // Fall back to local documents only if iCloud is unavailable
+            let documentsURL = Foundation.FileManager.default.urls(
+                for: .documentDirectory,
+                in: .userDomainMask
+            ).first!
+            return documentsURL.appendingPathComponent(defaultFileName)
+        }
     }
     
     // MARK: - Recent Files Management
@@ -391,13 +432,22 @@ class FileManager {
      * Get user-friendly instructions for finding canonical location
      */
     func getCanonicalLocationInstructions() -> [String] {
-        return [
-            "1. Open Finder (Mac) or Files app (iPad/iPhone)",
-            "2. Click 'iCloud Drive' in the sidebar",
-            "3. Open the 'Documents' folder",
-            "4. Place '\(defaultFileName)' here",
-            "5. The file will sync to all your devices automatically"
-        ]
+        if iCloudDocumentsURL != nil {
+            return [
+                "1. Open Files app on iPad/iPhone (or Finder on Mac)",
+                "2. Tap/Click 'iCloud Drive'",
+                "3. Look for 'Kalvian Roots' folder (will appear after first save)",
+                "4. Place '\(defaultFileName)' in the Documents folder inside",
+                "5. The file will sync to all your devices automatically"
+            ]
+        } else {
+            return [
+                "1. iCloud Drive is not available",
+                "2. Using local storage instead",
+                "3. Files won't sync between devices",
+                "4. Consider enabling iCloud Drive for this app"
+            ]
+        }
     }
     
     /**
