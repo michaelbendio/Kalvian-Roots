@@ -2,14 +2,9 @@
 //  PlatformAwareServiceManager.swift
 //  Kalvian Roots
 //
-//  Created by Michael Bendio on 8/31/25.
-//
-
-//
-//  PlatformAwareServiceManager.swift
-//  Kalvian Roots
-//
 //  Streamlined platform-aware service management
+//
+//  Created by Michael Bendio on 8/31/25.
 //
 
 import Foundation

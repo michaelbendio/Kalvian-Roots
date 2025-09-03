@@ -279,24 +279,19 @@ class JuuretApp {
             
             extractionProgress = .familyExtracted
             
-            // Step 3: Update state with parsed family
-            currentFamily = family
-            
-            logInfo(.app, "✅ Successfully extracted family: \(familyId)")
-            logDebug(.app, "Family has \(family.children.count) children")
-            logDebug(.app, "Father: \(family.father?.displayName ?? "none") - asChild: \(family.father?.asChild ?? "none")")
-            logDebug(.app, "Mother: \(family.mother?.displayName ?? "none") - asChild: \(family.mother?.asChild ?? "none")")
-            
-            // Step 4: ALWAYS process cross-references for complete citations
+            // Step 3: Keep the parsed family in a temporary variable
+            let parsedFamily = family
+
+            // Step 4: Process cross-references for complete citations
             logInfo(.app, "🔄 Processing cross-references for enhanced citations...")
             
             // Create workflow for this family
             familyNetworkWorkflow = FamilyNetworkWorkflow(
-                nuclearFamily: family,
+                nuclearFamily: parsedFamily,
                 familyResolver: familyResolver,
-                resolveCrossReferences: true  // ALWAYS resolve cross-references
+                resolveCrossReferences: true
             )
-            
+
             // Step 5: Process the workflow to build the network and generate citations
             do {
                 try await familyNetworkWorkflow?.process()
@@ -330,10 +325,11 @@ class JuuretApp {
                 logInfo(.app, "📝 Using basic citations as fallback")
             }
             
-            // Step 6: Mark processing complete
-            isProcessing = false
-            extractionProgress = .idle
-            
+            // Step 6: Update the UI with the fully processed family after citations are ready
+            await MainActor.run {
+                currentFamily = parsedFamily
+                extractionProgress = .familyExtracted
+            }
             logInfo(.app, "✨ Family extraction complete with citations for: \(familyId)")
             
         } catch {

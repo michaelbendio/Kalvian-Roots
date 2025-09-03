@@ -1,16 +1,9 @@
-//
-//  CitationGenerator.swift
-//  Kalvian Roots
-//
-//  Unified citation generation for all family relationship types
-//
-
 import Foundation
 
 /**
- * Enhanced CitationGenerator with proper data formatting and validation
+ * Citation Generator for Finnish Genealogical Records
  *
- * Handles three types of citations:
+ * Generates three types of citations:
  * 1. Main family citations (nuclear family with parents + children)
  * 2. As_child citations (person in their parents' family) - NOW ENHANCED
  * 3. Spouse as_child citations (spouse in their parents' family)
@@ -159,30 +152,33 @@ struct CitationGenerator {
             if let asParentFamily = asParentFamily {
                 var additionalInfo: [String] = []
                 
-                // Find the person in their asParent family
+                // For parents, we need to check if their death date exists in the asParent family
+                // but NOT in the asChild family they're currently being cited in
+                
+                // Find this person as a child in the current asChild family
+                let personAsChildInThisFamily = asChildFamily.children.first { child in
+                    child.name.lowercased() == person.name.lowercased()
+                }
+                
+                // Find the person in their asParent family  
                 let personAsParent = asParentFamily.allParents.first { parent in
                     parent.name.lowercased() == person.name.lowercased()
                 }
                 
-                // Get the couple's marriage date
-                let coupleMarriageDate = asParentFamily.primaryCouple?.marriageDate
-                
-                // Check for death date enhancement
-                // Person has death in asParent but not in asChild
-                if personAsParent?.deathDate != nil {
+                // Check for death date that's in asParent but not in asChild
+                if personAsChildInThisFamily?.deathDate == nil && personAsParent?.deathDate != nil {
                     additionalInfo.append("death date")
                 }
                 
                 // Check for marriage date enhancement
-                // Check if asParent has full date and asChild only has partial
                 let hasFullMarriageInAsParent = 
                     (personAsParent?.fullMarriageDate != nil) ||
                     (personAsParent?.marriageDate != nil && personAsParent!.marriageDate!.count >= 8) ||
-                    (coupleMarriageDate != nil && coupleMarriageDate!.count >= 8)
+                    (asParentFamily.primaryCouple?.marriageDate != nil && asParentFamily.primaryCouple!.marriageDate!.count >= 8)
                 
                 let hasOnlyPartialInAsChild = 
-                    person.fullMarriageDate == nil && 
-                    (person.marriageDate == nil || person.marriageDate!.count <= 2)
+                    personAsChildInThisFamily?.fullMarriageDate == nil && 
+                    (personAsChildInThisFamily?.marriageDate == nil || personAsChildInThisFamily!.marriageDate!.count <= 4)
                 
                 if hasFullMarriageInAsParent && hasOnlyPartialInAsChild {
                     additionalInfo.append("marriage date")
@@ -194,13 +190,14 @@ struct CitationGenerator {
                     citation += "Additional Information:\n"
                     
                     // Format based on what we found
+                    let personName = person.name
                     if additionalInfo.count == 2 {
                         // Both marriage and death dates
-                        citation += "\(person.name)'s marriage date and death date found on \(asParentFamily.pageReferenceString)\n"
+                        citation += "\(personName)'s marriage date and death date found on \(asParentFamily.pageReferenceString)\n"
                     } else if additionalInfo.contains("marriage date") {
-                        citation += "\(person.name)'s marriage date found on \(asParentFamily.pageReferenceString)\n"
+                        citation += "\(personName)'s marriage date found on \(asParentFamily.pageReferenceString)\n"
                     } else if additionalInfo.contains("death date") {
-                        citation += "\(person.name)'s death date found on \(asParentFamily.pageReferenceString)\n"
+                        citation += "\(personName)'s death date found on \(asParentFamily.pageReferenceString)\n"
                     }
                 }
             }
@@ -350,19 +347,26 @@ struct CitationGenerator {
         if let match = marriageDate.range(of: #"\b(\d{4})\b"#, options: .regularExpression) {
             let fullMatch = String(marriageDate[match])
             let components = fullMatch.components(separatedBy: ".")
-            if let year = components.last, year.count == 4 {
-                return year
+            
+            if components.count >= 3 {
+                // Full date: dd.mm.yyyy - return year
+                return components.last
+            } else {
+                // Just a year
+                return fullMatch
             }
         }
         
-        // Try to extract 2-digit year and convert to 4-digit
+        // Handle 2-digit year
         if let match = marriageDate.range(of: #"\b(\d{2})\b"#, options: .regularExpression) {
-            let twoDigitYear = String(marriageDate[match])
-            if let year = Int(twoDigitYear) {
-                // For genealogical data from Kälviä, most dates are 1700s and early 1800s
-                // Use cutoff: 00-50 = 1800s, 51-99 = 1700s
-                let fourDigitYear = year > 50 ? 1700 + year : 1800 + year
-                return String(fourDigitYear)
+            let yearPart = String(marriageDate[match])
+            if let year = Int(yearPart) {
+                // Convert to 4-digit year (assuming 1700s or 1800s)
+                if year < 50 {
+                    return "18\(String(format: "%02d", year))"
+                } else {
+                    return "17\(String(format: "%02d", year))"
+                }
             }
         }
         
@@ -370,35 +374,55 @@ struct CitationGenerator {
     }
     
     /**
-     * Normalize date format for display
+     * Normalize date format for consistent display
      */
     private static func normalizeDate(_ date: String) -> String {
-        // Remove extra whitespace and normalize format
-        let trimmed = date.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Remove FamilySearch IDs
+        var normalized = date.replacingOccurrences(of: #"<[A-Z0-9]{4}-[A-Z0-9]{3}>"#, with: "", options: .regularExpression)
         
-        // Check if it's already in DD.MM.YYYY format
-        if trimmed.range(of: #"^\d{1,2}\.\d{1,2}\.\d{4}$"#, options: .regularExpression) != nil {
-            return trimmed
+        // Clean up whitespace
+        normalized = normalized.trimmingCharacters(in: .whitespacesAndNewlines)
+        normalized = normalized.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        
+        // Format date properly
+        if normalized.contains(".") {
+            // Full date format
+            let components = normalized.components(separatedBy: ".")
+            if components.count == 3 {
+                let day = Int(components[0]) ?? 0
+                let month = Int(components[1]) ?? 0
+                let year = components[2].trimmingCharacters(in: .whitespaces)
+                
+                let dateFormatter = DateFormatter()
+                dateFormatter.dateFormat = "d MMMM yyyy"
+                dateFormatter.locale = Locale(identifier: "en_US")
+                
+                if let date = DateComponents(calendar: .current, year: Int(year), month: month, day: day).date {
+                    return dateFormatter.string(from: date)
+                }
+            }
+        } else if let year = extractYear(from: normalized) {
+            // Year-only format
+            return year
         }
         
-        // Check if it's a 4-digit year
-        if trimmed.range(of: #"^\d{4}$"#, options: .regularExpression) != nil {
-            return trimmed
-        }
-        
-        // Check if it starts with "n " (about)
-        if trimmed.hasPrefix("n ") {
-            return "about \(String(trimmed.dropFirst(2)))"
-        }
-        
-        return trimmed
+        return normalized
     }
     
     /**
-     * Check if a child is the target person for highlighting
+     * Extract year from a date string
+     */
+    private static func extractYear(from dateStr: String) -> String? {
+        if let match = dateStr.range(of: #"\b(\d{4})\b"#, options: .regularExpression) {
+            return String(dateStr[match])
+        }
+        return nil
+    }
+    
+    /**
+     * Check if a child matches the target person
      */
     private static func isTargetPerson(_ child: Person, _ target: Person) -> Bool {
-        // Compare by name and birth date for better accuracy
         let nameMatch = child.name.lowercased() == target.name.lowercased()
         let birthMatch = child.birthDate == target.birthDate
         
@@ -505,46 +529,10 @@ extension CitationGenerator {
     static func generateCitation(
         for person: Person,
         in family: Family,
-        fileURL: URL?
+        fileURL: URL? = nil
     ) -> String {
-        // For now, just use the main family citation
-        // This can be enhanced later to provide person-specific citations
-        // based on whether the person is a parent or child in the family
-        
-        // Check if this person is a parent in the family
-        let isParent = family.allParents.contains { parent in
-            parent.name.lowercased() == person.name.lowercased() &&
-            (parent.birthDate == person.birthDate || parent.birthDate == nil || person.birthDate == nil)
-        }
-        
-        // Check if this person is a child in the family
-        let isChild = family.children.contains { child in
-            child.name.lowercased() == person.name.lowercased() &&
-            (child.birthDate == person.birthDate || child.birthDate == nil || person.birthDate == nil)
-        }
-        
-        // For now, return the main family citation for everyone
-        // This matches the existing behavior in FamilyNetworkWorkflow
-        return generateMainFamilyCitation(family: family)
-    }
-    
-    /**
-     * Generate citation for a spouse
-     *
-     * @param spouse The spouse to generate a citation for
-     * @param person The person married to the spouse
-     * @param family The family context
-     * @param fileURL The source file URL (currently unused but kept for compatibility)
-     */
-    static func generateSpouseCitation(
-        for spouse: Person,
-        marriedTo person: Person,
-        in family: Family,
-        fileURL: URL?
-    ) -> String {
-        // For spouse citations, we also use the main family citation
-        // In the future, this could be enhanced to look up the spouse's
-        // as_child family if available in the network
+        // Simplest implementation - just use the main family citation
         return generateMainFamilyCitation(family: family)
     }
 }
+

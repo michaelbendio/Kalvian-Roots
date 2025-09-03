@@ -44,6 +44,11 @@ class FileManager {
     /// The ONE canonical file name
     private let defaultFileName = "JuuretKälviällä.roots"
     
+    var iCloudDocumentsURL: URL? {
+        FileManager.default.url(forUbiquityContainerIdentifier: nil)?
+            .appendingPathComponent("Documents")
+    }
+        
     // MARK: - Initialization
     
     init() {

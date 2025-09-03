@@ -1,28 +1,15 @@
-//
-//  AIServices.swift
-//  Kalvian Roots
-//
-//  Streamlined AI services with iCloud sync for API keys
-//
-
 import Foundation
 
-// MARK: - AI Service Protocol
 
+// MARK: - AIService Protocol
 protocol AIService {
     var name: String { get }
     var isConfigured: Bool { get }
-    
-    func parseFamily(familyId: String, familyText: String) async throws -> String
     func configure(apiKey: String) throws
+    func parseFamily(familyId: String, familyText: String) async throws -> String
 }
 
-// MARK: - DeepSeek Service (Your Primary Service)
-
-/**
- * DeepSeek API service - excellent for Finnish genealogical data
- * Now with iCloud Key-Value Storage for syncing API keys across devices
- */
+// MARK: - DeepSeek Service with Improved Prompt
 class DeepSeekService: AIService {
     let name = "DeepSeek"
     private var apiKey: String?
@@ -98,56 +85,101 @@ class DeepSeekService: AIService {
         
         logInfo(.ai, "🤖 DeepSeek parsing family: \(familyId)")
         
+        // IMPROVED PROMPT that matches your existing Family and Person structs
         let prompt = """
-        Extract genealogical information from this Finnish family record and return ONLY a valid JSON object.
+        You are a Finnish genealogy expert. Extract structured data from this family record and return ONLY a valid JSON object.
         
         CRITICAL: Your response must be ONLY the JSON object, with no markdown formatting, no explanation, no ```json tags.
         
-        Family ID: \(familyId)
+        EXTRACTION RULES:
+        1. FAMILY ID: Extract the main family identifier (e.g., "PIENI-PORKOLA 5")
+        2. PAGE REFERENCES: Extract all page numbers from format like "page 268-269" as ["268", "269"]
+        3. COUPLES: The first couple listed are the primary parents. Additional sections with "II puoliso", "III puoliso" indicate additional couples
+        4. CHILDREN: The "Lapset" section contains children. Children belong to the most recent couple mentioned
+        5. NOTES: Extract general notes and note definitions (markers like "*)" with their explanations)
+        6. CHILDREN DIED INFANCY: Extract numbers from phrases like "Lapsena kuollut 3"
         
-        Text:
+        SYMBOL MEANINGS:
+        - ★ = Birth date (format: "22.12.1701")
+        - † = Death date (format: "27.05.1764")  
+        - ∞ = Marriage information
+        - {Family ID} = asChild reference (where person was born)
+        - Family ID after child = asParent reference (where person became parent)
+        - <ID> = FamilySearch ID
+        - *) **) etc. = Note markers
+        
+        MARRIAGE DATE HANDLING:
+        - If marriage date is 2 digits (e.g., "48"), put in "marriageDate"
+        - If full date (e.g., "28.11.1725"), put in "fullMarriageDate"
+        - If both formats exist, use the full date in "fullMarriageDate"
+        
+        Family record to parse:
         \(familyText)
         
-        Return a JSON object with this exact structure:
+        Return a JSON object with this exact structure that matches the Swift Family struct:
         {
           "familyId": "string",
           "pageReferences": ["string"],
-          "father": { person object or null },
-          "mother": { person object or null },
-          "additionalSpouses": [array of person objects],
-          "children": [array of person objects],
+          "couples": [
+            {
+              "husband": { ... } or null,
+              "wife": { ... } or null,
+              "marriageDate": "string or null",
+              "children": [{ ... }]
+            }
+          ],
           "notes": ["string"],
-          "childrenDiedInfancy": number
+          "noteDefinitions": {"marker": "definition"} or null
         }
         
-        Person object structure:
+        Person object structure (matches Swift Person struct):
         {
           "name": "string",
           "patronymic": "string or null",
           "birthDate": "string or null",
           "deathDate": "string or null",
           "marriageDate": "string or null",
+          "fullMarriageDate": "string or null",
           "spouse": "string or null",
-          "asChildReference": "string or null",
-          "asParentReference": "string or null",
+          "asChild": "string or null",
+          "asParent": "string or null",
           "familySearchId": "string or null",
-          "noteMarkers": ["string"],
+          "noteMarkers": ["string"] or null,
           "fatherName": "string or null",
           "motherName": "string or null",
-          "fullMarriageDate": "string or null",
           "spouseBirthDate": "string or null",
           "spouseParentsFamilyId": "string or null"
+        }
+        
+        EXAMPLES:
+        Input: "★ 18.06.1732 Juho Paavalinp. <L71Z-4G1> {Haapaniemi 3} † 04.04.1809"
+        Output: {
+          "name": "Juho",
+          "patronymic": "Paavalinp.",
+          "birthDate": "18.06.1732",
+          "deathDate": "04.04.1809",
+          "familySearchId": "L71Z-4G1",
+          "asChild": "Haapaniemi 3"
+        }
+        
+        Input: "★ 03.03.1759 Antti ∞ 78 Malin Korpi Korvela 3"
+        Output: {
+          "name": "Antti",
+          "birthDate": "03.03.1759",
+          "marriageDate": "78",
+          "spouse": "Malin Korpi",
+          "asParent": "Korvela 3"
         }
         """
         
         let requestBody: [String: Any] = [
-            "model": "deepseek-chat" as String,
+            "model": "deepseek-chat",
             "messages": [
-                ["role": "system" as String, "content": "You are a genealogy expert. Extract information and return ONLY valid JSON." as String] as [String: String],
-                ["role": "user" as String, "content": prompt as String] as [String: String]
-            ] as [[String: String]],
-            "temperature": 0.1 as Double,
-            "max_tokens": 4000 as Int
+                ["role": "system", "content": "You are a Finnish genealogy data extraction expert. Return ONLY valid JSON with no additional text."],
+                ["role": "user", "content": prompt]
+            ],
+            "temperature": 0.1,
+            "max_tokens": 4000
         ]
         
         guard let url = URL(string: baseURL) else {
@@ -182,13 +214,20 @@ class DeepSeekService: AIService {
     
     private func cleanJSONResponse(_ response: String) -> String {
         var cleaned = response
-        if cleaned.contains("```json") {
-            cleaned = cleaned.replacingOccurrences(of: "```json", with: "")
-            cleaned = cleaned.replacingOccurrences(of: "```", with: "")
+        // Remove any markdown code blocks
+        cleaned = cleaned.replacingOccurrences(of: "```json", with: "")
+        cleaned = cleaned.replacingOccurrences(of: "```", with: "")
+        
+        // Remove any explanatory text before or after JSON
+        if let jsonStart = cleaned.firstIndex(of: "{"),
+           let jsonEnd = cleaned.lastIndex(of: "}") {
+            cleaned = String(cleaned[jsonStart...jsonEnd])
         }
+        
         return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
+
 
 // MARK: - Mock AI Service (For Testing Only)
 
