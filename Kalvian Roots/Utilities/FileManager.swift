@@ -254,16 +254,6 @@ class FileManager {
                 
                 logInfo(.file, "🎉 Successfully auto-loaded canonical file")
                 
-                // NEW: Log the first 1000 characters
-                if let content = currentFileContent {
-                    let preview = String(content.prefix(700))
-                    logInfo(.file, "📄 First 700 characters of file:")
-                    logInfo(.file, "=====================================")
-                    print(preview) // Direct print to see it clearly in console
-                    logInfo(.file, "=====================================")
-                    logInfo(.file, "Total file size: \(content.count) characters")
-                }
-     
             } catch {
                 logError(.file, "❌ Failed to auto-load file: \(error)")
             }
