@@ -5,13 +5,6 @@
 //  Created by Michael Bendio on 8/31/25.
 //
 
-//
-//  AIServiceError.swift
-//  Kalvian Roots
-//
-//  Complete error definitions for AI services
-//
-
 import Foundation
 
 // MARK: - AI Service Errors

@@ -1,4 +1,4 @@
-// MARK: - DeepSeek Service
+// DeepSeekService.swift - Improved version with better multiple spouse handling
 
 import Foundation
 
@@ -10,7 +10,7 @@ protocol AIService {
     func parseFamily(familyId: String, familyText: String) async throws -> String
 }
 
-// MARK: - DeepSeek Service
+// MARK: - DeepSeek Service with Improved Prompt
 class DeepSeekService: AIService {
     let name = "DeepSeek"
     private var apiKey: String?
@@ -96,25 +96,44 @@ class DeepSeekService: AIService {
         1. FAMILY ID: Extract the main family identifier (e.g., "PIENI-PORKOLA 5")
         2. PAGE REFERENCES: Extract all page numbers from format like "page 268-269" as ["268", "269"]
         
-        3. COUPLES STRUCTURE - CRITICAL FOR CORRECT PARSING:
+        3. COUPLES STRUCTURE - INTELLIGENT SPOUSE DETERMINATION:
            - The PRIMARY COUPLE is the first couple listed (primary husband + primary wife)
-           - "II puoliso" or "III puoliso" means ADDITIONAL WIFE for the SAME HUSBAND
-           - Create separate couple entries but REUSE THE SAME HUSBAND for each additional spouse
-           - Children listed after "Lapset" belong to the most recent couple mentioned
+           - "II puoliso" or "III puoliso" means ADDITIONAL SPOUSE for the surviving partner
+           
+           CRITICAL LOGIC FOR DETERMINING WHO REMARRIED:
+           a) Check death dates:
+              - If HUSBAND died before the additional spouse's marriage → WIFE remarried (keep same wife, new husband)
+              - If WIFE died before the additional spouse's marriage → HUSBAND remarried (keep same husband, new wife)
+           b) If no death date is available, look for contextual clues:
+              - "leski" (widow/widower) indicates who survived
+              - Position in text and children's dates can provide hints
+           c) Default only if no information: assume husband remarried
         
-        4. MULTIPLE SPOUSES HANDLING:
-           Example family structure:
-           - Husband: Matti (primary)
-           - Wife 1: Malin (primary wife)
-           - Their children...
-           - "II puoliso" → Wife 2: Maria (Matti's second wife)
-           - Their children...
+        4. MULTIPLE SPOUSES HANDLING EXAMPLES:
            
-           This should produce TWO couples:
-           Couple 1: {husband: Matti, wife: Malin, children: [...]}
-           Couple 2: {husband: Matti, wife: Maria, children: [...]}
+           Example 1 - Husband dies, wife remarries:
+           ★ 1726 Jaakko Jaakonp. † 1735
+           ★ 1700 Malin Matint. † 1771
+           ∞ 1724
+           II puoliso
+           ★ 1689 Erik Jaakonp. † 1778
+           ∞ 1736
            
-           NEVER create "Unknown Father" for additional spouses!
+           Creates TWO couples:
+           Couple 1: {husband: Jaakko (d.1735), wife: Malin, marriage: 1724}
+           Couple 2: {husband: Erik, wife: Malin (same), marriage: 1736}
+           
+           Example 2 - Wife dies, husband remarries:
+           ★ 1726 Jaakko Jaakonp. † 1789
+           ★ 1733 Maria Jaakont. † 1753
+           ∞ 1752
+           II puoliso
+           ★ 1732 Brita Eliant. † 1767
+           ∞ 1754
+           
+           Creates TWO couples:
+           Couple 1: {husband: Jaakko, wife: Maria (d.1753), marriage: 1752}
+           Couple 2: {husband: Jaakko (same), wife: Brita, marriage: 1754}
         
         5. CHILDREN: The "Lapset" section contains children for the current couple
         6. NOTES: Extract general notes and note definitions
@@ -179,39 +198,14 @@ class DeepSeekService: AIService {
           "childrenDiedInfancy": number or null
         }
         
-        IMPORTANT EXAMPLES FOR MULTIPLE SPOUSES:
+        DECISION TREE FOR ADDITIONAL SPOUSES:
+        1. Is there a death date for primary husband before additional marriage? → Wife remarried (new husband)
+        2. Is there a death date for primary wife before additional marriage? → Husband remarried (new wife)
+        3. Does text say "[name] leski" (widow/widower)? → That person is the survivor who remarried
+        4. Are there contextual date clues? → Use them to determine who survived
+        5. Only if no information available → Default to husband remarried (but try to avoid this)
         
-        Input text with "II puoliso":
-        ★ 1708 Matti Olavinp. † 07.04.1766
-        ★ 1698 Malin Erikint. † 29.01.1757
-        ∞ 28.05.1728
-        Lapset
-        ★ 03.05.1733 Magdaleena
-        II puoliso
-        ★ 14.01.1726 Maria Henrikint. † 12.09.1805
-        ∞ 24.07.1757
-        Lapset
-        ★ 06.05.1759 Erik
-        
-        Correct output couples array:
-        "couples": [
-          {
-            "husband": {"name": "Matti", "patronymic": "Olavinp.", "birthDate": "1708", "deathDate": "07.04.1766"},
-            "wife": {"name": "Malin", "patronymic": "Erikint.", "birthDate": "1698", "deathDate": "29.01.1757"},
-            "marriageDate": null,
-            "fullMarriageDate": "28.05.1728",
-            "children": [{"name": "Magdaleena", "birthDate": "03.05.1733"}]
-          },
-          {
-            "husband": {"name": "Matti", "patronymic": "Olavinp.", "birthDate": "1708", "deathDate": "07.04.1766"},
-            "wife": {"name": "Maria", "patronymic": "Henrikint.", "birthDate": "14.01.1726", "deathDate": "12.09.1805"},
-            "marriageDate": null,
-            "fullMarriageDate": "24.07.1757",
-            "children": [{"name": "Erik", "birthDate": "06.05.1759"}]
-          }
-        ]
-        
-        NEVER create an "Unknown Father" - always reuse the primary husband for additional spouses!
+        ALWAYS analyze the dates to determine the correct couple structure!
         """
         
         let requestBody: [String: Any] = [
@@ -256,68 +250,3 @@ class DeepSeekService: AIService {
         return content
     }
 }
-
-// MARK: - Mock AI Service (For Testing Only)
-
-/**
- * Mock AI service for testing without API calls
- */
-class MockAIService: AIService {
-    let name = "Mock AI"
-    let isConfigured = true
-    
-    func configure(apiKey: String) throws {
-        // No-op for mock service
-    }
-    
-    func parseFamily(familyId: String, familyText: String) async throws -> String {
-        // Simulate processing delay
-        try await Task.sleep(nanoseconds: 500_000_000)
-        
-        // Return a simple test response
-        return """
-        {
-          "familyId": "\(familyId)",
-          "pageReferences": ["999"],
-          "father": {
-            "name": "Test Father",
-            "birthDate": "01.01.1700",
-            "deathDate": "31.12.1780",
-            "noteMarkers": []
-          },
-          "mother": {
-            "name": "Test Mother",
-            "birthDate": "01.01.1705",
-            "deathDate": "31.12.1785",
-            "noteMarkers": []
-          },
-          "additionalSpouses": [],
-          "children": [
-            {
-              "name": "Test Child",
-              "birthDate": "01.01.1730",
-              "noteMarkers": []
-            }
-          ],
-          "notes": ["Mock data for testing"],
-          "childrenDiedInfancy": 0
-        }
-        """
-    }
-}
-
-// MARK: - Helper Extension for iCloud Availability
-
-extension NSUbiquitousKeyValueStore {
-    static var isAvailable: Bool {
-        // Use Foundation.FileManager explicitly to avoid conflict with custom FileManager class
-        if Foundation.FileManager.default.ubiquityIdentityToken != nil {
-            return true
-        }
-        return false
-    }
-}
-
-// Note: When a suitable local AI becomes available (like an improved MLX model
-// or a Finnish-optimized LLM), you can add it here. For now, DeepSeek provides
-// excellent accuracy for Finnish genealogical data at a reasonable cost.

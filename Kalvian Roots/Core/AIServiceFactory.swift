@@ -24,9 +24,6 @@ class AIServiceFactory {
         // Primary service: DeepSeek
         services.append(DeepSeekService())
         
-        // Mock service for testing
-        services.append(MockAIService())
-        
         // Check for MLX services (for future local AI)
         #if os(macOS) && arch(arm64)
         // When a good local model becomes available, add it here
