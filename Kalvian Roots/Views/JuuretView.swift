@@ -192,7 +192,7 @@ struct JuuretView: View {
     
     private var familyInputSection: some View {
         VStack(spacing: 16) {
-            Text("Extract Family")
+            Text("Citations for")
                 .font(.genealogyHeadline)
                 .foregroundColor(.primary)
             
@@ -211,7 +211,7 @@ struct JuuretView: View {
                 Button(action: extractFamily) {
                     HStack {
                         Image(systemName: "magnifyingglass")
-                        Text("Extract Family")
+                        Text("Citations for")
                     }
                     .font(.genealogySubheadline)
                     .fontWeight(.medium)
@@ -231,7 +231,7 @@ struct JuuretView: View {
                         extractFamily()
                     }
                 
-                Button("Extract Family") {
+                Button("Generate") {
                     extractFamily()
                 }
                 .buttonStyle(.borderedProminent)
