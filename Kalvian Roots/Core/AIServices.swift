@@ -1,5 +1,6 @@
-import Foundation
+// MARK: - DeepSeek Service
 
+import Foundation
 
 // MARK: - AIService Protocol
 protocol AIService {
@@ -9,7 +10,7 @@ protocol AIService {
     func parseFamily(familyId: String, familyText: String) async throws -> String
 }
 
-// MARK: - DeepSeek Service with Improved Prompt
+// MARK: - DeepSeek Service
 class DeepSeekService: AIService {
     let name = "DeepSeek"
     private var apiKey: String?
@@ -85,7 +86,7 @@ class DeepSeekService: AIService {
         
         logInfo(.ai, "🤖 DeepSeek parsing family: \(familyId)")
         
-        // IMPROVED PROMPT that matches your existing Family and Person structs
+        // IMPROVED PROMPT with better multiple spouse handling
         let prompt = """
         You are a Finnish genealogy expert. Extract structured data from this family record and return ONLY a valid JSON object.
         
@@ -94,82 +95,123 @@ class DeepSeekService: AIService {
         EXTRACTION RULES:
         1. FAMILY ID: Extract the main family identifier (e.g., "PIENI-PORKOLA 5")
         2. PAGE REFERENCES: Extract all page numbers from format like "page 268-269" as ["268", "269"]
-        3. COUPLES: The first couple listed are the primary parents. Additional sections with "II puoliso", "III puoliso" indicate additional couples
-        4. CHILDREN: The "Lapset" section contains children. Children belong to the most recent couple mentioned
-        5. NOTES: Extract general notes and note definitions (markers like "*)" with their explanations)
-        6. CHILDREN DIED INFANCY: Extract numbers from phrases like "Lapsena kuollut 3"
+        
+        3. COUPLES STRUCTURE - CRITICAL FOR CORRECT PARSING:
+           - The PRIMARY COUPLE is the first couple listed (primary husband + primary wife)
+           - "II puoliso" or "III puoliso" means ADDITIONAL WIFE for the SAME HUSBAND
+           - Create separate couple entries but REUSE THE SAME HUSBAND for each additional spouse
+           - Children listed after "Lapset" belong to the most recent couple mentioned
+        
+        4. MULTIPLE SPOUSES HANDLING:
+           Example family structure:
+           - Husband: Matti (primary)
+           - Wife 1: Malin (primary wife)
+           - Their children...
+           - "II puoliso" → Wife 2: Maria (Matti's second wife)
+           - Their children...
+           
+           This should produce TWO couples:
+           Couple 1: {husband: Matti, wife: Malin, children: [...]}
+           Couple 2: {husband: Matti, wife: Maria, children: [...]}
+           
+           NEVER create "Unknown Father" for additional spouses!
+        
+        5. CHILDREN: The "Lapset" section contains children for the current couple
+        6. NOTES: Extract general notes and note definitions
+        7. CHILDREN DIED INFANCY: Extract from "Lapsena kuollut X"
         
         SYMBOL MEANINGS:
-        - ★ = Birth date (format: "22.12.1701")
-        - † = Death date (format: "27.05.1764")  
+        - ★ = Birth date
+        - † = Death date  
         - ∞ = Marriage information
-        - {Family ID} = asChild reference (where person was born)
-        - Family ID after child = asParent reference (where person became parent)
+        - {Family ID} = asChild reference
+        - Family ID after child = asParent reference
         - <ID> = FamilySearch ID
-        - *) **) etc. = Note markers
+        - *) **) = Note markers
         
         MARRIAGE DATE HANDLING:
-        - If marriage date is 2 digits (e.g., "48"), put in "marriageDate"
-        - If full date (e.g., "28.11.1725"), put in "fullMarriageDate"
-        - If both formats exist, use the full date in "fullMarriageDate"
+        - 2 digits (e.g., "48") → "marriageDate"
+        - Full date (e.g., "28.11.1725") → "fullMarriageDate"
         
         Family record to parse:
         \(familyText)
         
-        Return a JSON object with this exact structure that matches the Swift Family struct:
+        Return JSON with this structure:
         {
           "familyId": "string",
           "pageReferences": ["string"],
           "couples": [
             {
-              "husband": { ... } or null,
-              "wife": { ... } or null,
+              "husband": {
+                "name": "string",
+                "patronymic": "string or null",
+                "birthDate": "string or null",
+                "deathDate": "string or null",
+                "asChild": "string or null",
+                "familySearchId": "string or null"
+              },
+              "wife": {
+                "name": "string",
+                "patronymic": "string or null",
+                "birthDate": "string or null",
+                "deathDate": "string or null",
+                "asChild": "string or null",
+                "familySearchId": "string or null"
+              },
               "marriageDate": "string or null",
-              "children": [{ ... }]
+              "fullMarriageDate": "string or null",
+              "children": [
+                {
+                  "name": "string",
+                  "birthDate": "string or null",
+                  "deathDate": "string or null",
+                  "marriageDate": "string or null",
+                  "spouse": "string or null",
+                  "asParent": "string or null",
+                  "familySearchId": "string or null"
+                }
+              ],
+              "childrenDiedInfancy": number or null
             }
           ],
           "notes": ["string"],
-          "noteDefinitions": {"marker": "definition"} or null
+          "noteDefinitions": {"marker": "definition"} or null,
+          "childrenDiedInfancy": number or null
         }
         
-        Person object structure (matches Swift Person struct):
-        {
-          "name": "string",
-          "patronymic": "string or null",
-          "birthDate": "string or null",
-          "deathDate": "string or null",
-          "marriageDate": "string or null",
-          "fullMarriageDate": "string or null",
-          "spouse": "string or null",
-          "asChild": "string or null",
-          "asParent": "string or null",
-          "familySearchId": "string or null",
-          "noteMarkers": ["string"] or null,
-          "fatherName": "string or null",
-          "motherName": "string or null",
-          "spouseBirthDate": "string or null",
-          "spouseParentsFamilyId": "string or null"
-        }
+        IMPORTANT EXAMPLES FOR MULTIPLE SPOUSES:
         
-        EXAMPLES:
-        Input: "★ 18.06.1732 Juho Paavalinp. <L71Z-4G1> {Haapaniemi 3} † 04.04.1809"
-        Output: {
-          "name": "Juho",
-          "patronymic": "Paavalinp.",
-          "birthDate": "18.06.1732",
-          "deathDate": "04.04.1809",
-          "familySearchId": "L71Z-4G1",
-          "asChild": "Haapaniemi 3"
-        }
+        Input text with "II puoliso":
+        ★ 1708 Matti Olavinp. † 07.04.1766
+        ★ 1698 Malin Erikint. † 29.01.1757
+        ∞ 28.05.1728
+        Lapset
+        ★ 03.05.1733 Magdaleena
+        II puoliso
+        ★ 14.01.1726 Maria Henrikint. † 12.09.1805
+        ∞ 24.07.1757
+        Lapset
+        ★ 06.05.1759 Erik
         
-        Input: "★ 03.03.1759 Antti ∞ 78 Malin Korpi Korvela 3"
-        Output: {
-          "name": "Antti",
-          "birthDate": "03.03.1759",
-          "marriageDate": "78",
-          "spouse": "Malin Korpi",
-          "asParent": "Korvela 3"
-        }
+        Correct output couples array:
+        "couples": [
+          {
+            "husband": {"name": "Matti", "patronymic": "Olavinp.", "birthDate": "1708", "deathDate": "07.04.1766"},
+            "wife": {"name": "Malin", "patronymic": "Erikint.", "birthDate": "1698", "deathDate": "29.01.1757"},
+            "marriageDate": null,
+            "fullMarriageDate": "28.05.1728",
+            "children": [{"name": "Magdaleena", "birthDate": "03.05.1733"}]
+          },
+          {
+            "husband": {"name": "Matti", "patronymic": "Olavinp.", "birthDate": "1708", "deathDate": "07.04.1766"},
+            "wife": {"name": "Maria", "patronymic": "Henrikint.", "birthDate": "14.01.1726", "deathDate": "12.09.1805"},
+            "marriageDate": null,
+            "fullMarriageDate": "24.07.1757",
+            "children": [{"name": "Erik", "birthDate": "06.05.1759"}]
+          }
+        ]
+        
+        NEVER create an "Unknown Father" - always reuse the primary husband for additional spouses!
         """
         
         let requestBody: [String: Any] = [
@@ -205,29 +247,15 @@ class DeepSeekService: AIService {
         guard let choices = json?["choices"] as? [[String: Any]],
               let message = choices.first?["message"] as? [String: Any],
               let content = message["content"] as? String else {
-            throw AIServiceError.invalidResponse("No content in DeepSeek response")
+            throw AIServiceError.invalidResponse("Invalid response structure")
         }
         
         logInfo(.ai, "✅ DeepSeek successfully returned response")
-        return cleanJSONResponse(content)
-    }
-    
-    private func cleanJSONResponse(_ response: String) -> String {
-        var cleaned = response
-        // Remove any markdown code blocks
-        cleaned = cleaned.replacingOccurrences(of: "```json", with: "")
-        cleaned = cleaned.replacingOccurrences(of: "```", with: "")
+        logTrace(.ai, "Raw response: \(content.prefix(500))...")
         
-        // Remove any explanatory text before or after JSON
-        if let jsonStart = cleaned.firstIndex(of: "{"),
-           let jsonEnd = cleaned.lastIndex(of: "}") {
-            cleaned = String(cleaned[jsonStart...jsonEnd])
-        }
-        
-        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        return content
     }
 }
-
 
 // MARK: - Mock AI Service (For Testing Only)
 

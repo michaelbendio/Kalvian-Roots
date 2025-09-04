@@ -1,3 +1,5 @@
+// CitationGenerator.swift
+
 import Foundation
 
 /**
@@ -17,30 +19,19 @@ struct CitationGenerator {
     static func generateMainFamilyCitation(family: Family) -> String {
         var citation = "Information on \(family.pageReferenceString) includes:\n"
         
-        // Parents information with marriage date (from primary couple)
+        // Primary couple with compact date format
         if let father = family.father {
-            citation += formatParent(father)
+            citation += formatParentCompact(father) + "\n"
         }
         
         if let mother = family.mother {
-            citation += formatParent(mother)
+            citation += formatParentCompact(mother) + "\n"
         }
         
         // Marriage date for primary couple
         if let primaryCouple = family.primaryCouple,
            let marriageDate = primaryCouple.marriageDate {
             citation += "m \(normalizeDate(marriageDate))\n"
-        }
-        
-        // FIXED: Additional spouses (couples beyond the first)
-        if family.couples.count > 1 {
-            citation += "\nAdditional spouse(s):\n"
-            for couple in family.couples.dropFirst() {
-                citation += formatParent(couple.wife)
-                if let marriageDate = couple.marriageDate {
-                    citation += "m \(normalizeDate(marriageDate))\n"
-                }
-            }
         }
         
         // Children from primary couple
@@ -51,34 +42,46 @@ struct CitationGenerator {
             }
         }
         
-        // Children from additional couples
-        for (index, couple) in family.couples.dropFirst().enumerated() {
-            if !couple.children.isEmpty {
-                citation += "Children with spouse \(index + 2):\n"
-                for child in couple.children {
-                    citation += formatChild(child)
+        // Additional spouses - properly formatted
+        if family.couples.count > 1 {
+            for couple in family.couples.dropFirst() {
+                citation += "Additional spouse:\n"
+                citation += formatParentCompact(couple.wife) + "\n"
+                if let marriageDate = couple.marriageDate {
+                    citation += "m \(normalizeDate(marriageDate))\n"
+                }
+                
+                // Children with this spouse
+                if !couple.children.isEmpty {
+                    citation += "Children:\n"
+                    for child in couple.children {
+                        citation += formatChild(child)
+                    }
                 }
             }
         }
         
-        // Notes
+        // Notes section with proper formatting
         if !family.notes.isEmpty {
-            citation += "\nNotes:\n"
+            citation += "Note(s):\n"
             for note in family.notes {
-                citation += "• \(note)\n"
+                citation += "\(note)\n"
             }
         }
         
-        // Child mortality
+        // Child mortality - formatted on its own line
         if let childrenDied = family.childrenDiedInfancy, childrenDied > 0 {
-            citation += "Children died in infancy: \(childrenDied)\n"
+            if family.notes.isEmpty {
+                citation += "Note(s):\n"
+            }
+            citation += "Children died as infants: \(childrenDied)\n"
         }
         
         return citation
     }
 
     /**
-     * Generate as_child citation for  the  person in their parents' family
+     * Generate as_child citation for the person in their parents' family
      * Includes additional information from the person's asParent family if available
      *
      * @param person The person who appears as a child in this family
@@ -92,12 +95,12 @@ struct CitationGenerator {
     ) -> String {
         var citation = "Information on \(asChildFamily.pageReferenceString) includes:\n"
         
-        // Parents
+        // Parents with compact format
         if let father = asChildFamily.father {
-            citation += formatParent(father)
+            citation += formatParentCompact(father) + "\n"
         }
         if let mother = asChildFamily.mother {
-            citation += formatParent(mother)
+            citation += formatParentCompact(mother) + "\n"
         }
         
         // Marriage date for primary couple
@@ -106,41 +109,62 @@ struct CitationGenerator {
             citation += "m \(normalizeDate(marriageDate))\n"
         }
         
-        if asChildFamily.couples.count > 1 {
-            citation += "\nAdditional spouse(s):\n"
-            for couple in asChildFamily.couples.dropFirst() {
-                citation += formatParent(couple.wife)
-                if let marriageDate = couple.marriageDate {
-                    citation += "m \(normalizeDate(marriageDate))\n"
+        // Children from primary couple
+        if !asChildFamily.children.isEmpty {
+            citation += "Children:\n"
+            for child in asChildFamily.children {
+                let isTarget = isTargetPerson(child, person)
+                let prefix = isTarget ? "--> " : ""  // Changed arrow style
+                
+                // For the target person, try to enhance with asParent information
+                if isTarget, let network = network {
+                    citation += "\(prefix)\(formatChildWithEnhancement(child, person: person, network: network))"
+                } else {
+                    citation += "\(prefix)\(formatChild(child))"
                 }
             }
         }
         
-        // Children with target person highlighted - enhanced with additional dates if available
-        citation += "Children:\n"
-        for child in asChildFamily.children {
-            let isTarget = isTargetPerson(child, person)
-            let prefix = isTarget ? "→ " : "  "
-            
-            // For the target person, try to enhance with asParent information
-            if isTarget, let network = network {
-                citation += "\(prefix)\(formatChildWithEnhancement(child, person: person, network: network))"
-            } else {
-                citation += "\(prefix)\(formatChild(child))"
+        // Additional spouses properly formatted
+        if asChildFamily.couples.count > 1 {
+            for couple in asChildFamily.couples.dropFirst() {
+                citation += "Additional spouse:\n"
+                citation += formatParentCompact(couple.wife) + "\n"
+                if let marriageDate = couple.marriageDate {
+                    citation += "m \(normalizeDate(marriageDate))\n"
+                }
+                
+                // Children with this spouse
+                if !couple.children.isEmpty {
+                    citation += "Children:\n"
+                    for child in couple.children {
+                        let isTarget = isTargetPerson(child, person)
+                        let prefix = isTarget ? "--> " : ""
+                        
+                        if isTarget, let network = network {
+                            citation += "\(prefix)\(formatChildWithEnhancement(child, person: person, network: network))"
+                        } else {
+                            citation += "\(prefix)\(formatChild(child))"
+                        }
+                    }
+                }
             }
         }
         
-        // Notes
+        // Notes section
         if !asChildFamily.notes.isEmpty {
-            citation += "\nNotes:\n"
+            citation += "Note(s):\n"
             for note in asChildFamily.notes {
-                citation += "• \(note)\n"
+                citation += "\(note)\n"
             }
         }
         
         // Child mortality
         if let childrenDied = asChildFamily.childrenDiedInfancy, childrenDied > 0 {
-            citation += "Children died in infancy: \(childrenDied)\n"
+            if asChildFamily.notes.isEmpty {
+                citation += "Note(s):\n"
+            }
+            citation += "Children died as infants: \(childrenDied)\n"
         }
         
         // Additional Information section for the target person's asParent family
@@ -150,48 +174,18 @@ struct CitationGenerator {
                                  network.asParentFamilies[person.name]
             
             if let asParentFamily = asParentFamily {
-                var additionalInfo: [String] = []
+                // Collect additional info that was found
+                let additionalInfo = collectAdditionalDateInfo(
+                    nuclearChild: person,
+                    asParent: asParentFamily.allParents.first { $0.name.lowercased() == person.name.lowercased() }
+                )
                 
-                // For parents, we need to check if their death date exists in the asParent family
-                // but NOT in the asChild family they're currently being cited in
-                
-                // Find this person as a child in the current asChild family
-                let personAsChildInThisFamily = asChildFamily.children.first { child in
-                    child.name.lowercased() == person.name.lowercased()
-                }
-                
-                // Find the person in their asParent family
-                let personAsParent = asParentFamily.allParents.first { parent in
-                    parent.name.lowercased() == person.name.lowercased()
-                }
-                
-                // Check for death date that's in asParent but not in asChild
-                if personAsChildInThisFamily?.deathDate == nil && personAsParent?.deathDate != nil {
-                    additionalInfo.append("death date")
-                }
-                
-                // Check for marriage date enhancement
-                let hasFullMarriageInAsParent =
-                    (personAsParent?.fullMarriageDate != nil) ||
-                    (personAsParent?.marriageDate != nil && personAsParent!.marriageDate!.count >= 8) ||
-                    (asParentFamily.primaryCouple?.marriageDate != nil && asParentFamily.primaryCouple!.marriageDate!.count >= 8)
-                
-                let hasOnlyPartialInAsChild =
-                    personAsChildInThisFamily?.fullMarriageDate == nil &&
-                    (personAsChildInThisFamily?.marriageDate == nil || personAsChildInThisFamily!.marriageDate!.count <= 4)
-                
-                if hasFullMarriageInAsParent && hasOnlyPartialInAsChild {
-                    additionalInfo.append("marriage date")
-                }
-                
-                // Format the Additional Information section
                 if !additionalInfo.isEmpty {
                     citation += "Additional Information:\n"
-                    
-                    // Format based on what we found
                     let personName = person.name
+                    
+                    // Format based on what additional information was found
                     if additionalInfo.count == 2 {
-                        // Both marriage and death dates
                         citation += "\(personName)'s marriage date and death date found on \(asParentFamily.pageReferenceString)\n"
                     } else if additionalInfo.contains("marriage date") {
                         citation += "\(personName)'s marriage date found on \(asParentFamily.pageReferenceString)\n"
@@ -221,64 +215,89 @@ struct CitationGenerator {
                             network.asParentFamilies[lookupPerson.displayName] ??
                             network.asParentFamilies[lookupPerson.name]
         
+        // Try to enhance the child with dates from asParent family
         if let asParentFamily = asParentFamily {
-            // Find this person as a parent in their asParent family
-            if let personAsParent = asParentFamily.allParents.first(where: {
+            if let parentInAsParentFamily = asParentFamily.allParents.first(where: {
                 $0.name.lowercased() == lookupPerson.name.lowercased()
             }) {
-                // Enhance with death date if missing
-                if enhancedChild.deathDate == nil && personAsParent.deathDate != nil {
-                    enhancedChild.deathDate = personAsParent.deathDate
+                // Add death date if missing
+                if enhancedChild.deathDate == nil && parentInAsParentFamily.deathDate != nil {
+                    enhancedChild.deathDate = parentInAsParentFamily.deathDate
                 }
                 
-                // Enhance with marriage date - check ALL sources
-                if enhancedChild.fullMarriageDate == nil {
-                    if let fullDate = personAsParent.fullMarriageDate {
-                        enhancedChild.fullMarriageDate = fullDate
-                    } else if let marriageDate = personAsParent.marriageDate,
-                              marriageDate.count >= 8 {
-                        enhancedChild.fullMarriageDate = marriageDate
-                    } else if let coupleMarriage = asParentFamily.primaryCouple?.marriageDate,
-                              coupleMarriage.count >= 8 {
-                        enhancedChild.fullMarriageDate = coupleMarriage
-                    }
-                }
-                
-                // Get spouse name if not already present
-                if enhancedChild.spouse == nil || enhancedChild.spouse!.isEmpty {
-                    enhancedChild.spouse = personAsParent.spouse
+                // Add full marriage date if only partial exists
+                if enhancedChild.fullMarriageDate == nil &&
+                   parentInAsParentFamily.fullMarriageDate != nil {
+                    enhancedChild.fullMarriageDate = parentInAsParentFamily.fullMarriageDate
                 }
             }
         }
         
-        // Format the enhanced child with all dates
-        var line = child.name
+        // Format the enhanced child with compact date format for target person
+        var line = enhancedChild.name
         
-        if let birthDate = enhancedChild.birthDate {
+        // Compact format: birth - death, then marriage
+        if let birthDate = enhancedChild.birthDate, let deathDate = enhancedChild.deathDate {
+            line += " \(normalizeDate(birthDate)) - \(normalizeDate(deathDate))"
+        } else if let birthDate = enhancedChild.birthDate {
             line += ", b \(normalizeDate(birthDate))"
-        }
-        
-        if let spouse = enhancedChild.spouse, !spouse.isEmpty {
-            if let fullMarriage = enhancedChild.fullMarriageDate {
-                line += ", m \(spouse) \(normalizeDate(fullMarriage))"
-            } else if let marriageDate = enhancedChild.marriageDate {
-                line += ", m \(spouse) \(extractMarriageYear(from: enhancedChild) ?? marriageDate)"
-            } else {
-                line += ", m \(spouse)"
-            }
-        }
-        
-        if let deathDate = enhancedChild.deathDate {
+        } else if let deathDate = enhancedChild.deathDate {
             line += ", d \(normalizeDate(deathDate))"
         }
         
+        // Marriage info after dates
+        if let spouse = enhancedChild.spouse, !spouse.isEmpty {
+            line += ", m \(spouse)"
+            if let fullMarriage = enhancedChild.fullMarriageDate {
+                line += " \(normalizeDate(fullMarriage))"
+            } else if let marriageDate = enhancedChild.marriageDate {
+                let marriageYear = extractMarriageYear(from: enhancedChild)
+                if let year = marriageYear {
+                    line += " \(year)"
+                } else {
+                    line += " \(marriageDate)"
+                }
+            }
+        }
+        
+        line += "\n"
         return line
     }
 
     // MARK: - Formatting Helpers
     
     /**
-     * Format parent with birth and death dates
+     * Format parent with compact birth-death format
+     */
+    private static func formatParentCompact(_ person: Person) -> String {
+        var line = person.displayName + ", "
+        
+        // Use compact format: birth - death or just individual dates
+        if let birthDate = person.birthDate, let deathDate = person.deathDate {
+            // Full dates: use dash format
+            line += "\(extractCompactDate(birthDate)) - \(normalizeDate(deathDate))"
+        } else if let birthDate = person.birthDate {
+            line += "\(extractCompactDate(birthDate))"
+        } else if let deathDate = person.deathDate {
+            line += "d \(normalizeDate(deathDate))"
+        }
+        
+        return line
+    }
+    
+    /**
+     * Extract compact date (year only for birth dates, full for death dates)
+     */
+    private static func extractCompactDate(_ date: String) -> String {
+        // For birth dates in parent section, just show year
+        if let year = extractYear(from: date) {
+            return year
+        }
+        return normalizeDate(date)
+    }
+    
+    /**
+     * Format parent with birth and death dates (original style for backward compatibility)
      */
     private static func formatParent(_ person: Person) -> String {
         var line = person.displayName
@@ -291,6 +310,7 @@ struct CitationGenerator {
             line += ", d \(normalizeDate(deathDate))"
         }
         
+        line += "\n"
         return line
     }
     
@@ -425,12 +445,48 @@ struct CitationGenerator {
         
         return nameMatch && (birthMatch || child.birthDate == nil || target.birthDate == nil)
     }
+    
+    // MARK: - Helper Methods for Supplements
+    
+    private static func collectAdditionalDateInfo(
+        nuclearChild: Person,
+        asParent: Person?
+    ) -> [String] {
+        guard let asParent = asParent else { return [] }
+        
+        var additions: [String] = []
+        
+        // Death date - only in asParent family, not in nuclear family
+        if asParent.deathDate != nil && nuclearChild.deathDate == nil {
+            additions.append("death date")
+        }
+        
+        // Marriage date - full 8-digit date in asParent vs 2-digit in nuclear
+        if let fullMarriageDate = asParent.fullMarriageDate,
+           let nuclearMarriageDate = nuclearChild.marriageDate,
+           fullMarriageDate.count > nuclearMarriageDate.count + 2 { // Allow some tolerance
+            additions.append("marriage date")
+        }
+        
+        return additions
+    }
+    
+    private static func formatDateAdditions(_ additions: [String]) -> String {
+        switch additions.count {
+        case 0: return ""
+        case 1: return additions[0] + " is"
+        case 2: return "marriage and death dates are"
+        default: return additions.joined(separator: " and ") + " are"
+        }
+    }
 }
+
+// MARK: - Extensions
 
 extension CitationGenerator {
     
     /**
-     * Generate enhanced nuclear family citation with cross-reference supplements
+     * Generate nuclear family citation with cross-reference supplements
      * Only adds supplement when there's additional date information from asParent families
      */
     static func generateNuclearFamilyCitationWithSupplement(
@@ -478,43 +534,6 @@ extension CitationGenerator {
         return citation
     }
     
-    // MARK: - Helper Methods for Supplements
-    
-    private static func collectAdditionalDateInfo(
-        nuclearChild: Person,
-        asParent: Person?
-    ) -> [String] {
-        guard let asParent = asParent else { return [] }
-        
-        var additions: [String] = []
-        
-        // Death date - only in asParent family, not in nuclear family
-        if asParent.deathDate != nil && nuclearChild.deathDate == nil {
-            additions.append("death date")
-        }
-        
-        // Marriage date - full 8-digit date in asParent vs 2-digit in nuclear
-        if let fullMarriageDate = asParent.fullMarriageDate,
-           let nuclearMarriageDate = nuclearChild.marriageDate,
-           fullMarriageDate.count > nuclearMarriageDate.count + 2 { // Allow some tolerance
-            additions.append("marriage date")
-        }
-        
-        return additions
-    }
-    
-    private static func formatDateAdditions(_ additions: [String]) -> String {
-        switch additions.count {
-        case 0: return ""
-        case 1: return additions[0] + " is"
-        case 2: return "marriage and death dates are"
-        default: return additions.joined(separator: " and ") + " are"
-        }
-    }
-}
-
-extension CitationGenerator {
-    
     /**
      * Generate citation for a person in a family
      * This is the main entry point for citation generation
@@ -532,4 +551,3 @@ extension CitationGenerator {
         return generateMainFamilyCitation(family: family)
     }
 }
-

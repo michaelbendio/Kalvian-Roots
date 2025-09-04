@@ -1,8 +1,4 @@
-//
-//  JuuretView.swift
-//  Kalvian Roots
-//
-
+// JuuretView.swift
 import SwiftUI
 #if os(iOS)
 import UniformTypeIdentifiers
@@ -109,7 +105,10 @@ struct JuuretView: View {
     
     private var familyExtractionInterface: some View {
         VStack(spacing: 20) {
-            // Show current file info
+            // Extract Family section at the top
+            familyInputSection
+            
+            // Show current file info below
             if let fileURL = juuretApp.fileManager.currentFileURL {
                 HStack {
                     Image(systemName: "doc.text.fill")
@@ -120,15 +119,7 @@ struct JuuretView: View {
                     Spacer()
                 }
                 .padding(.horizontal)
-            }
-            
-            #if os(macOS)
-            mlxSwitchingInterface
-            #endif
-            
-            // Always show input section when ready
-            if juuretApp.isReady && !juuretApp.isProcessing {
-                familyInputSection
+                .frame(maxWidth: 600)
             }
             
             // Show processing status if processing
@@ -152,6 +143,11 @@ struct JuuretView: View {
     
     private var fileNotLoadedInterface: some View {
         VStack(spacing: 20) {
+            // Extract Family section at the top even when no file is loaded
+            familyInputSection
+            
+            Spacer()
+            
             Image(systemName: "doc.text.magnifyingglass")
                 .font(.system(size: 60))
                 .foregroundColor(.gray)
@@ -186,11 +182,10 @@ struct JuuretView: View {
             .buttonStyle(.borderedProminent)
             .font(.genealogySubheadline)
             #endif
+            
+            Spacer()
         }
-        .padding(40)
-        .frame(maxWidth: 500)
-        .background(Color.gray.opacity(0.05))
-        .cornerRadius(15)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
     // MARK: - Family Input Section
@@ -251,31 +246,6 @@ struct JuuretView: View {
         .cornerRadius(10)
         .frame(maxWidth: 600)
     }
-    
-    // MARK: - MLX Interface (macOS only)
-    
-    #if os(macOS)
-    private var mlxSwitchingInterface: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "brain")
-                .foregroundColor(.purple)
-            Text("AI: \(juuretApp.currentServiceName)")
-                .font(.genealogyCallout)
-                .foregroundColor(.secondary)
-            Spacer()
-            Button(action: {
-                // Open AI Settings
-            }) {
-                Image(systemName: "gear")
-                    .foregroundColor(.secondary)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(16)
-        .background(Color.blue.opacity(0.05))
-        .cornerRadius(10)
-    }
-    #endif
     
     // MARK: - Status Views
     
@@ -407,9 +377,9 @@ struct JuuretView: View {
                             showingHiskiResult = true
                         }
                     }) {
-                        Label("b. \(birthDate)", systemImage: "star")
-                            .font(.genealogyCallout)
-                            .foregroundColor(.blue)
+                        Label("b. \(birthDate)", systemImage: "calendar")
+                            .font(.genealogyCaption)
+                            .foregroundColor(.secondary)
                     }
                     .buttonStyle(.plain)
                 }
@@ -421,61 +391,72 @@ struct JuuretView: View {
                             showingHiskiResult = true
                         }
                     }) {
-                        Label("d. \(deathDate)", systemImage: "cross")
-                            .font(.genealogyCallout)
-                            .foregroundColor(.gray)
+                        Label("d. \(deathDate)", systemImage: "calendar.badge.minus")
+                            .font(.genealogyCaption)
+                            .foregroundColor(.secondary)
                     }
                     .buttonStyle(.plain)
                 }
             }
+            
+            if let spouse = person.spouse, !spouse.isEmpty {
+                HStack(spacing: 8) {
+                    Text("m.")
+                        .font(.genealogyCaption)
+                        .foregroundColor(.secondary)
+                    Text(spouse)
+                        .font(.genealogyCallout)
+                        .foregroundColor(.purple)
+                }
+            }
         }
-        .padding(12)
-        .background(Color.gray.opacity(0.02))
-        .cornerRadius(8)
     }
     
-    // MARK: - Helper Methods
+    // MARK: - Actions
     
     private func extractFamily() {
         guard !familyId.isEmpty else { return }
         
         Task {
-            await juuretApp.extractFamily(familyId: familyId)
+            await juuretApp.extractFamily(familyId: familyId.uppercased())
         }
     }
     
     private func generateCitation(for person: Person, in family: Family) {
-        citationText = juuretApp.generateCitation(for: person, in: family)
-        showingCitation = true
+        Task {
+            let citation = await juuretApp.generateCitation(for: person, in: family)
+            citationText = citation
+            showingCitation = true
+        }
     }
     
     private func copyToClipboard(_ text: String) {
         #if os(macOS)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        #elseif os(iOS)
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        #else
         UIPasteboard.general.string = text
         #endif
         
-        logInfo(.ui, "📋 Copied to clipboard: \(text.prefix(50))...")
+        logInfo(.ui, "📋 Copied to clipboard: \(text.prefix(100))...")
     }
 }
 
-// MARK: - DocumentPickerView for iOS
+// MARK: - Supporting Types and Views (unchanged)
 
 #if os(iOS)
 struct DocumentPickerView: UIViewControllerRepresentable {
-    var urlPicked: (URL) -> Void
+    let urlPicked: (URL) -> Void
     
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
     
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let supportedTypes: [UTType] = [
-            UTType(filenameExtension: "roots") ?? .data,
-            .text,
-            .plainText,
+        let supportedTypes = [
+            UTType.text,
+            UTType.plainText,
             UTType(filenameExtension: "txt") ?? .plainText,
             .data
         ]
@@ -486,9 +467,7 @@ struct DocumentPickerView: UIViewControllerRepresentable {
         return picker
     }
     
-    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {
-        // No update needed
-    }
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
     
     class Coordinator: NSObject, UIDocumentPickerDelegate {
         let parent: DocumentPickerView
@@ -503,14 +482,10 @@ struct DocumentPickerView: UIViewControllerRepresentable {
             }
         }
         
-        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-            // Handle cancellation if needed
-        }
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {}
     }
 }
 #endif
-
-// MARK: - Supporting Types
 
 enum PersonRole {
     case father, mother, child
