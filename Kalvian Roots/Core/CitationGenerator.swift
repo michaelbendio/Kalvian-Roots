@@ -63,7 +63,7 @@ struct CitationGenerator {
         
         // Notes
         if !family.notes.isEmpty {
-            citation += "Notes:\n"
+            citation += "\nNotes:\n"
             for note in family.notes {
                 citation += "• \(note)\n"
             }
@@ -132,7 +132,7 @@ struct CitationGenerator {
         
         // Notes
         if !asChildFamily.notes.isEmpty {
-            citation += "Notes:\n"
+            citation += "\nNotes:\n"
             for note in asChildFamily.notes {
                 citation += "• \(note)\n"
             }
@@ -328,6 +328,7 @@ struct CitationGenerator {
             line += ", d \(normalizeDate(deathDate))"
         }
         
+        line += "\n"
         return line
     }
     
