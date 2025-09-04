@@ -1,0 +1,14 @@
+
+# macOS
+.DS_Store
+
+# Xcode user-specific files
+*.xcuserstate
+xcuserdata/
+
+# Xcode breakpoints (user-specific)
+*.xcbkptlist
+
+# Your utility scripts (if you want to keep them local)
+estimate-tokens.sh
+tokens
