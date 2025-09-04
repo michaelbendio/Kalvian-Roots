@@ -328,7 +328,8 @@ class JuuretApp {
             // Step 6: Update the UI with the fully processed family after citations are ready
             await MainActor.run {
                 currentFamily = parsedFamily
-                extractionProgress = .familyExtracted
+                isProcessing = false
+                extractionProgress = .idle
             }
             logInfo(.app, "✨ Family extraction complete with citations for: \(familyId)")
             

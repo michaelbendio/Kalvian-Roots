@@ -15,7 +15,7 @@ struct CitationGenerator {
      * Used for: nuclear families and as_parent families (children with their spouses)
      */
     static func generateMainFamilyCitation(family: Family) -> String {
-        var citation = "Information on \(family.pageReferenceString) includes:\n\n"
+        var citation = "Information on \(family.pageReferenceString) includes:\n"
         
         // Parents information with marriage date (from primary couple)
         if let father = family.father {
@@ -45,7 +45,7 @@ struct CitationGenerator {
         
         // Children from primary couple
         if !family.children.isEmpty {
-            citation += "\nChildren:\n"
+            citation += "Children:\n"
             for child in family.children {
                 citation += formatChild(child)
             }
@@ -54,7 +54,7 @@ struct CitationGenerator {
         // Children from additional couples
         for (index, couple) in family.couples.dropFirst().enumerated() {
             if !couple.children.isEmpty {
-                citation += "\nChildren with spouse \(index + 2):\n"
+                citation += "Children with spouse \(index + 2):\n"
                 for child in couple.children {
                     citation += formatChild(child)
                 }
@@ -63,7 +63,7 @@ struct CitationGenerator {
         
         // Notes
         if !family.notes.isEmpty {
-            citation += "\nNotes:\n"
+            citation += "Notes:\n"
             for note in family.notes {
                 citation += "• \(note)\n"
             }
@@ -71,15 +71,15 @@ struct CitationGenerator {
         
         // Child mortality
         if let childrenDied = family.childrenDiedInfancy, childrenDied > 0 {
-            citation += "\nChildren died in infancy: \(childrenDied)\n"
+            citation += "Children died in infancy: \(childrenDied)\n"
         }
         
         return citation
     }
 
     /**
-     * Generate as_child citation for a person in their parents' family
-     * ENHANCED: Now includes additional information from the person's asParent family if available
+     * Generate as_child citation for  the  person in their parents' family
+     * Includes additional information from the person's asParent family if available
      *
      * @param person The person who appears as a child in this family
      * @param asChildFamily The family where the person appears as a child
@@ -90,7 +90,7 @@ struct CitationGenerator {
         in asChildFamily: Family,
         network: FamilyNetwork? = nil
     ) -> String {
-        var citation = "Information on \(asChildFamily.pageReferenceString) includes:\n\n"
+        var citation = "Information on \(asChildFamily.pageReferenceString) includes:\n"
         
         // Parents
         if let father = asChildFamily.father {
@@ -117,7 +117,7 @@ struct CitationGenerator {
         }
         
         // Children with target person highlighted - enhanced with additional dates if available
-        citation += "\nChildren:\n"
+        citation += "Children:\n"
         for child in asChildFamily.children {
             let isTarget = isTargetPerson(child, person)
             let prefix = isTarget ? "→ " : "  "
@@ -132,7 +132,7 @@ struct CitationGenerator {
         
         // Notes
         if !asChildFamily.notes.isEmpty {
-            citation += "\nNotes:\n"
+            citation += "Notes:\n"
             for note in asChildFamily.notes {
                 citation += "• \(note)\n"
             }
@@ -140,7 +140,7 @@ struct CitationGenerator {
         
         // Child mortality
         if let childrenDied = asChildFamily.childrenDiedInfancy, childrenDied > 0 {
-            citation += "\nChildren died in infancy: \(childrenDied)\n"
+            citation += "Children died in infancy: \(childrenDied)\n"
         }
         
         // Additional Information section for the target person's asParent family
@@ -160,7 +160,7 @@ struct CitationGenerator {
                     child.name.lowercased() == person.name.lowercased()
                 }
                 
-                // Find the person in their asParent family  
+                // Find the person in their asParent family
                 let personAsParent = asParentFamily.allParents.first { parent in
                     parent.name.lowercased() == person.name.lowercased()
                 }
@@ -171,13 +171,13 @@ struct CitationGenerator {
                 }
                 
                 // Check for marriage date enhancement
-                let hasFullMarriageInAsParent = 
+                let hasFullMarriageInAsParent =
                     (personAsParent?.fullMarriageDate != nil) ||
                     (personAsParent?.marriageDate != nil && personAsParent!.marriageDate!.count >= 8) ||
                     (asParentFamily.primaryCouple?.marriageDate != nil && asParentFamily.primaryCouple!.marriageDate!.count >= 8)
                 
-                let hasOnlyPartialInAsChild = 
-                    personAsChildInThisFamily?.fullMarriageDate == nil && 
+                let hasOnlyPartialInAsChild =
+                    personAsChildInThisFamily?.fullMarriageDate == nil &&
                     (personAsChildInThisFamily?.marriageDate == nil || personAsChildInThisFamily!.marriageDate!.count <= 4)
                 
                 if hasFullMarriageInAsParent && hasOnlyPartialInAsChild {
@@ -186,7 +186,6 @@ struct CitationGenerator {
                 
                 // Format the Additional Information section
                 if !additionalInfo.isEmpty {
-                    citation += "\n"  // Blank line for readability
                     citation += "Additional Information:\n"
                     
                     // Format based on what we found
@@ -273,7 +272,6 @@ struct CitationGenerator {
             line += ", d \(normalizeDate(deathDate))"
         }
         
-        line += "\n"
         return line
     }
 
@@ -293,7 +291,6 @@ struct CitationGenerator {
             line += ", d \(normalizeDate(deathDate))"
         }
         
-        line += "\n"
         return line
     }
     
@@ -331,7 +328,6 @@ struct CitationGenerator {
             line += ", d \(normalizeDate(deathDate))"
         }
         
-        line += "\n"
         return line
     }
     
@@ -472,7 +468,7 @@ extension CitationGenerator {
         
         // Add supplement section only if we have additional information
         if !supplements.isEmpty {
-            citation += "\nAdditional information:\n"
+            citation += "Additional information:\n"
             for supplement in supplements {
                 citation += "\(supplement)\n"
             }
