@@ -181,7 +181,7 @@ struct JuuretView: View {
     
     private var familyInputSection: some View {
         VStack(spacing: 12) {
-            // Original input line
+            // Single line with "Citations for" and input field
             HStack(spacing: 8) {
                 Text("Citations for")
                     .font(.genealogyBody)
@@ -204,7 +204,8 @@ struct JuuretView: View {
                                                       to: nil, from: nil, for: nil)
                         #endif
                     }
-                    .disabled(!juuretApp.isReady || juuretApp.isProcessing)            }
+                    .disabled(!juuretApp.isReady || juuretApp.isProcessing)
+            }
             .padding(.horizontal)
             .frame(maxWidth: 600)
             
@@ -264,7 +265,6 @@ struct JuuretView: View {
             }
         }
     }
-    
     // MARK: - Status Views
     
     private var processingStatusView: some View {
