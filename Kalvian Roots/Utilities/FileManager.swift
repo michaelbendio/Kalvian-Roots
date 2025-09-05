@@ -534,9 +534,83 @@ enum FileManagerError: LocalizedError {
         case .invalidFileType:
             return "Invalid file type"
         case .fileNotFound(let path):
-            return "File not found: \(path)"
+            return "Fie not found: \(path)"
         case .iCloudUnavailable:
             return "iCloud Drive is not available"
         }
+    }
+}
+
+// MARK: - Next Family Detection Extension
+
+extension FileManager {
+    
+    /**
+     * Find the next family ID after the given family in the file
+     * Families are delimited by blank lines
+     */
+    func findNextFamilyId(after currentFamilyId: String) -> String? {
+        guard let content = currentFileContent else {
+            logWarn(.file, "No file content loaded")
+            return nil
+        }
+        
+        logInfo(.file, "🔎 Looking for next family after: \(currentFamilyId)")
+        
+        let lines = content.components(separatedBy: .newlines)
+        var foundCurrent = false
+        var passedBlankLine = false
+        let targetId = currentFamilyId.uppercased()
+        
+        for (index, line) in lines.enumerated() {
+            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+            
+            if !foundCurrent {
+                // Look for current family ID at start of line
+                if trimmedLine.uppercased().hasPrefix(targetId) {
+                    foundCurrent = true
+                    logDebug(.file, "Found current family at line \(index + 1): \(trimmedLine.prefix(50))...")
+                }
+            } else if foundCurrent && !passedBlankLine {
+                // Wait for blank line (family delimiter)
+                if trimmedLine.isEmpty {
+                    passedBlankLine = true
+                    logDebug(.file, "Passed blank line delimiter at line \(index + 1)")
+                }
+            } else if foundCurrent && passedBlankLine && !trimmedLine.isEmpty {
+                // Look for next family ID pattern
+                if let nextId = extractFamilyIdFromLine(trimmedLine) {
+                    // Verify it's in our valid family IDs
+                    if FamilyIDs.validFamilyIds.contains(nextId) {
+                        logInfo(.file, "✅ Found next family: \(nextId)")
+                        return nextId
+                    } else {
+                        logDebug(.file, "Found potential family ID '\(nextId)' but not in valid set")
+                        // Continue looking - might be a note or something else
+                    }
+                }
+            }
+        }
+        
+        logInfo(.file, "📋 No next family found (end of file or no valid family after current)")
+        return nil
+    }
+    
+    /**
+     * Extract family ID from a line like "KORPI 6, pages 105-106"
+     * Returns just the family ID part: "KORPI 6"
+     */
+    private func extractFamilyIdFromLine(_ line: String) -> String? {
+        // Pattern matches family IDs like: HYYPPÄ 6, ISO-KORPI 3, MAUNUMÄKI IV 5
+        // Family ID = uppercase letters (possibly with hyphen) + space + number(s) or roman numerals + number(s)
+        let pattern = #"^([A-ZÄÖÅ][A-ZÄÖÅ-]*(?:\s+(?:II|III|IV|V|VI))?\s+\d+[A-Z]?)"#
+        
+        if let range = line.range(of: pattern, options: .regularExpression) {
+            let familyId = String(line[range])
+            logTrace(.file, "Extracted potential family ID: '\(familyId)'")
+            return familyId
+        }
+        
+        return nil
     }
 }
