@@ -48,6 +48,7 @@ enum LogCategory: String, CaseIterable {
     case network = "NET"
     case nameEquivalence = "NAME_EQ"
     case workflow = "WORKFLOW"
+    case cache = "CACHE"
     
     var emoji: String {
         switch self {
@@ -62,6 +63,7 @@ enum LogCategory: String, CaseIterable {
         case .network: return "🌐"
         case .nameEquivalence: return "🔤"
         case .workflow: return "🔄"
+        case .cache: return "💾"
         }
     }
 }

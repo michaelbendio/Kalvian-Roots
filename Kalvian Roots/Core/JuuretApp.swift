@@ -32,6 +32,9 @@ class JuuretApp {
     /// File manager for I/O operations
     let fileManager: FileManager
     
+    /// Family network cache for background processing
+     let familyNetworkCache = FamilyNetworkCache()
+    
     // MARK: - App State
     
     /// Currently extracted family
@@ -173,27 +176,22 @@ class JuuretApp {
     /**
      * Switch to a different AI service
      */
-    func switchAIService(to serviceName: String) throws {
-        logInfo(.ai, "🔄 Switching AI service to: \(serviceName)")
-        
+    func switchAIService(to serviceName: String) async throws {  // Add 'throws'
+        logInfo(.app, "🔄 Switching AI service to: \(serviceName)")
         try aiParsingService.switchService(to: serviceName)
         
         // Clear any error state since service changed
         if errorMessage?.contains("not configured") == true {
             errorMessage = nil
-            logDebug(.app, "Cleared configuration error after service switch")
         }
-        
-        logInfo(.ai, "✅ Successfully switched to: \(serviceName)")
     }
     
-    /**
-     * Configure current AI service with API key
-     */
+    /// Configure the current AI service with an API key
     func configureAIService(apiKey: String) async throws {
         logInfo(.ai, "🔧 Configuring \(currentServiceName) with API key")
         
-        try aiParsingService.configureService(apiKey: apiKey)
+        // Change this line:
+        try aiParsingService.configureService(apiKey: apiKey)  // Not configureCurrentService
         
         errorMessage = nil
         logDebug(.app, "Cleared error state after successful AI configuration")
@@ -201,50 +199,6 @@ class JuuretApp {
         logInfo(.ai, "✅ Successfully configured \(currentServiceName)")
     }
     
-    // MARK: - File Management
-    
-    /**
-     * Load file via file picker
-     */
-    func loadFile() async throws {
-        logInfo(.file, "📁 User initiated file loading")
-        
-        do {
-            #if os(macOS)
-            let content = try await fileManager.openFile()
-            logInfo(.file, "✅ File loaded successfully")
-            logDebug(.file, "Content length: \(content.count) characters")
-            #else
-            // On iOS, this is handled through the document picker in the View
-            logWarn(.file, "File loading on iOS must be handled through document picker UI")
-            throw FileManagerError.loadFailed("Use the document picker on iOS/iPadOS")
-            #endif
-            
-            // Clear any previous state
-            currentFamily = nil
-            enhancedFamily = nil
-            errorMessage = nil
-            extractionProgress = .idle
-            
-        } catch FileManagerError.userCancelled {
-            logInfo(.file, "User cancelled file selection")
-            throw FileManagerError.userCancelled
-        } catch {
-            logError(.file, "❌ Failed to load file: \(error)")
-            errorMessage = "Failed to load file: \(error.localizedDescription)"
-            throw error
-        }
-    }
-    
-    // MARK: - Family Extraction
-    
-    /**
-     * Extract family from loaded file
-     */
-    // In JuuretApp.swift - Complete extractFamily method
-
-    // MARK: - Family Extraction
-
     func extractFamily(familyId: String) async {
         // Check if AI service is configured
         guard aiParsingService.isConfigured else {
@@ -261,7 +215,50 @@ class JuuretApp {
         enhancedFamily = nil
         extractionProgress = .extractingText
         
+        // CHECK CACHE FIRST
+        if let cached = familyNetworkCache.getCachedNetwork(familyId: familyId) {
+            logInfo(.app, "⚡ Using cached network for: \(familyId)")
+            
+            // Use cached network and citations
+            await MainActor.run {
+                currentFamily = cached.network.mainFamily
+                enhancedFamily = cached.network.mainFamily
+                
+                // Create workflow with cached network
+                familyNetworkWorkflow = FamilyNetworkWorkflow(
+                    nuclearFamily: cached.network.mainFamily,
+                    familyResolver: familyResolver,
+                    resolveCrossReferences: false  // Already resolved in cache
+                )
+                
+                // The workflow can use the cached citations directly
+                // No need to inject them
+                
+                isProcessing = false
+                extractionProgress = .idle
+                
+                // Reset next family state
+                familyNetworkCache.nextFamilyReady = false
+                familyNetworkCache.nextFamilyId = nil
+            }
+            
+            logInfo(.app, "✨ Family loaded from cache: \(familyId)")
+            
+            // Start background processing for next family
+            familyNetworkCache.startBackgroundProcessing(
+                currentFamilyId: familyId,
+                fileManager: fileManager,
+                aiService: aiParsingService,
+                familyResolver: familyResolver
+            )
+            
+            return
+        }
+        
+        // NOT CACHED - continue with normal extraction
         do {
+            let startTime = Date()
+            
             // Step 1: Extract family text from file
             guard let familyText = fileManager.extractFamilyText(familyId: familyId) else {
                 throw ExtractionError.familyNotFound(familyId)
@@ -299,24 +296,20 @@ class JuuretApp {
                 // Log what we found
                 if let network = familyNetworkWorkflow?.getFamilyNetwork() {
                     logInfo(.app, "✅ Family network processed successfully")
-                    logInfo(.app, "Found \(network.asChildFamilies.count) asChild families:")
-                    for (person, family) in network.asChildFamilies {
-                        logInfo(.app, "  - \(person): \(family.familyId)")
-                    }
-                    logInfo(.app, "Found \(network.asParentFamilies.count) asParent families:")
-                    for (person, family) in network.asParentFamilies {
-                        logInfo(.app, "  - \(person): \(family.familyId)")
-                    }
                     
                     // Store enhanced version
                     enhancedFamily = network.mainFamily
-                }
-                
-                // Log citation count
-                let citations = familyNetworkWorkflow?.getActiveCitations() ?? [:]
-                logInfo(.app, "📝 Generated \(citations.count) enhanced citations")
-                for (person, _) in citations.prefix(5) {
-                    logDebug(.app, "  - Citation for: \(person)")
+                    
+                    // CACHE THE RESULT
+                    let extractionTime = Date().timeIntervalSince(startTime)
+                    let citations = familyNetworkWorkflow?.getActiveCitations() ?? [:]
+                    familyNetworkCache.cacheNetwork(
+                        network,
+                        citations: citations,
+                        extractionTime: extractionTime
+                    )
+                    
+                    logInfo(.app, "💾 Cached network for future use")
                 }
                 
             } catch {
@@ -330,8 +323,21 @@ class JuuretApp {
                 currentFamily = parsedFamily
                 isProcessing = false
                 extractionProgress = .idle
+                
+                // Reset next family state
+                familyNetworkCache.nextFamilyReady = false
+                familyNetworkCache.nextFamilyId = nil
             }
+            
             logInfo(.app, "✨ Family extraction complete with citations for: \(familyId)")
+            
+            // START BACKGROUND PROCESSING for next family
+            familyNetworkCache.startBackgroundProcessing(
+                currentFamilyId: familyId,
+                fileManager: fileManager,
+                aiService: aiParsingService,
+                familyResolver: familyResolver
+            )
             
         } catch {
             // Handle extraction/parsing errors
@@ -342,6 +348,21 @@ class JuuretApp {
             currentFamily = nil
             enhancedFamily = nil
         }
+    }
+
+    func loadNextFamily() async {
+        guard let nextId = familyNetworkCache.nextFamilyId else {
+            logWarn(.app, "⚠️ No next family ready")
+            return
+        }
+        
+        logInfo(.app, "⏭️ Loading next family: \(nextId)")
+        await extractFamily(familyId: nextId)
+    }
+    
+    func clearFamilyCache() {
+        logInfo(.app, "🗑️ Clearing family cache")
+        familyNetworkCache.clearCache()
     }
 
     // MARK: - Citation Generation (ensure it uses workflow citations)

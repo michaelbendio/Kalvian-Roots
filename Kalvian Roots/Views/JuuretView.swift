@@ -157,11 +157,12 @@ struct JuuretView: View {
                     .frame(width: 200, height: 50)
             }
             .buttonStyle(.borderedProminent)
-            #else
+            #elseif os(macOS)
             Button("Open File...") {
                 Task {
                     do {
-                        try await juuretApp.loadFile()
+                        // Call FileManager's openFile directly
+                        _ = try await juuretApp.fileManager.openFile()
                     } catch {
                         juuretApp.errorMessage = error.localizedDescription
                     }
@@ -179,30 +180,89 @@ struct JuuretView: View {
     // MARK: - Family Input Section
     
     private var familyInputSection: some View {
-        HStack(spacing: 8) {
-            Text("Citations for")
-                .font(.genealogyBody)
-                .foregroundColor(.secondary)
-            
-            TextField("Family ID", text: $familyId)
-                .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 200)
-                .autocapitalization(.allCharacters)
-                .disableAutocorrection(true)
-                .onSubmit {
-                    if !familyId.isEmpty && juuretApp.isReady {
-                        extractFamily()
-                    }
-                    // Dismiss keyboard on iOS
+        VStack(spacing: 12) {
+            // Original input line
+            HStack(spacing: 8) {
+                Text("Citations for")
+                    .font(.genealogyBody)
+                    .foregroundColor(.secondary)
+                
+                TextField("Family ID", text: $familyId)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 200)
                     #if os(iOS)
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
-                                                  to: nil, from: nil, for: nil)
+                    .autocapitalization(.allCharacters)
                     #endif
+                    .disableAutocorrection(true)
+                    .onSubmit {
+                        if !familyId.isEmpty && juuretApp.isReady {
+                            extractFamily()
+                        }
+                        // Dismiss keyboard on iOS
+                        #if os(iOS)
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                                      to: nil, from: nil, for: nil)
+                        #endif
+                    }
+                    .disabled(!juuretApp.isReady || juuretApp.isProcessing)            }
+            .padding(.horizontal)
+            .frame(maxWidth: 600)
+            
+            // NEXT BUTTON - Shows when next family is ready
+            if juuretApp.familyNetworkCache.nextFamilyReady,
+               let nextId = juuretApp.familyNetworkCache.nextFamilyId {
+                Button(action: {
+                    Task {
+                        await juuretApp.loadNextFamily()
+                    }
+                }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.forward.circle.fill")
+                        Text("Next: \(nextId)")
+                            .fontWeight(.medium)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color.green)
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
                 }
-                .disabled(!juuretApp.isReady || juuretApp.isProcessing)
+                .buttonStyle(.plain)
+                .transition(.scale.combined(with: .opacity))
+                .animation(.spring(response: 0.3), value: juuretApp.familyNetworkCache.nextFamilyReady)
+            }
+            
+            // PROCESSING INDICATOR - Shows while preparing next family
+            if let processingId = juuretApp.familyNetworkCache.processingFamilyId {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Preparing \(processingId)...")
+                        .font(.genealogyCaption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(6)
+            }
+            
+            // ERROR DISPLAY - Shows if background processing failed
+            if let error = juuretApp.familyNetworkCache.backgroundError {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                    Text(error)
+                        .font(.genealogyCaption)
+                        .foregroundColor(.orange)
+                        .lineLimit(2)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.orange.opacity(0.1))
+                .cornerRadius(6)
+            }
         }
-        .padding()
-        .frame(maxWidth: 600)
     }
     
     // MARK: - Status Views
