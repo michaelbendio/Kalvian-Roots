@@ -1,4 +1,4 @@
-// JuuretView.swift
+// JuuretView.swift - Simplified Version
 import SwiftUI
 #if os(iOS)
 import UniformTypeIdentifiers
@@ -105,22 +105,10 @@ struct JuuretView: View {
     
     private var familyExtractionInterface: some View {
         VStack(spacing: 20) {
-            // Extract Family section at the top
+            // Simplified input section at the top
             familyInputSection
             
-            // Show current file info below
-            if let fileURL = juuretApp.fileManager.currentFileURL {
-                HStack {
-                    Image(systemName: "doc.text.fill")
-                        .foregroundColor(.green)
-                    Text(fileURL.lastPathComponent)
-                        .font(.genealogyCaption)
-                        .foregroundColor(.secondary)
-                    Spacer()
-                }
-                .padding(.horizontal)
-                .frame(maxWidth: 600)
-            }
+            // REMOVED: File info with green icon and filename
             
             // Show processing status if processing
             if juuretApp.isProcessing {
@@ -191,59 +179,29 @@ struct JuuretView: View {
     // MARK: - Family Input Section
     
     private var familyInputSection: some View {
-        VStack(spacing: 16) {
+        HStack(spacing: 8) {
             Text("Citations for")
-                .font(.genealogyHeadline)
-                .foregroundColor(.primary)
+                .font(.genealogyBody)
+                .foregroundColor(.secondary)
             
-            #if os(iOS)
-            VStack(spacing: 12) {
-                TextField("Enter Family ID (e.g., KORPI 6)", text: $familyId)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.genealogyBody)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 50)
-                    .autocapitalization(.allCharacters)
-                    .onSubmit {
+            TextField("Family ID", text: $familyId)
+                .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: 200)
+                .autocapitalization(.allCharacters)
+                .disableAutocorrection(true)
+                .onSubmit {
+                    if !familyId.isEmpty && juuretApp.isReady {
                         extractFamily()
                     }
-                
-                Button(action: extractFamily) {
-                    HStack {
-                        Image(systemName: "magnifyingglass")
-                        Text("Citations for")
-                    }
-                    .font(.genealogySubheadline)
-                    .fontWeight(.medium)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 50)
+                    // Dismiss keyboard on iOS
+                    #if os(iOS)
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                                  to: nil, from: nil, for: nil)
+                    #endif
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(familyId.isEmpty || juuretApp.isProcessing || !juuretApp.isReady)
-            }
-            #else
-            HStack(spacing: 12) {
-                TextField("Enter Family ID (e.g., KORPI 6)", text: $familyId)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.genealogySubheadline)
-                    .frame(height: 40)
-                    .onSubmit {
-                        extractFamily()
-                    }
-                
-                Button("Generate") {
-                    extractFamily()
-                }
-                .buttonStyle(.borderedProminent)
-                .font(.genealogySubheadline)
-                .frame(height: 40)
-                .disabled(familyId.isEmpty || juuretApp.isProcessing || !juuretApp.isReady)
-            }
-            #endif
+                .disabled(!juuretApp.isReady || juuretApp.isProcessing)
         }
         .padding()
-        .background(Color.gray.opacity(0.05))
-        .cornerRadius(10)
         .frame(maxWidth: 600)
     }
     
@@ -298,13 +256,7 @@ struct JuuretView: View {
                     .foregroundColor(.secondary)
             }
             
-            Text("💡 Click names for citations, dates for Hiski queries")
-                .font(.genealogyCaption)
-                .foregroundColor(.blue)
-                .padding(.vertical, 6)
-                .padding(.horizontal, 12)
-                .background(Color.blue.opacity(0.1))
-                .cornerRadius(8)
+            // REMOVED: The "💡 Click names for citations..." instruction box
             
             familyMembersView(family: family)
         }
