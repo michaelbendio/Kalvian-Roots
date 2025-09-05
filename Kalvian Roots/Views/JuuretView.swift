@@ -120,6 +120,21 @@ struct JuuretView: View {
                 errorDisplayView(errorMessage)
             }
             
+            // CACHE CLEAR BUTTON - Always visible when cache has items
+            if juuretApp.familyNetworkCache.cachedFamilyCount > 0 {
+                Button(action: {
+                    juuretApp.familyNetworkCache.clearCache()
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "trash")
+                        Text("Clear Cache (\(juuretApp.familyNetworkCache.cachedFamilyCount) families)")
+                            .font(.genealogyCaption)
+                    }
+                    .foregroundColor(.red)
+                }
+                .buttonStyle(.plain)
+            }
+            
             // Show family if extracted
             if let family = juuretApp.currentFamily {
                 ScrollView {

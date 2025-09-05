@@ -33,6 +33,11 @@ class FamilyNetworkCache {
     /// Next family ID that's ready
     var nextFamilyId: String?
     
+    /// Number of cached families
+    var cachedFamilyCount: Int {
+        return cachedNetworks.count
+    }
+    
     /// Background processing errors
     private(set) var backgroundError: String?
     
