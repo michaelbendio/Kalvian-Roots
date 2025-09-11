@@ -176,7 +176,7 @@ class FileManager {
             
             logInfo(.file, "✅ File content read successfully")
             logDebug(.file, "Content length: \(content.count) characters")
-            logTrace(.file, "Content preview: \(String(content.prefix(200)))...")
+            logInfo(.file, "Content preview:\n\(String(content.prefix(200)))...")
             
             // Update state on main thread
             currentFileURL = url
