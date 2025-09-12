@@ -7,7 +7,7 @@ import Foundation
  *
  * Generates three types of citations:
  * 1. Main family citations (nuclear family with parents + children)
- * 2. As_child citations (person in their parents' family) - NOW ENHANCED
+ * 2. As_child citations (person in their parents' family) - ENHANCED with birth date matching
  * 3. Spouse as_child citations (spouse in their parents' family)
  */
 struct CitationGenerator {
@@ -82,6 +82,7 @@ struct CitationGenerator {
 
     /**
      * Generate as_child citation for the person in their parents' family
+     * ENHANCED with birth date matching and warning system
      * Includes additional information from the person's asParent family if available
      *
      * @param person The person who appears as a child in this family
@@ -109,12 +110,19 @@ struct CitationGenerator {
             citation += "m \(normalizeDate(marriageDate))\n"
         }
         
+        // Track if we found the target person
+        var targetPersonFound = false
+        
         // Children from primary couple
         if !asChildFamily.children.isEmpty {
             citation += "Children:\n"
             for child in asChildFamily.children {
                 let isTarget = isTargetPerson(child, person)
-                let prefix = isTarget ? "→" : ""
+                if isTarget {
+                    targetPersonFound = true
+                }
+                
+                let prefix = isTarget ? "→ " : ""
                 
                 // For the target person, try to enhance with asParent information
                 if isTarget, let network = network {
@@ -139,7 +147,11 @@ struct CitationGenerator {
                     citation += "Children:\n"
                     for child in couple.children {
                         let isTarget = isTargetPerson(child, person)
-                        let prefix = isTarget ? "--> " : ""
+                        if isTarget {
+                            targetPersonFound = true
+                        }
+                        
+                        let prefix = isTarget ? "→ " : ""
                         
                         if isTarget, let network = network {
                             citation += "\(prefix)\(formatChildWithEnhancement(child, person: person, network: network))"
@@ -167,48 +179,53 @@ struct CitationGenerator {
             citation += "Children died as infants: \(childrenDied)\n"
         }
         
-        // Additional Information section for the target person's asParent family
-        if let network = network {
-            // Try to find the target person's asParent family
+        // Additional Information section - show source of enhanced data
+        if targetPersonFound, let network = network {
+            // The enhanced data comes from the person's asParent family (where they appear as a parent)
+            // We need to find what data was enhanced and cite the source
             let asParentFamily = network.getAsParentFamily(for: person) ??
                                  network.asParentFamilies[person.displayName] ??
                                  network.asParentFamilies[person.name]
             
             if let asParentFamily = asParentFamily {
-                // Check what additional information was found
+                let personName = person.name
                 var additionalInfo: [String] = []
                 
-                // Check if marriage date is fuller in asParent
-                if let asParentCouple = asParentFamily.couples.first(where: { couple in
+                // Find the person in their asParent family
+                if let personAsParent = asParentFamily.allParents.first(where: {
+                    $0.name.lowercased() == person.name.lowercased()
+                }) {
+                    // Check for death date enhancement (compare original person to asParent version)
+                    if personAsParent.deathDate != nil && person.deathDate == nil {
+                        additionalInfo.append("death date")
+                    }
+                    
+                    // Check for marriage date enhancement (full vs partial date)
+                    if let asParentMarriage = personAsParent.fullMarriageDate ?? personAsParent.marriageDate,
+                       let nuclearMarriage = person.marriageDate,
+                       asParentMarriage.count > nuclearMarriage.count + 2 {
+                        additionalInfo.append("marriage date")
+                    }
+                }
+                
+                // Also check couple-level marriage date enhancement
+                if let couple = asParentFamily.couples.first(where: { couple in
                     couple.husband.name.lowercased() == person.name.lowercased() ||
                     couple.wife.name.lowercased() == person.name.lowercased()
                 }) {
-                    if let fullMarriage = asParentCouple.marriageDate, fullMarriage.count >= 8 {
-                        // Check if the marriage date in nuclear was shorter
-                        let nuclearPerson = asChildFamily.children.first { $0.name.lowercased() == person.name.lowercased() }
-                        if let nuclearMarriage = nuclearPerson?.marriageDate,
-                           nuclearMarriage.count < fullMarriage.count {
+                    if let coupleMarriage = couple.marriageDate,
+                       let nuclearMarriage = person.marriageDate,
+                       coupleMarriage.count >= 8 && nuclearMarriage.count <= 4 {
+                        if !additionalInfo.contains("marriage date") {
                             additionalInfo.append("marriage date")
                         }
                     }
                 }
                 
-                // Check if death date is in asParent but not nuclear
-                if let parentInAsParent = asParentFamily.allParents.first(where: {
-                    $0.name.lowercased() == person.name.lowercased()
-                }) {
-                    let nuclearPerson = asChildFamily.children.first { $0.name.lowercased() == person.name.lowercased() }
-                    if parentInAsParent.deathDate != nil && nuclearPerson?.deathDate == nil {
-                        additionalInfo.append("death date")
-                    }
-                }
-                
-                // Generate the Additional Information section
+                // Add Additional Information section if we have enhancements
                 if !additionalInfo.isEmpty {
                     citation += "Additional Information:\n"
-                    let personName = person.name
-                    
-                    if additionalInfo.count == 2 {
+                    if additionalInfo.contains("marriage date") && additionalInfo.contains("death date") {
                         citation += "\(personName)'s marriage date and death date found on \(asParentFamily.pageReferenceString)\n"
                     } else if additionalInfo.contains("marriage date") {
                         citation += "\(personName)'s marriage date found on \(asParentFamily.pageReferenceString)\n"
@@ -219,38 +236,151 @@ struct CitationGenerator {
             }
         }
         
+        // WARNING: Add warning if target person not found by birth date
+        if !targetPersonFound {
+            citation += "WARNING: Could not match target person '\(person.name)' (birth: \(person.birthDate ?? "unknown")) by birth date in source family\n"
+        }
+        
         return citation
     }
 
     /**
-     * Format child with enhanced dates from their asParent family
-     * Updated to handle the person parameter to get spouse info
+     * Generate nuclear family citation with cross-reference supplements
+     * Only adds supplement when there's additional date information from asParent families
+     */
+    static func generateNuclearFamilyCitationWithSupplement(
+        family: Family,
+        network: FamilyNetwork
+    ) -> String {
+        
+        // Start with the standard nuclear family citation
+        var citation = generateMainFamilyCitation(family: family)
+        
+        // Collect supplement information from asParent families
+        var supplements: [String] = []
+        
+        for child in family.marriedChildren {
+            if let asParentFamily = network.getAsParentFamily(for: child) {
+                
+                // Find the child as a parent in their asParent family
+                let childInAsParentFamily = asParentFamily.allParents.first { parent in
+                    // Use birth date matching for better accuracy
+                    if let childBirth = child.birthDate, let parentBirth = parent.birthDate {
+                        return normalizeDateForComparison(childBirth) == normalizeDateForComparison(parentBirth)
+                    }
+                    // Fallback to name matching
+                    return parent.name.lowercased() == child.name.lowercased()
+                }
+                
+                // Check what additional date information is available
+                let additionalInfo = collectAdditionalDateInfo(
+                    nuclearChild: child,
+                    asParent: childInAsParentFamily
+                )
+                
+                if !additionalInfo.isEmpty {
+                    let pageRef = asParentFamily.pageReferenceString
+                    let description = formatDateAdditions(additionalInfo)
+                    supplements.append("\(child.name)'s \(description) on \(pageRef)")
+                }
+            }
+        }
+        
+        // Add supplement section only if we have additional information
+        if !supplements.isEmpty {
+            citation += "Additional information:\n"
+            for supplement in supplements {
+                citation += "\(supplement)\n"
+            }
+        }
+        
+        return citation
+    }
+    
+    /**
+     * Generate citation for a person in a family
+     * This is the main entry point for citation generation
+     *
+     * @param person The person to generate a citation for
+     * @param family The family context
+     * @param fileURL The source file URL (currently unused but kept for compatibility)
+     */
+    static func generateCitation(
+        for person: Person,
+        in family: Family,
+        fileURL: URL? = nil
+    ) -> String {
+        // Simplest implementation - just use the main family citation
+        return generateMainFamilyCitation(family: family)
+    }
+    
+    // MARK: - Enhanced Target Person Matching with Birth Dates
+    
+    /**
+     * Check if a child matches the target person using birth date matching
+     * This is more reliable than name matching since names can vary between childhood and adulthood
+     */
+    private static func isTargetPerson(_ child: Person, _ target: Person) -> Bool {
+        // Primary matching: birth date (most reliable)
+        if let childBirth = child.birthDate, let targetBirth = target.birthDate {
+            return normalizeDateForComparison(childBirth) == normalizeDateForComparison(targetBirth)
+        }
+        
+        // If birth dates are missing, this is an edge case we're ignoring for now
+        // Return false so the warning system handles it
+        return false
+    }
+    
+    /**
+     * Normalize dates for comparison - handles minor formatting variations
+     */
+    private static func normalizeDateForComparison(_ date: String) -> String {
+        // Remove extra whitespace and normalize formatting
+        var normalized = date.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Handle common variations: "06.01.1759" vs "6.1.1759"
+        if normalized.contains(".") {
+            let components = normalized.components(separatedBy: ".")
+            if components.count == 3 {
+                let day = String(format: "%02d", Int(components[0]) ?? 0)
+                let month = String(format: "%02d", Int(components[1]) ?? 0)
+                let year = components[2]
+                normalized = "\(day).\(month).\(year)"
+            }
+        }
+        
+        return normalized
+    }
+    
+    // MARK: - Enhanced Child Formatting
+    
+    /**
+     * Enhanced formatChildWithEnhancement - now only called when we have a confirmed target match
      */
     private static func formatChildWithEnhancement(_ child: Person, person: Person, network: FamilyNetwork) -> String {
         var enhancedChild = child
         
-        // CRITICAL: Use the correct person to look up asParent family
-        let lookupPerson = isTargetPerson(child, person) ? person : child
-        
-        let asParentFamily = network.getAsParentFamily(for: lookupPerson) ??
-                            network.asParentFamilies[lookupPerson.displayName] ??
-                            network.asParentFamilies[lookupPerson.name]
+        // Since we know this is the target person (birth dates matched),
+        // use the person parameter to look up asParent family
+        let asParentFamily = network.getAsParentFamily(for: person) ??
+                            network.asParentFamilies[person.displayName] ??
+                            network.asParentFamilies[person.name]
         
         // Try to enhance the child with dates from asParent family
         if let asParentFamily = asParentFamily {
             // Find the person in their asParent family
             if let parentInAsParentFamily = asParentFamily.allParents.first(where: {
-                $0.name.lowercased() == lookupPerson.name.lowercased()
+                $0.name.lowercased() == person.name.lowercased()
             }) {
                 // Add death date if missing
                 if enhancedChild.deathDate == nil && parentInAsParentFamily.deathDate != nil {
                     enhancedChild.deathDate = parentInAsParentFamily.deathDate
                 }
                 
-                // CRITICAL FIX: Get full marriage date from the COUPLE in asParent family
+                // Get full marriage date from the COUPLE in asParent family
                 if let couple = asParentFamily.couples.first(where: { couple in
-                    couple.husband.name.lowercased() == lookupPerson.name.lowercased() ||
-                    couple.wife.name.lowercased() == lookupPerson.name.lowercased()
+                    couple.husband.name.lowercased() == person.name.lowercased() ||
+                    couple.wife.name.lowercased() == person.name.lowercased()
                 }) {
                     // Use the couple's marriage date which should be the full 8-digit date
                     if let fullMarriage = couple.marriageDate, fullMarriage.count >= 8 {
@@ -260,27 +390,16 @@ struct CitationGenerator {
             }
         }
         
-        // Format the enhanced child
+        // Format the enhanced child using compact format for target person
         var line = enhancedChild.name
         
-        // Format based on whether target person has both dates
-        if isTargetPerson(child, person) {
-            // For target person: Use compact format if both dates present
-            if let birthDate = enhancedChild.birthDate, let deathDate = enhancedChild.deathDate {
-                line += " \(normalizeDate(birthDate)) - \(normalizeDate(deathDate))"
-            } else if let birthDate = enhancedChild.birthDate {
-                line += ", b \(normalizeDate(birthDate))"
-            } else if let deathDate = enhancedChild.deathDate {
-                line += ", d \(normalizeDate(deathDate))"
-            }
-        } else {
-            // For other children: Standard format
-            if let birthDate = enhancedChild.birthDate {
-                line += ", b \(normalizeDate(birthDate))"
-            }
-            if let deathDate = enhancedChild.deathDate {
-                line += ", d \(normalizeDate(deathDate))"
-            }
+        // Use compact birth-death format if both dates are present
+        if let birthDate = enhancedChild.birthDate, let deathDate = enhancedChild.deathDate {
+            line += ", \(normalizeDate(birthDate)) - \(normalizeDate(deathDate))"
+        } else if let birthDate = enhancedChild.birthDate {
+            line += ", \(normalizeDate(birthDate))"
+        } else if let deathDate = enhancedChild.deathDate {
+            line += ", d \(normalizeDate(deathDate))"
         }
         
         // Marriage info after dates - use the enhanced full date
@@ -322,17 +441,7 @@ struct CitationGenerator {
             line += "d \(normalizeDate(deathDate))"
         }
         
-        return line    }
-    
-    /**
-     * Extract compact date (year only for birth dates, full for death dates)
-     */
-    private static func extractCompactDate(_ date: String) -> String {
-        // For birth dates in parent section, just show year
-        if let year = extractYear(from: date) {
-            return year
-        }
-        return normalizeDate(date)
+        return line
     }
     
     /**
@@ -430,6 +539,16 @@ struct CitationGenerator {
     }
     
     /**
+     * Extract year from a date string
+     */
+    private static func extractYear(from dateStr: String) -> String? {
+        if let match = dateStr.range(of: #"\b(\d{4})\b"#, options: .regularExpression) {
+            return String(dateStr[match])
+        }
+        return nil
+    }
+    
+    /**
      * Normalize date format for consistent display
      */
     private static func normalizeDate(_ date: String) -> String {
@@ -463,26 +582,6 @@ struct CitationGenerator {
         }
         
         return normalized
-    }
-    
-    /**
-     * Extract year from a date string
-     */
-    private static func extractYear(from dateStr: String) -> String? {
-        if let match = dateStr.range(of: #"\b(\d{4})\b"#, options: .regularExpression) {
-            return String(dateStr[match])
-        }
-        return nil
-    }
-    
-    /**
-     * Check if a child matches the target person
-     */
-    private static func isTargetPerson(_ child: Person, _ target: Person) -> Bool {
-        let nameMatch = child.name.lowercased() == target.name.lowercased()
-        let birthMatch = child.birthDate == target.birthDate
-        
-        return nameMatch && (birthMatch || child.birthDate == nil || target.birthDate == nil)
     }
     
     // MARK: - Helper Methods for Supplements
@@ -525,68 +624,14 @@ struct CitationGenerator {
 extension CitationGenerator {
     
     /**
-     * Generate nuclear family citation with cross-reference supplements
-     * Only adds supplement when there's additional date information from asParent families
+     * Generate as_child citation using enhanced birth date matching
+     * This is a specialized version for cross-reference resolution
      */
-    static func generateNuclearFamilyCitationWithSupplement(
-        family: Family,
+    static func generateEnhancedAsChildCitation(
+        for person: Person,
+        in asChildFamily: Family,
         network: FamilyNetwork
     ) -> String {
-        
-        // Start with the standard nuclear family citation
-        var citation = generateMainFamilyCitation(family: family)
-        
-        // Collect supplement information from asParent families
-        var supplements: [String] = []
-        
-        for child in family.marriedChildren {
-            if let asParentFamily = network.getAsParentFamily(for: child) {
-                
-                // Find the child as a parent in their asParent family
-                let childInAsParentFamily = asParentFamily.allParents.first { parent in
-                    // Match by name - could be enhanced with birth date matching
-                    parent.name.lowercased() == child.name.lowercased()
-                }
-                
-                // Check what additional date information is available
-                let additionalInfo = collectAdditionalDateInfo(
-                    nuclearChild: child,
-                    asParent: childInAsParentFamily
-                )
-                
-                if !additionalInfo.isEmpty {
-                    let pageRef = asParentFamily.pageReferenceString
-                    let description = formatDateAdditions(additionalInfo)
-                    supplements.append("\(child.name)'s \(description) on \(pageRef)")
-                }
-            }
-        }
-        
-        // Add supplement section only if we have additional information
-        if !supplements.isEmpty {
-            citation += "Additional information:\n"
-            for supplement in supplements {
-                citation += "\(supplement)\n"
-            }
-        }
-        
-        return citation
-    }
-    
-    /**
-     * Generate citation for a person in a family
-     * This is the main entry point for citation generation
-     *
-     * @param person The person to generate a citation for
-     * @param family The family context
-     * @param fileURL The source file URL (currently unused but kept for compatibility)
-     */
-    static func generateCitation(
-        for person: Person,
-        in family: Family,
-        fileURL: URL? = nil
-    ) -> String {
-        // Simplest implementation - just use the main family citation
-        return generateMainFamilyCitation(family: family)
+        return generateAsChildCitation(for: person, in: asChildFamily, network: network)
     }
 }

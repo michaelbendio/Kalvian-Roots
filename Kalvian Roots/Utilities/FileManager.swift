@@ -367,18 +367,13 @@ class FileManager {
                     logDebug(.file, "Found family \(targetId) at line: \(trimmedLine.prefix(50))...")
                 }
             } else {
-                // Check if we've hit the next family
-                if !trimmedLine.isEmpty &&
-                   trimmedLine.first?.isUppercase == true &&
-                   trimmedLine.contains(where: { $0.isNumber }) {
-                    // This looks like a new family ID
-                    let components = trimmedLine.components(separatedBy: .whitespaces)
-                    if components.count >= 2 &&
-                       components[1].contains(where: { $0.isNumber }) {
-                        // Definitely a new family, stop capturing
-                        break
-                    }
+                // Stop at blank line (family delimiter)
+                if trimmedLine.isEmpty {
+                    // Don't include the blank line itself
+                    logDebug(.file, "Reached blank line delimiter - stopping extraction")
+                    break
                 }
+                
                 familyLines.append(line)
             }
         }
@@ -394,7 +389,7 @@ class FileManager {
         
         return familyText
     }
-    
+
     // MARK: - File Status
     
     /**

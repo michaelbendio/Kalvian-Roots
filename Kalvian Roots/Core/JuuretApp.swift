@@ -264,7 +264,7 @@ class JuuretApp {
                 throw ExtractionError.familyNotFound(familyId)
             }
             
-            logDebug(.app, "📄 Extracted text for family \(familyId): \(familyText.prefix(100))...")
+            logDebug(.app, "📄 Extracted text for family \(familyId):\n\(familyText.prefix(200))...")
             
             // Step 2: Parse with AI
             extractionProgress = .parsingWithAI
