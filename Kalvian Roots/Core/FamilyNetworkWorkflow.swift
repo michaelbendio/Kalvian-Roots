@@ -94,37 +94,46 @@ class FamilyNetworkWorkflow {
         case enhanced
     }
     
-    private func generateAndActivateCitations(for family: Family, type: CitationType) {
-        logInfo(.citation, "📄 Generating \(type) citations for: \(family.familyId)")
+    private func debugLogResolutionAttempt(_ family: Family) {
+        logInfo(.resolver, "🔍 CROSS-REFERENCES TO RESOLVE:")
         
-        switch type {
-        case .nuclear:
-            // Generate enhanced nuclear citation for family-level citation
-            if let network = familyNetwork {
-                // Family-level citation (for clicking on family ID)
-                let enhancedFamily = enhanceChildrenWithAsParentDates(family: family, network: network)
-                let enhancedCitation = CitationGenerator.generateNuclearFamilyCitationWithSupplement(
-                    family: enhancedFamily,
-                    network: network
-                )
-                activeCitations[family.familyId] = enhancedCitation
-                
-                generatePersonSpecificCitations(for: family, network: network)
-            } else {
-                // Fallback: standard citation for family
-                let citation = CitationGenerator.generateMainFamilyCitation(family: family)
-                activeCitations[family.familyId] = citation
-                
-                // Give everyone the same fallback citation
-                generateBasicPersonCitations(for: family)
+        // Parents as-child references (their parents' families)
+        let parentRefs = family.allParents.compactMap { parent in
+            parent.asChild.map { ref in
+                "\(parent.displayName) child in → \(ref)"
             }
-            
-        case .asChild, .asParent, .enhanced:
-            let citation = CitationGenerator.generateMainFamilyCitation(family: family)
-            activeCitations[family.familyId] = citation
         }
         
-        logInfo(.citation, "✅ Activated citations for family: \(family.familyId)")
+        if !parentRefs.isEmpty {
+            logInfo(.resolver, "👨‍👩 PARENT'S PARENTS")
+            for ref in parentRefs {
+                logInfo(.resolver, "  - \(ref)")
+            }
+        } else {
+            logWarn(.resolver, "  ⚠️ No parent as_child references found")
+        }
+        
+        // Children as-parent references - iterate through all couples
+        var childRefs: [String] = []
+        for couple in family.couples {
+            for child in couple.children {
+                if let asParentRef = child.asParent {
+                    childRefs.append("\(child.displayName) parent in → \(asParentRef)")
+                }
+            }
+        }
+        
+        if !childRefs.isEmpty {
+            logInfo(.resolver, "👶 CHILDREN'S FAMILIES")
+            for ref in childRefs {
+                logInfo(.resolver, "  - \(ref)")
+            }
+        } else {
+            logWarn(.resolver, "  ⚠️ No child as_parent references found")
+        }
+        
+        logInfo(.resolver, "📊 Total references to resolve: \(parentRefs.count + childRefs.count)")
+        logInfo(.resolver, "🎯 === END RESOLUTION DEBUG ===")
     }
     
     private func generateBasicPersonCitations(for family: Family) {
@@ -139,9 +148,12 @@ class FamilyNetworkWorkflow {
             activeCitations[parent.name] = basicCitation  // Also store by name for compatibility
         }
         
-        for child in family.children {
-            activeCitations[child.displayName] = basicCitation
-            activeCitations[child.name] = basicCitation
+        // Generate citations for all children across all couples
+        for couple in family.couples {
+            for child in couple.children {
+                activeCitations[child.displayName] = basicCitation
+                activeCitations[child.name] = basicCitation
+            }
         }
         
         logInfo(.citation, "✅ Generated \(activeCitations.count) basic person citations")
@@ -184,27 +196,30 @@ class FamilyNetworkWorkflow {
             }
         }
         
-        // Generate enhanced citations for children
-        for child in family.children {
-            if let asParentFamily = network.getAsParentFamily(for: child) {
-                // Enhanced citation for married children
-                let citation = generateEnhancedChildCitation(
-                    child: child,
-                    asParentFamily: asParentFamily,
-                    network: network
-                )
-                // Children typically don't have patronymics, so displayName == name
-                activeCitations[child.displayName] = citation
-                activeCitations[child.name] = citation
-                
-                logDebug(.citation, "Generated enhanced citation for married child: \(child.displayName)")
-            } else {
-                // Regular nuclear family citation for unmarried children
-                let citation = CitationGenerator.generateMainFamilyCitation(family: family)
-                activeCitations[child.displayName] = citation
-                activeCitations[child.name] = citation
-                
-                logDebug(.citation, "Generated nuclear citation for unmarried child: \(child.displayName)")
+        // Generate enhanced citations for children across all couples
+        for couple in family.couples {
+            for child in couple.children {
+                if let asParentFamily = network.getAsParentFamily(for: child) {
+                    logInfo(.citation, "✅ Found asParent family for child: \(child.name)")
+                    
+                    // Generate enhanced citation with death/marriage dates from asParent family
+                    let citation = generateEnhancedChildCitation(
+                        child: child,
+                        asParentFamily: asParentFamily,
+                        network: network
+                    )
+                    activeCitations[child.displayName] = citation
+                    activeCitations[child.name] = citation
+                    
+                    logInfo(.citation, "🔍 STORED enhanced child citation for '\(child.displayName)'")
+                } else {
+                    logInfo(.citation, "ℹ️ No asParent family for child: \(child.name) (not married or no reference)")
+                    
+                    // Use basic family citation for unmarried children
+                    let citation = CitationGenerator.generateMainFamilyCitation(family: family)
+                    activeCitations[child.displayName] = citation
+                    activeCitations[child.name] = citation
+                }
             }
         }
         

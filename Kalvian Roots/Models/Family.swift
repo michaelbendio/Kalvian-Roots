@@ -71,22 +71,7 @@ struct Family: Hashable, Sendable, Codable {
         return couples.first
     }
     
-    /// Primary father (husband of first couple)
-    var father: Person? {
-        return couples.first?.husband
-    }
-    
-    /// Primary mother (wife of first couple)
-    var mother: Person? {
-        return couples.first?.wife
-    }
-    
-    /// Children of the primary couple
-    var children: [Person] {
-        return couples.first?.children ?? []
-    }
-    
-    // MARK: - FIXED: Missing Computed Properties for Backward Compatibility
+    // MARK: - Computed Properties for Cross-Reference Resolution
     
     /// All parents across all couples (for cross-reference resolution)
     var allParents: [Person] {
@@ -98,7 +83,7 @@ struct Family: Hashable, Sendable, Codable {
         return parents
     }
     
-    /// All children who are married (have spouse information)
+    /// All children across all couples who are married (have spouse information)
     var marriedChildren: [Person] {
         var married: [Person] = []
         for couple in couples {
@@ -111,20 +96,9 @@ struct Family: Hashable, Sendable, Codable {
         return married
     }
     
-    /// Additional spouses (all spouses beyond the first couple)
-    var additionalSpouses: [Person] {
-        guard couples.count > 1 else { return [] }
-        var spouses: [Person] = []
-        for couple in couples.dropFirst() {
-            spouses.append(couple.wife) // Assuming husband is constant, wife changes
-        }
-        return spouses
-    }
-    
-    /// All children who died in infancy across all couples
-    var childrenDiedInfancy: Int? {
-        let total = couples.compactMap { $0.childrenDiedInfancy }.reduce(0, +)
-        return total > 0 ? total : nil
+    /// Total children who died in infancy across all couples
+    var totalChildrenDiedInfancy: Int {
+        return couples.compactMap { $0.childrenDiedInfancy }.reduce(0, +)
     }
     
     // MARK: - Computed Properties
@@ -271,7 +245,7 @@ struct Family: Hashable, Sendable, Codable {
         self.noteDefinitions = noteDefinitions
     }
     
-    /// Complex family with multiple couples
+    /// Full family with multiple couples
     init(familyId: String,
          pageReferences: [String],
          couples: [Couple],
@@ -284,47 +258,126 @@ struct Family: Hashable, Sendable, Codable {
         self.notes = notes
         self.noteDefinitions = noteDefinitions
     }
-    
-    // MARK: - Sample Families for Testing and Debugging
+}
 
+// MARK: - Sample Data Extensions
+
+extension Family {
+    /// Create sample family for testing
     static func sampleFamily() -> Family {
-        let husband = Person(name: "Matti Erikinp.", patronymic: nil, birthDate: "10.02.1725", deathDate: "18.09.1802", noteMarkers: [])
-        let wife = Person(name: "Maria Jaakont.", patronymic: nil, birthDate: "12.04.1727", deathDate: "14.07.1798", noteMarkers: [])
-        let children = [
-            Person(name: "Maria", patronymic: nil, birthDate: "10.02.1752", deathDate: nil, noteMarkers: []),
-            Person(name: "Erkki", patronymic: nil, birthDate: "09.03.1755", deathDate: nil, noteMarkers: []),
-            Person(name: "Helena", patronymic: nil, birthDate: "23.05.1757", deathDate: nil, noteMarkers: [])
-        ]
-        let couple = Couple(husband: husband, wife: wife, marriageDate: "1749", children: children, coupleNotes: [])
+        let father = Person(
+            name: "Matti",
+            patronymic: "Erikinp.",
+            birthDate: "15.03.1723",
+            deathDate: "12.11.1798",
+            noteMarkers: []
+        )
+        
+        let mother = Person(
+            name: "Brita",
+            patronymic: "Jaakont.",
+            birthDate: "22.08.1731",
+            deathDate: "05.07.1805",
+            noteMarkers: []
+        )
+        
+        let child1 = Person(
+            name: "Maria",
+            patronymic: "Matint.",
+            birthDate: "18.05.1751",
+            marriageDate: "73",
+            spouse: "Juho Juhonp.",
+            asParent: "KORPI 8",
+            noteMarkers: []
+        )
+        
+        let child2 = Person(
+            name: "Erik",
+            patronymic: "Matinp.",
+            birthDate: "03.09.1753",
+            noteMarkers: []
+        )
+        
         return Family(
-            familyId: "KORPI 6",
+            familyId: "SAMPLE 1",
             pageReferences: ["105", "106"],
-            couples: [couple],
-            notes: ["Perhe muutti Ylivieskaan 1760-luvulla."],
-            noteDefinitions: [:]
+            husband: father,
+            wife: mother,
+            marriageDate: "1750",
+            children: [child1, child2]
         )
     }
-
+    
+    /// Create complex sample family with multiple spouses for testing
     static func complexSampleFamily() -> Family {
-        let husband1 = Person(name: "Jaakko Jaakonp.", patronymic: nil, birthDate: "01.07.1698", deathDate: "31.08.1735", noteMarkers: [])
-        let wife1 = Person(name: "Helena Mikont.", patronymic: nil, birthDate: "15.09.1702", deathDate: nil, noteMarkers: [])
-        let children1 = [
-            Person(name: "Maria", patronymic: nil, birthDate: "27.03.1726", deathDate: nil, noteMarkers: []),
-            Person(name: "Jaakko", patronymic: nil, birthDate: "11.07.1728", deathDate: nil, noteMarkers: []),
-            Person(name: "Antti", patronymic: nil, birthDate: "09.04.1731", deathDate: nil, noteMarkers: [])
-        ]
-        let couple1 = Couple(husband: husband1, wife: wife1, marriageDate: "1725", children: children1, coupleNotes: [])
-        let husband2 = Person(name: "Jaakko Jaakonp.", patronymic: nil, birthDate: "11.07.1728", deathDate: nil, noteMarkers: [])
-        let wife2 = Person(name: "Anna Matint.", patronymic: nil, birthDate: "18.02.1735", deathDate: nil, noteMarkers: [])
-        let children2 = [
-            Person(name: "Helena", patronymic: nil, birthDate: "25.05.1757", deathDate: nil, noteMarkers: [])
-        ]
-        let couple2 = Couple(husband: husband2, wife: wife2, marriageDate: "1756", children: children2, coupleNotes: [])
+        let husband = Person(
+            name: "Jaakko",
+            patronymic: "Jaakonp.",
+            birthDate: "09.10.1726",
+            deathDate: "07.03.1789",
+            asChild: "HYYPPÄ 5",
+            noteMarkers: []
+        )
+        
+        let firstWife = Person(
+            name: "Maria",
+            patronymic: "Jaakont.",
+            birthDate: "02.03.1733",
+            deathDate: "18.04.1753",
+            asChild: "PIETILÄ 7",
+            noteMarkers: []
+        )
+        
+        let secondWife = Person(
+            name: "Brita",
+            patronymic: "Eliant.",
+            birthDate: "11.01.1732",
+            deathDate: "31.03.1767",
+            asChild: "TIKKANEN 5",
+            noteMarkers: []
+        )
+        
+        let child1 = Person(
+            name: "Maria",
+            birthDate: "27.03.1763",
+            marriageDate: "82",
+            spouse: "Matti Korpi",
+            asParent: "KORPI 9",
+            noteMarkers: []
+        )
+        
+        let child2 = Person(
+            name: "Brita",
+            birthDate: "11.02.1766",
+            marriageDate: "86",
+            spouse: "Henrik Karhulahti",
+            asParent: "ISO-HYYPPÄ 10",
+            noteMarkers: []
+        )
+        
+        let primaryCouple = Couple(
+            husband: husband,
+            wife: firstWife,
+            marriageDate: "08.10.1752",
+            children: [],
+            childrenDiedInfancy: nil,
+            coupleNotes: []
+        )
+        
+        let secondCouple = Couple(
+            husband: husband,
+            wife: secondWife,
+            marriageDate: "06.10.1754",
+            children: [child1, child2],
+            childrenDiedInfancy: nil,
+            coupleNotes: []
+        )
+        
         return Family(
-            familyId: "HYYPPÄ 5",
-            pageReferences: ["369", "370"],
-            couples: [couple1, couple2],
-            notes: ["Tässä perheessä useita ristiinviittauksia."],
+            familyId: "HYYPPÄ 6",
+            pageReferences: ["370"],
+            couples: [primaryCouple, secondCouple],
+            notes: ["Maria kuoli 1784 ja lapsi samana vuonna."],
             noteDefinitions: [:]
         )
     }

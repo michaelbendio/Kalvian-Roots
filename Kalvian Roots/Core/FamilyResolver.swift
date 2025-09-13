@@ -389,9 +389,15 @@ class FamilyResolver {
     }
     
     private func validatePersonMatch(person: Person, inFamily family: Family) -> Bool {
-        // SIMPLIFIED: Check name matches in all family members
-        let allNames = family.allParents.map { $0.name.lowercased() } +
-                       family.children.map { $0.name.lowercased() }
+        var allNames: [String] = []
+        
+        // Get all parent names
+        allNames.append(contentsOf: family.allParents.map { $0.name.lowercased() })
+        
+        // Get all children names from all couples
+        for couple in family.couples {
+            allNames.append(contentsOf: couple.children.map { $0.name.lowercased() })
+        }
         
         if allNames.contains(person.name.lowercased()) {
             return true
@@ -407,15 +413,10 @@ class FamilyResolver {
         
         return false
     }
-    
     // MARK: - Debug Logging Methods
     
     /// Enhanced debug logging for cross-reference resolution
     private func debugLogResolutionAttempt(_ family: Family) {
-        logInfo(.resolver, "🎯 === STARTING RESOLUTION DEBUG ===")
-        logInfo(.resolver, "📋 Resolving for family: \(family.familyId)")
-        
-        // FIXED: Log what we're looking for
         logInfo(.resolver, "🔍 CROSS-REFERENCES TO RESOLVE:")
         
         // Parents as-child references (their parents' families)
@@ -434,10 +435,13 @@ class FamilyResolver {
             logWarn(.resolver, "  ⚠️ No parent as_child references found")
         }
         
-        // Children as-parent references
-        let childRefs = family.children.compactMap { child in
-            child.asParent.map { ref in
-                "\(child.displayName) parent in → \(ref)"
+        // Children as-parent references - iterate through all couples
+        var childRefs: [String] = []
+        for couple in family.couples {
+            for child in couple.children {
+                if let asParentRef = child.asParent {
+                    childRefs.append("\(child.displayName) parent in → \(asParentRef)")
+                }
             }
         }
         

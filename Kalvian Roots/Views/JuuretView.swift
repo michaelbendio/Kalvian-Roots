@@ -338,44 +338,40 @@ struct JuuretView: View {
     }
     
     private func familyMembersView(family: Family) -> some View {
-        VStack(alignment: .leading, spacing: 20) {
-            // Parents section
-            if family.father != nil || family.mother != nil {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Parents")
-                        .font(.genealogyHeadline)
-                        .fontWeight(.semibold)
-                    
-                    if let father = family.father {
-                        personView(person: father, role: .father, family: family)
+            VStack(alignment: .leading, spacing: 20) {
+                // Parents section
+                if let primaryCouple = family.primaryCouple {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Parents")
+                            .font(.genealogyHeadline)
+                            .fontWeight(.semibold)
+                        
+                        personView(person: primaryCouple.husband, role: .father, family: family)
+                        personView(person: primaryCouple.wife, role: .mother, family: family)
                     }
-                    
-                    if let mother = family.mother {
-                        personView(person: mother, role: .mother, family: family)
-                    }
+                    .padding()
+                    .background(Color.blue.opacity(0.05))
+                    .cornerRadius(10)
                 }
-                .padding()
-                .background(Color.blue.opacity(0.05))
-                .cornerRadius(10)
-            }
-            
-            // Children section
-            if !family.children.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Children (\(family.children.count))")
-                        .font(.genealogyHeadline)
-                        .fontWeight(.semibold)
-                    
-                    ForEach(family.children) { child in
-                        personView(person: child, role: .child, family: family)
+                
+                // Children section - iterate through all couples
+                let allChildren = family.couples.flatMap { $0.children }
+                if !allChildren.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Children (\(allChildren.count))")
+                            .font(.genealogyHeadline)
+                            .fontWeight(.semibold)
+                        
+                        ForEach(allChildren) { child in
+                            personView(person: child, role: .child, family: family)
+                        }
                     }
+                    .padding()
+                    .background(Color.green.opacity(0.05))
+                    .cornerRadius(10)
                 }
-                .padding()
-                .background(Color.green.opacity(0.05))
-                .cornerRadius(10)
             }
         }
-    }
     
     private func personView(person: Person, role: PersonRole, family: Family) -> some View {
         VStack(alignment: .leading, spacing: 8) {

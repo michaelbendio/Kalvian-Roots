@@ -173,28 +173,38 @@ class DebugLogger {
     }
     
     func logParsingSuccess(_ family: Family) {
-        info(.parsing, "✅ Successfully parsed family: \(family.familyId)")
-        
-        if let father = family.father {
-            debug(.parsing, "Father: \(father.displayName)")
-        } else {
-            debug(.parsing, "Father: nil")
+            info(.parsing, "✅ Successfully parsed family: \(family.familyId)")
+            
+            // Log primary couple information
+            if let primaryCouple = family.primaryCouple {
+                debug(.parsing, "👨 Husband: \(primaryCouple.husband.displayName)")
+                debug(.parsing, "👩 Wife: \(primaryCouple.wife.displayName)")
+                debug(.parsing, "👶 Primary couple children: \(primaryCouple.children.count)")
+            } else {
+                debug(.parsing, "⚠️ No primary couple found")
+            }
+            
+            // Log additional couples
+            if family.couples.count > 1 {
+                debug(.parsing, "👫 Additional couples: \(family.couples.count - 1)")
+                for (index, couple) in family.couples.dropFirst().enumerated() {
+                    debug(.parsing, "  Couple \(index + 2): \(couple.husband.displayName) & \(couple.wife.displayName)")
+                    debug(.parsing, "    Children: \(couple.children.count)")
+                }
+            }
+            
+            // Log total statistics
+            let totalChildren = family.couples.flatMap { $0.children }.count
+            debug(.parsing, "📊 Total couples: \(family.couples.count)")
+            debug(.parsing, "📊 Total children: \(totalChildren)")
+            
+            // Log cross-references to resolve
+            let parentsWithRefs = family.allParents.filter { $0.asChild != nil }.count
+            let childrenWithRefs = family.marriedChildren.filter { $0.asParent != nil }.count
+            let totalRefs = parentsWithRefs + childrenWithRefs
+            
+            debug(.parsing, "🔗 Cross-references to resolve: \(totalRefs) (parents: \(parentsWithRefs), married children: \(childrenWithRefs))")
         }
-        
-        if let mother = family.mother {
-            debug(.parsing, "Mother: \(mother.displayName)")
-        } else {
-            debug(.parsing, "Mother: nil")
-        }
-        
-        debug(.parsing, "Children: \(family.children.count)")
-        
-        let parentsWithRefs = family.allParents.filter { $0.asChild != nil }.count
-        let childrenWithRefs = family.children.filter { $0.asParent != nil }.count
-        let totalRefs = parentsWithRefs + childrenWithRefs
-        
-        debug(.parsing, "Cross-references to resolve: \(totalRefs) (parents: \(parentsWithRefs), children: \(childrenWithRefs))")
-    }
     
     func logParsingFailure(_ error: Error, familyId: String) {
         self.error(.parsing, "❌ Parsing failed for \(familyId): \(error.localizedDescription)")

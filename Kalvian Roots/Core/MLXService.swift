@@ -130,145 +130,70 @@ class MLXService: AIService {
     }
     
     func parseFamily(familyId: String, familyText: String) async throws -> String {
-        logInfo(.ai, "🤖 \(name) parsing family: \(familyId)")
-        logDebug(.ai, "Using MLX model: \(modelName)")
-        logDebug(.ai, "📝 MLX parseFamily called with real family text")
-        
-        // Validate family text length
-        if familyText.count < 100 {
-            logWarn(.ai, "⚠️ Family text unusually short (\(familyText.count) chars)")
-            logWarn(.ai, "📝 Short text: '\(familyText)'")
-            return createMockFamilyJSON(familyId: familyId)
-        }
-        
-        // Enhanced server detection
-        logInfo(.ai, "🔍 Checking MLX server availability...")
-        
-        let serverWorking = await isMLXServerRunning()
-        
-        if !serverWorking {
-            // Fallback to endpoint detection
+            logInfo(.ai, "🤖 \(name) parsing family: \(familyId)")
+            logDebug(.ai, "Using MLX model: \(modelName)")
+            
+            // Validate family text length
+            if familyText.count < 100 {
+                throw AIServiceError.parsingFailed("Family text too short for processing (\(familyText.count) chars)")
+            }
+            
+            // Check if MLX server is running
+            logInfo(.ai, "🔍 Checking MLX server availability...")
             let serverRunning = await isMLXServerRunning()
             
             if !serverRunning {
-                logWarn(.ai, "⚠️ MLX server not running at \(baseURL)")
-                logInfo(.ai, "💡 To start MLX server:")
-                logInfo(.ai, "   cd ~/.kalvian_roots_mlx")
-                logInfo(.ai, "   python -m mlx_lm.server --model models/\(getModelPath()) --port 8080")
-                logInfo(.ai, "📝 Using mock response - start server for real AI processing")
-                return createMockFamilyJSON(familyId: familyId)
+                throw AIServiceError.networkError(NSError(domain: "MLXService", code: -1, userInfo: [
+                    NSLocalizedDescriptionKey: """
+                        MLX server not running at \(baseURL)
+                        
+                        To start MLX server:
+                        cd ~/.kalvian_roots_mlx
+                        python -m mlx_lm.server --model models/\(getModelPath()) --port 8080
+                        """
+                ]))
             }
             
-            logWarn(.ai, "⚠️ MLX server detected but test generation failed")
-            logInfo(.ai, "💡 Server might be starting up or overloaded")
-        }
-        
-        // Attempt real AI processing with retries
-        var lastError: Error?
-        let maxRetries = 3
-        
-        for attempt in 1...maxRetries {
-            do {
-                logInfo(.ai, "🚀 Attempt \(attempt)/\(maxRetries): MLX AI processing...")
-                
-                let request = try createCustomMLXRequest(familyId: familyId, familyText: familyText)
-                let response = try await sendMLXRequest(request)
-                let validatedJSON = try validateCustomMLXResponse(response)
-                
-                logInfo(.ai, "✅ MLX parsing successful on attempt \(attempt)")
-                logDebug(.ai, "🎯 Real AI response: \(String(validatedJSON.prefix(100)))...")
-                return validatedJSON
-                
-            } catch AIServiceError.httpError(let code, let message) where code == 422 {
-                // 422 might indicate model loading or invalid request format
-                logWarn(.ai, "⚠️ MLX returned 422 (attempt \(attempt)): \(message)")
-                if attempt < maxRetries {
-                    logInfo(.ai, "🔄 Waiting 2s before retry (model might be loading)...")
-                    try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-                }
-                lastError = AIServiceError.httpError(code, message)
-                
-            } catch AIServiceError.httpError(let code, let message) where code >= 500 {
-                // Server errors - retry
-                logWarn(.ai, "⚠️ MLX server error \(code) (attempt \(attempt)): \(message)")
-                if attempt < maxRetries {
-                    logInfo(.ai, "🔄 Waiting 1s before retry...")
-                    try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
-                }
-                lastError = AIServiceError.httpError(code, message)
-                
-            } catch {
-                logError(.ai, "❌ MLX parsing failed (attempt \(attempt)): \(error)")
-                lastError = error
-                
-                if attempt < maxRetries {
-                    logInfo(.ai, "🔄 Retrying in 1s...")
-                    try await Task.sleep(nanoseconds: 1_000_000_000)
+            // Attempt real AI processing with retries
+            var lastError: Error?
+            let maxRetries = 3
+            
+            for attempt in 1...maxRetries {
+                do {
+                    logDebug(.ai, "🔄 MLX attempt \(attempt)/\(maxRetries)")
+                    
+                    let request = try createCustomMLXRequest(familyId: familyId, familyText: familyText)
+                    let response = try await sendMLXRequest(request)
+                    let validatedJSON = try validateCustomMLXResponse(response)
+                    
+                    logInfo(.ai, "✅ MLX successfully generated response on attempt \(attempt)")
+                    return validatedJSON
+                    
+                } catch {
+                    lastError = error
+                    logWarn(.ai, "⚠️ MLX attempt \(attempt) failed: \(error)")
+                    
+                    if attempt < maxRetries {
+                        let delay = Double(attempt) * 2.0 // Exponential backoff
+                        logDebug(.ai, "⏱️ Waiting \(delay)s before retry...")
+                        try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    }
                 }
             }
+            
+            // All retries failed - throw a clear error
+            logError(.ai, "❌ All MLX attempts failed. Last error: \(lastError?.localizedDescription ?? "Unknown")")
+            
+            throw AIServiceError.parsingFailed("""
+                MLX failed after \(maxRetries) attempts.
+                Last error: \(lastError?.localizedDescription ?? "Unknown")
+                
+                Try:
+                1. Restart MLX server
+                2. Use a different AI service
+                3. Check MLX server logs for errors
+                """)
         }
-        
-        // All retries failed
-        logError(.ai, "❌ All MLX attempts failed. Last error: \(lastError?.localizedDescription ?? "Unknown")")
-        logWarn(.ai, "🔄 Falling back to mock response")
-        
-        // Return mock with more informative message
-        return createDetailedMockFamilyJSON(familyId: familyId, error: lastError)
-    }
-    
-    private func createDetailedMockFamilyJSON(familyId: String, error: Error?) -> String {
-        let errorMessage = error?.localizedDescription ?? "Unknown MLX error"
-        
-        logWarn(.ai, "🔄 Creating detailed mock JSON response")
-        logInfo(.ai, "💡 Error details: \(errorMessage)")
-        logInfo(.ai, "💡 Check that MLX server is running and model is loaded")
-        
-        return """
-        {
-          "familyId": "\(familyId)",
-          "couples": [
-            {
-                "husband": {...},
-                "wife": {...},
-                "marriageDate": "...",
-                "children": [...],
-                "childrenDiedInfancy": 0,
-                "coupleNotes": []
-            }
-          ],
-          "notes": [],
-          "noteDefinitions": {}
-          }
-          "pageReferences": ["999"],
-          "father": {
-            "name": "Mock Father",
-            "patronymic": "Mockp.",
-            "birthDate": "01.01.1700",
-            "noteMarkers": []
-          },
-          "mother": {
-            "name": "Mock Mother", 
-            "patronymic": "Mockt.",
-            "birthDate": "01.01.1705",
-            "noteMarkers": []
-          },
-          "additionalSpouses": [],
-          "children": [
-            {
-              "name": "Mock Child",
-              "birthDate": "01.01.1730",
-              "noteMarkers": []
-            }
-          ],
-          "notes": [
-            "MOCK RESPONSE - MLX processing failed",
-            "Error: \(errorMessage)",
-            "Start MLX server: python -m mlx_lm.server --model ~/.kalvian_roots_mlx/models/\(getModelPath()) --port 8080"
-          ],
-          "childrenDiedInfancy": null
-        }
-        """
-    }
     
     // MARK: - MLX Server Communication
     
@@ -713,45 +638,6 @@ class MLXService: AIService {
         default:
             return "Qwen3-30B-A3B-4bit"
         }
-    }
-    
-    // MARK: - Fallback Mock Response
-    
-    private func createMockFamilyJSON(familyId: String) -> String {
-        logWarn(.ai, "🔄 Creating mock JSON response - MLX AI processing not working")
-        logInfo(.ai, "💡 This means either:")
-        logInfo(.ai, "   1. MLX server endpoints not found (all returned 404)")
-        logInfo(.ai, "   2. MLX server not actually running the AI model")
-        logInfo(.ai, "   3. MLX server configuration issue")
-        
-        return """
-        {
-          "familyId": "\(familyId)",
-          "pageReferences": ["999"],
-          "father": {
-            "name": "Mock Father",
-            "patronymic": "Mockp.",
-            "birthDate": "01.01.1700",
-            "noteMarkers": []
-          },
-          "mother": {
-            "name": "Mock Mother", 
-            "patronymic": "Mockt.",
-            "birthDate": "01.01.1705",
-            "noteMarkers": []
-          },
-          "additionalSpouses": [],
-          "children": [
-            {
-              "name": "Mock Child",
-              "birthDate": "01.01.1730",
-              "noteMarkers": []
-            }
-          ],
-          "notes": ["MOCK RESPONSE - MLX server found but AI processing failed"],
-          "childrenDiedInfancy": null
-        }
-        """
     }
 }
 

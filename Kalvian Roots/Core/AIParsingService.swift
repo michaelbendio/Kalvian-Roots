@@ -151,26 +151,23 @@ class AIParsingService {
                 throw AIServiceError.invalidResponse("Invalid JSON structure")
             }
             
-            // Convert flat JSON to Family with Couples
+            // Convert JSON to Family with modern Couples structure
             let family = try convertJSONToFamilyWithCouples(json, familyId: familyId)
             
             logDebug(.parsing, "✅ JSON converted and decoded successfully")
             logDebug(.parsing, "Family ID: \(family.familyId)")
             logDebug(.parsing, "Couples: \(family.couples.count)")
-            logDebug(.parsing, "Total children: \(family.allPersons.filter { _ in true }.count)")
+            logDebug(.parsing, "Total persons: \(family.allPersons.count)")
             
             return family
             
         } catch {
-            logError(.parsing, "❌ JSON decoding failed: \(error)")
+            logError(.parsing, "❌ JSON parsing failed: \(error)")
+            logError(.parsing, "❌ Raw JSON that failed: \(cleanedJSON.prefix(500))...")
             
-            // Try minimal parsing as fallback
-            if let minimalFamily = tryMinimalParsing(jsonString: cleanedJSON, familyId: familyId) {
-                logWarn(.parsing, "⚠️ Used minimal parsing fallback for: \(familyId)")
-                return minimalFamily
-            }
-            
-            throw AIServiceError.parsingFailed("JSON decoding failed: \(error.localizedDescription)")
+            // FAIL FAST - No minimal parsing fallback
+            // This forces the user to see what went wrong and try a different approach
+            throw AIServiceError.parsingFailed("AI service returned invalid JSON. Please try a different AI service or retry the request. Error: \(error.localizedDescription)")
         }
     }
     
@@ -178,158 +175,67 @@ class AIParsingService {
     private func convertJSONToFamilyWithCouples(_ json: [String: Any], familyId providedFamilyId: String) throws -> Family {
         // Extract basic fields
         let familyId = json["familyId"] as? String ?? providedFamilyId
-        let pageReferences = json["pageReferences"] as? [String] ?? []
+        let pageReferences = extractPageReferences(from: json)
         let notes = json["notes"] as? [String] ?? []
         let noteDefinitions = json["noteDefinitions"] as? [String: String] ?? [:]
         
-        // Build couples array from the JSON couples array
+        // Extract couples array - this is now the ONLY supported format
+        guard let couplesData = json["couples"] as? [[String: Any]] else {
+            logError(.parsing, "❌ No 'couples' array found in JSON - modern format required")
+            throw AIServiceError.invalidResponse("JSON must contain 'couples' array with modern structure")
+        }
+        
+        logDebug(.parsing, "✅ Found couples array with \(couplesData.count) couples")
+        
         var couples: [Couple] = []
         
-        // Check if we have a couples array in the JSON
-        if let couplesData = json["couples"] as? [[String: Any]] {
-            logDebug(.parsing, "Found \(couplesData.count) couples in JSON")
+        for (index, coupleData) in couplesData.enumerated() {
+            logDebug(.parsing, "Processing couple \(index + 1)")
             
-            for (index, coupleData) in couplesData.enumerated() {
-                logDebug(.parsing, "Processing couple \(index + 1)")
-                
-                // Extract husband
-                let husband: Person
-                if let husbandData = coupleData["husband"] as? [String: Any] {
-                    husband = try convertJSONToPerson(husbandData)
-                    logDebug(.parsing, "Found husband: \(husband.displayName)")
-                } else {
-                    husband = Person(name: "Unknown Father", noteMarkers: [])
-                    logWarn(.parsing, "No husband data in couple \(index + 1)")
-                }
-                
-                // Extract wife
-                let wife: Person
-                if let wifeData = coupleData["wife"] as? [String: Any] {
-                    wife = try convertJSONToPerson(wifeData)
-                    logDebug(.parsing, "Found wife: \(wife.displayName)")
-                } else {
-                    wife = Person(name: "Unknown Mother", noteMarkers: [])
-                    logWarn(.parsing, "No wife data in couple \(index + 1)")
-                }
-                
-                // Extract marriage date - can be at couple level or in husband/wife data
-                let marriageDate = coupleData["marriageDate"] as? String ??
-                                 coupleData["fullMarriageDate"] as? String
-                
-                // Extract children
-                var children: [Person] = []
-                if let childrenData = coupleData["children"] as? [[String: Any]] {
-                    logDebug(.parsing, "Found \(childrenData.count) children for couple \(index + 1)")
-                    for childData in childrenData {
-                        let child = try convertJSONToPerson(childData)
-                        children.append(child)
-                    }
-                }
-                
-                // Extract children died in infancy
-                let childrenDiedInfancy = coupleData["childrenDiedInfancy"] as? Int
-                
-                // Extract couple notes
-                let coupleNotes = coupleData["coupleNotes"] as? [String] ?? []
-                
-                // Create couple
-                let couple = Couple(
-                    husband: husband,
-                    wife: wife,
-                    marriageDate: marriageDate,
-                    children: children,
-                    childrenDiedInfancy: childrenDiedInfancy,
-                    coupleNotes: coupleNotes
-                )
-                
-                couples.append(couple)
-                logDebug(.parsing, "Created couple with \(children.count) children")
+            // Extract husband
+            guard let husbandData = coupleData["husband"] as? [String: Any] else {
+                throw AIServiceError.invalidResponse("Couple \(index + 1) missing 'husband' data")
             }
-        } else if let fatherData = json["father"] as? [String: Any] {
-            // Fallback: Handle old flat structure for backward compatibility
-            logDebug(.parsing, "Using fallback flat structure parsing")
+            let husband = try convertJSONToPerson(husbandData)
             
-            let husband = try convertJSONToPerson(fatherData)
-            
-            // Wife from mother field
-            let wife: Person
-            if let motherData = json["mother"] as? [String: Any] {
-                wife = try convertJSONToPerson(motherData)
-            } else {
-                wife = Person(name: "Unknown Mother", noteMarkers: [])
+            // Extract wife
+            guard let wifeData = coupleData["wife"] as? [String: Any] else {
+                throw AIServiceError.invalidResponse("Couple \(index + 1) missing 'wife' data")
             }
+            let wife = try convertJSONToPerson(wifeData)
             
-            // Children array
+            // Extract marriage date
+            let marriageDate = coupleData["marriageDate"] as? String
+            
+            // Extract children
             var children: [Person] = []
-            if let childrenData = json["children"] as? [[String: Any]] {
+            if let childrenData = coupleData["children"] as? [[String: Any]] {
+                logDebug(.parsing, "Found \(childrenData.count) children for couple \(index + 1)")
                 for childData in childrenData {
                     let child = try convertJSONToPerson(childData)
                     children.append(child)
                 }
             }
             
-            // Extract marriage date
-            let marriageDate = fatherData["marriageDate"] as? String
+            // Extract other couple fields
+            let childrenDiedInfancy = coupleData["childrenDiedInfancy"] as? Int
+            let coupleNotes = coupleData["coupleNotes"] as? [String] ?? []
             
-            // Children died in infancy
-            let childrenDiedInfancy = json["childrenDiedInfancy"] as? Int
-            
-            let primaryCouple = Couple(
+            // Create couple
+            let couple = Couple(
                 husband: husband,
                 wife: wife,
                 marriageDate: marriageDate,
                 children: children,
                 childrenDiedInfancy: childrenDiedInfancy,
-                coupleNotes: []
+                coupleNotes: coupleNotes
             )
             
-            couples.append(primaryCouple)
-            
-            // Handle additional spouses if present
-            if let additionalSpousesData = json["additionalSpouses"] as? [[String: Any]] {
-                for spouseData in additionalSpousesData {
-                    let spouse = try convertJSONToPerson(spouseData)
-                    let additionalCouple = Couple(
-                        husband: husband,
-                        wife: spouse,
-                        marriageDate: spouseData["marriageDate"] as? String,
-                        children: [],
-                        childrenDiedInfancy: nil,
-                        coupleNotes: []
-                    )
-                    couples.append(additionalCouple)
-                }
-            }
-        } else {
-            // No valid structure found
-            logWarn(.parsing, "No couples or father/mother found in JSON, creating minimal couple")
-            let minimalCouple = Couple(
-                husband: Person(name: "Unknown Father", noteMarkers: []),
-                wife: Person(name: "Unknown Mother", noteMarkers: []),
-                marriageDate: nil,
-                children: [],
-                childrenDiedInfancy: nil,
-                coupleNotes: []
-            )
-            couples.append(minimalCouple)
+            couples.append(couple)
+            logDebug(.parsing, "✅ Created couple: \(husband.displayName) & \(wife.displayName) with \(children.count) children")
         }
         
-        // Handle childrenDiedInfancy at family level if not in couples
-        if let familyChildrenDied = json["childrenDiedInfancy"] as? Int,
-           couples.count == 1 && couples[0].childrenDiedInfancy == nil {
-            // Apply to the primary couple if it doesn't already have this value
-            let couple = couples[0]
-            couples[0] = Couple(
-                husband: couple.husband,
-                wife: couple.wife,
-                marriageDate: couple.marriageDate,
-                children: couple.children,
-                childrenDiedInfancy: familyChildrenDied,
-                coupleNotes: couple.coupleNotes
-            )
-        }
-        
-        logDebug(.parsing, "Created family with \(couples.count) couples")
+        logDebug(.parsing, "✅ Successfully created family with \(couples.count) couples")
         
         return Family(
             familyId: familyId,
@@ -338,6 +244,24 @@ class AIParsingService {
             notes: notes,
             noteDefinitions: noteDefinitions
         )
+    }
+    
+    /// Extract page references from JSON in various formats
+    private func extractPageReferences(from json: [String: Any]) -> [String] {
+        if let pageReferences = json["pageReferences"] as? [String] {
+            return pageReferences
+        }
+        
+        if let pageReference = json["pageReference"] as? String {
+            return [pageReference]
+        }
+        
+        if let pages = json["pages"] as? String {
+            return pages.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        }
+        
+        // Default fallback
+        return ["Unknown"]
     }
     
     /// Convert JSON dictionary to Person
