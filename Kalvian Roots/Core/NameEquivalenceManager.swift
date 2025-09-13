@@ -240,6 +240,7 @@ class NameEquivalenceManager {
         // Common Finnish name equivalences
         let defaultPairs = [
             ("Liisa", "Elisabet"),
+            ("Malin", "Magdalena"),
             ("Johan", "Juho"),
             ("Matti", "Matias"),
             ("Anna", "Annikki"),

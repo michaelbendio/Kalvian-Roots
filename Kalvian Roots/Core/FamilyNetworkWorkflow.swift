@@ -94,46 +94,25 @@ class FamilyNetworkWorkflow {
         case enhanced
     }
     
-    private func debugLogResolutionAttempt(_ family: Family) {
-        logInfo(.resolver, "🔍 CROSS-REFERENCES TO RESOLVE:")
+    /**
+     * Generate and activate citations for the family
+     * This was the MISSING METHOD causing the first build error
+     */
+    private func generateAndActivateCitations(for family: Family, type: CitationType) {
+        logInfo(.citation, "📝 Generating citations for family: \(family.familyId) (type: \(type))")
         
-        // Parents as-child references (their parents' families)
-        let parentRefs = family.allParents.compactMap { parent in
-            parent.asChild.map { ref in
-                "\(parent.displayName) child in → \(ref)"
-            }
-        }
+        // Clear any existing citations
+        activeCitations.removeAll()
         
-        if !parentRefs.isEmpty {
-            logInfo(.resolver, "👨‍👩 PARENT'S PARENTS")
-            for ref in parentRefs {
-                logInfo(.resolver, "  - \(ref)")
-            }
+        if let network = familyNetwork {
+            // Generate person-specific citations with network enhancement
+            generatePersonSpecificCitations(for: family, network: network)
         } else {
-            logWarn(.resolver, "  ⚠️ No parent as_child references found")
+            // Generate basic citations without network
+            generateBasicPersonCitations(for: family)
         }
         
-        // Children as-parent references - iterate through all couples
-        var childRefs: [String] = []
-        for couple in family.couples {
-            for child in couple.children {
-                if let asParentRef = child.asParent {
-                    childRefs.append("\(child.displayName) parent in → \(asParentRef)")
-                }
-            }
-        }
-        
-        if !childRefs.isEmpty {
-            logInfo(.resolver, "👶 CHILDREN'S FAMILIES")
-            for ref in childRefs {
-                logInfo(.resolver, "  - \(ref)")
-            }
-        } else {
-            logWarn(.resolver, "  ⚠️ No child as_parent references found")
-        }
-        
-        logInfo(.resolver, "📊 Total references to resolve: \(parentRefs.count + childRefs.count)")
-        logInfo(.resolver, "🎯 === END RESOLUTION DEBUG ===")
+        logInfo(.citation, "✅ Generated \(activeCitations.count) citations for \(family.familyId)")
     }
     
     private func generateBasicPersonCitations(for family: Family) {
@@ -226,63 +205,27 @@ class FamilyNetworkWorkflow {
         logInfo(.citation, "✅ Generated \(activeCitations.count) person-specific citations")
     }
     
-    private func enhanceChildrenWithAsParentDates(family: Family, network: FamilyNetwork) -> Family {
-        var enhancedCouples: [Couple] = []
+    private func createNetworkWithParentAsParent(for parent: Person, network: FamilyNetwork) -> FamilyNetwork {
+        logInfo(.citation, "🔧 Creating network with parent asParent for: '\(parent.displayName)' (name: '\(parent.name)')")
         
-        for couple in family.couples {
-            var enhancedChildren: [Person] = []
-            
-            for child in couple.children {
-                var enhancedChild = child
-                
-                // Get additional dates from asParent family
-                if let asParentFamily = network.getAsParentFamily(for: child) {
-                    // Find this child as a parent in their asParent family
-                    if let childAsParent = asParentFamily.allParents.first(where: {
-                        $0.name.lowercased() == child.name.lowercased()
-                    }) {
-                        
-                        // Enhance with death date if missing in nuclear family
-                        if enhancedChild.deathDate == nil && childAsParent.deathDate != nil {
-                            enhancedChild.deathDate = childAsParent.deathDate
-                        }
-                        
-                        // Enhance with full marriage date - check all possible sources
-                        if let fullDate = childAsParent.fullMarriageDate {
-                            enhancedChild.fullMarriageDate = fullDate
-                        } else if let marriageDate = childAsParent.marriageDate,
-                                  marriageDate.count >= 8 {
-                            enhancedChild.fullMarriageDate = marriageDate
-                        } else if let coupleMarriage = asParentFamily.primaryCouple?.marriageDate,
-                                  coupleMarriage.count >= 8 {
-                            // Check couple-level marriage date
-                            enhancedChild.fullMarriageDate = coupleMarriage
-                        }
-                    }
-                }
-                
-                enhancedChildren.append(enhancedChild)
-            }
-            
-            let enhancedCouple = Couple(
-                husband: couple.husband,
-                wife: couple.wife,
-                marriageDate: couple.marriageDate,
-                children: enhancedChildren,
-                childrenDiedInfancy: couple.childrenDiedInfancy,
-                coupleNotes: couple.coupleNotes
-            )
-            
-            enhancedCouples.append(enhancedCouple)
+        var modifiedNetwork = network
+        
+        // Store under multiple keys for robust lookup
+        let storageKeys = [
+            parent.displayName,           // "Erik Matinp."
+            parent.name,                  // "Erik"
+            parent.name.trimmingCharacters(in: .whitespaces)  // "Erik" (trimmed)
+        ]
+        
+        for key in storageKeys {
+            modifiedNetwork.asParentFamilies[key] = network.mainFamily
+            logDebug(.citation, "  📝 Stored nuclear family under key: '\(key)'")
         }
         
-        return Family(
-            familyId: family.familyId,
-            pageReferences: family.pageReferences,
-            couples: enhancedCouples,
-            notes: family.notes,
-            noteDefinitions: family.noteDefinitions
-        )
+        logInfo(.citation, "  📊 Total asParent families in modified network: \(modifiedNetwork.asParentFamilies.count)")
+        logInfo(.citation, "  🔑 asParent keys: \(Array(modifiedNetwork.asParentFamilies.keys))")
+        
+        return modifiedNetwork
     }
     
     private func generateEnhancedChildCitation(child: Person, asParentFamily: Family, network: FamilyNetwork) -> String {
@@ -381,8 +324,8 @@ class FamilyNetworkWorkflow {
             
             // Check for marriage date enhancement (compare to ORIGINAL)
             // Check if we enhanced from year-only to full date
-            // First, find the enhanced child in our enhanced family
-            let enhancedChild = enhancedMainFamily.children.first {
+            // First, find the enhanced child in our enhanced family - FIXED LINE 385
+            let enhancedChild = enhancedMainFamily.couples.flatMap { $0.children }.first {
                 $0.name.lowercased() == child.name.lowercased()
             }
             
@@ -430,21 +373,105 @@ class FamilyNetworkWorkflow {
         }
     }
     
-    /**
-     * Create a modified network that includes the parent's asParent family information
-     * For a parent in the nuclear family, their asParent family is the nuclear family itself
-     */
-    private func createNetworkWithParentAsParent(for parent: Person, network: FamilyNetwork) -> FamilyNetwork {
-        // Create a modified network that includes the parent's asParent family
-        var modifiedNetwork = network
+    private func debugLogResolutionAttempt(_ family: Family) {
+        logInfo(.resolver, "🔍 CROSS-REFERENCES TO RESOLVE:")
         
-        // The parent's asParent family is the main nuclear family where they appear as a parent
-        // We add this to the asParentFamilies dictionary so the citation generator can find it
-        // Use displayName as key for disambiguation
-        modifiedNetwork.asParentFamilies[parent.displayName] = network.mainFamily
-        modifiedNetwork.asParentFamilies[parent.name] = network.mainFamily  // Also store by name
+        // Parents as-child references (their parents' families)
+        let parentRefs = family.allParents.compactMap { parent in
+            parent.asChild.map { ref in
+                "\(parent.displayName) child in → \(ref)"
+            }
+        }
         
-        return modifiedNetwork
+        if !parentRefs.isEmpty {
+            logInfo(.resolver, "👨‍👩 PARENT'S PARENTS")
+            for ref in parentRefs {
+                logInfo(.resolver, "  - \(ref)")
+            }
+        } else {
+            logWarn(.resolver, "  ⚠️ No parent as_child references found")
+        }
+        
+        // Children as-parent references - iterate through all couples
+        var childRefs: [String] = []
+        for couple in family.couples {
+            for child in couple.children {
+                if let asParentRef = child.asParent {
+                    childRefs.append("\(child.displayName) parent in → \(asParentRef)")
+                }
+            }
+        }
+        
+        if !childRefs.isEmpty {
+            logInfo(.resolver, "👶 CHILDREN'S FAMILIES")
+            for ref in childRefs {
+                logInfo(.resolver, "  - \(ref)")
+            }
+        } else {
+            logWarn(.resolver, "  ⚠️ No child as_parent references found")
+        }
+        
+        logInfo(.resolver, "📊 Total references to resolve: \(parentRefs.count + childRefs.count)")
+        logInfo(.resolver, "🎯 === END RESOLUTION DEBUG ===")
+    }
+    
+    private func enhanceChildrenWithAsParentDates(family: Family, network: FamilyNetwork) -> Family {
+        var enhancedCouples: [Couple] = []
+        
+        for couple in family.couples {
+            var enhancedChildren: [Person] = []
+            
+            for child in couple.children {
+                var enhancedChild = child
+                
+                // Get additional dates from asParent family
+                if let asParentFamily = network.getAsParentFamily(for: child) {
+                    // Find this child as a parent in their asParent family
+                    if let childAsParent = asParentFamily.allParents.first(where: {
+                        $0.name.lowercased() == child.name.lowercased()
+                    }) {
+                        
+                        // Enhance with death date if missing in nuclear family
+                        if enhancedChild.deathDate == nil && childAsParent.deathDate != nil {
+                            enhancedChild.deathDate = childAsParent.deathDate
+                        }
+                        
+                        // Enhance with full marriage date - check all possible sources
+                        if let fullDate = childAsParent.fullMarriageDate {
+                            enhancedChild.fullMarriageDate = fullDate
+                        } else if let marriageDate = childAsParent.marriageDate,
+                                  marriageDate.count >= 8 {
+                            enhancedChild.fullMarriageDate = marriageDate
+                        } else if let coupleMarriage = asParentFamily.primaryCouple?.marriageDate,
+                                  coupleMarriage.count >= 8 {
+                            // Check couple-level marriage date
+                            enhancedChild.fullMarriageDate = coupleMarriage
+                        }
+                    }
+                }
+                
+                enhancedChildren.append(enhancedChild)
+            }
+            
+            let enhancedCouple = Couple(
+                husband: couple.husband,
+                wife: couple.wife,
+                marriageDate: couple.marriageDate,
+                children: enhancedChildren,
+                childrenDiedInfancy: couple.childrenDiedInfancy,
+                coupleNotes: couple.coupleNotes
+            )
+            
+            enhancedCouples.append(enhancedCouple)
+        }
+        
+        return Family(
+            familyId: family.familyId,
+            pageReferences: family.pageReferences,
+            couples: enhancedCouples,
+            notes: family.notes,
+            noteDefinitions: family.noteDefinitions
+        )
     }
     
     // MARK: - Helper Methods

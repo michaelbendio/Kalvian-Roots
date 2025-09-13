@@ -84,17 +84,19 @@ struct CitationGenerator {
 
     /**
      * Generate as_child citation for the person in their parents' family
-     * ENHANCED with birth date matching and warning system
+     * ENHANCED with birth date matching and name equivalence support
      * Includes additional information from the person's asParent family if available
      *
      * @param person The person who appears as a child in this family
      * @param asChildFamily The family where the person appears as a child
      * @param network Optional network to find the person's asParent family for additional dates
+     * @param nameEquivalenceManager Optional name equivalence manager for matching name variations
      */
     static func generateAsChildCitation(
         for person: Person,
         in asChildFamily: Family,
-        network: FamilyNetwork? = nil
+        network: FamilyNetwork? = nil,
+        nameEquivalenceManager: NameEquivalenceManager? = nil
     ) -> String {
         var citation = "Information on \(asChildFamily.pageReferenceString) includes:\n"
         
@@ -117,7 +119,7 @@ struct CitationGenerator {
             if !couple.children.isEmpty {
                 citation += "Children:\n"
                 for child in couple.children {
-                    let isTarget = isTargetPerson(child, person)
+                    let isTarget = isTargetPerson(child, person, nameEquivalenceManager: nameEquivalenceManager)
                     if isTarget {
                         targetPersonFound = true
                     }
@@ -163,10 +165,7 @@ struct CitationGenerator {
         // Additional Information section - show source of enhanced data
         if targetPersonFound, let network = network {
             // The enhanced data comes from the person's asParent family (where they appear as a parent)
-            // We need to find what data was enhanced and cite the source
-            let asParentFamily = network.getAsParentFamily(for: person) ??
-                                 network.asParentFamilies[person.displayName] ??
-                                 network.asParentFamilies[person.name]
+            let asParentFamily = network.getAsParentFamily(for: person)
             
             if let asParentFamily = asParentFamily {
                 var additionalInfo: [String] = []
@@ -217,7 +216,7 @@ struct CitationGenerator {
             }
         }
         
-        // WARNING: Add warning if target person not found by birth date
+        // WARNING: Add warning if target person not found
         if !targetPersonFound {
             citation += "WARNING: Could not match target person '\(person.name)' (birth: \(person.birthDate ?? "unknown")) by birth date in this family.\n"
         }
@@ -332,16 +331,55 @@ struct CitationGenerator {
     }
     
     /// Check if this child matches the target person we're looking for
-    private static func isTargetPerson(_ child: Person, _ target: Person) -> Bool {
-        // Primary matching by name
-        let nameMatch = child.name.lowercased() == target.name.lowercased()
+    /// ENHANCED to handle name variations like Malin/Magdalena using birth date priority
+    private static func isTargetPerson(
+        _ child: Person,
+        _ target: Person,
+        nameEquivalenceManager: NameEquivalenceManager? = nil
+    ) -> Bool {
+        logDebug(.citation, "🔍 Matching '\(child.name)' (birth: \(child.birthDate ?? "none")) vs '\(target.name)' (birth: \(target.birthDate ?? "none"))")
         
-        // Enhanced matching by birth date if available
-        if let childBirth = child.birthDate, let targetBirth = target.birthDate {
-            return nameMatch && childBirth == targetBirth
+        // PRIORITY 1: Birth date matching (most reliable for name variations like Malin/Magdalena)
+        if let childBirth = child.birthDate?.trimmingCharacters(in: .whitespaces),
+           let targetBirth = target.birthDate?.trimmingCharacters(in: .whitespaces),
+           !childBirth.isEmpty && !targetBirth.isEmpty {
+            
+            if childBirth == targetBirth {
+                logInfo(.citation, "✅ MATCH: Birth date '\(childBirth)' - '\(child.name)' = '\(target.name)'")
+                return true
+            } else {
+                logDebug(.citation, "❌ Birth dates don't match: '\(childBirth)' ≠ '\(targetBirth)'")
+            }
         }
         
-        return nameMatch
+        // PRIORITY 2: Exact name matching
+        let exactNameMatch = child.name.lowercased().trimmingCharacters(in: .whitespaces) ==
+                            target.name.lowercased().trimmingCharacters(in: .whitespaces)
+        if exactNameMatch {
+            logInfo(.citation, "✅ MATCH: Exact name '\(child.name)' = '\(target.name)'")
+            return true
+        }
+        
+        // PRIORITY 3: Name equivalence matching (handles Malin/Magdalena)
+        if let nameManager = nameEquivalenceManager {
+            if nameManager.areNamesEquivalent(child.name, target.name) {
+                logInfo(.citation, "✅ MATCH: Name equivalence '\(child.name)' ↔ '\(target.name)'")
+                return true
+            }
+        }
+        
+        // PRIORITY 4: FamilySearch ID matching (if both have IDs)
+        if let childId = child.familySearchId?.trimmingCharacters(in: .whitespaces),
+           let targetId = target.familySearchId?.trimmingCharacters(in: .whitespaces),
+           !childId.isEmpty && !targetId.isEmpty {
+            if childId.lowercased() == targetId.lowercased() {
+                logInfo(.citation, "✅ MATCH: FamilySearch ID '\(childId)'")
+                return true
+            }
+        }
+        
+        logDebug(.citation, "❌ No match found")
+        return false
     }
     
     /// Normalize date format for display
@@ -371,6 +409,23 @@ struct CitationGenerator {
         return additions
     }
     
+    /// Check if two persons are the same (handles name variations)
+    private static func isPersonMatch(_ person1: Person, _ person2: Person) -> Bool {
+        // First try exact name match
+        if person1.name.lowercased() == person2.name.lowercased() {
+            return true
+        }
+        
+        // Then try birth date match (most reliable)
+        if let birth1 = person1.birthDate?.trimmingCharacters(in: .whitespaces),
+           let birth2 = person2.birthDate?.trimmingCharacters(in: .whitespaces),
+           !birth1.isEmpty && !birth2.isEmpty {
+            return birth1 == birth2
+        }
+        
+        return false
+    }
+    
     private static func formatDateAdditions(_ additions: [String]) -> String {
         switch additions.count {
         case 0: return ""
@@ -392,8 +447,14 @@ extension CitationGenerator {
     static func generateEnhancedAsChildCitation(
         for person: Person,
         in asChildFamily: Family,
-        network: FamilyNetwork
+        network: FamilyNetwork,
+        nameEquivalenceManager: NameEquivalenceManager? = nil
     ) -> String {
-        return generateAsChildCitation(for: person, in: asChildFamily, network: network)
+        return generateAsChildCitation(
+            for: person,
+            in: asChildFamily,
+            network: network,
+            nameEquivalenceManager: nameEquivalenceManager
+        )
     }
 }
