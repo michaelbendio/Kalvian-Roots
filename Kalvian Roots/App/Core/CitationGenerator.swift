@@ -21,7 +21,7 @@ struct CitationGenerator {
      * Generate main family citation with proper formatting
      * Used for: nuclear families and as_parent families (children with their spouses)
      */
-    static func generateMainFamilyCitation(family: Family) -> String {
+    static func generateMainFamilyCitation(family: Family, targetPerson: Person? = nil) -> String {
         var citation = "Information on \(family.pageReferenceString) includes:\n"
         
         // Primary couple with compact date format
@@ -38,7 +38,15 @@ struct CitationGenerator {
             if !primaryCouple.children.isEmpty {
                 citation += "Children:\n"
                 for child in primaryCouple.children {
-                    citation += formatChild(child)
+                    // Check if this child is the target person
+                    let isTarget: Bool
+                    if let target = targetPerson {
+                        isTarget = isTargetPerson(child, target, nameEquivalenceManager: nil)
+                    } else {
+                        isTarget = false
+                    }
+                    let prefix = isTarget ? "→ " : ""
+                    citation += "\(prefix)\(formatChild(child))"
                 }
             }
         }
@@ -56,7 +64,15 @@ struct CitationGenerator {
                 if !couple.children.isEmpty {
                     citation += "Children:\n"
                     for child in couple.children {
-                        citation += formatChild(child)
+                        // Check if this child is the target person
+                        let isTarget: Bool
+                        if let target = targetPerson {
+                            isTarget = isTargetPerson(child, target, nameEquivalenceManager: nil)
+                        } else {
+                            isTarget = false
+                        }
+                        let prefix = isTarget ? "→ " : ""
+                        citation += "\(prefix)\(formatChild(child))"
                     }
                 }
             }
@@ -244,14 +260,14 @@ struct CitationGenerator {
     private static func formatDate(_ date: String) -> String {
         let trimmed = date.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // Check if it's in DD.MM.YYYY format
-        if trimmed.range(of: #"^\d{1,2}\.\d{1,2}\.\d{4}$"#, options: .regularExpression) != nil {
-            let components = trimmed.components(separatedBy: ".")
-            if components.count == 3 {
-                let day = Int(components[0]) ?? 0
-                let month = Int(components[1]) ?? 0
-                let year = components[2]
-                
+        // Check if it contains dots (DD.MM.YYYY format)
+        let components = trimmed.components(separatedBy: ".")
+        if components.count == 3 {
+            let dayStr = components[0].trimmingCharacters(in: .whitespaces)
+            let monthStr = components[1].trimmingCharacters(in: .whitespaces)
+            let yearStr = components[2].trimmingCharacters(in: .whitespaces)
+            
+            if let day = Int(dayStr), let month = Int(monthStr), let year = Int(yearStr) {
                 let monthNames = ["", "January", "February", "March", "April", "May", "June",
                                  "July", "August", "September", "October", "November", "December"]
                 
@@ -310,7 +326,12 @@ struct CitationGenerator {
         if let spouse = child.spouse, !spouse.isEmpty {
             line += ", m. \(spouse)"
             if let marriageDate = child.bestMarriageDate {
-                line += " \(extractMarriageYear(marriageDate))"
+                // Use formatDate for full dates, extractMarriageYear for partial dates
+                if marriageDate.contains(".") {
+                    line += " \(formatDate(marriageDate))"
+                } else {
+                    line += " \(extractMarriageYear(marriageDate))"
+                }
             }
         }
         

@@ -178,26 +178,19 @@ class FamilyNetworkWorkflow {
         // Generate enhanced citations for children across all couples
         for couple in family.couples {
             for child in couple.children {
-                if let asParentFamily = network.getAsParentFamily(for: child) {
-                    logInfo(.citation, "✅ Found asParent family for child: \(child.name)")
+                if let asParentFamily = network.getAsParentFamily(for: child),
+                   let spouse = findSpouseInFamily(childName: child.name, family: asParentFamily),
+                   let spouseAsChildFamily = network.getSpouseAsChildFamily(for: spouse.name) {
                     
-                    // Generate enhanced citation with death/marriage dates from asParent family
-                    let citation = generateEnhancedChildCitation(
-                        child: child,
-                        asParentFamily: asParentFamily,
-                        network: network
+                    let citation = CitationGenerator.generateSpouseAsChildCitation(
+                        spouseName: spouse.name,
+                        in: spouseAsChildFamily
                     )
-                    activeCitations[child.displayName] = citation
-                    activeCitations[child.name] = citation
                     
-                    logInfo(.citation, "🔍 STORED enhanced child citation for '\(child.displayName)'")
-                } else {
-                    logInfo(.citation, "ℹ️ No asParent family for child: \(child.name) (not married or no reference)")
+                    activeCitations[spouse.displayName] = citation
+                    activeCitations[spouse.name] = citation
                     
-                    // Use basic family citation for unmarried children
-                    let citation = CitationGenerator.generateMainFamilyCitation(family: family)
-                    activeCitations[child.displayName] = citation
-                    activeCitations[child.name] = citation
+                    logInfo(.citation, "✅ Generated spouse citation: \(spouse.displayName)")
                 }
             }
         }
@@ -308,7 +301,7 @@ class FamilyNetworkWorkflow {
         )
         
         // Generate citation with the ENHANCED family
-        var citation = CitationGenerator.generateMainFamilyCitation(family: enhancedMainFamily)
+        var citation = CitationGenerator.generateMainFamilyCitation(family: enhancedMainFamily, targetPerson: child)
         
         // Build Additional Information section by comparing ORIGINAL vs ENHANCED
         var additionalInfo: [String] = []

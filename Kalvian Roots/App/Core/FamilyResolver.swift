@@ -168,6 +168,7 @@ class FamilyResolver {
     
     // MARK: - As-Parent Family Resolution (Children's Families)
     
+    // Replace the existing resolveAsParentFamilies method
     private func resolveAsParentFamilies(for family: Family, network: FamilyNetwork) async throws -> FamilyNetwork {
         var updatedNetwork = network
         
@@ -178,44 +179,59 @@ class FamilyResolver {
                 logInfo(.resolver, "🔍 Attempting to resolve as_parent: \(child.displayName) in \(asParentRef)")
                 
                 if let resolvedFamily = try await findAsParentFamily(for: child) {
-                    // FIXED: Use trimmed name as consistent key
                     let storageKey = child.name.trimmingCharacters(in: .whitespaces)
                     updatedNetwork.asParentFamilies[storageKey] = resolvedFamily
                     
-                    debugLogResolutionResult(for: child.displayName, reference: asParentRef, success: true, type: "as_parent")
-                    logInfo(.resolver, "  ✅ Resolved: \(asParentRef) - stored with key '\(storageKey)'")
-                } else {
-                    debugLogResolutionResult(for: child.displayName, reference: asParentRef, success: false, type: "as_parent")
-                    logWarn(.resolver, "  ⚠️ Not found: \(asParentRef)")
+                    logInfo(.resolver, "✅ Resolved: \(asParentRef)")
+                    
+                    // NEW: Immediately capture spouse information from this asParent family
+                    await captureSpouseFromAsParentFamily(
+                        childName: child.name,
+                        asParentFamily: resolvedFamily,
+                        network: &updatedNetwork
+                    )
                 }
             }
         }
         
-        logInfo(.resolver, "  Resolved \(updatedNetwork.asParentFamilies.count) as-parent families")
+        logInfo(.resolver, "✅ Resolved \(updatedNetwork.asParentFamilies.count) as-parent families")
+        logInfo(.resolver, "✅ Resolved \(updatedNetwork.spouseAsChildFamilies.count) spouse families")
         return updatedNetwork
     }
     
-    // MARK: - Spouse As-Child Family Resolution
-    
-    private func resolveSpouseAsChildFamilies(for family: Family, network: FamilyNetwork) async throws -> FamilyNetwork {
-        var updatedNetwork = network
+    private func captureSpouseFromAsParentFamily(
+        childName: String,
+        asParentFamily: Family,
+        network: inout FamilyNetwork
+    ) async {
+        // Find spouse in the asParent family
+        guard let spouse = findSpouseInFamily(childName: childName, family: asParentFamily) else { return }
         
-        logInfo(.resolver, "💑 Resolving spouse as-child families")
-        
-        // For each married child, try to find their spouse's family of origin
-        for child in family.marriedChildren {
-            if let spouseName = child.spouse {
-                logDebug(.resolver, "Looking for spouse family: \(spouseName)")
-                
-                if let spouseFamily = try await findSpouseAsChildFamily(spouseName: spouseName) {
-                    updatedNetwork.spouseAsChildFamilies[spouseName] = spouseFamily
-                    logInfo(.resolver, "  ✅ Found spouse family for: \(spouseName)")
-                }
-            }
+        // Try to resolve spouse's asChild family
+        // Method 1: asChild reference (preferred)
+        if let asChildRef = spouse.asChild,
+           let family = try? await resolveFamilyByReference(asChildRef) {
+            network.spouseAsChildFamilies[spouse.name] = family
+            logInfo(.resolver, "✅ Resolved spouse family via reference: \(spouse.displayName)")
+            return
         }
         
-        logInfo(.resolver, "  Resolved \(updatedNetwork.spouseAsChildFamilies.count) spouse families")
-        return updatedNetwork
+        // Method 2: birth date search (fallback)
+        if let family = try? await findFamilyByBirthDate(person: spouse) {
+            network.spouseAsChildFamilies[spouse.name] = family
+            logInfo(.resolver, "✅ Resolved spouse family via birth date: \(spouse.displayName)")
+        }
+    }
+    
+    private func findSpouseInFamily(childName: String, family: Family) -> Person? {
+        for couple in family.couples {
+            if couple.husband.name.lowercased() == childName.lowercased() {
+                return couple.wife
+            } else if couple.wife.name.lowercased() == childName.lowercased() {
+                return couple.husband
+            }
+        }
+        return nil
     }
     
     // MARK: - Individual Family Finding Methods
