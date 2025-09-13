@@ -111,6 +111,12 @@ class AIParsingService {
             // Parse JSON string to Family object
             let family = try parseJSON(jsonResponse, familyId: familyId)
             
+            logDebug(.parsing, "🔍 DEBUG: Checking parsed marriage dates:")
+            for (index, couple) in family.couples.enumerated() {
+                logDebug(.parsing, "🔍 DEBUG: Couple \(index + 1) marriageDate: '\(couple.marriageDate ?? "nil")'")
+                logDebug(.parsing, "🔍 DEBUG: Couple \(index + 1) fullMarriageDate: '\(couple.fullMarriageDate ?? "nil")'")
+            }
+
             // Debug log the parsed family
             debugLogParsedFamily(family)
             
@@ -206,6 +212,7 @@ class AIParsingService {
             
             // Extract marriage date
             let marriageDate = coupleData["marriageDate"] as? String
+            let fullMarriageDate = coupleData["fullMarriageDate"] as? String
             
             // Extract children
             var children: [Person] = []
@@ -226,6 +233,7 @@ class AIParsingService {
                 husband: husband,
                 wife: wife,
                 marriageDate: marriageDate,
+                fullMarriageDate: fullMarriageDate,
                 children: children,
                 childrenDiedInfancy: childrenDiedInfancy,
                 coupleNotes: coupleNotes

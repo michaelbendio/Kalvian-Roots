@@ -20,6 +20,9 @@ struct Couple: Hashable, Sendable, Codable {
     /// Marriage date for this couple
     var marriageDate: String?
     
+    // Full marriage date from their asParent family
+    var fullMarriageDate: String?
+    
     /// Children from this couple
     var children: [Person]
     
@@ -30,11 +33,13 @@ struct Couple: Hashable, Sendable, Codable {
     var coupleNotes: [String]
     
     init(husband: Person, wife: Person, marriageDate: String? = nil,
+         fullMarriageDate: String? = nil,
          children: [Person] = [], childrenDiedInfancy: Int? = nil,
          coupleNotes: [String] = []) {
         self.husband = husband
         self.wife = wife
         self.marriageDate = marriageDate
+        self.fullMarriageDate = fullMarriageDate
         self.children = children
         self.childrenDiedInfancy = childrenDiedInfancy
         self.coupleNotes = coupleNotes

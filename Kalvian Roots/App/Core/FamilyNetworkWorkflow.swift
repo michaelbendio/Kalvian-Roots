@@ -266,7 +266,7 @@ class FamilyNetworkWorkflow {
                                       marriageDate.count >= 8 {
                                 enhancedChild.fullMarriageDate = marriageDate
                                 logDebug(.citation, "Enhanced \(child.name) with marriage date: \(marriageDate)")
-                            } else if let coupleMarriage = asParentFamily.primaryCouple?.marriageDate,
+                            } else if let coupleMarriage = asParentFamily.primaryCouple?.fullMarriageDate ?? asParentFamily.primaryCouple?.marriageDate,
                                       coupleMarriage.count >= 8 {
                                 // Check couple-level marriage date
                                 enhancedChild.fullMarriageDate = coupleMarriage
@@ -291,6 +291,7 @@ class FamilyNetworkWorkflow {
                 husband: couple.husband,
                 wife: couple.wife,
                 marriageDate: couple.marriageDate,
+                fullMarriageDate: couple.fullMarriageDate,
                 children: enhancedChildren,
                 childrenDiedInfancy: couple.childrenDiedInfancy,
                 coupleNotes: couple.coupleNotes
