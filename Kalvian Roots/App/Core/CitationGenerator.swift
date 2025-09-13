@@ -111,8 +111,9 @@ struct CitationGenerator {
             }
         }
         
-        // Track if we found the target person
+        // Track if we found the target person and store the target child
         var targetPersonFound = false
+        var targetChildInAsChild: Person? = nil
         
         // Process all couples in the family
         for couple in asChildFamily.couples {
@@ -122,6 +123,7 @@ struct CitationGenerator {
                     let isTarget = isTargetPerson(child, person, nameEquivalenceManager: nameEquivalenceManager)
                     if isTarget {
                         targetPersonFound = true
+                        targetChildInAsChild = child  // Store the target child from asChild family
                     }
                     
                     let prefix = isTarget ? "→ " : ""
@@ -165,14 +167,19 @@ struct CitationGenerator {
         logDebug(.citation, "🔍 DEBUG: === ADDITIONAL INFO SECTION START ===")
         logDebug(.citation, "🔍 DEBUG: targetPersonFound: \(targetPersonFound)")
         logDebug(.citation, "🔍 DEBUG: network != nil: \(network != nil)")
+        logDebug(.citation, "🔍 DEBUG: targetChildInAsChild found: \(targetChildInAsChild != nil)")
 
-        if targetPersonFound, let network = network {
+        if targetPersonFound, let network = network, let targetChild = targetChildInAsChild {
             logDebug(.citation, "🔍 DEBUG: ✅ Entering Additional Information logic")
             
             // The enhanced data comes from the person's asParent family (where they appear as a parent)
             let asParentFamily = network.getAsParentFamily(for: person)
             logDebug(.citation, "🔍 DEBUG: person.name: '\(person.name)'")
             logDebug(.citation, "🔍 DEBUG: person.displayName: '\(person.displayName)'")
+            logDebug(.citation, "🔍 DEBUG: targetChild.name: '\(targetChild.name)'")
+            logDebug(.citation, "🔍 DEBUG: targetChild.marriageDate: '\(targetChild.marriageDate ?? "nil")'")
+            logDebug(.citation, "🔍 DEBUG: targetChild.fullMarriageDate: '\(targetChild.fullMarriageDate ?? "nil")'")
+            logDebug(.citation, "🔍 DEBUG: targetChild.spouse: '\(targetChild.spouse ?? "nil")'")
             logDebug(.citation, "🔍 DEBUG: asParentFamily found: \(asParentFamily?.familyId ?? "nil")")
             
             if let asParentFamily = asParentFamily {
@@ -186,7 +193,7 @@ struct CitationGenerator {
                     logDebug(.citation, "🔍 DEBUG:   - '\(parent.name)' (display: '\(parent.displayName)') birth: '\(parent.birthDate ?? "nil")'")
                 }
                 
-                // Check what was enhanced by comparing original vs enhanced
+                // Check what was enhanced by comparing targetChild (from asChild family) vs asParent family
                 logDebug(.citation, "🔍 DEBUG: Looking for person '\(person.name)' in asParent family...")
                 
                 if let personAsParent = asParentFamily.allParents.first(where: {
@@ -198,31 +205,30 @@ struct CitationGenerator {
                     logDebug(.citation, "🔍 DEBUG: personAsParent.deathDate: '\(personAsParent.deathDate ?? "nil")'")
                     logDebug(.citation, "🔍 DEBUG: personAsParent.marriageDate: '\(personAsParent.marriageDate ?? "nil")'")
                     logDebug(.citation, "🔍 DEBUG: personAsParent.fullMarriageDate: '\(personAsParent.fullMarriageDate ?? "nil")'")
-                    logDebug(.citation, "🔍 DEBUG: person.deathDate: '\(person.deathDate ?? "nil")'")
-                    logDebug(.citation, "🔍 DEBUG: person.marriageDate: '\(person.marriageDate ?? "nil")'")
+                    logDebug(.citation, "🔍 DEBUG: targetChild.deathDate: '\(targetChild.deathDate ?? "nil")'")
                     
-                    // Death date enhancement
-                    let deathEnhancement = personAsParent.deathDate != nil && person.deathDate == nil
-                    logDebug(.citation, "🔍 DEBUG: Death enhancement check: asParent='\(personAsParent.deathDate ?? "nil")' person='\(person.deathDate ?? "nil")' → \(deathEnhancement)")
+                    // Death date enhancement - compare targetChild vs personAsParent
+                    let deathEnhancement = personAsParent.deathDate != nil && targetChild.deathDate == nil
+                    logDebug(.citation, "🔍 DEBUG: Death enhancement check: asParent='\(personAsParent.deathDate ?? "nil")' targetChild='\(targetChild.deathDate ?? "nil")' → \(deathEnhancement)")
                     
                     if deathEnhancement {
                         additionalInfo.append("death date")
                         logDebug(.citation, "🔍 DEBUG: ✅ Added death date to additionalInfo")
                     }
                     
-                    // Marriage date enhancement - check various sources
+                    // Marriage date enhancement - compare targetChild vs asParent family
                     logDebug(.citation, "🔍 DEBUG: Marriage enhancement checks...")
                     
-                    // Check 1: personAsParent marriage dates
+                    // Method 1: Compare targetChild's marriage vs personAsParent's marriage
                     if let asParentMarriage = personAsParent.fullMarriageDate ?? personAsParent.marriageDate,
-                       let nuclearMarriage = person.marriageDate {
-                        logDebug(.citation, "🔍 DEBUG: Marriage comparison 1:")
+                       let childMarriage = targetChild.marriageDate {
+                        logDebug(.citation, "🔍 DEBUG: Marriage comparison 1 (person-level):")
                         logDebug(.citation, "🔍 DEBUG:   asParentMarriage: '\(asParentMarriage)' (length: \(asParentMarriage.count))")
-                        logDebug(.citation, "🔍 DEBUG:   nuclearMarriage: '\(nuclearMarriage)' (length: \(nuclearMarriage.count))")
-                        logDebug(.citation, "🔍 DEBUG:   Length difference: \(asParentMarriage.count - nuclearMarriage.count)")
-                        logDebug(.citation, "🔍 DEBUG:   Threshold (>2): \(asParentMarriage.count > nuclearMarriage.count + 2)")
+                        logDebug(.citation, "🔍 DEBUG:   childMarriage: '\(childMarriage)' (length: \(childMarriage.count))")
+                        logDebug(.citation, "🔍 DEBUG:   Length difference: \(asParentMarriage.count - childMarriage.count)")
+                        logDebug(.citation, "🔍 DEBUG:   Threshold (>2): \(asParentMarriage.count > childMarriage.count + 2)")
                         
-                        if asParentMarriage.count > nuclearMarriage.count + 2 {
+                        if asParentMarriage.count > childMarriage.count + 2 {
                             additionalInfo.append("marriage date")
                             logDebug(.citation, "🔍 DEBUG: ✅ Added marriage date to additionalInfo (person comparison)")
                         } else {
@@ -231,21 +237,21 @@ struct CitationGenerator {
                     } else {
                         logDebug(.citation, "🔍 DEBUG: ❌ Missing data for person marriage comparison")
                         logDebug(.citation, "🔍 DEBUG:   asParentMarriage: '\(personAsParent.fullMarriageDate ?? personAsParent.marriageDate ?? "nil")'")
-                        logDebug(.citation, "🔍 DEBUG:   nuclearMarriage: '\(person.marriageDate ?? "nil")'")
+                        logDebug(.citation, "🔍 DEBUG:   childMarriage: '\(targetChild.marriageDate ?? "nil")'")
                     }
                     
                 } else {
                     logDebug(.citation, "🔍 DEBUG: ❌ Person not found as parent in asParent family")
                 }
                 
-                // Also check couple-level marriage date enhancement
+                // Method 2: Compare targetChild's marriage vs couple-level marriage in asParent family
                 logDebug(.citation, "🔍 DEBUG: Checking couple-level marriage enhancement...")
                 logDebug(.citation, "🔍 DEBUG: Number of couples in asParent family: \(asParentFamily.couples.count)")
                 
                 for (index, couple) in asParentFamily.couples.enumerated() {
                     logDebug(.citation, "🔍 DEBUG: Couple \(index + 1): husband='\(couple.husband.name)' wife='\(couple.wife.name)'")
-                    logDebug(.citation, "🔍 DEBUG: Couple 1 marriage date: '\(couple.marriageDate ?? "nil")'")
-                    logDebug(.citation, "🔍 DEBUG: Couple 1 full marriage date: '\(couple.fullMarriageDate ?? "nil")'")
+                    logDebug(.citation, "🔍 DEBUG: Couple \(index + 1) marriage date: '\(couple.marriageDate ?? "nil")'")
+                    logDebug(.citation, "🔍 DEBUG: Couple \(index + 1) full marriage date: '\(couple.fullMarriageDate ?? "nil")'")
                 }
                 
                 if let couple = asParentFamily.couples.first(where: { couple in
@@ -256,18 +262,23 @@ struct CitationGenerator {
                 }) {
                     logDebug(.citation, "🔍 DEBUG: ✅ Found person in couple")
                     logDebug(.citation, "🔍 DEBUG: Couple marriage date: '\(couple.marriageDate ?? "nil")'")
+                    logDebug(.citation, "🔍 DEBUG: Couple full marriage date: '\(couple.fullMarriageDate ?? "nil")'")
                     
-                    if let coupleMarriage = couple.fullMarriageDate ?? couple.marriageDate,
-                       let nuclearMarriage = person.marriageDate,
-                       coupleMarriage.count >= 8 && nuclearMarriage.count <= 4 {
-                        logDebug(.citation, "🔍 DEBUG: Marriage comparison 2 (couple):")
+                    // Compare couple marriage vs targetChild marriage
+                    let coupleMarriage = couple.fullMarriageDate ?? couple.marriageDate
+                    let childMarriage = targetChild.marriageDate
+                    
+                    if let coupleMarriage = coupleMarriage,
+                       let childMarriage = childMarriage {
+                        logDebug(.citation, "🔍 DEBUG: Marriage comparison 2 (couple-level):")
                         logDebug(.citation, "🔍 DEBUG:   coupleMarriage: '\(coupleMarriage)' (length: \(coupleMarriage.count))")
-                        logDebug(.citation, "🔍 DEBUG:   nuclearMarriage: '\(nuclearMarriage)' (length: \(nuclearMarriage.count))")
+                        logDebug(.citation, "🔍 DEBUG:   childMarriage: '\(childMarriage)' (length: \(childMarriage.count))")
                         logDebug(.citation, "🔍 DEBUG:   Couple length >= 8: \(coupleMarriage.count >= 8)")
-                        logDebug(.citation, "🔍 DEBUG:   Nuclear length <= 4: \(nuclearMarriage.count <= 4)")
-                        logDebug(.citation, "🔍 DEBUG:   Both conditions: \(coupleMarriage.count >= 8 && nuclearMarriage.count <= 4)")
+                        logDebug(.citation, "🔍 DEBUG:   Child length <= 4: \(childMarriage.count <= 4)")
+                        logDebug(.citation, "🔍 DEBUG:   Enhancement criteria: \(coupleMarriage.count >= 8 && childMarriage.count <= 4)")
                         
-                        if coupleMarriage.count >= 8 && nuclearMarriage.count <= 4 {
+                        // Enhancement criteria: couple has full date (8+ chars), child has partial (≤4 chars)
+                        if coupleMarriage.count >= 8 && childMarriage.count <= 4 {
                             if !additionalInfo.contains("marriage date") {
                                 additionalInfo.append("marriage date")
                                 logDebug(.citation, "🔍 DEBUG: ✅ Added marriage date to additionalInfo (couple comparison)")
@@ -277,10 +288,18 @@ struct CitationGenerator {
                         } else {
                             logDebug(.citation, "🔍 DEBUG: ❌ Couple marriage criteria not met")
                         }
+                    } else if let coupleMarriage = coupleMarriage,
+                              childMarriage == nil,
+                              coupleMarriage.count >= 8 {
+                        // Case: child has no marriage date, but couple has full date
+                        if !additionalInfo.contains("marriage date") {
+                            additionalInfo.append("marriage date")
+                            logDebug(.citation, "🔍 DEBUG: ✅ Added marriage date to additionalInfo (child nil, couple has date)")
+                        }
                     } else {
                         logDebug(.citation, "🔍 DEBUG: ❌ Missing data for couple marriage comparison")
-                        logDebug(.citation, "🔍 DEBUG:   coupleMarriage: '\(couple.marriageDate ?? "nil")'")
-                        logDebug(.citation, "🔍 DEBUG:   nuclearMarriage: '\(person.marriageDate ?? "nil")'")
+                        logDebug(.citation, "🔍 DEBUG:   coupleMarriage: '\(coupleMarriage ?? "nil")'")
+                        logDebug(.citation, "🔍 DEBUG:   childMarriage: '\(childMarriage ?? "nil")'")
                     }
                 } else {
                     logDebug(.citation, "🔍 DEBUG: ❌ Person not found in any couple")
@@ -324,6 +343,9 @@ struct CitationGenerator {
             }
             if network == nil {
                 logDebug(.citation, "🔍 DEBUG: ❌ No network provided")
+            }
+            if targetChildInAsChild == nil {
+                logDebug(.citation, "🔍 DEBUG: ❌ Target child not captured from asChild family")
             }
         }
         
@@ -413,11 +435,31 @@ struct CitationGenerator {
             line += ", b. \(normalizeDate(birthDate))"
         }
         
-        // Use enhanced marriage date if available
-        let marriageDate = asParent?.fullMarriageDate ??
-                          asParent?.marriageDate ??
-                          nuclearChild.bestMarriageDate
-        if let marriageDate = marriageDate {
+        // ENHANCED: Get marriage date from multiple sources in priority order
+        var enhancedMarriageDate: String? = nil
+        
+        // 1. Check asParent person-level dates
+        if let asParent = asParent {
+            enhancedMarriageDate = asParent.fullMarriageDate ?? asParent.marriageDate
+        }
+        
+        // 2. If no person-level date, check couple-level date in asParent family
+        if enhancedMarriageDate == nil {
+            if let couple = asParentFamily.couples.first(where: { couple in
+                couple.husband.name.lowercased() == person.name.lowercased() ||
+                couple.wife.name.lowercased() == person.name.lowercased()
+            }) {
+                enhancedMarriageDate = couple.fullMarriageDate ?? couple.marriageDate
+            }
+        }
+        
+        // 3. Fall back to nuclear child's marriage date
+        if enhancedMarriageDate == nil {
+            enhancedMarriageDate = nuclearChild.bestMarriageDate
+        }
+        
+        // Display the best available marriage date
+        if let marriageDate = enhancedMarriageDate {
             line += ", m. \(normalizeDate(marriageDate))"
         }
         
