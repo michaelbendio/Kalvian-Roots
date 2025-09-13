@@ -387,3 +387,25 @@ extension Family {
         )
     }
 }
+
+extension Family {
+    /**
+     * Find the spouse of a given person in this family
+     * This method looks through couples to find who the person is married to
+     *
+     * @param personName The name of the person whose spouse we want to find
+     * @return The spouse Person if found, nil if the person is not found or has no spouse in this family
+     */
+    func findSpouse(for personName: String) -> Person? {
+        let lowercaseName = personName.lowercased()
+        
+        for couple in couples {
+            if couple.husband.name.lowercased() == lowercaseName {
+                return couple.wife
+            } else if couple.wife.name.lowercased() == lowercaseName {
+                return couple.husband
+            }
+        }
+        return nil
+    }
+}

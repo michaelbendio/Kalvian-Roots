@@ -204,8 +204,8 @@ class FamilyResolver {
         asParentFamily: Family,
         network: inout FamilyNetwork
     ) async {
-        // Find spouse in the asParent family
-        guard let spouse = findSpouseInFamily(childName: childName, family: asParentFamily) else { return }
+        // Find spouse in the asParent family using the Family extension
+        guard let spouse = asParentFamily.findSpouse(for: childName) else { return }
         
         // Try to resolve spouse's asChild family
         // Method 1: asChild reference (preferred)
@@ -221,17 +221,6 @@ class FamilyResolver {
             network.spouseAsChildFamilies[spouse.name] = family
             logInfo(.resolver, "✅ Resolved spouse family via birth date: \(spouse.displayName)")
         }
-    }
-    
-    private func findSpouseInFamily(childName: String, family: Family) -> Person? {
-        for couple in family.couples {
-            if couple.husband.name.lowercased() == childName.lowercased() {
-                return couple.wife
-            } else if couple.wife.name.lowercased() == childName.lowercased() {
-                return couple.husband
-            }
-        }
-        return nil
     }
     
     // MARK: - Individual Family Finding Methods

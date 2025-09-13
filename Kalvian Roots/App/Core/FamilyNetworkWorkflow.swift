@@ -179,9 +179,9 @@ class FamilyNetworkWorkflow {
         for couple in family.couples {
             for child in couple.children {
                 if let asParentFamily = network.getAsParentFamily(for: child),
-                   let spouse = findSpouseInFamily(childName: child.name, family: asParentFamily),
+                   let spouse = asParentFamily.findSpouse(for: child.name),  // <- USE THIS INSTEAD
                    let spouseAsChildFamily = network.getSpouseAsChildFamily(for: spouse.name) {
-                    
+
                     let citation = CitationGenerator.generateSpouseAsChildCitation(
                         spouseName: spouse.name,
                         in: spouseAsChildFamily
