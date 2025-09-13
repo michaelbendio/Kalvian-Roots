@@ -31,7 +31,7 @@ struct CitationGenerator {
             
             // Marriage date for primary couple
             if let marriageDate = primaryCouple.marriageDate {
-                citation += "m \(normalizeDate(marriageDate))\n"
+                citation += "m. \(formatDate(marriageDate))\n"
             }
             
             // Children from primary couple
@@ -49,7 +49,7 @@ struct CitationGenerator {
                 citation += "Additional spouse:\n"
                 citation += formatParentCompact(couple.wife) + "\n"
                 if let marriageDate = couple.marriageDate {
-                    citation += "m \(normalizeDate(marriageDate))\n"
+                    citation += "m. \(formatDate(marriageDate))\n"
                 }
                 
                 // Children with this spouse
@@ -100,14 +100,14 @@ struct CitationGenerator {
     ) -> String {
         var citation = "Information on \(asChildFamily.pageReferenceString) includes:\n"
         
-        // Parents with compact format
+        // Parents with beautiful date format
         if let primaryCouple = asChildFamily.primaryCouple {
             citation += formatParentCompact(primaryCouple.husband) + "\n"
             citation += formatParentCompact(primaryCouple.wife) + "\n"
             
             // Marriage date for primary couple
             if let marriageDate = primaryCouple.marriageDate {
-                citation += "m \(normalizeDate(marriageDate))\n"
+                citation += "m. \(formatDate(marriageDate))\n"
             }
         }
         
@@ -123,7 +123,7 @@ struct CitationGenerator {
                     let isTarget = isTargetPerson(child, person, nameEquivalenceManager: nameEquivalenceManager)
                     if isTarget {
                         targetPersonFound = true
-                        targetChildInAsChild = child  // Store the target child from asChild family
+                        targetChildInAsChild = child
                     }
                     
                     let prefix = isTarget ? "→ " : ""
@@ -142,7 +142,7 @@ struct CitationGenerator {
                 citation += "Additional spouse:\n"
                 citation += formatParentCompact(couple.wife) + "\n"
                 if let marriageDate = couple.marriageDate {
-                    citation += "m \(normalizeDate(marriageDate))\n"
+                    citation += "m. \(formatDate(marriageDate))\n"
                 }
             }
         }
@@ -163,189 +163,57 @@ struct CitationGenerator {
             }
             citation += "Children died as infants: \(totalChildrenDied)\n"
         }
-        
-        logDebug(.citation, "🔍 DEBUG: === ADDITIONAL INFO SECTION START ===")
-        logDebug(.citation, "🔍 DEBUG: targetPersonFound: \(targetPersonFound)")
-        logDebug(.citation, "🔍 DEBUG: network != nil: \(network != nil)")
-        logDebug(.citation, "🔍 DEBUG: targetChildInAsChild found: \(targetChildInAsChild != nil)")
 
+        // Additional Information section
         if targetPersonFound, let network = network, let targetChild = targetChildInAsChild {
-            logDebug(.citation, "🔍 DEBUG: ✅ Entering Additional Information logic")
-            
-            // The enhanced data comes from the person's asParent family (where they appear as a parent)
             let asParentFamily = network.getAsParentFamily(for: person)
-            logDebug(.citation, "🔍 DEBUG: person.name: '\(person.name)'")
-            logDebug(.citation, "🔍 DEBUG: person.displayName: '\(person.displayName)'")
-            logDebug(.citation, "🔍 DEBUG: targetChild.name: '\(targetChild.name)'")
-            logDebug(.citation, "🔍 DEBUG: targetChild.marriageDate: '\(targetChild.marriageDate ?? "nil")'")
-            logDebug(.citation, "🔍 DEBUG: targetChild.fullMarriageDate: '\(targetChild.fullMarriageDate ?? "nil")'")
-            logDebug(.citation, "🔍 DEBUG: targetChild.spouse: '\(targetChild.spouse ?? "nil")'")
-            logDebug(.citation, "🔍 DEBUG: asParentFamily found: \(asParentFamily?.familyId ?? "nil")")
             
             if let asParentFamily = asParentFamily {
-                logDebug(.citation, "🔍 DEBUG: ✅ AsParent family: \(asParentFamily.familyId) (page: \(asParentFamily.pageReferenceString))")
-                
                 var additionalInfo: [String] = []
                 
-                // DEBUG: Show all parents in asParent family
-                logDebug(.citation, "🔍 DEBUG: All parents in asParent family:")
-                for parent in asParentFamily.allParents {
-                    logDebug(.citation, "🔍 DEBUG:   - '\(parent.name)' (display: '\(parent.displayName)') birth: '\(parent.birthDate ?? "nil")'")
-                }
-                
-                // Check what was enhanced by comparing targetChild (from asChild family) vs asParent family
-                logDebug(.citation, "🔍 DEBUG: Looking for person '\(person.name)' in asParent family...")
-                
+                // Check for death date enhancement
                 if let personAsParent = asParentFamily.allParents.first(where: {
-                    let match = $0.name.lowercased() == person.name.lowercased()
-                    logDebug(.citation, "🔍 DEBUG: Comparing '\($0.name.lowercased())' == '\(person.name.lowercased())' → \(match)")
-                    return match
+                    $0.name.lowercased() == person.name.lowercased()
                 }) {
-                    logDebug(.citation, "🔍 DEBUG: ✅ Found person as parent: '\(personAsParent.name)'")
-                    logDebug(.citation, "🔍 DEBUG: personAsParent.deathDate: '\(personAsParent.deathDate ?? "nil")'")
-                    logDebug(.citation, "🔍 DEBUG: personAsParent.marriageDate: '\(personAsParent.marriageDate ?? "nil")'")
-                    logDebug(.citation, "🔍 DEBUG: personAsParent.fullMarriageDate: '\(personAsParent.fullMarriageDate ?? "nil")'")
-                    logDebug(.citation, "🔍 DEBUG: targetChild.deathDate: '\(targetChild.deathDate ?? "nil")'")
-                    
-                    // Death date enhancement - compare targetChild vs personAsParent
-                    let deathEnhancement = personAsParent.deathDate != nil && targetChild.deathDate == nil
-                    logDebug(.citation, "🔍 DEBUG: Death enhancement check: asParent='\(personAsParent.deathDate ?? "nil")' targetChild='\(targetChild.deathDate ?? "nil")' → \(deathEnhancement)")
-                    
-                    if deathEnhancement {
+                    if personAsParent.deathDate != nil && targetChild.deathDate == nil {
                         additionalInfo.append("death date")
-                        logDebug(.citation, "🔍 DEBUG: ✅ Added death date to additionalInfo")
                     }
-                    
-                    // Marriage date enhancement - compare targetChild vs asParent family
-                    logDebug(.citation, "🔍 DEBUG: Marriage enhancement checks...")
-                    
-                    // Method 1: Compare targetChild's marriage vs personAsParent's marriage
-                    if let asParentMarriage = personAsParent.fullMarriageDate ?? personAsParent.marriageDate,
-                       let childMarriage = targetChild.marriageDate {
-                        logDebug(.citation, "🔍 DEBUG: Marriage comparison 1 (person-level):")
-                        logDebug(.citation, "🔍 DEBUG:   asParentMarriage: '\(asParentMarriage)' (length: \(asParentMarriage.count))")
-                        logDebug(.citation, "🔍 DEBUG:   childMarriage: '\(childMarriage)' (length: \(childMarriage.count))")
-                        logDebug(.citation, "🔍 DEBUG:   Length difference: \(asParentMarriage.count - childMarriage.count)")
-                        logDebug(.citation, "🔍 DEBUG:   Threshold (>2): \(asParentMarriage.count > childMarriage.count + 2)")
-                        
-                        if asParentMarriage.count > childMarriage.count + 2 {
-                            additionalInfo.append("marriage date")
-                            logDebug(.citation, "🔍 DEBUG: ✅ Added marriage date to additionalInfo (person comparison)")
-                        } else {
-                            logDebug(.citation, "🔍 DEBUG: ❌ Marriage threshold not met (person comparison)")
-                        }
-                    } else {
-                        logDebug(.citation, "🔍 DEBUG: ❌ Missing data for person marriage comparison")
-                        logDebug(.citation, "🔍 DEBUG:   asParentMarriage: '\(personAsParent.fullMarriageDate ?? personAsParent.marriageDate ?? "nil")'")
-                        logDebug(.citation, "🔍 DEBUG:   childMarriage: '\(targetChild.marriageDate ?? "nil")'")
-                    }
-                    
-                } else {
-                    logDebug(.citation, "🔍 DEBUG: ❌ Person not found as parent in asParent family")
                 }
                 
-                // Method 2: Compare targetChild's marriage vs couple-level marriage in asParent family
-                logDebug(.citation, "🔍 DEBUG: Checking couple-level marriage enhancement...")
-                logDebug(.citation, "🔍 DEBUG: Number of couples in asParent family: \(asParentFamily.couples.count)")
-                
-                for (index, couple) in asParentFamily.couples.enumerated() {
-                    logDebug(.citation, "🔍 DEBUG: Couple \(index + 1): husband='\(couple.husband.name)' wife='\(couple.wife.name)'")
-                    logDebug(.citation, "🔍 DEBUG: Couple \(index + 1) marriage date: '\(couple.marriageDate ?? "nil")'")
-                    logDebug(.citation, "🔍 DEBUG: Couple \(index + 1) full marriage date: '\(couple.fullMarriageDate ?? "nil")'")
-                }
-                
+                // Check for marriage date enhancement
                 if let couple = asParentFamily.couples.first(where: { couple in
-                    let husbandMatch = couple.husband.name.lowercased() == person.name.lowercased()
-                    let wifeMatch = couple.wife.name.lowercased() == person.name.lowercased()
-                    logDebug(.citation, "🔍 DEBUG: Couple check - husband: '\(couple.husband.name)' (match: \(husbandMatch)), wife: '\(couple.wife.name)' (match: \(wifeMatch))")
-                    return husbandMatch || wifeMatch
+                    couple.husband.name.lowercased() == person.name.lowercased() ||
+                    couple.wife.name.lowercased() == person.name.lowercased()
                 }) {
-                    logDebug(.citation, "🔍 DEBUG: ✅ Found person in couple")
-                    logDebug(.citation, "🔍 DEBUG: Couple marriage date: '\(couple.marriageDate ?? "nil")'")
-                    logDebug(.citation, "🔍 DEBUG: Couple full marriage date: '\(couple.fullMarriageDate ?? "nil")'")
-                    
-                    // Compare couple marriage vs targetChild marriage
                     let coupleMarriage = couple.fullMarriageDate ?? couple.marriageDate
                     let childMarriage = targetChild.marriageDate
                     
                     if let coupleMarriage = coupleMarriage,
-                       let childMarriage = childMarriage {
-                        logDebug(.citation, "🔍 DEBUG: Marriage comparison 2 (couple-level):")
-                        logDebug(.citation, "🔍 DEBUG:   coupleMarriage: '\(coupleMarriage)' (length: \(coupleMarriage.count))")
-                        logDebug(.citation, "🔍 DEBUG:   childMarriage: '\(childMarriage)' (length: \(childMarriage.count))")
-                        logDebug(.citation, "🔍 DEBUG:   Couple length >= 8: \(coupleMarriage.count >= 8)")
-                        logDebug(.citation, "🔍 DEBUG:   Child length <= 4: \(childMarriage.count <= 4)")
-                        logDebug(.citation, "🔍 DEBUG:   Enhancement criteria: \(coupleMarriage.count >= 8 && childMarriage.count <= 4)")
-                        
-                        // Enhancement criteria: couple has full date (8+ chars), child has partial (≤4 chars)
-                        if coupleMarriage.count >= 8 && childMarriage.count <= 4 {
-                            if !additionalInfo.contains("marriage date") {
-                                additionalInfo.append("marriage date")
-                                logDebug(.citation, "🔍 DEBUG: ✅ Added marriage date to additionalInfo (couple comparison)")
-                            } else {
-                                logDebug(.citation, "🔍 DEBUG: ℹ️ Marriage date already in additionalInfo")
-                            }
-                        } else {
-                            logDebug(.citation, "🔍 DEBUG: ❌ Couple marriage criteria not met")
+                       let childMarriage = childMarriage,
+                       coupleMarriage.count >= 8 && childMarriage.count <= 4 {
+                        if !additionalInfo.contains("marriage date") {
+                            additionalInfo.append("marriage date")
                         }
                     } else if let coupleMarriage = coupleMarriage,
                               childMarriage == nil,
                               coupleMarriage.count >= 8 {
-                        // Case: child has no marriage date, but couple has full date
                         if !additionalInfo.contains("marriage date") {
                             additionalInfo.append("marriage date")
-                            logDebug(.citation, "🔍 DEBUG: ✅ Added marriage date to additionalInfo (child nil, couple has date)")
                         }
-                    } else {
-                        logDebug(.citation, "🔍 DEBUG: ❌ Missing data for couple marriage comparison")
-                        logDebug(.citation, "🔍 DEBUG:   coupleMarriage: '\(coupleMarriage ?? "nil")'")
-                        logDebug(.citation, "🔍 DEBUG:   childMarriage: '\(childMarriage ?? "nil")'")
                     }
-                } else {
-                    logDebug(.citation, "🔍 DEBUG: ❌ Person not found in any couple")
                 }
-                
-                logDebug(.citation, "🔍 DEBUG: Final additionalInfo array: \(additionalInfo)")
                 
                 // Add Additional Information section if we have enhancements
                 if !additionalInfo.isEmpty {
-                    logDebug(.citation, "🔍 DEBUG: ✅ Generating Additional Information section")
-                    citation += "\n"  // Add blank line for readability
                     citation += "Additional Information:\n"
                     if additionalInfo.contains("marriage date") && additionalInfo.contains("death date") {
-                        let infoLine = "\(person.name)'s marriage date and death date found on \(asParentFamily.pageReferenceString)\n"
-                        citation += infoLine
-                        logDebug(.citation, "🔍 DEBUG: Added line: '\(infoLine.trimmingCharacters(in: .whitespacesAndNewlines))'")
+                        citation += "\(person.name)'s marriage date and death date found on \(asParentFamily.pageReferenceString)\n"
                     } else if additionalInfo.contains("marriage date") {
-                        let infoLine = "\(person.name)'s marriage date found on \(asParentFamily.pageReferenceString)\n"
-                        citation += infoLine
-                        logDebug(.citation, "🔍 DEBUG: Added line: '\(infoLine.trimmingCharacters(in: .whitespacesAndNewlines))'")
+                        citation += "\(person.name)'s marriage date found on \(asParentFamily.pageReferenceString)\n"
                     } else if additionalInfo.contains("death date") {
-                        let infoLine = "\(person.name)'s death date found on \(asParentFamily.pageReferenceString)\n"
-                        citation += infoLine
-                        logDebug(.citation, "🔍 DEBUG: Added line: '\(infoLine.trimmingCharacters(in: .whitespacesAndNewlines))'")
+                        citation += "\(person.name)'s death date found on \(asParentFamily.pageReferenceString)\n"
                     }
-                } else {
-                    logDebug(.citation, "🔍 DEBUG: ❌ No additional info to add - additionalInfo is empty")
                 }
-            } else {
-                logDebug(.citation, "🔍 DEBUG: ❌ No asParent family found for person")
-                
-                // DEBUG: Show available asParent families
-                logDebug(.citation, "🔍 DEBUG: Available asParent families in network:")
-                for (key, family) in network.asParentFamilies {
-                    logDebug(.citation, "🔍 DEBUG:   - key: '\(key)' → family: \(family.familyId)")
-                }
-            }
-        } else {
-            if !targetPersonFound {
-                logDebug(.citation, "🔍 DEBUG: ❌ Target person not found in asChild family")
-            }
-            if network == nil {
-                logDebug(.citation, "🔍 DEBUG: ❌ No network provided")
-            }
-            if targetChildInAsChild == nil {
-                logDebug(.citation, "🔍 DEBUG: ❌ Target child not captured from asChild family")
             }
         }
         
@@ -370,48 +238,91 @@ struct CitationGenerator {
         return generateAsChildCitation(for: spousePerson, in: spouseAsChildFamily)
     }
     
-    // MARK: - Private Helper Methods
+    // MARK: - Date Formatting
     
-    /// Format parent with compact date style (birth and death on same line)
-    private static func formatParentCompact(_ person: Person) -> String {
-        var line = person.displayName
+    /// Convert DD.MM.YYYY to beautiful format like "6 January 1759"
+    private static func formatDate(_ date: String) -> String {
+        let trimmed = date.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        if let birthDate = person.birthDate {
-            line += ", b. \(normalizeDate(birthDate))"
+        // Check if it's in DD.MM.YYYY format
+        if trimmed.range(of: #"^\d{1,2}\.\d{1,2}\.\d{4}$"#, options: .regularExpression) != nil {
+            let components = trimmed.components(separatedBy: ".")
+            if components.count == 3 {
+                let day = Int(components[0]) ?? 0
+                let month = Int(components[1]) ?? 0
+                let year = components[2]
+                
+                let monthNames = ["", "January", "February", "March", "April", "May", "June",
+                                 "July", "August", "September", "October", "November", "December"]
+                
+                if month >= 1 && month <= 12 {
+                    return "\(day) \(monthNames[month]) \(year)"
+                }
+            }
         }
         
-        if let deathDate = person.deathDate {
-            line += ", d. \(normalizeDate(deathDate))"
-        }
-        
-        return line
+        // Return as-is if not in expected format
+        return trimmed
     }
     
-    /// Format child with birth date and marriage info
+    /// Extract just the year from a marriage date like "78" -> "1778"
+    private static func extractMarriageYear(_ marriageDate: String) -> String {
+        let trimmed = marriageDate.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // If it's a 2-digit year, convert to 4-digit
+        if let twoDigit = Int(trimmed), trimmed.count == 2 {
+            return String(1700 + twoDigit)
+        }
+        
+        // If it's already a 4-digit year
+        if trimmed.count == 4, Int(trimmed) != nil {
+            return trimmed
+        }
+        
+        return trimmed
+    }
+    
+    // MARK: - Private Helper Methods
+    
+    /// Format parent with beautiful date range format
+    private static func formatParentCompact(_ person: Person) -> String {
+        let name = person.displayName
+        
+        if let birthDate = person.birthDate, let deathDate = person.deathDate {
+            return "\(name), \(formatDate(birthDate)) - \(formatDate(deathDate))"
+        } else if let birthDate = person.birthDate {
+            return "\(name), b. \(formatDate(birthDate))"
+        } else if let deathDate = person.deathDate {
+            return "\(name), d. \(formatDate(deathDate))"
+        }
+        
+        return name
+    }
+    
+    /// Format regular child (not the target person)
     private static func formatChild(_ child: Person) -> String {
         var line = child.name
         
         if let birthDate = child.birthDate {
-            line += ", b. \(normalizeDate(birthDate))"
+            line += ", b. \(formatDate(birthDate))"
         }
         
-        if let marriageDate = child.bestMarriageDate {
-            line += ", m. \(normalizeDate(marriageDate))"
-        }
-        
-        if let spouse = child.spouse {
-            line += " \(spouse)"
+        if let spouse = child.spouse, !spouse.isEmpty {
+            line += ", m. \(spouse)"
+            if let marriageDate = child.bestMarriageDate {
+                line += " \(extractMarriageYear(marriageDate))"
+            }
         }
         
         if let deathDate = child.deathDate {
-            line += ", d. \(normalizeDate(deathDate))"
+            line += ", d. \(formatDate(deathDate))"
         }
         
         line += "\n"
         return line
     }
     
-    /// Format child with enhancement information from asParent family
+    /// Format child with enhanced dates and beautiful formatting
     private static func formatChildWithEnhancement(
         _ nuclearChild: Person,
         person: Person,
@@ -427,15 +338,22 @@ struct CitationGenerator {
             parent.name.lowercased() == nuclearChild.name.lowercased()
         }
         
-        let additions = getDateAdditions(nuclearChild: nuclearChild, asParent: asParent)
-        
         var line = nuclearChild.name
         
-        if let birthDate = nuclearChild.birthDate {
-            line += ", b. \(normalizeDate(birthDate))"
+        // Enhanced date formatting for target person
+        let enhancedBirthDate = nuclearChild.birthDate
+        let enhancedDeathDate = asParent?.deathDate ?? nuclearChild.deathDate
+        
+        // Use beautiful date range format for target person
+        if let birthDate = enhancedBirthDate, let deathDate = enhancedDeathDate {
+            line += ", \(formatDate(birthDate)) - \(formatDate(deathDate))"
+        } else if let birthDate = enhancedBirthDate {
+            line += ", b. \(formatDate(birthDate))"
+        } else if let deathDate = enhancedDeathDate {
+            line += ", d. \(formatDate(deathDate))"
         }
         
-        // ENHANCED: Get marriage date from multiple sources in priority order
+        // Enhanced marriage information
         var enhancedMarriageDate: String? = nil
         
         // 1. Check asParent person-level dates
@@ -458,25 +376,12 @@ struct CitationGenerator {
             enhancedMarriageDate = nuclearChild.bestMarriageDate
         }
         
-        // Display the best available marriage date
-        if let marriageDate = enhancedMarriageDate {
-            line += ", m. \(normalizeDate(marriageDate))"
-        }
-        
-        if let spouse = nuclearChild.spouse {
-            line += " \(spouse)"
-        }
-        
-        // Use enhanced death date if available
-        let deathDate = asParent?.deathDate ?? nuclearChild.deathDate
-        if let deathDate = deathDate {
-            line += ", d. \(normalizeDate(deathDate))"
-        }
-        
-        // Add note about enhancements
-        if !additions.isEmpty {
-            let formattedAdditions = formatDateAdditions(additions)
-            line += " (\(formattedAdditions) found on \(asParentFamily.pageReferenceString))"
+        // Display marriage information
+        if let spouse = nuclearChild.spouse, !spouse.isEmpty {
+            line += ", m. \(spouse)"
+            if let marriageDate = enhancedMarriageDate {
+                line += " \(formatDate(marriageDate))"
+            }
         }
         
         line += "\n"
@@ -484,24 +389,18 @@ struct CitationGenerator {
     }
     
     /// Check if this child matches the target person we're looking for
-    /// ENHANCED to handle name variations like Malin/Magdalena using birth date priority
     private static func isTargetPerson(
         _ child: Person,
         _ target: Person,
         nameEquivalenceManager: NameEquivalenceManager? = nil
     ) -> Bool {
-        logDebug(.citation, "🔍 Matching '\(child.name)' (birth: \(child.birthDate ?? "none")) vs '\(target.name)' (birth: \(target.birthDate ?? "none"))")
-        
-        // PRIORITY 1: Birth date matching (most reliable for name variations like Malin/Magdalena)
+        // PRIORITY 1: Birth date matching (most reliable)
         if let childBirth = child.birthDate?.trimmingCharacters(in: .whitespaces),
            let targetBirth = target.birthDate?.trimmingCharacters(in: .whitespaces),
            !childBirth.isEmpty && !targetBirth.isEmpty {
             
             if childBirth == targetBirth {
-                logInfo(.citation, "✅ MATCH: Birth date '\(childBirth)' - '\(child.name)' = '\(target.name)'")
                 return true
-            } else {
-                logDebug(.citation, "❌ Birth dates don't match: '\(childBirth)' ≠ '\(targetBirth)'")
             }
         }
         
@@ -509,36 +408,17 @@ struct CitationGenerator {
         let exactNameMatch = child.name.lowercased().trimmingCharacters(in: .whitespaces) ==
                             target.name.lowercased().trimmingCharacters(in: .whitespaces)
         if exactNameMatch {
-            logInfo(.citation, "✅ MATCH: Exact name '\(child.name)' = '\(target.name)'")
             return true
         }
         
         // PRIORITY 3: Name equivalence matching (handles Malin/Magdalena)
         if let nameManager = nameEquivalenceManager {
             if nameManager.areNamesEquivalent(child.name, target.name) {
-                logInfo(.citation, "✅ MATCH: Name equivalence '\(child.name)' ↔ '\(target.name)'")
                 return true
             }
         }
         
-        // PRIORITY 4: FamilySearch ID matching (if both have IDs)
-        if let childId = child.familySearchId?.trimmingCharacters(in: .whitespaces),
-           let targetId = target.familySearchId?.trimmingCharacters(in: .whitespaces),
-           !childId.isEmpty && !targetId.isEmpty {
-            if childId.lowercased() == targetId.lowercased() {
-                logInfo(.citation, "✅ MATCH: FamilySearch ID '\(childId)'")
-                return true
-            }
-        }
-        
-        logDebug(.citation, "❌ No match found")
         return false
-    }
-    
-    /// Normalize date format for display
-    private static func normalizeDate(_ date: String) -> String {
-        // Handle various date formats consistently
-        return date
     }
     
     /// Determine what date information was added from asParent family
