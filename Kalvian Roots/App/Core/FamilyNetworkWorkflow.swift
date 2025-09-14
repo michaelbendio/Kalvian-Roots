@@ -139,6 +139,35 @@ class FamilyNetworkWorkflow {
     }
     
     private func generatePersonSpecificCitations(for family: Family, network: FamilyNetwork) {
+        logInfo(.citation, "***************************************************************")
+        logInfo(.citation, "🔍 DEBUG: FAMILY CONTENT ANALYSIS")
+        logInfo(.citation, "***************************************************************")
+        logInfo(.citation, "📋 Family: \(family.familyId)")
+        logInfo(.citation, "👥 Couples: \(family.couples.count)")
+        
+        for (coupleIndex, couple) in family.couples.enumerated() {
+            logInfo(.citation, "--- Couple \(coupleIndex + 1) ---")
+            logInfo(.citation, "👨 Husband: \(couple.husband.displayName)")
+            logInfo(.citation, "👩 Wife: \(couple.wife.displayName)")
+            logInfo(.citation, "👶 Children: \(couple.children.count)")
+            
+            for (childIndex, child) in couple.children.enumerated() {
+                logInfo(.citation, "  [\(childIndex + 1)] \(child.displayName)")
+                logInfo(.citation, "      Birth: \(child.birthDate ?? "none")")
+                logInfo(.citation, "      Spouse: \(child.spouse ?? "none")")
+                logInfo(.citation, "      AsParent: \(child.asParent ?? "none")")
+                logInfo(.citation, "      IsMarried: \(child.isMarried)")
+            }
+        }
+        
+        logInfo(.citation, "📊 Married children count: \(family.marriedChildren.count)")
+        for marriedChild in family.marriedChildren {
+            logInfo(.citation, "  - \(marriedChild.displayName) -> spouse: \(marriedChild.spouse ?? "none"), asParent: \(marriedChild.asParent ?? "none")")
+        }
+        
+        logInfo(.citation, "🔑 AsParent families in network: \(Array(network.asParentFamilies.keys))")
+        logInfo(.citation, "***************************************************************")
+
         logInfo(.citation, "👥 Generating person-specific citations")
         
         // Generate enhanced asChild citations for parents
@@ -176,24 +205,78 @@ class FamilyNetworkWorkflow {
         }
         
         // Generate enhanced citations for children across all couples
+        logInfo(.citation, "═══════════════════════════════════════════════════════════════")
+        logInfo(.citation, "🔍 STARTING SPOUSE CITATION GENERATION DEBUG")
+        logInfo(.citation, "═══════════════════════════════════════════════════════════════")
+
         for couple in family.couples {
             for child in couple.children {
-                if let asParentFamily = network.getAsParentFamily(for: child),
-                   let spouse = asParentFamily.findSpouse(for: child.name),  // <- USE THIS INSTEAD
-                   let spouseAsChildFamily = network.getSpouseAsChildFamily(for: spouse.name) {
-
-                    let citation = CitationGenerator.generateSpouseAsChildCitation(
-                        spouseName: spouse.name,
-                        in: spouseAsChildFamily
-                    )
+                logInfo(.citation, "───────────────────────────────────────────────────────────────")
+                logInfo(.citation, "🔍 Processing child: \(child.displayName)")
+                
+                if let asParentFamily = network.getAsParentFamily(for: child) {
+                    logInfo(.citation, "✅ Found asParent family: \(asParentFamily.familyId)")
                     
-                    activeCitations[spouse.displayName] = citation
-                    activeCitations[spouse.name] = citation
-                    
-                    logInfo(.citation, "✅ Generated spouse citation: \(spouse.displayName)")
+                    if let spouse = asParentFamily.findSpouse(for: child.name) {
+                        logInfo(.citation, "✅ Found spouse: \(spouse.displayName) (name: \(spouse.name))")
+                        
+                        // DEBUG: Check what spouse families are available
+                        logInfo(.citation, "🔍 Available spouseAsChildFamilies keys: \(Array(network.spouseAsChildFamilies.keys))")
+                        
+                        if let spouseAsChildFamily = network.getSpouseAsChildFamily(for: spouse.name) {
+                            logInfo(.citation, "✅ Found spouse asChild family: \(spouseAsChildFamily.familyId)")
+                            
+                            let citation = CitationGenerator.generateSpouseAsChildCitation(
+                                spouseName: spouse.name,
+                                in: spouseAsChildFamily
+                            )
+                            
+                            activeCitations[spouse.displayName] = citation
+                            activeCitations[spouse.name] = citation
+                            
+                            logInfo(.citation, "✅ Generated spouse citation: \(spouse.displayName)")
+                        } else {
+                            logInfo(.citation, "❌ NO spouse asChild family found for: \(spouse.name)")
+                            logInfo(.citation, "🔍 Tried key: '\(spouse.name)'")
+                            logInfo(.citation, "🔍 Available spouse family keys: \(Array(network.spouseAsChildFamilies.keys))")
+                            
+                            // Try alternative keys
+                            let alternativeKeys = [
+                                spouse.displayName,
+                                spouse.name.trimmingCharacters(in: .whitespaces)
+                            ]
+                            
+                            for altKey in alternativeKeys {
+                                if let altFamily = network.getSpouseAsChildFamily(for: altKey) {
+                                    logInfo(.citation, "✅ Found spouse family with alternative key: '\(altKey)' -> \(altFamily.familyId)")
+                                    
+                                    let citation = CitationGenerator.generateSpouseAsChildCitation(
+                                        spouseName: spouse.name,
+                                        in: altFamily
+                                    )
+                                    
+                                    activeCitations[spouse.displayName] = citation
+                                    activeCitations[spouse.name] = citation
+                                    
+                                    logInfo(.citation, "✅ Generated spouse citation: \(spouse.displayName)")
+                                    break
+                                } else {
+                                    logInfo(.citation, "❌ Alternative key '\(altKey)' also not found")
+                                }
+                            }
+                        }
+                    } else {
+                        logInfo(.citation, "❌ NO spouse found in asParent family for child: \(child.name)")
+                    }
+                } else {
+                    logInfo(.citation, "⚠️ No asParent family found for child: \(child.name)")
                 }
             }
         }
+
+        logInfo(.citation, "═══════════════════════════════════════════════════════════════")
+        logInfo(.citation, "🔍 FINISHED SPOUSE CITATION GENERATION DEBUG")
+        logInfo(.citation, "═══════════════════════════════════════════════════════════════")
         
         logInfo(.citation, "✅ Generated \(activeCitations.count) person-specific citations")
     }

@@ -338,102 +338,102 @@ struct JuuretView: View {
     }
     
     private func familyMembersView(family: Family) -> some View {
-            VStack(alignment: .leading, spacing: 20) {
-                // Parents section
-                if let primaryCouple = family.primaryCouple {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Parents")
-                            .font(.genealogyHeadline)
-                            .fontWeight(.semibold)
-                        
-                        personView(person: primaryCouple.husband, role: .father, family: family)
-                        personView(person: primaryCouple.wife, role: .mother, family: family)
-                    }
-                    .padding()
-                    .background(Color.blue.opacity(0.05))
-                    .cornerRadius(10)
-                }
-                
-                // Children section - iterate through all couples
-                let allChildren = family.couples.flatMap { $0.children }
-                if !allChildren.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Children (\(allChildren.count))")
-                            .font(.genealogyHeadline)
-                            .fontWeight(.semibold)
-                        
-                        ForEach(allChildren) { child in
-                            personView(person: child, role: .child, family: family)
+        // MOVE the allChildren declaration to the TOP of the method
+        let allChildren = family.couples.flatMap { $0.children }
+        
+        return VStack(alignment: .leading, spacing: 20) {
+            // Parents section
+            if let primaryCouple = family.primaryCouple {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Parents")
+                        .font(.genealogyHeadline)
+                        .fontWeight(.semibold)
+                    
+                    PersonRowView(
+                        person: primaryCouple.husband,
+                        role: "Father",
+                        onNameClick: { person in
+                            generateCitation(for: person, in: family)
+                        },
+                        onDateClick: { date, eventType in
+                            if let query = juuretApp.generateHiskiQuery(for: primaryCouple.husband, eventType: eventType) {
+                                hiskiResult = query
+                                showingHiskiResult = true
+                            }
+                        },
+                        onSpouseClick: { spouseName in
+                            Task {
+                                let citation = await juuretApp.generateSpouseCitation(for: spouseName, in: family)
+                                citationText = citation
+                                showingCitation = true
+                            }
                         }
-                    }
-                    .padding()
-                    .background(Color.green.opacity(0.05))
-                    .cornerRadius(10)
-                }
-            }
-        }
-    
-    private func personView(person: Person, role: PersonRole, family: Family) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Button(action: {
-                    generateCitation(for: person, in: family)
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: role.icon)
-                            .foregroundColor(role.color)
-                        Text(person.displayName)
-                            .font(.genealogySubheadline)
-                            .fontWeight(.medium)
-                    }
-                }
-                .buttonStyle(.plain)
-                
-                Spacer()
-            }
-            
-            HStack(spacing: 16) {
-                if let birthDate = person.birthDate {
-                    Button(action: {
-                        if let query = juuretApp.generateHiskiQuery(for: person, eventType: .birth) {
-                            hiskiResult = query
-                            showingHiskiResult = true
+                    )
+                    
+                    PersonRowView(
+                        person: primaryCouple.wife,
+                        role: "Mother",
+                        onNameClick: { person in
+                            generateCitation(for: person, in: family)
+                        },
+                        onDateClick: { date, eventType in
+                            if let query = juuretApp.generateHiskiQuery(for: primaryCouple.wife, eventType: eventType) {
+                                hiskiResult = query
+                                showingHiskiResult = true
+                            }
+                        },
+                        onSpouseClick: { spouseName in
+                            Task {
+                                let citation = await juuretApp.generateSpouseCitation(for: spouseName, in: family)
+                                citationText = citation
+                                showingCitation = true
+                            }
                         }
-                    }) {
-                        Label("b. \(birthDate)", systemImage: "calendar")
-                            .font(.genealogyCaption)
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
+                    )
                 }
-                
-                if let deathDate = person.deathDate {
-                    Button(action: {
-                        if let query = juuretApp.generateHiskiQuery(for: person, eventType: .death) {
-                            hiskiResult = query
-                            showingHiskiResult = true
-                        }
-                    }) {
-                        Label("d. \(deathDate)", systemImage: "calendar.badge.minus")
-                            .font(.genealogyCaption)
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
+                .padding()
+                .background(Color.blue.opacity(0.05))
+                .cornerRadius(10)
             }
             
-            if let spouse = person.spouse, !spouse.isEmpty {
-                HStack(spacing: 8) {
-                    Text("m.")
-                        .font(.genealogyCaption)
-                        .foregroundColor(.secondary)
-                    Text(spouse)
-                        .font(.genealogyCallout)
-                        .foregroundColor(.purple)
+            // Children section - now allChildren is properly scoped
+            if !allChildren.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Children (\(allChildren.count))")
+                        .font(.genealogyHeadline)
+                        .fontWeight(.semibold)
+                    
+                    ForEach(allChildren) { child in
+                        PersonRowView(
+                            person: child,
+                            role: "Child",
+                            onNameClick: { person in
+                                generateCitation(for: person, in: family)
+                            },
+                            onDateClick: { date, eventType in
+                                if let query = juuretApp.generateHiskiQuery(for: child, eventType: eventType) {
+                                    hiskiResult = query
+                                    showingHiskiResult = true
+                                }
+                            },
+                            onSpouseClick: { spouseName in
+                                Task {
+                                    let citation = await juuretApp.generateSpouseCitation(for: spouseName, in: family)
+                                    citationText = citation
+                                    showingCitation = true
+                                }
+                            }
+                        )
+                    }
                 }
+                .padding()
+                .background(Color.green.opacity(0.05))
+                .cornerRadius(10)
             }
         }
     }
+
+    // Also REMOVE the old personView method since we're now using PersonRowView
     
     // MARK: - Actions
     

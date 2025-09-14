@@ -2,71 +2,31 @@
 //  Family.swift
 //  Kalvian Roots
 //
-//  Complete family unit from Juuret Kälviällä genealogical text
+//  Family data structure for Finnish genealogical records
 //
 
 import Foundation
 
 /**
- * Represents a couple with their children
+ * Family represents a genealogical family unit with couples and their children
+ * Based on Finnish genealogical record format from Juuret Kälviällä
  */
-struct Couple: Hashable, Sendable, Codable {
-    /// Husband in the couple
-    var husband: Person
+struct Family: Hashable, Sendable, Codable, Identifiable {
+    // MARK: - Core Properties
     
-    /// Wife in the couple
-    var wife: Person
-    
-    /// Marriage date for this couple
-    var marriageDate: String?
-    
-    // Full marriage date from their asParent family
-    var fullMarriageDate: String?
-    
-    /// Children from this couple
-    var children: [Person]
-    
-    /// Number of children who died in infancy from this couple
-    var childrenDiedInfancy: Int?
-    
-    /// Notes specific to this couple
-    var coupleNotes: [String]
-    
-    init(husband: Person, wife: Person, marriageDate: String? = nil,
-         fullMarriageDate: String? = nil,
-         children: [Person] = [], childrenDiedInfancy: Int? = nil,
-         coupleNotes: [String] = []) {
-        self.husband = husband
-        self.wife = wife
-        self.marriageDate = marriageDate
-        self.fullMarriageDate = fullMarriageDate
-        self.children = children
-        self.childrenDiedInfancy = childrenDiedInfancy
-        self.coupleNotes = coupleNotes
-    }
-}
-
-/**
- * Complete family unit from Juuret Kälviällä genealogical text.
- * A family consists of one or more couples and their respective children.
- */
-struct Family: Hashable, Sendable, Codable {
-    // MARK: - Core Family Data
-    
-    /// Family ID like 'PIENI-PORKOLA 5' or 'KORPI 6'
+    /// Unique family identifier like "KORPI 5" or "VÄHÄ-HYYPPÄ 7"
     var familyId: String
     
-    /// Source page numbers like ['268', '269']
+    /// Page references from the source book
     var pageReferences: [String]
     
-    /// All couples in this family unit
-    /// Even a simple family has one couple
+    /// Couples in this family (primary couple + additional spouses)
     var couples: [Couple]
     
-    /// General family notes
+    /// General notes about the family
     var notes: [String]
     
-    /// Note marker definitions (e.g., "*": "Juho kuoli 26.01.1767, leski Pirkola 8.")
+    /// Note definitions for symbols like * or **
     var noteDefinitions: [String: String]
     
     // MARK: - Convenience Accessors
@@ -177,143 +137,73 @@ struct Family: Hashable, Sendable, Codable {
     
     /// Get parent names for a specific child (for Hiski queries)
     func getParentNames(for child: Person) -> (father: String, mother: String?)? {
-        if let couple = findCoupleForChild(child.name) {
-            return (couple.husband.displayName, couple.wife.displayName)
-        }
-        return nil
+        guard let couple = findCoupleForChild(child.name) else { return nil }
+        return (father: couple.husband.name, mother: couple.wife.name)
     }
     
-    // MARK: - Validation
+    // MARK: - Identifiable
     
-    /// Validate family structure for genealogical accuracy
-    func validateStructure() -> [String] {
-        var warnings: [String] = []
-        
-        if familyId.isEmpty {
-            warnings.append("Family ID is required")
-        }
-        
-        if pageReferences.isEmpty {
-            warnings.append("Page references are required")
-        }
-        
-        if couples.isEmpty {
-            warnings.append("At least one couple is required")
-        }
-        
-        // Validate each couple
-        for (index, couple) in couples.enumerated() {
-            if couple.husband.name.isEmpty {
-                warnings.append("Couple \(index + 1): Husband name is required")
-            }
-            if couple.wife.name.isEmpty {
-                warnings.append("Couple \(index + 1): Wife name is required")
-            }
-            
-            // Check for duplicate child names within couple
-            let childNames = couple.children.map { $0.name.lowercased() }
-            let uniqueNames = Set(childNames)
-            if childNames.count != uniqueNames.count {
-                warnings.append("Couple \(index + 1): Duplicate child names found")
-            }
-        }
-        
-        return warnings
-    }
+    var id: String { familyId }
     
-    // MARK: - Initializers
+    // MARK: - Sample Data
     
-    /// Simple family with one couple
-    init(familyId: String,
-         pageReferences: [String],
-         husband: Person,
-         wife: Person,
-         marriageDate: String? = nil,
-         children: [Person] = [],
-         childrenDiedInfancy: Int? = nil,
-         notes: [String] = [],
-         noteDefinitions: [String: String] = [:]) {
-        
-        let couple = Couple(
-            husband: husband,
-            wife: wife,
-            marriageDate: marriageDate,
-            children: children,
-            childrenDiedInfancy: childrenDiedInfancy,
-            coupleNotes: []
-        )
-        
-        self.familyId = familyId
-        self.pageReferences = pageReferences
-        self.couples = [couple]
-        self.notes = notes
-        self.noteDefinitions = noteDefinitions
-    }
-    
-    /// Full family with multiple couples
-    init(familyId: String,
-         pageReferences: [String],
-         couples: [Couple],
-         notes: [String] = [],
-         noteDefinitions: [String: String] = [:]) {
-        
-        self.familyId = familyId
-        self.pageReferences = pageReferences
-        self.couples = couples
-        self.notes = notes
-        self.noteDefinitions = noteDefinitions
-    }
-}
-
-// MARK: - Sample Data Extensions
-
-extension Family {
-    /// Create sample family for testing
+    /// Sample family for testing
     static func sampleFamily() -> Family {
-        let father = Person(
-            name: "Matti",
-            patronymic: "Erikinp.",
-            birthDate: "15.03.1723",
-            deathDate: "12.11.1798",
+        let husband = Person(
+            name: "Jaakko",
+            patronymic: "Jaakonp.",
+            birthDate: "09.10.1726",
+            deathDate: "07.03.1789",
+            asChild: "HYYPPÄ 5",
             noteMarkers: []
         )
         
-        let mother = Person(
-            name: "Brita",
+        let wife = Person(
+            name: "Maria",
             patronymic: "Jaakont.",
-            birthDate: "22.08.1731",
-            deathDate: "05.07.1805",
+            birthDate: "02.03.1733",
+            deathDate: "18.04.1753",
+            asChild: "PIETILÄ 7",
             noteMarkers: []
         )
         
         let child1 = Person(
             name: "Maria",
-            patronymic: "Matint.",
-            birthDate: "18.05.1751",
-            marriageDate: "73",
-            spouse: "Juho Juhonp.",
-            asParent: "KORPI 8",
+            birthDate: "27.03.1763",
+            marriageDate: "82",
+            spouse: "Matti Korpi",
+            asParent: "KORPI 9",
             noteMarkers: []
         )
         
         let child2 = Person(
-            name: "Erik",
-            patronymic: "Matinp.",
-            birthDate: "03.09.1753",
+            name: "Brita",
+            birthDate: "11.02.1766",
+            marriageDate: "86",
+            spouse: "Henrik Karhulahti",
+            asParent: "ISO-HYYPPÄ 10",
             noteMarkers: []
         )
         
+        let couple = Couple(
+            husband: husband,
+            wife: wife,
+            marriageDate: "08.10.1752",
+            children: [child1, child2],
+            childrenDiedInfancy: nil,
+            coupleNotes: []
+        )
+        
         return Family(
-            familyId: "SAMPLE 1",
-            pageReferences: ["105", "106"],
-            husband: father,
-            wife: mother,
-            marriageDate: "1750",
-            children: [child1, child2]
+            familyId: "HYYPPÄ 6",
+            pageReferences: ["370"],
+            couples: [couple],
+            notes: ["Maria kuoli 1784 ja lapsi samana vuonna."],
+            noteDefinitions: [:]
         )
     }
     
-    /// Create complex sample family with multiple spouses for testing
+    /// Complex sample family with multiple couples for cross-reference testing
     static func complexSampleFamily() -> Family {
         let husband = Person(
             name: "Jaakko",
@@ -399,13 +289,25 @@ extension Family {
     func findSpouse(for personName: String) -> Person? {
         let lowercaseName = personName.lowercased()
         
-        for couple in couples {
+        logInfo(.citation, "🔍 FINDING SPOUSE for '\(personName)' in family \(self.familyId)")
+        logInfo(.citation, "🔍 Looking for lowercase: '\(lowercaseName)'")
+        logInfo(.citation, "🔍 Family has \(self.couples.count) couples")
+        
+        for (coupleIndex, couple) in self.couples.enumerated() {
+            logInfo(.citation, "  Couple \(coupleIndex + 1): \(couple.husband.name) & \(couple.wife.name)")
+            logInfo(.citation, "    Husband lowercase: '\(couple.husband.name.lowercased())'")
+            logInfo(.citation, "    Wife lowercase: '\(couple.wife.name.lowercased())'")
+            
             if couple.husband.name.lowercased() == lowercaseName {
+                logInfo(.citation, "✅ FOUND SPOUSE: \(couple.wife.displayName) (wife of \(personName))")
                 return couple.wife
             } else if couple.wife.name.lowercased() == lowercaseName {
+                logInfo(.citation, "✅ FOUND SPOUSE: \(couple.husband.displayName) (husband of \(personName))")
                 return couple.husband
             }
         }
+        
+        logWarn(.citation, "❌ NO SPOUSE FOUND for '\(personName)' in family \(self.familyId)")
         return nil
     }
 }

@@ -1,8 +1,8 @@
 //
-//  PersonRowView.swift - Fixed for SwiftUI API Changes
+//  PersonRowView.swift
 //  Kalvian Roots
 //
-//  Enhanced genealogical person display with SwiftUI compatibility fixes
+//  Display family members; click to see citations
 //
 
 import SwiftUI
@@ -22,11 +22,11 @@ struct PersonRowView: View {
             }) {
                 HStack {
                     Text("• \(person.displayName)")
-                        .font(Font.system(size: 18))  // FIXED: Direct system font
-                        .foregroundStyle(Color.blue)
-                        .underline(true, color: Color.blue)
+                        .font(Font.system(size: 18))
+                        .foregroundStyle(Color.primary)  // Changed to black
+                        .underline(true, color: Color.blue)  // Added blue underline
                     Text("(\(role))")
-                        .font(Font.system(size: 15))  // FIXED: Direct system font
+                        .font(Font.system(size: 15))
                         .foregroundStyle(Color.secondary)
                 }
             }
@@ -50,28 +50,11 @@ struct PersonRowView: View {
         }
     }
     
-    func dateButton(symbol: String, date: String, eventType: EventType) -> some View {
-        Button(action: {
-            onDateClick(date, eventType)
-        }) {
-            HStack {
-                Text(symbol)
-                    .font(Font.system(size: 15))  // FIXED: Direct system font
-                    .foregroundStyle(Color.primary)
-                Text(date)
-                    .font(Font.system(size: 13, design: .monospaced))  // FIXED: Direct system font
-                    .foregroundStyle(Color.blue)
-                    .underline(true, color: Color.blue)
-            }
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-    
     func marriageButton(marriageDate: String, spouse: String) -> some View {
         HStack(spacing: 6) {
             // Marriage symbol
             Text("∞")
-                .font(Font.system(size: 15))  // FIXED: Direct system font
+                .font(Font.system(size: 15))
                 .foregroundStyle(Color.primary)
             
             // Marriage date (clickable for Hiski marriage query)
@@ -79,40 +62,40 @@ struct PersonRowView: View {
                 onDateClick(marriageDate, .marriage)
             }) {
                 Text(marriageDate)
-                    .font(Font.system(size: 13, design: .monospaced))  // FIXED: Direct system font
-                    .foregroundStyle(Color.blue)
-                    .underline(true, color: Color.blue)
+                    .font(Font.system(size: 13, design: .monospaced))
+                    .foregroundStyle(Color.primary)  // Changed to black
+                    .underline(true, color: Color.blue)  // Added blue underline
             }
             .buttonStyle(PlainButtonStyle())
             
-            // Spouse name - Purple ONLY for children who have spouses
-            // Parents (Matti & Brita) will show spouse name but not be clickable
-            if shouldShowSpouseAsClickable() {
-                Button(action: {
-                    onSpouseClick(spouse)
-                }) {
-                    Text(spouse)
-                        .font(Font.system(size: 15))  // FIXED: Direct system font
-                        .fontWeight(.medium)
-                        .foregroundStyle(Color.purple)
-                        .underline(true, color: Color.purple)
-                }
-                .buttonStyle(PlainButtonStyle())
-            } else {
+            // Spouse name - Always clickable, black with blue underline
+            Button(action: {
+                onSpouseClick(spouse)
+            }) {
                 Text(spouse)
-                    .font(Font.system(size: 15))  // FIXED: Direct system font
-                    .foregroundStyle(Color.primary)
+                    .font(Font.system(size: 15))
+                    .fontWeight(.medium)
+                    .foregroundStyle(Color.primary)  // Changed from purple to black
+                    .underline(true, color: Color.blue)  // Changed underline to blue
             }
+            .buttonStyle(PlainButtonStyle())
         }
     }
     
-    // Only show spouse as clickable for children, not parents
-    func shouldShowSpouseAsClickable() -> Bool {
-        return role == "Child"
+    func dateButton(symbol: String, date: String, eventType: EventType) -> some View {
+        Button(action: {
+            onDateClick(date, eventType)
+        }) {
+            HStack {
+                Text(symbol)
+                    .font(Font.system(size: 15))
+                    .foregroundStyle(Color.primary)
+                Text(date)
+                    .font(Font.system(size: 13, design: .monospaced))
+                    .foregroundStyle(Color.primary)  // Changed to black
+                    .underline(true, color: Color.blue)  // Added blue underline
+            }
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }
-
-// Note: Font sizes used in this view:
-// - Display names: 18pt (genealogySubheadline equivalent)
-// - Role labels and regular text: 15pt (genealogyCallout equivalent)
-// - Dates: 13pt monospaced (genealogyMonospaceSmall equivalent)

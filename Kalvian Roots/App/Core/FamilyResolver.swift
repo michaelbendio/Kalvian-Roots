@@ -115,10 +115,6 @@ class FamilyResolver {
             logInfo(.resolver, "Step 2: Resolving as-parent families")
             network = try await resolveAsParentFamilies(for: family, network: network)
             
-            // Step 3: Resolve spouse as-child families
-            logInfo(.resolver, "Step 3: Resolving spouse as-child families")
-            network = try await resolveSpouseAsChildFamilies(for: family, network: network)
-
             resolutionStatistics.incrementSuccess()
             
             let duration = DebugLogger.shared.endTimer("family_network_resolution")

@@ -398,6 +398,43 @@ class JuuretApp {
         
         return citation
     }
+    
+    /**
+     * Generate citation for a spouse (children's spouses)
+     * This looks up the spouse citation from the active workflow citations
+     */
+    func generateSpouseCitation(for spouseName: String, in family: Family) -> String {
+        logInfo(.citation, "📝 Generating spouse citation for: \(spouseName)")
+        
+        // PRIORITY: Check workflow citations first (these have cross-references including spouse citations)
+        if let workflow = familyNetworkWorkflow {
+            let citations = workflow.getActiveCitations()
+            
+            // Try different key variations to find the spouse citation
+            if let citation = citations[spouseName] {
+                logDebug(.citation, "Found spouse citation in workflow citations")
+                return citation
+            }
+            
+            // Try with different name formats
+            let nameVariations = [
+                spouseName.trimmingCharacters(in: .whitespaces),
+                spouseName.lowercased(),
+                spouseName.uppercased()
+            ]
+            
+            for variation in nameVariations {
+                if let citation = citations[variation] {
+                    logDebug(.citation, "Found spouse citation with name variation: \(variation)")
+                    return citation
+                }
+            }
+        }
+        
+        // Fallback: Generate basic citation mentioning the spouse
+        logWarn(.citation, "No specific spouse citation found for: \(spouseName)")
+        return "Spouse: \(spouseName)\n\nNo additional citation information available. This spouse appears in \(family.familyId) but their family of origin (as_child family) was not found or could not be resolved."
+    }
 
         // MARK: - Hiski Query Generation
     
