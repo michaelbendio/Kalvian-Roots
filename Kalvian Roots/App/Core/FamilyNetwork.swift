@@ -94,10 +94,30 @@ struct FamilyNetwork: Hashable, Sendable, Codable {
     }
         
     /// Get the asChild family for a specific spouse (where spouse came from)
+    /// Uses the same robust lookup logic as getAsChildFamily
     func getSpouseAsChildFamily(for spouseName: String) -> Family? {
-        return spouseAsChildFamilies[spouseName]
+        // Try exact match first
+        if let family = spouseAsChildFamilies[spouseName] {
+            return family
+        }
+        
+        // Try trimmed version
+        let trimmedName = spouseName.trimmingCharacters(in: .whitespaces)
+        if let family = spouseAsChildFamilies[trimmedName] {
+            return family
+        }
+        
+        // Try case-insensitive match
+        for (key, family) in spouseAsChildFamilies {
+            if key.lowercased() == spouseName.lowercased() {
+                return family
+            }
+        }
+        
+        // Log failure for debugging
+        logWarn(.citation, "⚠️ No spouse asChild family found for '\(spouseName)' in keys: \(Array(spouseAsChildFamilies.keys))")
+        return nil
     }
-    
     /// Get all families in the network (for comprehensive citation generation)
     var allFamilies: [Family] {
         var families = [mainFamily]
