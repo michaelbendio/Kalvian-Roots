@@ -202,7 +202,7 @@ class FileManager {
     func autoLoadDefaultFile() async {
         logInfo(.file, "🔍 CANONICAL: Searching for \(defaultFileName) in canonical location")
         
-        let canonicalURL = getCanonicalFileURL()
+        let canonicalURL = getCanonicalFileURL()  // Non-throwing version now
         logDebug(.file, "Canonical location: \(canonicalURL.path)")
         
         // For iCloud files, we might need to download them first
@@ -271,23 +271,29 @@ class FileManager {
      * Returns: iCloud Drive/Kalvian Roots/Documents/JuuretKälviällä.roots
      * Throws: If iCloud Drive is not available
      */
-    private func getCanonicalFileURL() throws -> URL {
-        guard let iCloudURL = FileManager.default.url(forUbiquityContainerIdentifier: nil) else {
-            throw JuuretError.iCloudUnavailable("iCloud Drive is required but not available. Please enable iCloud Drive in System Settings.")
+    func getCanonicalFileURL() -> URL {
+        // Try to get iCloud URL
+        if let iCloudURL = Foundation.FileManager.default.url(forUbiquityContainerIdentifier: nil) {
+            let kalvianRootsURL = iCloudURL
+                .appendingPathComponent("Kalvian Roots")
+                .appendingPathComponent("Documents")
+            
+            // Create the full directory structure if it doesn't exist
+            do {
+                try Foundation.FileManager.default.createDirectory(
+                    at: kalvianRootsURL,
+                    withIntermediateDirectories: true,
+                    attributes: nil
+                )
+                return kalvianRootsURL.appendingPathComponent(defaultFileName)
+            } catch {
+                logWarn(.file, "Failed to create iCloud directory structure: \(error)")
+            }
         }
         
-        let kalvianRootsURL = iCloudURL
-            .appendingPathComponent("Kalvian Roots")
-            .appendingPathComponent("Documents")
-        
-        // Create the full directory structure if it doesn't exist
-        try FileManager.default.createDirectory(
-            at: kalvianRootsURL,
-            withIntermediateDirectories: true,
-            attributes: nil
-        )
-        
-        return kalvianRootsURL.appendingPathComponent(defaultFileName)
+        // Fallback to local documents if iCloud is unavailable
+        let documentsURL = Foundation.FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        return documentsURL.appendingPathComponent(defaultFileName)
     }
 
     
@@ -404,10 +410,9 @@ class FileManager {
             filePath: currentFileURL?.path,
             fileSize: getFileSize(),
             isDefaultFile: currentFileURL?.lastPathComponent == defaultFileName,
-            isCanonicalLocation: currentFileURL == getCanonicalFileURL()
+            isCanonicalLocation: currentFileURL == getCanonicalFileURL()  // Non-throwing now
         )
     }
-    
     /**
      * Get formatted file size
      */

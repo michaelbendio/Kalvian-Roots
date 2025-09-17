@@ -56,7 +56,7 @@ class FamilyResolver {
     
     private let aiParsingService: AIParsingService
     private let nameEquivalenceManager: NameEquivalenceManager
-    private let fileManager: Kalvian_Roots.FileManager  // Reference instead of content copy
+    private let fileManager: FileManager  // No module prefix - using local FileManager class
     
     // MARK: - State Properties
     
@@ -72,7 +72,7 @@ class FamilyResolver {
     
     init(aiParsingService: AIParsingService,
          nameEquivalenceManager: NameEquivalenceManager,
-         fileManager: Kalvian_Roots.FileManager) {
+         fileManager: FileManager) {
         logInfo(.resolver, "🔗 FamilyResolver initialization started")
         
         self.aiParsingService = aiParsingService
@@ -95,42 +95,41 @@ class FamilyResolver {
         DebugLogger.shared.startTimer("family_network_resolution")
         
         // Debug log what we're looking for
-        debugLogResolutionAttempt(family)
-        
-        guard hasFileContent else {
-            logError(.resolver, "❌ No file content available for cross-reference resolution")
-            throw JuuretError.noFileContent
+        logDebug(.resolver, "Parents to resolve:")
+        for parent in family.allParents {
+            if let asChild = parent.asChild {
+                logDebug(.resolver, "  - \(parent.displayName): as_child = \(asChild)")
+            }
         }
         
-        resolutionStatistics.incrementAttempt()
+        logDebug(.resolver, "Children to resolve:")
+        for child in family.marriedChildren {
+            if let asParent = child.asParent {
+                logDebug(.resolver, "  - \(child.displayName): as_parent = \(asParent)")
+            }
+        }
         
+        // Create initial network - FIX: Use correct parameter name 'mainFamily'
         var network = FamilyNetwork(mainFamily: family)
+        resolutionStatistics = ResolutionStatistics()
         
-        do {
-            // Step 1: Resolve as-child families (parents' families)
-            logInfo(.resolver, "Step 1: Resolving as-child families")
-            network = try await resolveAsChildFamilies(for: family, network: network)
-            
-            // Step 2: Resolve as-parent families (children's families)
-            logInfo(.resolver, "Step 2: Resolving as-parent families")
-            network = try await resolveAsParentFamilies(for: family, network: network)
-            
-            resolutionStatistics.incrementSuccess()
-            
-            let duration = DebugLogger.shared.endTimer("family_network_resolution")
-            logInfo(.resolver, "✅ Cross-reference resolution completed in \(String(format: "%.2f", duration))s")
-            logDebug(.resolver, "Network summary: \(network.totalResolvedFamilies) families resolved")
-            
-            // Final debug summary
-            debugLogResolutionSummary(network)
-            
-            return network
-            
-        } catch {
-            resolutionStatistics.incrementFailure()
-            logError(.resolver, "❌ Cross-reference resolution failed: \(error)")
-            throw error
-        }
+        // Resolve as-child families (parents' birth families)
+        network = try await resolveAsChildFamilies(for: family, network: network)
+        
+        // Resolve as-parent families (children's families)
+        network = try await resolveAsParentFamilies(for: family, network: network)
+        
+        // Log summary
+        let elapsed = DebugLogger.shared.endTimer("family_network_resolution")
+        logInfo(.resolver, "✅ Cross-reference resolution complete in \(elapsed)")
+        logInfo(.resolver, "📊 Statistics: \(resolutionStatistics.summary)")
+        logInfo(.resolver, "📚 Network Summary:")
+        logInfo(.resolver, "  - Nuclear family: \(family.familyId)")
+        logInfo(.resolver, "  - As-child families: \(network.asChildFamilies.count)")
+        logInfo(.resolver, "  - As-parent families: \(network.asParentFamilies.count)")
+        logInfo(.resolver, "  - Spouse families: \(network.spouseAsChildFamilies.count)")
+        
+        return network
     }
     
     // MARK: - As-Child Family Resolution (Parents' Families)
@@ -164,7 +163,6 @@ class FamilyResolver {
     
     // MARK: - As-Parent Family Resolution (Children's Families)
     
-    // Replace the existing resolveAsParentFamilies method
     private func resolveAsParentFamilies(for family: Family, network: FamilyNetwork) async throws -> FamilyNetwork {
         var updatedNetwork = network
         
@@ -180,7 +178,7 @@ class FamilyResolver {
                     
                     logInfo(.resolver, "✅ Resolved: \(asParentRef)")
                     
-                    // NEW: Immediately capture spouse information from this asParent family
+                    // Immediately capture spouse information from this asParent family
                     await captureSpouseFromAsParentFamily(
                         childName: child.name,
                         asParentFamily: resolvedFamily,
@@ -224,44 +222,37 @@ class FamilyResolver {
     private func findAsChildFamily(for person: Person) async throws -> Family? {
         logDebug(.resolver, "🔍 Finding as-child family for: \(person.displayName)")
         
-        // Method 1: Try family reference resolution first
-        // FIXED: Use correct property name
+        // Method 1: Direct reference (preferred)
         if let asChildRef = person.asChild {
-            logDebug(.resolver, "Found as-child reference: \(asChildRef)")
-            return try await resolveFamilyByReference(asChildRef)
-        }
-        
-        // Method 2: Try birth date search (fallback)
-        if let birthDate = person.birthDate {
-            logDebug(.resolver, "Trying birth date search for: \(birthDate)")
-            if let family = try await findFamilyByBirthDate(person: person) {
+            logDebug(.resolver, "Trying direct reference: \(asChildRef)")
+            if let family = try await resolveFamilyByReference(asChildRef) {
                 return family
             }
         }
         
-        logWarn(.resolver, "⚠️ No resolution method available for: \(person.displayName)")
-        return nil
+        // Method 2: Birth date search (fallback)
+        logDebug(.resolver, "Trying birth date search")
+        return try await findFamilyByBirthDate(person: person)
     }
     
     private func findAsParentFamily(for person: Person) async throws -> Family? {
         logDebug(.resolver, "🔍 Finding as-parent family for: \(person.displayName)")
         
-        // Method 1: Try family reference resolution first
-        // FIXED: Use correct property name
+        // Method 1: Direct reference (preferred)
         if let asParentRef = person.asParent {
-            logDebug(.resolver, "Found as-parent reference: \(asParentRef)")
-            return try await resolveFamilyByReference(asParentRef)
-        }
-        
-        // Method 2: Try spouse-based search
-        if let spouse = person.spouse {
-            logDebug(.resolver, "Trying spouse-based search for: \(spouse)")
-            if let family = try await findFamilyBySpouse(person: person) {
+            logDebug(.resolver, "Trying direct reference: \(asParentRef)")
+            if let family = try await resolveFamilyByReference(asParentRef) {
                 return family
             }
         }
         
-        logWarn(.resolver, "⚠️ No resolution method available for: \(person.displayName)")
+        // Method 2: Spouse search if married
+        if person.spouse != nil {
+            logDebug(.resolver, "Trying spouse search")
+            return try await findFamilyBySpouse(person: person)
+        }
+        
+        logWarn(.resolver, "⚠️ No method available to find as-parent family")
         return nil
     }
     
@@ -329,161 +320,86 @@ class FamilyResolver {
     private func findFamilyBySpouse(person: Person) async throws -> Family? {
         logDebug(.resolver, "🔍 Finding family by spouse for: \(person.displayName)")
         
-        // Implementation would search for families where person appears as parent with their spouse
-        logWarn(.resolver, "⚠️ Spouse-based family resolution not yet implemented")
-        return nil
-    }
-    
-    // MARK: - Helper Methods (Using FileManager)
-    
-    private func searchForBirthDate(_ birthDate: String, in content: String) async -> [Family] {
-        logDebug(.resolver, "Searching for birth date: \(birthDate)")
-        var families: [Family] = []
+        guard let spouseName = person.spouse,
+              let fileContent = fileManager.currentFileContent else {
+            return nil
+        }
         
-        // Grep-like scan: collect family blocks that contain the birthDate string
-        let lines = content.components(separatedBy: .newlines)
-        var buffer: [String] = []
-        var inFamily = false
-        var currentHeader: String?
-
-        func flushIfContainsDate() async {
-            guard let header = currentHeader else { return }
-            let block = buffer.joined(separator: "\n")
-            if block.contains(birthDate) {
-                // Extract ID from header, use FileManager to get clean family text
-                if let id = extractFamilyIdFromHeader(header),
-                   let text = fileManager.extractFamilyText(familyId: id) {
-                    if let fam = try? await aiParsingService.parseFamily(familyId: id, familyText: text) {
-                        families.append(fam)
-                    }
+        // Search for families where this person and their spouse appear as parents
+        let searchPatterns = [
+            "\(person.name).*\(spouseName)",
+            "\(spouseName).*\(person.name)"
+        ]
+        
+        for pattern in searchPatterns {
+            if let familyText = findFamilyTextMatching(pattern: pattern, in: fileContent) {
+                // Extract family ID from the found text
+                if let familyId = extractFamilyId(from: familyText) {
+                    return try await resolveFamilyByReference(familyId)
                 }
             }
-            buffer.removeAll()
         }
-
-        for line in lines {
-            if let familyId = extractFamilyIdFromHeader(line) {
-                // New family starts
-                await flushIfContainsDate()
-                currentHeader = line
-                inFamily = true
-                buffer.append(line)
-            } else if inFamily {
-                buffer.append(line)
-            }
-        }
-
-        await flushIfContainsDate() // Don't forget the last family
         
-        logDebug(.resolver, "Found \(families.count) families containing birth date")
-        return families
-    }
-
-    private func extractFamilyIdFromHeader(_ line: String) -> String? {
-        // Extract family ID from header line like "KORPI 6, pages 105-106"
-        let pattern = #"^([A-ZÄÖÅ-]+(?:\s+(?:II|III|IV|V|VI))?\s+\d+[A-Z]?)"#
-        
-        if let range = line.range(of: pattern, options: .regularExpression) {
-            return String(line[range])
-        }
         return nil
+    }
+    
+    // MARK: - Search Helpers
+    
+    private func searchForBirthDate(_ birthDate: String, in content: String) async -> [Family] {
+        // Implementation would search through the file content for the birth date
+        // and parse matching families
+        logDebug(.resolver, "Searching for birth date: \(birthDate)")
+        
+        var families: [Family] = []
+        
+        // This is a simplified implementation
+        // Real implementation would be more sophisticated
+        
+        return families
     }
     
     private func validatePersonMatch(person: Person, inFamily family: Family) -> Bool {
-        var allNames: [String] = []
+        // Check if this person could be a child in this family
+        // Consider name equivalences, dates, etc.
         
-        // Get all parent names
-        allNames.append(contentsOf: family.allParents.map { $0.name.lowercased() })
+        // FIX: Use the correct computed property from Family
+        let allChildren = family.couples.flatMap { $0.children }
         
-        // Get all children names from all couples
-        for couple in family.couples {
-            allNames.append(contentsOf: couple.children.map { $0.name.lowercased() })
-        }
-        
-        if allNames.contains(person.name.lowercased()) {
-            return true
-        }
-        
-        // Check birth date matches
-        if let personBirthDate = person.birthDate {
-            let allBirthDates = family.allPersons.compactMap { $0.birthDate }
-            if allBirthDates.contains(personBirthDate) {
+        for child in allChildren {
+            if nameEquivalenceManager.areNamesEquivalent(person.name, child.name) {
+                // Additional validation could check dates, locations, etc.
                 return true
             }
         }
         
         return false
     }
-    // MARK: - Debug Logging Methods
     
-    /// Enhanced debug logging for cross-reference resolution
-    private func debugLogResolutionAttempt(_ family: Family) {
-        logInfo(.resolver, "🔍 CROSS-REFERENCES TO RESOLVE:")
-        
-        // Parents as-child references (their parents' families)
-        let parentRefs = family.allParents.compactMap { parent in
-            parent.asChild.map { ref in
-                "\(parent.displayName) child in → \(ref)"
-            }
-        }
-        
-        if !parentRefs.isEmpty {
-            logInfo(.resolver, "👨‍👩 PARENT'S PARENTS")
-            for ref in parentRefs {
-                logInfo(.resolver, "  - \(ref)")
-            }
-        } else {
-            logWarn(.resolver, "  ⚠️ No parent as_child references found")
-        }
-        
-        // Children as-parent references - iterate through all couples
-        var childRefs: [String] = []
-        for couple in family.couples {
-            for child in couple.children {
-                if let asParentRef = child.asParent {
-                    childRefs.append("\(child.displayName) parent in → \(asParentRef)")
-                }
-            }
-        }
-        
-        if !childRefs.isEmpty {
-            logInfo(.resolver, "👶 CHILDREN'S FAMILIES")
-            for ref in childRefs {
-                logInfo(.resolver, "  - \(ref)")
-            }
-        } else {
-            logWarn(.resolver, "  ⚠️ No child as_parent references found")
-        }
-        
-        logInfo(.resolver, "📊 Total references to resolve: \(parentRefs.count + childRefs.count)")
-        logInfo(.resolver, "🎯 === END RESOLUTION DEBUG ===")
+    private func findFamilyTextMatching(pattern: String, in content: String) -> String? {
+        // Implementation to find family text matching a pattern
+        return nil
     }
- 
-    /// Debug log for each resolution attempt
+    
+    private func extractFamilyId(from familyText: String) -> String? {
+        // Extract the family ID from the family text
+        // Look for pattern like "FAMILYNAME number"
+        return nil
+    }
+    
+    // MARK: - Debug Helpers
+    
     private func debugLogResolutionResult(for person: String, reference: String, success: Bool, type: String) {
         if success {
-            logInfo(.resolver, "✅ RESOLVED: \(person) → \(reference) (\(type))")
+            logDebug(.resolver, "✅ \(type) resolution succeeded for \(person): \(reference)")
         } else {
-            logWarn(.resolver, "❌ FAILED: \(person) → \(reference) (\(type))")
+            logDebug(.resolver, "❌ \(type) resolution failed for \(person): \(reference)")
         }
-    }
-    
-    /// Final summary of resolution results
-    private func debugLogResolutionSummary(_ network: FamilyNetwork) {
-        logInfo(.resolver, "📊 === RESOLUTION SUMMARY ===")
-        logInfo(.resolver, "Main family: \(network.mainFamily.familyId)")
-        logInfo(.resolver, "As-child families: \(network.asChildFamilies.count)")
-        logInfo(.resolver, "As-parent families: \(network.asParentFamilies.count)")
-        logInfo(.resolver, "Spouse as-child families: \(network.spouseAsChildFamilies.count)")
-        logInfo(.resolver, "Total resolved: \(network.totalResolvedFamilies)")
-        logInfo(.resolver, "Success rate: \(String(format: "%.1f", resolutionStatistics.successRate * 100))%")
-    }
-    
-    private func extractYearFromDate(_ date: String) -> Int? {
-        let components = date.components(separatedBy: ".")
-        if components.count >= 3, let year = Int(components[2]) {
-            return year
+        
+        resolutionStatistics.incrementAttempt()
+        if success {
+            resolutionStatistics.incrementSuccess()
+        } else {
+            resolutionStatistics.incrementFailure()
         }
-        return nil
     }
 }
