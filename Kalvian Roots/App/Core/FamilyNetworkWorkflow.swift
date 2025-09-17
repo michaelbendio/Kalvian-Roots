@@ -138,9 +138,6 @@ class FamilyNetworkWorkflow {
     }
     
     private func generatePersonSpecificCitations(for family: Family, network: FamilyNetwork) {
-        logInfo(.citation, "***************************************************************")
-        logInfo(.citation, "🔍 DEBUG: FAMILY CONTENT ANALYSIS")
-        logInfo(.citation, "***************************************************************")
         logInfo(.citation, "📋 Family: \(family.familyId)")
         logInfo(.citation, "👥 Couples: \(family.couples.count)")
         
@@ -165,7 +162,6 @@ class FamilyNetworkWorkflow {
         }
         
         logInfo(.citation, "🔑 AsParent families in network: \(Array(network.asParentFamilies.keys))")
-        logInfo(.citation, "***************************************************************")
 
         logInfo(.citation, "👥 Generating person-specific citations")
         
@@ -204,13 +200,8 @@ class FamilyNetworkWorkflow {
         }
         
         // Generate enhanced citations for children across all couples
-        logInfo(.citation, "═══════════════════════════════════════════════════════════════")
-        logInfo(.citation, "🔍 STARTING SPOUSE CITATION GENERATION DEBUG")
-        logInfo(.citation, "═══════════════════════════════════════════════════════════════")
-
         for couple in family.couples {
             for child in couple.children {
-                logInfo(.citation, "───────────────────────────────────────────────────────────────")
                 logInfo(.citation, "🔍 Processing child: \(child.displayName)")
                 
                 if let asParentFamily = network.getAsParentFamily(for: child) {
@@ -232,11 +223,12 @@ class FamilyNetworkWorkflow {
                                 network: network
                             )
                             
-                            // ENHANCED FIX: Use the full spouse data and enhanced network
+                            // ENHANCED FIX: Use the full spouse data and enhanced network WITH NAME EQUIVALENCE
                             let citation = CitationGenerator.generateAsChildCitation(
                                 for: spouse,  // Use the full spouse Person, not just the name
                                 in: spouseAsChildFamily,
-                                network: enhancedNetwork  // Pass the enhanced network with spouse's asParent data
+                                network: enhancedNetwork,  // Pass the enhanced network with spouse's asParent data
+                                nameEquivalenceManager: NameEquivalenceManager()  // ADD NAME EQUIVALENCE SUPPORT
                             )
                             
                             // CRITICAL FIX: Store citation under the key the UI will use
@@ -272,11 +264,12 @@ class FamilyNetworkWorkflow {
                                         network: network
                                     )
                                     
-                                    // ENHANCED FIX: Use full spouse data and enhanced network
+                                    // ENHANCED FIX: Use full spouse data and enhanced network WITH NAME EQUIVALENCE
                                     let citation = CitationGenerator.generateAsChildCitation(
                                         for: spouse,  // Use the full spouse Person
                                         in: altFamily,
-                                        network: enhancedNetwork  // Pass the enhanced network
+                                        network: enhancedNetwork,  // Pass the enhanced network
+                                        nameEquivalenceManager: NameEquivalenceManager()  // ADD NAME EQUIVALENCE SUPPORT
                                     )
                                     
                                     // CRITICAL FIX: Store under UI key
@@ -305,10 +298,6 @@ class FamilyNetworkWorkflow {
             }
         }
 
-        logInfo(.citation, "═══════════════════════════════════════════════════════════════")
-        logInfo(.citation, "🔍 FINISHED SPOUSE CITATION GENERATION DEBUG")
-        logInfo(.citation, "═══════════════════════════════════════════════════════════════")
-        
         logInfo(.citation, "✅ Generated \(activeCitations.count) person-specific citations")
     }
     

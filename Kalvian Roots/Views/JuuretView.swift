@@ -90,7 +90,7 @@ struct JuuretView: View {
                 juuretApp.fileManager.currentFileURL = url
                 juuretApp.fileManager.isFileLoaded = true
             }
-            
+            logInfo(.file, "Content preview:\n\(String(content.prefix(15)))...")
             logInfo(.ui, "✅ File loaded successfully via document picker")
         } catch {
             logError(.ui, "❌ Failed to load file: \(error)")

@@ -241,6 +241,7 @@ class NameEquivalenceManager {
         let defaultPairs = [
             ("Liisa", "Elisabet"),
             ("Malin", "Magdalena"),
+            ("Helena", "Leena"),
             ("Johan", "Juho"),
             ("Matti", "Matias"),
             ("Anna", "Annikki"),

@@ -176,7 +176,7 @@ class FileManager {
             
             logInfo(.file, "✅ File content read successfully")
             logDebug(.file, "Content length: \(content.count) characters")
-            logInfo(.file, "Content preview:\n\(String(content.prefix(200)))...")
+            logInfo(.file, "Content preview:\n\(String(content.prefix(15)))\n")
             
             // Update state on main thread
             currentFileURL = url
@@ -269,25 +269,27 @@ class FileManager {
     /**
      * Get the ONE canonical file location
      * Returns: iCloud Drive/Kalvian Roots/Documents/JuuretKälviällä.roots
+     * Throws: If iCloud Drive is not available
      */
-    private func getCanonicalFileURL() -> URL {
-        // Use iCloud Documents if available, otherwise fall back to local
-        if let iCloudURL = iCloudDocumentsURL {
-            // Create Documents directory in iCloud if it doesn't exist
-            try? Foundation.FileManager.default.createDirectory(
-                at: iCloudURL,
-                withIntermediateDirectories: true
-            )
-            return iCloudURL.appendingPathComponent(defaultFileName)
-        } else {
-            // Fall back to local documents only if iCloud is unavailable
-            let documentsURL = Foundation.FileManager.default.urls(
-                for: .documentDirectory,
-                in: .userDomainMask
-            ).first!
-            return documentsURL.appendingPathComponent(defaultFileName)
+    private func getCanonicalFileURL() throws -> URL {
+        guard let iCloudURL = FileManager.default.url(forUbiquityContainerIdentifier: nil) else {
+            throw JuuretError.iCloudUnavailable("iCloud Drive is required but not available. Please enable iCloud Drive in System Settings.")
         }
+        
+        let kalvianRootsURL = iCloudURL
+            .appendingPathComponent("Kalvian Roots")
+            .appendingPathComponent("Documents")
+        
+        // Create the full directory structure if it doesn't exist
+        try FileManager.default.createDirectory(
+            at: kalvianRootsURL,
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
+        
+        return kalvianRootsURL.appendingPathComponent(defaultFileName)
     }
+
     
     // MARK: - Recent Files Management
     

@@ -121,9 +121,14 @@ struct CitationGenerator {
             citation += formatParentCompact(primaryCouple.husband) + "\n"
             citation += formatParentCompact(primaryCouple.wife) + "\n"
             
-            // Marriage date for primary couple
+            // Marriage date for primary couple - FIXED FORMATTING
             if let marriageDate = primaryCouple.marriageDate {
-                citation += "m. \(formatDate(marriageDate))\n"
+                // Check if it's a 2-digit year that needs conversion
+                if marriageDate.count <= 4 && !marriageDate.contains(".") {
+                    citation += "m. \(extractMarriageYear(marriageDate))\n"
+                } else {
+                    citation += "m. \(formatDate(marriageDate))\n"
+                }
             }
         }
         
@@ -157,8 +162,15 @@ struct CitationGenerator {
             if couple != asChildFamily.primaryCouple {
                 citation += "Additional spouse:\n"
                 citation += formatParentCompact(couple.wife) + "\n"
+                
+                // Marriage date - FIXED FORMATTING
                 if let marriageDate = couple.marriageDate {
-                    citation += "m. \(formatDate(marriageDate))\n"
+                    // Check if it's a 2-digit year that needs conversion
+                    if marriageDate.count <= 4 && !marriageDate.contains(".") {
+                        citation += "m. \(extractMarriageYear(marriageDate))\n"
+                    } else {
+                        citation += "m. \(formatDate(marriageDate))\n"
+                    }
                 }
             }
         }
@@ -415,33 +427,42 @@ struct CitationGenerator {
         _ target: Person,
         nameEquivalenceManager: NameEquivalenceManager? = nil
     ) -> Bool {
+        var birthDateMatch = false
+        var exactNameMatch = false
+        var equivalentNameMatch = false
+        
         // PRIORITY 1: Birth date matching (most reliable)
         if let childBirth = child.birthDate?.trimmingCharacters(in: .whitespaces),
            let targetBirth = target.birthDate?.trimmingCharacters(in: .whitespaces),
            !childBirth.isEmpty && !targetBirth.isEmpty {
             
-            if childBirth == targetBirth {
+            birthDateMatch = (childBirth == targetBirth)
+            if birthDateMatch {
                 return true
             }
         }
         
         // PRIORITY 2: Exact name matching
-        let exactNameMatch = child.name.lowercased().trimmingCharacters(in: .whitespaces) ==
-                            target.name.lowercased().trimmingCharacters(in: .whitespaces)
+        exactNameMatch = child.name.lowercased().trimmingCharacters(in: .whitespaces) ==
+                        target.name.lowercased().trimmingCharacters(in: .whitespaces)
         if exactNameMatch {
             return true
         }
         
-        // PRIORITY 3: Name equivalence matching (handles Malin/Magdalena)
+        // PRIORITY 3: Name equivalence matching (handles Helena/Leena, Malin/Magdalena)
         if let nameManager = nameEquivalenceManager {
-            if nameManager.areNamesEquivalent(child.name, target.name) {
+            equivalentNameMatch = nameManager.areNamesEquivalent(child.name, target.name)
+            if equivalentNameMatch {
+                // ENHANCED: Accept name equivalence match even if birth dates don't match
+                // This handles cases like "Helena" vs "Leena" where the name equivalence
+                // is strong evidence of the same person despite birth date discrepancies
                 return true
             }
         }
         
         return false
     }
-    
+        
     /// Determine what date information was added from asParent family
     private static func getDateAdditions(nuclearChild: Person, asParent: Person?) -> [String] {
         guard let asParent = asParent else { return [] }
