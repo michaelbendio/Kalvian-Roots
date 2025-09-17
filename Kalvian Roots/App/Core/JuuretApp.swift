@@ -121,12 +121,20 @@ class JuuretApp {
             
             await self.fileManager.autoLoadDefaultFile()
             
-            if let fileContent = self.fileManager.currentFileContent {
-                logInfo(.file, "✅ Auto-loaded file - FamilyResolver has direct access")
+            // Check if FileManager set an error
+            if let fileError = self.fileManager.errorMessage {
+                // FileManager encountered an error - propagate it to app level
+                self.errorMessage = fileError
+                logError(.app, "❌ Cannot load canonical file: \(fileError)")
+                // DO NOT suggest using file menu - this is a failure condition
+            } else if let fileContent = self.fileManager.currentFileContent {
+                // File loaded successfully
+                logInfo(.file, "✅ Auto-loaded canonical file")
                 logDebug(.file, "File content length: \(fileContent.count) characters")
             } else {
-                logDebug(.file, "No default file found for auto-loading")
-                logInfo(.file, "💡 Use File menu to open JuuretKälviällä.txt")
+                // No file and no error means something unexpected happened
+                self.errorMessage = "Unexpected state: No file loaded and no error reported"
+                logError(.app, "❌ Unexpected state in auto-load")
             }
         }
         

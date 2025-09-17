@@ -159,7 +159,7 @@ struct JuuretView: View {
                 .font(.genealogyHeadline)
                 .foregroundColor(.primary)
             
-            Text("Open JuuretKälviällä.txt to begin")
+            Text("Open JuuretKälviällä.roots to begin")
                 .font(.genealogyBody)
                 .foregroundColor(.secondary)
             
@@ -480,7 +480,7 @@ struct DocumentPickerView: UIViewControllerRepresentable {
         let supportedTypes = [
             UTType.text,
             UTType.plainText,
-            UTType(filenameExtension: "txt") ?? .plainText,
+            UTType(filenameExtension: "roots") ?? .plainText,
             .data
         ]
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: supportedTypes, asCopy: false)
@@ -489,7 +489,6 @@ struct DocumentPickerView: UIViewControllerRepresentable {
         picker.shouldShowFileExtensions = true
         return picker
     }
-    
     func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
     
     class Coordinator: NSObject, UIDocumentPickerDelegate {

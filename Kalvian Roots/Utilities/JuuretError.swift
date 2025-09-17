@@ -56,7 +56,7 @@ enum JuuretError: LocalizedError {
         case .networkError(let details):
             return "Network error: \(details)"
         case .noFileLoaded:
-            return "No file loaded. Please open JuuretKälviällä.txt"
+            return "No file loaded. Please open JuuretKälviällä.roots"
         case .familyNotFound(let familyId):
             return "Family \(familyId) not found in file"
             
