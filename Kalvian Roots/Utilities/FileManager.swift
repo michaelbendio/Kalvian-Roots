@@ -1,3 +1,4 @@
+
 //
 //  FileManager.swift
 //  Kalvian Roots
@@ -18,8 +19,9 @@ import UIKit
 /**
  * FileManager.swift - Canonical location file management
  *
- * Handles file operations with ONE canonical location: iCloud Drive/Kalvian Roots/Documents/JuuretKälviällä.roots
+ * Handles file operations with ONE canonical location: iCloud Drive/Documents/JuuretKälviällä.roots
  * NO FALLBACK - if iCloud is not available or file is not there, the app fails with clear error.
+ * Uses DEFAULT iCloud container for better reliability.
  */
 
 @Observable
@@ -48,10 +50,8 @@ class FileManager {
     private let defaultFileName = "JuuretKälviällä.roots"
     
     var iCloudDocumentsURL: URL? {
-        // Try specific container first, then default
-        if let iCloudURL = Foundation.FileManager.default.url(forUbiquityContainerIdentifier: "iCloud.com.michael-bendio.Kalvian-Roots") {
-            return iCloudURL.appendingPathComponent("Documents")
-        } else if let iCloudURL = Foundation.FileManager.default.url(forUbiquityContainerIdentifier: nil) {
+        // Use default container (nil) - more reliable
+        if let iCloudURL = Foundation.FileManager.default.url(forUbiquityContainerIdentifier: nil) {
             return iCloudURL.appendingPathComponent("Documents")
         }
         return nil
@@ -61,7 +61,7 @@ class FileManager {
     
     init() {
         loadRecentFiles()
-        logInfo(.file, "📁 FileManager initialized - iCloud Drive ONLY mode")
+        logInfo(.file, "📁 FileManager initialized - iCloud Drive ONLY mode (default container)")
     }
     
     // MARK: - File Operations
@@ -82,7 +82,7 @@ class FileManager {
             panel.allowsMultipleSelection = false
             panel.canChooseDirectories = false
             panel.canChooseFiles = true
-            panel.message = "Select your Juuret Kälviällä file (.roots, .txt, or any text file) from iCloud Drive"
+            panel.message = "Select your Juuret Kälviällä file (.roots) from iCloud Drive"
             panel.prompt = "Open File"
             logDebug(.file, "NSOpenPanel configured, presenting modal dialog")
             let response = panel.runModal()
@@ -240,62 +240,63 @@ class FileManager {
         }
         #endif
         
-        // Try to get iCloud container with the specific identifier from Xcode
-        var iCloudURL: URL? = nil
-        
-        // Try the specific container first
-        let specificIdentifier = "iCloud.com.michael-bendio.Kalvian-Roots"
-        logDebug(.file, "Trying container identifier: \(specificIdentifier)")
-        iCloudURL = Foundation.FileManager.default.url(forUbiquityContainerIdentifier: specificIdentifier)
-        
-        if iCloudURL != nil {
-            logInfo(.file, "✅ Found iCloud container with identifier: \(specificIdentifier)")
-            logInfo(.file, "📁 Container path: \(iCloudURL!.path)")
-        } else {
-            logWarn(.file, "⚠️ Could not find container: \(specificIdentifier)")
-            
-            // Try default container as fallback
-            logDebug(.file, "Trying default container (nil)")
-            iCloudURL = Foundation.FileManager.default.url(forUbiquityContainerIdentifier: nil)
-            if iCloudURL != nil {
-                logInfo(.file, "✅ Found iCloud container with default identifier")
-                logInfo(.file, "📁 Container path: \(iCloudURL!.path)")
-            } else {
-                logWarn(.file, "⚠️ Could not find default container either")
-            }
-        }
+        // Use default container (nil) - this is more reliable
+        logDebug(.file, "Requesting default iCloud container (nil identifier)")
+        let iCloudURL = Foundation.FileManager.default.url(forUbiquityContainerIdentifier: nil)
         
         // Check if we found an iCloud container
         guard let iCloudURL = iCloudURL else {
             logError(.file, "❌ CRITICAL: iCloud Drive container not accessible")
-            logError(.file, "❌ Possible causes:")
-            logError(.file, "  1. App not properly signed (check Team ID in Xcode)")
-            logError(.file, "  2. iCloud entitlements not configured correctly")
-            logError(.file, "  3. iCloud Drive disabled in Settings")
-            logError(.file, "  4. First run - container not yet created")
-            logError(.file, "💡 Try: Build and run from Xcode to create container")
+            logError(.file, "❌ This usually means:")
+            logError(.file, "  1. iCloud Drive is not enabled in Settings")
+            logError(.file, "  2. No iCloud account is signed in")
+            logError(.file, "  3. The app doesn't have iCloud entitlements")
+            
+            #if os(iOS)
+            logError(.file, "📱 On iOS: Settings → [Your Name] → iCloud → iCloud Drive = ON")
+            logError(.file, "📱 Also check: Settings → [Your Name] → iCloud → Apps Using iCloud → Show All")
+            #else
+            logError(.file, "💻 On macOS: System Settings → Apple ID → iCloud → iCloud Drive = ON")
+            #endif
             
             // Set error state with detailed message
             await MainActor.run {
                 self.errorMessage = """
-                    Cannot access iCloud Drive container.
+                    Cannot access iCloud Drive.
                     
-                    Please ensure:
-                    1. You're signed into iCloud
-                    2. iCloud Drive is enabled in Settings
-                    3. The app was built with proper signing
+                    Please check:
+                    • You're signed into iCloud
+                    • iCloud Drive is enabled in Settings
+                    • The app has permission to use iCloud
                     
-                    If this is the first run, try building from Xcode.
+                    The canonical file must be in iCloud Drive for syncing.
                     """
             }
             return
         }
+        
+        logInfo(.file, "✅ Found iCloud container at: \(iCloudURL.path)")
         
         let iCloudFileURL = iCloudURL
             .appendingPathComponent("Documents")
             .appendingPathComponent(defaultFileName)
         
         logDebug(.file, "Canonical iCloud location: \(iCloudFileURL.path)")
+        
+        // Create Documents directory if it doesn't exist
+        let documentsURL = iCloudURL.appendingPathComponent("Documents")
+        if !Foundation.FileManager.default.fileExists(atPath: documentsURL.path) {
+            do {
+                try Foundation.FileManager.default.createDirectory(
+                    at: documentsURL,
+                    withIntermediateDirectories: true,
+                    attributes: nil
+                )
+                logInfo(.file, "📁 Created Documents directory in iCloud container")
+            } catch {
+                logError(.file, "❌ Failed to create Documents directory: \(error)")
+            }
+        }
         
         // Check if file exists in iCloud
         var fileExistsInCloud = false
@@ -319,11 +320,12 @@ class FileManager {
             }
         } catch {
             // File doesn't exist in iCloud yet
-            logDebug(.file, "File not found in iCloud: \(error)")
+            logDebug(.file, "File not found in iCloud (this is normal for first run): \(error)")
         }
         
         // Check if file exists locally (may have been downloaded already)
         let fileExistsLocally = Foundation.FileManager.default.fileExists(atPath: iCloudFileURL.path)
+        logDebug(.file, "File exists locally at iCloud path: \(fileExistsLocally)")
         
         if fileExistsLocally || fileExistsInCloud {
             // File exists - download if needed
@@ -345,20 +347,31 @@ class FileManager {
             // Try to load the file
             await checkAndLoadFile(at: iCloudFileURL)
         } else {
-            // File doesn't exist in iCloud - provide clear instructions
-            logError(.file, "❌ \(defaultFileName) not found in iCloud Drive")
-            logInfo(.file, "📱 On iOS/iPadOS:")
+            // File doesn't exist - provide clear instructions
+            logError(.file, "❌ \(defaultFileName) not found at canonical location")
+            logInfo(.file, "📍 Expected location: \(iCloudFileURL.path)")
+            logInfo(.file, "")
+            logInfo(.file, "📱 To add the file on iOS/iPadOS:")
             logInfo(.file, "  1. Open Files app")
-            logInfo(.file, "  2. Navigate to: iCloud Drive → Kalvian Roots → Documents")
-            logInfo(.file, "  3. Place '\(defaultFileName)' there")
-            logInfo(.file, "💻 On macOS:")
+            logInfo(.file, "  2. Navigate to: iCloud Drive → Documents")
+            logInfo(.file, "  3. Copy '\(defaultFileName)' to that location")
+            logInfo(.file, "")
+            logInfo(.file, "💻 To add the file on macOS:")
             logInfo(.file, "  1. Open Finder")
-            logInfo(.file, "  2. Navigate to: iCloud Drive → Kalvian Roots → Documents")
-            logInfo(.file, "  3. Place '\(defaultFileName)' there")
-            logInfo(.file, "☁️ The file will sync automatically across all your devices")
+            logInfo(.file, "  2. Navigate to: iCloud Drive → Documents")
+            logInfo(.file, "  3. Copy '\(defaultFileName)' to that location")
+            logInfo(.file, "")
+            logInfo(.file, "☁️ The file will sync automatically across all devices")
             
             await MainActor.run {
-                self.errorMessage = "File not found in iCloud Drive. Place '\(defaultFileName)' in iCloud Drive → Kalvian Roots → Documents"
+                self.errorMessage = """
+                    File not found in iCloud Drive.
+                    
+                    Place '\(defaultFileName)' in:
+                    iCloud Drive → Documents
+                    
+                    The file will sync across all your devices.
+                    """
             }
         }
     }
@@ -394,7 +407,12 @@ class FileManager {
         } else {
             logError(.file, "❌ File does not exist at: \(url.path)")
             await MainActor.run {
-                self.errorMessage = "File not found. Ensure '\(defaultFileName)' is in iCloud Drive → Kalvian Roots → Documents"
+                self.errorMessage = """
+                    File not found.
+                    
+                    Ensure '\(defaultFileName)' is in:
+                    iCloud Drive → Documents
+                    """
             }
         }
     }
@@ -403,19 +421,12 @@ class FileManager {
     
     /**
      * Get the ONE canonical file location
-     * Returns: iCloud Drive/Kalvian Roots/Documents/JuuretKälviällä.roots
+     * Returns: iCloud Drive/Documents/JuuretKälviällä.roots
      * NO FALLBACK - returns nil if iCloud is not available
      */
     func getCanonicalFileURL() -> URL? {
-        // Try the specific container identifier first
-        var iCloudURL = Foundation.FileManager.default.url(forUbiquityContainerIdentifier: "iCloud.com.michael-bendio.Kalvian-Roots")
-        
-        // If specific container not found, try default
-        if iCloudURL == nil {
-            iCloudURL = Foundation.FileManager.default.url(forUbiquityContainerIdentifier: nil)
-        }
-        
-        guard let iCloudURL = iCloudURL else {
+        // Use default container (nil) - more reliable
+        guard let iCloudURL = Foundation.FileManager.default.url(forUbiquityContainerIdentifier: nil) else {
             logError(.file, "❌ iCloud Drive is not available - cannot access canonical location")
             return nil
         }
@@ -585,10 +596,9 @@ class FileManager {
             return [
                 "1. Open Files app on iPad/iPhone (or Finder on Mac)",
                 "2. Navigate to 'iCloud Drive'",
-                "3. Open or create 'Kalvian Roots' folder",
-                "4. Open or create 'Documents' folder inside",
-                "5. Place '\(defaultFileName)' in the Documents folder",
-                "6. The file will sync to all your devices automatically"
+                "3. Go to 'Documents' folder",
+                "4. Place '\(defaultFileName)' there",
+                "5. The file will sync to all your devices automatically"
             ]
         } else {
             return [
