@@ -30,7 +30,7 @@ class JuuretApp {
     let nameEquivalenceManager: NameEquivalenceManager
     
     /// File manager for I/O operations
-    let fileManager: FileManager
+    let fileManager: RootsFileManager
     
     /// Family network cache for background processing
      let familyNetworkCache = FamilyNetworkCache()
@@ -80,7 +80,7 @@ class JuuretApp {
         
         // Initialize core services locally first
         let localNameEquivalenceManager = NameEquivalenceManager()
-        let localFileManager = FileManager()
+        let localFileManager = RootsFileManager()
         
         let localAIParsingService: AIParsingService
         
@@ -590,3 +590,4 @@ extension JuuretApp {
         }
     }
 }
+

@@ -176,7 +176,7 @@ struct JuuretView: View {
             Button("Open File...") {
                 Task {
                     do {
-                        // Call FileManager's openFile directly
+                        // Call RootsFileManager's openFile directly
                         _ = try await juuretApp.fileManager.openFile()
                     } catch {
                         juuretApp.errorMessage = error.localizedDescription
@@ -546,3 +546,4 @@ extension Font {
     JuuretView()
         .environment(JuuretApp())
 }
+

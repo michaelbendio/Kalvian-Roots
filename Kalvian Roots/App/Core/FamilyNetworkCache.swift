@@ -90,7 +90,7 @@ class FamilyNetworkCache {
      */
     func startBackgroundProcessing(
         currentFamilyId: String,
-        fileManager: FileManager,
+        fileManager: RootsFileManager,
         aiService: AIParsingService,
         familyResolver: FamilyResolver
     ) {
@@ -142,7 +142,7 @@ class FamilyNetworkCache {
     
     private func processInBackground(
         familyId: String,
-        fileManager: FileManager,
+        fileManager: RootsFileManager,
         aiService: AIParsingService,
         familyResolver: FamilyResolver
     ) async {
@@ -210,3 +210,4 @@ class FamilyNetworkCache {
         }
     }
 }
+

@@ -56,7 +56,7 @@ class FamilyResolver {
     
     private let aiParsingService: AIParsingService
     private let nameEquivalenceManager: NameEquivalenceManager
-    private let fileManager: FileManager  // No module prefix - using local FileManager class
+    private let fileManager: RootsFileManager  // No module prefix - using local RootsFileManager class
     
     // MARK: - State Properties
     
@@ -72,7 +72,7 @@ class FamilyResolver {
     
     init(aiParsingService: AIParsingService,
          nameEquivalenceManager: NameEquivalenceManager,
-         fileManager: FileManager) {
+         fileManager: RootsFileManager) {
         logInfo(.resolver, "🔗 FamilyResolver initialization started")
         
         self.aiParsingService = aiParsingService
@@ -403,3 +403,4 @@ class FamilyResolver {
         }
     }
 }
+

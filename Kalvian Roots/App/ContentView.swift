@@ -46,23 +46,24 @@ struct ContentView: View {
 // MARK: - Simplified Sidebar
 struct SidebarView: View {
     @Environment(JuuretApp.self) private var app
+    @State private var fm = RootsFileManager()
     
     var body: some View {
         List {
             Section("File Status") {
                 HStack {
                     Circle()
-                        .fill(app.fileManager.isFileLoaded ? .green : .red)
+                        .fill(fm.isFileLoaded ? .green : .red)
                         .frame(width: 8, height: 8)
-                    Text(app.fileManager.isFileLoaded ? "File Loaded" : "No File")
+                    Text(fm.isFileLoaded ? "File Loaded" : "No File")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 
-                if !app.fileManager.isFileLoaded {
+                if !fm.isFileLoaded {
                     Button("Open File") {
                         Task {
-                            try? await app.fileManager.openFile()
+                            try? await fm.openFile()
                         }
                     }
                     .buttonStyle(.borderless)
