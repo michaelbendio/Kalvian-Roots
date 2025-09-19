@@ -18,9 +18,12 @@ import Foundation
 @Observable
 @MainActor
 class FamilyNetworkCache {
-    
+
     // MARK: - Properties
-    
+
+    /// Persistent store for cached networks
+    private let persistenceStore: PersistentFamilyNetworkStore
+
     /// Simple in-memory cache storage
     private var cachedNetworks: [String: CachedFamily] = [:]
     
@@ -40,13 +43,29 @@ class FamilyNetworkCache {
     
     /// Background processing errors
     private(set) var backgroundError: String?
-    
+
     /// Background task reference
     private var backgroundTask: Task<Void, Never>?
-    
+
+    // MARK: - Initialization
+
+    init(persistenceStore: PersistentFamilyNetworkStore) {
+        self.persistenceStore = persistenceStore
+        loadPersistedCache()
+    }
+
+    convenience init(rootsFileManager: RootsFileManager) {
+        let store = PersistentFamilyNetworkStore(rootsFileManager: rootsFileManager)
+        self.init(persistenceStore: store)
+    }
+
+    convenience init() {
+        self.init(rootsFileManager: RootsFileManager())
+    }
+
     // MARK: - Cache Structure
-    
-    struct CachedFamily {
+
+    struct CachedFamily: Codable, Sendable {
         let network: FamilyNetwork
         let citations: [String: String]
         let cachedAt: Date
@@ -82,6 +101,7 @@ class FamilyNetworkCache {
             extractionTime: extractionTime
         )
         cachedNetworks[network.mainFamily.familyId] = cached
+        persistenceStore.save(cachedNetworks)
         logInfo(.cache, "💾 Cached network for: \(network.mainFamily.familyId)")
     }
     
@@ -110,7 +130,15 @@ class FamilyNetworkCache {
             self.nextFamilyReady = true
             return
         }
-        
+
+        if let persistedFamily = persistenceStore.loadFamily(withId: nextId) {
+            cachedNetworks[nextId] = persistedFamily
+            logInfo(.cache, "✅ Next family restored from disk: \(nextId)")
+            self.nextFamilyId = nextId
+            self.nextFamilyReady = true
+            return
+        }
+
         // Start background processing
         self.processingFamilyId = nextId
         self.backgroundError = nil
@@ -135,11 +163,37 @@ class FamilyNetworkCache {
         nextFamilyId = nil
         processingFamilyId = nil
         backgroundTask?.cancel()
+        persistenceStore.clear()
         logInfo(.cache, "🗑️ Cache cleared")
     }
     
     // MARK: - Private Methods
-    
+
+    private func loadPersistedCache() {
+        let persisted = persistenceStore.loadAll()
+
+        guard !persisted.isEmpty else {
+            logDebug(.cache, "📦 No persisted cache entries found")
+            return
+        }
+
+        cachedNetworks = persisted
+        updateReadyStateFromCache()
+
+        logInfo(.cache, "📦 Restored \(persisted.count) cached families from disk")
+    }
+
+    private func updateReadyStateFromCache() {
+        guard let latestEntry = cachedNetworks.max(by: { $0.value.cachedAt < $1.value.cachedAt }) else {
+            nextFamilyReady = false
+            nextFamilyId = nil
+            return
+        }
+
+        nextFamilyReady = true
+        nextFamilyId = latestEntry.key
+    }
+
     private func processInBackground(
         familyId: String,
         fileManager: RootsFileManager,
@@ -150,10 +204,29 @@ class FamilyNetworkCache {
         
         do {
             logInfo(.cache, "🔄 Background processing: \(familyId)")
-            
+
+            if isCached(familyId: familyId) {
+                logInfo(.cache, "✅ Skipping background processing for already cached family: \(familyId)")
+                self.processingFamilyId = nil
+                self.nextFamilyId = familyId
+                self.nextFamilyReady = true
+                self.backgroundError = nil
+                return
+            }
+
+            if let persistedFamily = persistenceStore.loadFamily(withId: familyId) {
+                cachedNetworks[familyId] = persistedFamily
+                logInfo(.cache, "✅ Loaded existing family from disk: \(familyId)")
+                self.processingFamilyId = nil
+                self.nextFamilyId = familyId
+                self.nextFamilyReady = true
+                self.backgroundError = nil
+                return
+            }
+
             // Check for cancellation
             if Task.isCancelled { return }
-            
+
             // Extract family text
             guard let familyText = fileManager.extractFamilyText(familyId: familyId) else {
                 throw ExtractionError.familyNotFound(familyId)
