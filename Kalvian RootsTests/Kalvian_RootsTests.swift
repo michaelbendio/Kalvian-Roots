@@ -5,6 +5,7 @@
 //  Created by Michael Bendio on 7/11/25.
 //
 
+import Foundation
 import Testing
 @testable import Kalvian_Roots
 
@@ -100,5 +101,42 @@ struct Kalvian_RootsTests {
         #expect(extracted != nil)
         #expect(extracted?.contains("Lapset") == true)
         #expect(extracted?.contains("Maria            ∞ 82 Matti Korpi") == true)
+    }
+
+    @Test func testFamilyNetworkCachePersistence() async throws {
+        let tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+
+        let cacheFileURL = tempDirectory.appendingPathComponent("families.json")
+        let network = FamilyNetwork(mainFamily: Family.sampleFamily())
+        let citations = ["main": "Test Citation"]
+        let extractionTime: TimeInterval = 2.5
+
+        try await MainActor.run {
+            let store = PersistentFamilyNetworkStore(cacheFileURL: cacheFileURL)
+            let cache = FamilyNetworkCache(persistenceStore: store)
+            cache.cacheNetwork(network, citations: citations, extractionTime: extractionTime)
+            cache.nextFamilyReady = true
+            cache.nextFamilyId = network.mainFamily.familyId
+        }
+
+        try await MainActor.run {
+            let store = PersistentFamilyNetworkStore(cacheFileURL: cacheFileURL)
+            let restoredCache = FamilyNetworkCache(persistenceStore: store)
+
+            #expect(restoredCache.cachedFamilyCount == 1)
+
+            let restored = restoredCache.getCachedNetwork(familyId: network.mainFamily.familyId)
+            #expect(restored != nil)
+            #expect(restored?.network.mainFamily.familyId == network.mainFamily.familyId)
+
+            #expect(restoredCache.nextFamilyReady)
+            #expect(restoredCache.nextFamilyId == network.mainFamily.familyId)
+
+            restoredCache.clearCache()
+        }
+
+        try? FileManager.default.removeItem(at: tempDirectory)
     }
 }

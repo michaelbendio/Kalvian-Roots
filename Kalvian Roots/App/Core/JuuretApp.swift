@@ -33,7 +33,7 @@ class JuuretApp {
     let fileManager: RootsFileManager
     
     /// Family network cache for background processing
-     let familyNetworkCache = FamilyNetworkCache()
+    let familyNetworkCache: FamilyNetworkCache
     
     // MARK: - App State
     
@@ -104,12 +104,15 @@ class JuuretApp {
             nameEquivalenceManager: localNameEquivalenceManager,
             fileManager: localFileManager
         )
-        
+
+        let localFamilyNetworkCache = FamilyNetworkCache(rootsFileManager: localFileManager)
+
         // Assign all to self properties at the end
         self.nameEquivalenceManager = localNameEquivalenceManager
         self.fileManager = localFileManager
         self.aiParsingService = localAIParsingService
         self.familyResolver = localFamilyResolver
+        self.familyNetworkCache = localFamilyNetworkCache
         
         logInfo(.app, "✅ Core services initialized with memory-efficient architecture")
         logInfo(.app, "Current AI service: \(self.currentServiceName)")
