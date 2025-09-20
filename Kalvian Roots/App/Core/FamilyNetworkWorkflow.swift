@@ -141,6 +141,7 @@ class FamilyNetworkWorkflow {
         logInfo(.citation, "📋 Family: \(family.familyId)")
         logInfo(.citation, "👥 Couples: \(family.couples.count)")
         
+        // Debug logging for couples and children
         for (coupleIndex, couple) in family.couples.enumerated() {
             logInfo(.citation, "--- Couple \(coupleIndex + 1) ---")
             logInfo(.citation, "👨 Husband: \(couple.husband.displayName)")
@@ -162,12 +163,11 @@ class FamilyNetworkWorkflow {
         }
         
         logInfo(.citation, "🔑 AsParent families in network: \(Array(network.asParentFamilies.keys))")
-
         logInfo(.citation, "👥 Generating person-specific citations")
         
-        // Generate enhanced asChild citations for parents
+        // SECTION 1: Generate enhanced asChild citations for parents
         for parent in family.allParents {
-            logInfo(.citation, "🔍 DEBUG: Processing parent '\(parent.displayName)' with asChild='\(parent.asChild ?? "nil")'")
+            logInfo(.citation, "🔍 Processing parent '\(parent.displayName)' with asChild='\(parent.asChild ?? "nil")'")
             
             if let asChildFamily = network.getAsChildFamily(for: parent) {
                 logInfo(.citation, "✅ Found asChild family: \(asChildFamily.familyId)")
@@ -175,31 +175,30 @@ class FamilyNetworkWorkflow {
                 // Create a modified network that includes parent's asParent family
                 let modifiedNetwork = createNetworkWithParentAsParent(for: parent, network: network)
                 
-                // Use enhanced citation that includes asParent information from nuclear family
+                // Generate enhanced citation with parent as target (for arrow)
                 let citation = CitationGenerator.generateAsChildCitation(
                     for: parent,
                     in: asChildFamily,
-                    network: modifiedNetwork
+                    network: modifiedNetwork,
+                    nameEquivalenceManager: nil  // Add if you have name equivalence manager
                 )
                 
-                // Store with displayName (includes patronymic) to avoid ambiguity
+                // Store with displayName and name for compatibility
                 activeCitations[parent.displayName] = citation
-                // Also store with just name for backward compatibility
                 activeCitations[parent.name] = citation
                 
-                logInfo(.citation, "🔍 STORED enhanced asChild citation for '\(parent.displayName)'")
-                logInfo(.citation, "📝 Added additional information from nuclear family where '\(parent.displayName)' is a parent")
+                logInfo(.citation, "✅ Stored enhanced asChild citation for '\(parent.displayName)'")
             } else {
                 logWarn(.citation, "❌ NO asChild family found for '\(parent.displayName)'")
-                logInfo(.citation, "🔍 Available asChild families: \(Array(network.asChildFamilies.keys))")
                 
+                // Fallback to main family citation
                 let citation = CitationGenerator.generateMainFamilyCitation(family: family)
                 activeCitations[parent.displayName] = citation
                 activeCitations[parent.name] = citation
             }
         }
         
-        // Generate enhanced citations for children across all couples
+        // SECTION 2: Generate enhanced citations for children
         for couple in family.couples {
             for child in couple.children {
                 logInfo(.citation, "🔍 Processing child: \(child.displayName)")
@@ -207,93 +206,101 @@ class FamilyNetworkWorkflow {
                 if let asParentFamily = network.getAsParentFamily(for: child) {
                     logInfo(.citation, "✅ Found asParent family: \(asParentFamily.familyId)")
                     
-                    if let spouse = asParentFamily.findSpouse(for: child.name) {
-                        logInfo(.citation, "✅ Found spouse: \(spouse.displayName) (name: \(spouse.name))")
+                    // FIX: Pass child as targetPerson so arrow appears for them
+                    let citation = CitationGenerator.generateMainFamilyCitation(
+                        family: asParentFamily,
+                        targetPerson: child  // ← THIS IS THE KEY FIX FOR THE ARROW
+                    )
+                    
+                    activeCitations[child.displayName] = citation
+                    activeCitations[child.name] = citation
+                    
+                    logInfo(.citation, "✅ Generated asParent citation for child: \(child.displayName)")
+                    
+                    // SECTION 3: Generate spouse citations if child has a spouse
+                    if child.spouse != nil {
+                        logInfo(.citation, "👰 Processing spouse for child: \(child.name)")
                         
-                        // DEBUG: Check what spouse families are available
-                        logInfo(.citation, "🔍 Available spouseAsChildFamilies keys: \(Array(network.spouseAsChildFamilies.keys))")
-                        
-                        if let spouseAsChildFamily = network.getSpouseAsChildFamily(for: spouse.name) {
-                            logInfo(.citation, "✅ Found spouse asChild family: \(spouseAsChildFamily.familyId)")
+                        if let spouse = asParentFamily.findSpouse(for: child.name) {
+                            logInfo(.citation, "✅ Found spouse: \(spouse.displayName)")
                             
-                            // ENHANCEMENT FIX: Create a modified network that includes spouse's asParent family
-                            let enhancedNetwork = createNetworkWithSpouseAsParent(
-                                for: spouse,
-                                asParentFamily: asParentFamily,
-                                network: network
-                            )
-                            
-                            // ENHANCED FIX: Use the full spouse data and enhanced network WITH NAME EQUIVALENCE
-                            let citation = CitationGenerator.generateAsChildCitation(
-                                for: spouse,  // Use the full spouse Person, not just the name
-                                in: spouseAsChildFamily,
-                                network: enhancedNetwork,  // Pass the enhanced network with spouse's asParent data
-                                nameEquivalenceManager: NameEquivalenceManager()  // ADD NAME EQUIVALENCE SUPPORT
-                            )
-                            
-                            // CRITICAL FIX: Store citation under the key the UI will use
-                            if let nuclearSpouseName = child.spouse {
-                                activeCitations[nuclearSpouseName] = citation
-                                logInfo(.citation, "🔑 CRITICAL: Stored spouse citation under UI key: '\(nuclearSpouseName)'")
-                            }
-                            
-                            // Also store under asParent family names for backup
-                            activeCitations[spouse.displayName] = citation
-                            activeCitations[spouse.name] = citation
-                            
-                            logInfo(.citation, "✅ Generated ENHANCED spouse citation: \(spouse.displayName)")
-                        } else {
-                            logInfo(.citation, "❌ NO spouse asChild family found for: \(spouse.name)")
-                            logInfo(.citation, "🔍 Tried key: '\(spouse.name)'")
-                            logInfo(.citation, "🔍 Available spouse family keys: \(Array(network.spouseAsChildFamilies.keys))")
-                            
-                            // Try alternative keys
-                            let alternativeKeys = [
-                                spouse.displayName,
-                                spouse.name.trimmingCharacters(in: .whitespaces)
-                            ]
-                            
-                            for altKey in alternativeKeys {
-                                if let altFamily = network.getSpouseAsChildFamily(for: altKey) {
-                                    logInfo(.citation, "✅ Found spouse family with alternative key: '\(altKey)' -> \(altFamily.familyId)")
-                                    
-                                    // ENHANCEMENT FIX: Create enhanced network
-                                    let enhancedNetwork = createNetworkWithSpouseAsParent(
-                                        for: spouse,
-                                        asParentFamily: asParentFamily,
-                                        network: network
-                                    )
-                                    
-                                    // ENHANCED FIX: Use full spouse data and enhanced network WITH NAME EQUIVALENCE
-                                    let citation = CitationGenerator.generateAsChildCitation(
-                                        for: spouse,  // Use the full spouse Person
-                                        in: altFamily,
-                                        network: enhancedNetwork,  // Pass the enhanced network
-                                        nameEquivalenceManager: NameEquivalenceManager()  // ADD NAME EQUIVALENCE SUPPORT
-                                    )
-                                    
-                                    // CRITICAL FIX: Store under UI key
-                                    if let nuclearSpouseName = child.spouse {
-                                        activeCitations[nuclearSpouseName] = citation
-                                        logInfo(.citation, "🔑 CRITICAL: Stored spouse citation under UI key: '\(nuclearSpouseName)'")
+                            if let spouseAsChildFamily = network.getSpouseAsChildFamily(for: spouse.name) {
+                                logInfo(.citation, "✅ Found spouse asChild family: \(spouseAsChildFamily.familyId)")
+                                
+                                // Create enhanced network for spouse
+                                let enhancedNetwork = createNetworkWithSpouseAsParent(
+                                    for: spouse,
+                                    asParentFamily: asParentFamily,
+                                    network: network
+                                )
+                                
+                                // Generate enhanced spouse citation with arrow support
+                                let citation = CitationGenerator.generateAsChildCitation(
+                                    for: spouse,
+                                    in: spouseAsChildFamily,
+                                    network: enhancedNetwork,
+                                    nameEquivalenceManager: NameEquivalenceManager()
+                                )
+                                
+                                // Store under multiple keys for robust lookup
+                                if let nuclearSpouseName = child.spouse {
+                                    activeCitations[nuclearSpouseName] = citation
+                                    logInfo(.citation, "✅ Stored spouse citation under UI key: '\(nuclearSpouseName)'")
+                                }
+                                activeCitations[spouse.displayName] = citation
+                                activeCitations[spouse.name] = citation
+                                
+                            } else {
+                                logInfo(.citation, "❌ NO spouse asChild family found for: \(spouse.name)")
+                                
+                                // Try alternative keys for spouse family
+                                let alternativeKeys = [
+                                    spouse.displayName,
+                                    spouse.name.trimmingCharacters(in: .whitespaces)
+                                ]
+                                
+                                for altKey in alternativeKeys {
+                                    if let altFamily = network.getSpouseAsChildFamily(for: altKey) {
+                                        logInfo(.citation, "✅ Found spouse family with alternative key: '\(altKey)'")
+                                        
+                                        let enhancedNetwork = createNetworkWithSpouseAsParent(
+                                            for: spouse,
+                                            asParentFamily: asParentFamily,
+                                            network: network
+                                        )
+                                        
+                                        let citation = CitationGenerator.generateAsChildCitation(
+                                            for: spouse,
+                                            in: altFamily,
+                                            network: enhancedNetwork,
+                                            nameEquivalenceManager: NameEquivalenceManager()
+                                        )
+                                        
+                                        if let nuclearSpouseName = child.spouse {
+                                            activeCitations[nuclearSpouseName] = citation
+                                        }
+                                        activeCitations[spouse.displayName] = citation
+                                        activeCitations[spouse.name] = citation
+                                        
+                                        break
                                     }
-                                    
-                                    // Also store under asParent family names for backup
-                                    activeCitations[spouse.displayName] = citation
-                                    activeCitations[spouse.name] = citation
-                                    
-                                    logInfo(.citation, "✅ Generated ENHANCED spouse citation: \(spouse.displayName)")
-                                    break
-                                } else {
-                                    logInfo(.citation, "❌ Alternative key '\(altKey)' also not found")
                                 }
                             }
+                        } else {
+                            logInfo(.citation, "❌ NO spouse found in asParent family for child: \(child.name)")
                         }
-                    } else {
-                        logInfo(.citation, "❌ NO spouse found in asParent family for child: \(child.name)")
                     }
+                    
                 } else {
-                    logInfo(.citation, "⚠️ No asParent family found for child: \(child.name)")
+                    logWarn(.citation, "⚠️ No asParent family found for child: \(child.name)")
+                    
+                    // Fallback: Use main family citation with child as target for arrow
+                    let citation = CitationGenerator.generateMainFamilyCitation(
+                        family: family,
+                        targetPerson: child  // ← ALSO PASS TARGET HERE FOR ARROW
+                    )
+                    activeCitations[child.displayName] = citation
+                    activeCitations[child.name] = citation
                 }
             }
         }

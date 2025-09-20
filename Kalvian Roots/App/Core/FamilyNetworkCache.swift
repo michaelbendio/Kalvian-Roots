@@ -27,8 +27,11 @@ class FamilyNetworkCache {
     /// Simple in-memory cache storage
     private var cachedNetworks: [String: CachedFamily] = [:]
     
-    /// Currently processing family ID
-    private(set) var processingFamilyId: String?
+    /// Status message to display (only shows ready messages)
+    private(set) var statusMessage: String?
+    
+    /// Currently processing family ID (internal use only)
+    private var processingFamilyId: String?
     
     /// Next family ready state
     var nextFamilyReady: Bool = false
@@ -46,12 +49,22 @@ class FamilyNetworkCache {
 
     /// Background task reference
     private var backgroundTask: Task<Void, Never>?
+    
+    /// Track how many families processed in this session
+    private var familiesProcessedInSession = 0
+    private let maxFamiliesToProcess = 5
 
     // MARK: - Initialization
 
     init(persistenceStore: PersistentFamilyNetworkStore) {
         self.persistenceStore = persistenceStore
         loadPersistedCache()
+        
+        // Show the last cached family on startup
+        if let lastCached = findLastCachedFamily() {
+            statusMessage = "\(lastCached) ready"
+            logInfo(.cache, "📦 Last cached family: \(lastCached)")
+        }
     }
 
     convenience init(rootsFileManager: RootsFileManager) {
@@ -106,7 +119,7 @@ class FamilyNetworkCache {
     }
     
     /**
-     * Start background processing of next family
+     * Start background processing - processes up to 5 families after current
      */
     func startBackgroundProcessing(
         currentFamilyId: String,
@@ -117,36 +130,44 @@ class FamilyNetworkCache {
         // Cancel any existing background task
         backgroundTask?.cancel()
         
-        // Find next family ID
-        guard let nextId = fileManager.findNextFamilyId(after: currentFamilyId) else {
-            logInfo(.cache, "📋 No next family to process")
+        // Reset session counter
+        familiesProcessedInSession = 0
+        
+        // The "Next" button should ALWAYS show the immediate next family
+        if let immediateNext = fileManager.findNextFamilyId(after: currentFamilyId) {
+            self.nextFamilyId = immediateNext
+            
+            // Check if it's already cached
+            if isCached(familyId: immediateNext) || persistenceStore.loadFamily(withId: immediateNext) != nil {
+                self.nextFamilyReady = true
+                logInfo(.cache, "✅ Next family already cached: \(immediateNext)")
+            } else {
+                self.nextFamilyReady = false
+                logInfo(.cache, "⏳ Next family needs processing: \(immediateNext)")
+            }
+        }
+        
+        // Find where to start background processing (first uncached family)
+        let startingFamilyId = findNextUncachedFamily(
+            startingFrom: currentFamilyId,
+            fileManager: fileManager
+        )
+        
+        guard let processingStart = startingFamilyId else {
+            logInfo(.cache, "📋 No uncached families found to process")
             return
         }
         
-        // Check if already cached
-        if isCached(familyId: nextId) {
-            logInfo(.cache, "✅ Next family already cached: \(nextId)")
-            self.nextFamilyId = nextId
-            self.nextFamilyReady = true
-            return
-        }
-
-        if let persistedFamily = persistenceStore.loadFamily(withId: nextId) {
-            cachedNetworks[nextId] = persistedFamily
-            logInfo(.cache, "✅ Next family restored from disk: \(nextId)")
-            self.nextFamilyId = nextId
-            self.nextFamilyReady = true
-            return
-        }
-
+        logInfo(.cache, "🎯 Starting background processing from: \(processingStart)")
+        logInfo(.cache, "📊 Will process up to \(maxFamiliesToProcess) families")
+        
         // Start background processing
-        self.processingFamilyId = nextId
+        self.processingFamilyId = processingStart
         self.backgroundError = nil
-        self.nextFamilyReady = false
         
         backgroundTask = Task {
             await processInBackground(
-                familyId: nextId,
+                familyId: processingStart,
                 fileManager: fileManager,
                 aiService: aiService,
                 familyResolver: familyResolver
@@ -162,6 +183,7 @@ class FamilyNetworkCache {
         nextFamilyReady = false
         nextFamilyId = nil
         processingFamilyId = nil
+        statusMessage = nil
         backgroundTask?.cancel()
         persistenceStore.clear()
         logInfo(.cache, "🗑️ Cache cleared")
@@ -193,7 +215,56 @@ class FamilyNetworkCache {
         nextFamilyReady = true
         nextFamilyId = latestEntry.key
     }
+    
+    /**
+     * Find the last (highest) family in the cache
+     */
+    private func findLastCachedFamily() -> String? {
+        // Sort family IDs naturally to find the highest one
+        let sortedFamilies = cachedNetworks.keys.sorted { (a, b) in
+            return a.localizedStandardCompare(b) == .orderedDescending
+        }
+        return sortedFamilies.first
+    }
+    
+    /**
+     * Find the next uncached family starting from a given position
+     */
+    private func findNextUncachedFamily(
+        startingFrom familyId: String,
+        fileManager: RootsFileManager
+    ) -> String? {
+        // Get all family IDs from the file
+        let allFamilyIds = fileManager.getAllFamilyIds()
+        
+        // Find the starting position
+        guard let startIndex = allFamilyIds.firstIndex(of: familyId) else {
+            // If we can't find the current family, check from beginning
+            return allFamilyIds.first { familyId in
+                !isCached(familyId: familyId) && persistenceStore.loadFamily(withId: familyId) == nil
+            }
+        }
+        
+        // Look for the first uncached family after the current one
+        for i in (startIndex + 1)..<allFamilyIds.count {
+            let candidateId = allFamilyIds[i]
+            
+            // Check if this family is already cached (in memory or on disk)
+            if !isCached(familyId: candidateId) {
+                if persistenceStore.loadFamily(withId: candidateId) == nil {
+                    // Found an uncached family
+                    return candidateId
+                }
+            }
+        }
+        
+        logInfo(.cache, "✅ All families after \(familyId) are already cached")
+        return nil
+    }
 
+    /**
+     * Process families in background
+     */
     private func processInBackground(
         familyId: String,
         fileManager: RootsFileManager,
@@ -204,23 +275,59 @@ class FamilyNetworkCache {
         
         do {
             logInfo(.cache, "🔄 Background processing: \(familyId)")
-
+            
+            // No "Preparing" message - just process silently
+            
+            // Check if already cached in memory
             if isCached(familyId: familyId) {
-                logInfo(.cache, "✅ Skipping background processing for already cached family: \(familyId)")
-                self.processingFamilyId = nil
-                self.nextFamilyId = familyId
-                self.nextFamilyReady = true
-                self.backgroundError = nil
+                logInfo(.cache, "✅ Skipping already cached family: \(familyId)")
+                
+                // Show ready message
+                self.statusMessage = "\(familyId) ready"
+                
+                // If this is the immediate next family, mark it ready
+                if familyId == nextFamilyId {
+                    self.nextFamilyReady = true
+                }
+                
+                // Continue to next family
+                if familiesProcessedInSession < maxFamiliesToProcess {
+                    if let nextId = fileManager.findNextFamilyId(after: familyId) {
+                        await continueBackgroundProcessing(
+                            nextFamilyId: nextId,
+                            fileManager: fileManager,
+                            aiService: aiService,
+                            familyResolver: familyResolver
+                        )
+                    }
+                }
                 return
             }
 
+            // Check if persisted on disk
             if let persistedFamily = persistenceStore.loadFamily(withId: familyId) {
                 cachedNetworks[familyId] = persistedFamily
                 logInfo(.cache, "✅ Loaded existing family from disk: \(familyId)")
-                self.processingFamilyId = nil
-                self.nextFamilyId = familyId
-                self.nextFamilyReady = true
-                self.backgroundError = nil
+                
+                // Show ready message
+                self.statusMessage = "\(familyId) ready"
+                
+                // If this is the immediate next family, mark it ready
+                if familyId == nextFamilyId {
+                    self.nextFamilyReady = true
+                }
+                
+                // Continue to next family
+                if familiesProcessedInSession < maxFamiliesToProcess {
+                    if let nextId = fileManager.findNextFamilyId(after: familyId) {
+                        await continueBackgroundProcessing(
+                            nextFamilyId: nextId,
+                            fileManager: fileManager,
+                            aiService: aiService,
+                            familyResolver: familyResolver
+                        )
+                    }
+                }
                 return
             }
 
@@ -232,16 +339,14 @@ class FamilyNetworkCache {
                 throw ExtractionError.familyNotFound(familyId)
             }
             
-            // Check for cancellation
             if Task.isCancelled { return }
             
-            // Parse with AI
+            // Parse with AI (happens silently in background)
             let family = try await aiService.parseFamily(
                 familyId: familyId,
                 familyText: familyText
             )
             
-            // Check for cancellation
             if Task.isCancelled { return }
             
             // Create workflow for cross-references
@@ -265,22 +370,82 @@ class FamilyNetworkCache {
             // Cache the results
             cacheNetwork(network, citations: citations, extractionTime: extractionTime)
             
-            // Update state
-            self.processingFamilyId = nil
-            self.nextFamilyId = familyId
-            self.nextFamilyReady = true
-            self.backgroundError = nil
+            // INCREMENT the processed counter
+            familiesProcessedInSession += 1
+            
+            // NOW show the ready message after successful caching
+            self.statusMessage = "\(familyId) ready"
+            
+            // If this is the immediate next family, mark it ready
+            if familyId == nextFamilyId {
+                self.nextFamilyReady = true
+            }
             
             logInfo(.cache, "✅ Background processing complete: \(familyId) (\(String(format: "%.1f", extractionTime))s)")
+            logInfo(.cache, "📊 Processed \(familiesProcessedInSession)/\(maxFamiliesToProcess) families in this session")
+            
+            // Check if we should continue or stop
+            if familiesProcessedInSession >= maxFamiliesToProcess {
+                logInfo(.cache, "🛑 Reached processing limit (\(maxFamiliesToProcess) families)")
+                return
+            }
+            
+            // Continue with next family
+            if let nextId = fileManager.findNextFamilyId(after: familyId) {
+                await continueBackgroundProcessing(
+                    nextFamilyId: nextId,
+                    fileManager: fileManager,
+                    aiService: aiService,
+                    familyResolver: familyResolver
+                )
+            } else {
+                logInfo(.cache, "✅ No more families to process")
+            }
             
         } catch {
             if !Task.isCancelled {
                 logError(.cache, "❌ Background processing failed: \(error)")
-                self.processingFamilyId = nil
-                self.backgroundError = "Failed to process \(familyId): \(error.localizedDescription)"
-                self.nextFamilyReady = false
+                self.backgroundError = "Failed to process \(familyId)"
+                
+                // Count this as processed to prevent infinite retries
+                familiesProcessedInSession += 1
             }
         }
     }
+    
+    /**
+     * Continue background processing with the next family
+     */
+    private func continueBackgroundProcessing(
+        nextFamilyId: String,
+        fileManager: RootsFileManager,
+        aiService: AIParsingService,
+        familyResolver: FamilyResolver
+    ) async {
+        // Check if we've hit our limit
+        if familiesProcessedInSession >= maxFamiliesToProcess {
+            logInfo(.cache, "🛑 Reached session limit, stopping background processing")
+            self.processingFamilyId = nil
+            return
+        }
+        
+        // Short delay to avoid overwhelming the system
+        try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+        
+        // Check if still active and not cancelled
+        guard !Task.isCancelled else { return }
+        
+        // Update state to show what we're processing (internally)
+        self.processingFamilyId = nextFamilyId
+        
+        logInfo(.cache, "🔄 Continuing to process: \(nextFamilyId) (session: \(familiesProcessedInSession + 1)/\(maxFamiliesToProcess))")
+        
+        // Continue processing the next family
+        await processInBackground(
+            familyId: nextFamilyId,
+            fileManager: fileManager,
+            aiService: aiService,
+            familyResolver: familyResolver
+        )
+    }
 }
-

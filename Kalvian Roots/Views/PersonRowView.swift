@@ -25,9 +25,6 @@ struct PersonRowView: View {
                         .font(Font.system(size: 18))
                         .foregroundStyle(Color.primary)  // Changed to black
                         .underline(true, color: Color.blue)  // Added blue underline
-                    Text("(\(role))")
-                        .font(Font.system(size: 15))
-                        .foregroundStyle(Color.secondary)
                 }
             }
             .buttonStyle(PlainButtonStyle())

@@ -259,13 +259,14 @@ final class RootsFileManager {
         }
     }
 
-    // MARK: - Family text helpers (unchanged logic, but under new class name)
+    // MARK: - Family text helpers
 
     func extractFamilyText(familyId: String) -> String? {
         guard let content = currentFileContent else {
             logWarn(.file, "No file content loaded")
             return nil
         }
+        
         let lines = content.components(separatedBy: .newlines)
         var out: [String] = []
         var capturing = false
@@ -273,19 +274,34 @@ final class RootsFileManager {
 
         for line in lines {
             let t = line.trimmingCharacters(in: .whitespaces)
+            
             if !capturing {
-                if t.uppercased().hasPrefix(target) {
-                    capturing = true
-                    out.append(line)
+                // Check if this line starts with our target family ID
+                let lineUpper = t.uppercased()
+                
+                // Handle both formats: "KYKYRI II 9, page 264" and "KYKYRI II 9"
+                if lineUpper.hasPrefix(target) {
+                    // Verify it's the exact family (not a prefix match)
+                    let afterTarget = String(lineUpper.dropFirst(target.count))
+                    // Should be either empty, start with comma, or start with whitespace
+                    if afterTarget.isEmpty || afterTarget.hasPrefix(",") || afterTarget.first?.isWhitespace == true {
+                        capturing = true
+                        out.append(line)
+                        logDebug(.file, "Started capturing family: \(familyId)")
+                    }
                 }
             } else {
-                if t.isEmpty { break }
+                // Stop at blank line
+                if t.isEmpty {
+                    logDebug(.file, "Finished capturing family: \(familyId)")
+                    break
+                }
                 out.append(line)
             }
         }
+        
         return out.isEmpty ? nil : out.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
-
     func findNextFamilyId(after currentFamilyId: String) -> String? {
         guard let content = currentFileContent else { return nil }
         let lines = content.components(separatedBy: .newlines)
@@ -296,15 +312,74 @@ final class RootsFileManager {
         for line in lines {
             let t = line.trimmingCharacters(in: .whitespaces)
             let u = t.uppercased()
+            
             if !foundCurrent {
-                if u.hasPrefix(target) { foundCurrent = true }
+                // Look for the current family
+                if u.hasPrefix(target) {
+                    foundCurrent = true
+                    logDebug(.file, "Found current family: \(t)")
+                }
             } else if !passedBlank {
-                if t.isEmpty { passedBlank = true }
+                // Wait for a blank line after current family
+                if t.isEmpty {
+                    passedBlank = true
+                    logDebug(.file, "Passed blank line after \(currentFamilyId)")
+                }
             } else if !t.isEmpty {
-                return String(t.split(separator: " ").first ?? "")
+                // Found the next non-empty line - extract the family ID
+                
+                // Family ID is everything before the comma (or the whole line if no comma)
+                let familyId: String
+                if let commaIndex = t.firstIndex(of: ",") {
+                    familyId = String(t[..<commaIndex]).trimmingCharacters(in: .whitespaces)
+                } else {
+                    familyId = t
+                }
+                
+                logInfo(.file, "Found next family ID: \(familyId)")
+                return familyId
             }
         }
+        
+        logInfo(.file, "No next family found after \(currentFamilyId)")
         return nil
+    }
+
+    // Helper method to find all family IDs in order
+    func getAllFamilyIds() -> [String] {
+        guard let content = currentFileContent else { return [] }
+        let lines = content.components(separatedBy: .newlines)
+        var familyIds: [String] = []
+        var previousWasBlank = true  // Treat start of file as "after blank"
+        
+        for line in lines {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            
+            if t.isEmpty {
+                previousWasBlank = true
+                continue
+            }
+            
+            // If previous line was blank, this might be a family ID
+            if previousWasBlank {
+                // Extract everything before the comma (or whole line if no comma)
+                let familyId: String
+                if let commaIndex = t.firstIndex(of: ",") {
+                    familyId = String(t[..<commaIndex]).trimmingCharacters(in: .whitespaces)
+                } else {
+                    familyId = t
+                }
+                
+                // Simple check: starts with uppercase letter (most family IDs do)
+                if let firstChar = familyId.first, firstChar.isUppercase {
+                    familyIds.append(familyId)
+                }
+            }
+            
+            previousWasBlank = false
+        }
+        
+        return familyIds
     }
 
     // MARK: - Recent files

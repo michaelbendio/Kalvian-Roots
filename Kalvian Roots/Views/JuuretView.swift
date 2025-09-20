@@ -196,30 +196,19 @@ struct JuuretView: View {
     
     private var familyInputSection: some View {
         VStack(spacing: 12) {
-            // Single line with "Citations for" and input field
-            HStack(spacing: 8) {
+            // Family ID input with "Citations for" label
+            HStack {
                 Text("Citations for")
-                    .font(.genealogyBody)
+                    .font(.genealogyHeadline)
                     .foregroundColor(.secondary)
                 
                 TextField("Family ID", text: $familyId)
                     .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 200)
-                    #if os(iOS)
-                    .autocapitalization(.allCharacters)
-                    #endif
-                    .disableAutocorrection(true)
                     .onSubmit {
-                        if !familyId.isEmpty && juuretApp.isReady {
-                            extractFamily()
-                        }
-                        // Dismiss keyboard on iOS
-                        #if os(iOS)
-                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
-                                                      to: nil, from: nil, for: nil)
-                        #endif
+                        extractFamily()
                     }
-                    .disabled(!juuretApp.isReady || juuretApp.isProcessing)
+                    .disabled(juuretApp.isProcessing)
+                    .frame(maxWidth: 300)
             }
             .padding(.horizontal)
             .frame(maxWidth: 600)
@@ -248,19 +237,22 @@ struct JuuretView: View {
                 .animation(.spring(response: 0.3), value: juuretApp.familyNetworkCache.nextFamilyReady)
             }
             
-            // PROCESSING INDICATOR - Shows while preparing next family
-            if let processingId = juuretApp.familyNetworkCache.processingFamilyId {
+            // STATUS MESSAGE - Shows "KLEEMOLA 6 ready" when families are cached
+            if let statusMessage = juuretApp.familyNetworkCache.statusMessage {
                 HStack(spacing: 8) {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                    Text("Preparing \(processingId)...")
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                        .font(.system(size: 14))
+                    Text(statusMessage)
                         .font(.genealogyCaption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.primary)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .background(Color.gray.opacity(0.1))
+                .background(Color.green.opacity(0.1))
                 .cornerRadius(6)
+                .transition(.scale.combined(with: .opacity))
+                .animation(.spring(response: 0.3), value: statusMessage)
             }
             
             // ERROR DISPLAY - Shows if background processing failed
@@ -280,6 +272,7 @@ struct JuuretView: View {
             }
         }
     }
+    
     // MARK: - Status Views
     
     private var processingStatusView: some View {
