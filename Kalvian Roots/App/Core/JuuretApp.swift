@@ -431,34 +431,38 @@ class JuuretApp {
     func generateSpouseCitation(for spouseName: String, in family: Family) -> String {
         logInfo(.citation, "📝 Generating spouse citation for: \(spouseName)")
         
-        // PRIORITY: Check workflow citations first (these have cross-references including spouse citations)
-        if let workflow = familyNetworkWorkflow {
-            let citations = workflow.getActiveCitations()
-            
-            // Try different key variations to find the spouse citation
-            if let citation = citations[spouseName] {
-                logDebug(.citation, "Found spouse citation in workflow citations")
-                return citation
-            }
-            
-            // Try with different name formats
-            let nameVariations = [
-                spouseName.trimmingCharacters(in: .whitespaces),
-                spouseName.lowercased(),
-                spouseName.uppercased()
-            ]
-            
-            for variation in nameVariations {
-                if let citation = citations[variation] {
-                    logDebug(.citation, "Found spouse citation with name variation: \(variation)")
-                    return citation
-                }
-            }
+        // REQUIRE: Active workflow present (no fallback allowed)
+        guard let workflow = familyNetworkWorkflow else {
+            let errorMessage = "❌ FATAL: No active workflow when generating spouse citation for: \(spouseName). The network must be built before requesting citations."
+            logError(.citation, errorMessage)
+            fatalError(errorMessage)
         }
         
-        // Fallback: Generate basic citation mentioning the spouse
-        logWarn(.citation, "No specific spouse citation found for: \(spouseName)")
-        return "Spouse: \(spouseName)\n\nNo additional citation information available. This spouse appears in \(family.familyId) but their family of origin (as_child family) was not found or could not be resolved."
+        // REQUIRE: Citations must not be empty
+        let citations = workflow.getActiveCitations()
+        if citations.isEmpty {
+            let errorMessage = "❌ FATAL: No citations in network while generating spouse citation for: \(spouseName)."
+            logError(.citation, errorMessage)
+            fatalError(errorMessage)
+        }
+        
+        // Try key variations that we store for spouses
+        let keyVariations = [
+            spouseName,
+            spouseName.trimmingCharacters(in: .whitespaces),
+            spouseName.replacingOccurrences(of: "  ", with: " ")
+        ]
+        
+        guard let foundKey = keyVariations.first(where: { citations[$0] != nil }) else {
+            let availablePreview = Array(citations.keys).prefix(10)
+            let errorMessage = "❌ FATAL: No spouse citation entry found for: \(spouseName). Checked keys: \(keyVariations). Available keys (first 10): \(availablePreview)"
+            logError(.citation, errorMessage)
+            fatalError(errorMessage)
+        }
+        
+        let citation = citations[foundKey]!
+        logInfo(.citation, "✅ Using spouse citation from workflow for: \(spouseName)")
+        return citation
     }
 
         // MARK: - Hiski Query Generation
