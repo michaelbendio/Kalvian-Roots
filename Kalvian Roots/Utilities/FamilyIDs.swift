@@ -195,7 +195,7 @@ struct FamilyIDs {
         "PIENI-PORKOLA 9", "PIETILÄ 1", "PIETILÄ 10", "PIETILÄ 11", "PIETILÄ 12", "PIETILÄ 13",
         "PIETILÄ 14", "PIETILÄ 2", "PIETILÄ 3", "PIETILÄ 4", "PIETILÄ 5", "PIETILÄ 6", "PIETILÄ 7",
         "PIETILÄ 8", "PIETILÄ 9", "PIETILÄ II 1", "PIETILÄ II 2", "PIETILÄ II 3", "PIETILÄ II 4",
-        "PIETILÄ II 5", "PIKKU-PENTTILÄ II 3", "PIKKU-PENTTILÄ II 4", "PIRKOLA 1", "PIRKOLA 10",
+        "PIKKU-PENTTILÄ II 3", "PIKKU-PENTTILÄ II 4", "PIRKOLA 1", "PIRKOLA 10",
         "PIRKOLA 2", "PIRKOLA 3", "PIRKOLA 4", "PIRKOLA 5", "PIRKOLA 6", "PIRKOLA 7", "PIRKOLA 8",
         "PIRKOLA 9", "PIRKOLA II 1", "PIRKOLA II 2", "PIRKOLA II 3", "PIRKOLA II 4", "PIRKOLA II 5",
         "PORKO 1", "PORKO 2", "PORKO 3", "PORKO 4", "PORKO 5", "PORKO 6", "PORKOLA 1", "PORKOLA 2",
@@ -276,4 +276,23 @@ struct FamilyIDs {
         "VÄHÄLÄ II 5", "VÄHÄLÄ II 6", "VÄÄPELI 1", "VÄÄPELI 2", "VÄÄPELI 3", "VÄÄPELI 4", "VÄÄPELI 5",
         "YLI-VÄHÄLÄ 1"
     ]
+
+    // Normalized lookup set for case/diacritic-insensitive validation
+    private static let normalizedValidFamilyIds: Set<String> = {
+        return Set(validFamilyIds.map { normalize($0) })
+    }()
+
+    /// Normalize a family ID for robust comparisons (case/diacritic-insensitive, collapse whitespace)
+    private static func normalize(_ s: String) -> String {
+        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Collapse multiple spaces to a single space
+        let collapsed = trimmed.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        // Fold case and remove diacritics for tolerant matching
+        return collapsed.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+    }
+
+    /// Check if a given family ID exists in the canonical list
+    static func isValid(familyId: String) -> Bool {
+        return normalizedValidFamilyIds.contains(normalize(familyId))
+    }
 }

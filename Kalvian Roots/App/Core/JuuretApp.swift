@@ -8,6 +8,12 @@
 import Foundation
 import SwiftUI
 
+#if os(macOS)
+import AppKit
+#elseif os(iOS)
+import UIKit
+#endif
+
 /**
  * JuuretApp - Main application coordinator
  *
@@ -324,9 +330,22 @@ class JuuretApp {
                 }
                 
             } catch {
-                // Log the error but don't fail - we still have basic citations
-                logWarn(.app, "⚠️ Could not fully process cross-references: \(error)")
-                logInfo(.app, "📝 Using basic citations as fallback")
+                // Provide detailed context about cross-reference failure without stopping the flow
+                let parentRefs = parsedFamily.allParents.compactMap { $0.asChild }
+                let childRefs  = parsedFamily.couples.flatMap { $0.children.compactMap { $0.asParent } }
+                let filePreview = String((fileManager.currentFileContent ?? "").prefix(300))
+
+                reportError(
+                    "Cross-reference processing failed.",
+                    context: [
+                        "familyId": familyId,
+                        "error": String(describing: error),
+                        "parentAsChildRefs": parentRefs,
+                        "childAsParentRefs": childRefs,
+                        "fileContentPreview": filePreview
+                    ]
+                )
+                logInfo(.app, "📝 Proceeding with available data; enhanced citations may be unavailable.")
             }
             
             // Step 6: Update the UI with the fully processed family after citations are ready
@@ -381,47 +400,101 @@ class JuuretApp {
     func generateCitation(for person: Person, in family: Family) -> String {
         logInfo(.citation, "📝 Generating citation for: \(person.displayName)")
         
-        // Check for manual citation first
+        // Manual override wins
         if let manualCitation = getManualCitation(for: person, in: family) {
             logDebug(.citation, "Using manual citation")
             return manualCitation
         }
         
-        // PRIORITY: Require workflow citations (no fallbacks allowed)
-        // If there is no active workflow, this is a fatal error
-        let workflowGuard = familyNetworkWorkflow
-        if workflowGuard == nil {
-            let errorMessage = "❌ FATAL: No active workflow when generating citation for: \(person.displayName). The network must be built before requesting citations."
-            logError(.citation, errorMessage)
-            fatalError(errorMessage)
+        let parent = isParent(person, in: family)
+        let child  = isChild(person, in: family)
+        
+        // Require workflow for enhanced citations, but do NOT crash; report and continue
+        guard let workflow = familyNetworkWorkflow else {
+            reportError(
+                "No active workflow when generating citation.",
+                context: [
+                    "familyId": family.familyId,
+                    "person": person.displayName
+                ]
+            )
+            if parent {
+                return CitationGenerator.generateMainFamilyCitation(family: family)
+            } else if child {
+                return CitationGenerator.generateMainFamilyCitation(family: family, targetPerson: person)
+            } else {
+                return "Citation unavailable for \(person.displayName)."
+            }
         }
-
-        let citations = workflowGuard!.getActiveCitations()
+        
+        let citations = workflow.getActiveCitations()
         if citations.isEmpty {
-            let errorMessage = "❌ FATAL: No citations in network. Network was not built or citation generation failed."
-            logError(.citation, errorMessage)
-            fatalError(errorMessage)
+            reportError(
+                "Citations are empty when generating citation.",
+                context: [
+                    "familyId": family.familyId,
+                    "person": person.displayName,
+                    "availableKeys": previewKeys(citations)
+                ]
+            )
+            if parent {
+                return CitationGenerator.generateMainFamilyCitation(family: family)
+            } else if child {
+                return CitationGenerator.generateMainFamilyCitation(family: family, targetPerson: person)
+            } else {
+                return "Citation unavailable for \(person.displayName)."
+            }
         }
-
-        // Build key variations we expect to match for this person
+        
+        // Try different key variations to find the citation
         let keyVariations: [String] = [
             person.displayName,
             person.name,
             "\(person.name) \(person.patronymic ?? "")"
         ]
-
-        // Ensure the person exists in the citations map; error out if missing
-        guard let foundKey = keyVariations.first(where: { citations[$0] != nil }) else {
-            let availablePreview = Array(citations.keys).prefix(10)
-            let errorMessage = "❌ FATAL: No workflow citation entry found for person: \(person.displayName). Checked keys: \(keyVariations). Available keys (first 10): \(availablePreview)"
-            logError(.citation, errorMessage)
-            fatalError(errorMessage)
+        if let foundKey = keyVariations.first(where: { citations[$0] != nil }),
+           let citation = citations[foundKey] {
+            logInfo(.citation, "✅ Using enhanced citation from workflow for: \(person.displayName)")
+            return citation
         }
-
-        // Safe to unwrap now that we validated presence
-        let citation = citations[foundKey]!
-        logInfo(.citation, "✅ Using enhanced citation from workflow for: \(person.displayName)")
-        return citation
+        
+        // No entry found for person: decide based on role and reference validity
+        if parent {
+            let asChildId = person.asChild?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let hasValidAsChild = (asChildId != nil) && FamilyIDs.isValid(familyId: asChildId!)
+            if hasValidAsChild {
+                reportError(
+                    "Parent has valid asChild reference but no enhanced citation was found.",
+                    context: [
+                        "familyId": family.familyId,
+                        "person": person.displayName,
+                        "asChildId": asChildId ?? "",
+                        "availableKeys": previewKeys(citations)
+                    ]
+                )
+            }
+            return CitationGenerator.generateMainFamilyCitation(family: family)
+        }
+        
+        if child {
+            let asParentId = person.asParent?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let hasValidAsParent = (asParentId != nil) && FamilyIDs.isValid(familyId: asParentId!)
+            if hasValidAsParent {
+                reportError(
+                    "Child has valid asParent reference but no enhanced citation was found.",
+                    context: [
+                        "familyId": family.familyId,
+                        "person": person.displayName,
+                        "asParentId": asParentId ?? "",
+                        "availableKeys": previewKeys(citations)
+                    ]
+                )
+            }
+            return CitationGenerator.generateMainFamilyCitation(family: family, targetPerson: person)
+        }
+        
+        // Unknown role in this family context
+        return "Citation unavailable for \(person.displayName)."
     }
     
     /**
@@ -431,38 +504,65 @@ class JuuretApp {
     func generateSpouseCitation(for spouseName: String, in family: Family) -> String {
         logInfo(.citation, "📝 Generating spouse citation for: \(spouseName)")
         
-        // REQUIRE: Active workflow present (no fallback allowed)
+        // Prefer workflow, but do not crash; report and continue
         guard let workflow = familyNetworkWorkflow else {
-            let errorMessage = "❌ FATAL: No active workflow when generating spouse citation for: \(spouseName). The network must be built before requesting citations."
-            logError(.citation, errorMessage)
-            fatalError(errorMessage)
+            reportError(
+                "No active workflow when generating spouse citation.",
+                context: [
+                    "spouseName": spouseName,
+                    "familyId": family.familyId
+                ]
+            )
+            return CitationGenerator.generateMainFamilyCitation(family: family)
         }
         
-        // REQUIRE: Citations must not be empty
         let citations = workflow.getActiveCitations()
         if citations.isEmpty {
-            let errorMessage = "❌ FATAL: No citations in network while generating spouse citation for: \(spouseName)."
-            logError(.citation, errorMessage)
-            fatalError(errorMessage)
+            reportError(
+                "Citations are empty when generating spouse citation.",
+                context: [
+                    "spouseName": spouseName,
+                    "familyId": family.familyId
+                ]
+            )
+            return CitationGenerator.generateMainFamilyCitation(family: family)
         }
         
-        // Try key variations that we store for spouses
+        // Try direct key variations first
         let keyVariations = [
             spouseName,
             spouseName.trimmingCharacters(in: .whitespaces),
             spouseName.replacingOccurrences(of: "  ", with: " ")
         ]
-        
-        guard let foundKey = keyVariations.first(where: { citations[$0] != nil }) else {
-            let availablePreview = Array(citations.keys).prefix(10)
-            let errorMessage = "❌ FATAL: No spouse citation entry found for: \(spouseName). Checked keys: \(keyVariations). Available keys (first 10): \(availablePreview)"
-            logError(.citation, errorMessage)
-            fatalError(errorMessage)
+        if let foundKey = keyVariations.first(where: { citations[$0] != nil }),
+           let citation = citations[foundKey] {
+            logInfo(.citation, "✅ Using spouse citation from workflow for: \(spouseName)")
+            return citation
         }
         
-        let citation = citations[foundKey]!
-        logInfo(.citation, "✅ Using spouse citation from workflow for: \(spouseName)")
-        return citation
+        // Attempt to resolve spouse Person from the visible family
+        let possibleSpouses: [Person] =
+            family.couples.flatMap { [$0.husband, $0.wife] } +
+            family.couples.flatMap { $0.children }
+        if let spousePerson = possibleSpouses.first(where: { $0.displayName == spouseName || $0.name == spouseName }) {
+            let asChildId = spousePerson.asChild?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let hasValidAsChild = (asChildId != nil) && FamilyIDs.isValid(familyId: asChildId!)
+            if hasValidAsChild {
+                reportError(
+                    "Spouse has valid asChild reference but no spouse citation was found.",
+                    context: [
+                        "spouse": spousePerson.displayName,
+                        "asChildId": asChildId ?? "",
+                        "familyId": family.familyId,
+                        "availableKeys": previewKeys(citations)
+                    ]
+                )
+            }
+            return CitationGenerator.generateMainFamilyCitation(family: family)
+        }
+        
+        // Could not resolve spouse Person – treat as no reference and continue with main family citation
+        return CitationGenerator.generateMainFamilyCitation(family: family)
     }
 
         // MARK: - Hiski Query Generation
@@ -549,6 +649,61 @@ class JuuretApp {
 
     func getManualCitation(for person: Person, in family: Family) -> String? {
         manualCitations[manualCitationKey(familyId: family.familyId, personId: person.id)]
+    }
+
+    // MARK: - Error Reporting & Utilities
+
+    private func reportError(
+        _ message: String,
+        context: [String: Any] = [:],
+        file: StaticString = #fileID,
+        function: StaticString = #function,
+        line: UInt = #line
+    ) {
+        var payload: [String: Any] = [
+            "message": message,
+            "location": "\(file):\(line) in \(function)",
+            "timestamp": ISO8601DateFormatter().string(from: Date())
+        ]
+        if !context.isEmpty {
+            payload["context"] = context
+        }
+
+        let details = (try? prettyJSONString(from: payload)) ?? String(describing: payload)
+        logError(.app, details)
+        self.errorMessage = details
+        copyToClipboard(details)
+    }
+
+    private func prettyJSONString(from dict: [String: Any]) throws -> String {
+        let data = try JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys])
+        return String(data: data, encoding: .utf8) ?? String(describing: dict)
+    }
+
+    private func copyToClipboard(_ text: String) {
+        #if os(macOS)
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+        #elseif os(iOS)
+        UIPasteboard.general.string = text
+        #endif
+    }
+
+    private func previewKeys<V>(_ dict: [String: V], limit: Int = 10) -> [String] {
+        return Array(dict.keys)
+            .map { String(describing: $0) }
+            .sorted()
+            .prefix(limit)
+            .map { $0 }
+    }
+
+    private func isParent(_ person: Person, in family: Family) -> Bool {
+        family.allParents.contains { $0.id == person.id }
+    }
+
+    private func isChild(_ person: Person, in family: Family) -> Bool {
+        family.couples.flatMap { $0.children }.contains { $0.id == person.id }
     }
 }
 

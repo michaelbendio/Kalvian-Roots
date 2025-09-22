@@ -64,6 +64,26 @@ struct JuuretView: View {
             Text(spouseCitationText)
                 .font(.genealogyCallout)
         }
+        .alert("Error", isPresented: Binding(
+            get: { juuretApp.errorMessage != nil },
+            set: { if !$0 { juuretApp.errorMessage = nil } }
+        )) {
+            Button("Copy Details") {
+                if let text = juuretApp.errorMessage {
+                    #if os(macOS)
+                    let pb = NSPasteboard.general
+                    pb.clearContents()
+                    pb.setString(text, forType: .string)
+                    #else
+                    UIPasteboard.general.string = text
+                    #endif
+                }
+            }
+            Button("OK") { juuretApp.errorMessage = nil }
+        } message: {
+            Text(juuretApp.errorMessage ?? "Unknown error")
+                .font(.genealogyMonospaceSmall)
+        }
         .onAppear {
             logInfo(.ui, "JuuretView appeared")
         }
