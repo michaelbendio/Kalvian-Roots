@@ -242,8 +242,8 @@ class JuuretApp {
                     resolveCrossReferences: false  // Already resolved in cache
                 )
                 
-                // The workflow can use the cached citations directly
-                // No need to inject them
+                // Activate cached network and citations so UI lookups work
+                familyNetworkWorkflow?.activateCachedResults(network: cached.network, citations: cached.citations)
                 
                 isProcessing = false
                 extractionProgress = .idle
@@ -387,26 +387,40 @@ class JuuretApp {
             return manualCitation
         }
         
-        // PRIORITY: Check workflow citations first (these have cross-references)
-        if let workflow = familyNetworkWorkflow {
-            let citations = workflow.getActiveCitations()
-            
-            // Try different key variations to find the citation
-            if let citation = citations[person.displayName] ??
-                             citations[person.name] ??
-                             citations["\(person.name) \(person.patronymic ?? "")"] {
-                logInfo(.citation, "✅ Using enhanced citation from workflow for: \(person.displayName)")
-                return citation
-            } else {
-                logWarn(.citation, "⚠️ No workflow citation found for: \(person.displayName)")
-                logDebug(.citation, "Available citation keys: \(Array(citations.keys).prefix(10))")
-            }
+        // PRIORITY: Require workflow citations (no fallbacks allowed)
+        // If there is no active workflow, this is a fatal error
+        let workflowGuard = familyNetworkWorkflow
+        if workflowGuard == nil {
+            let errorMessage = "❌ FATAL: No active workflow when generating citation for: \(person.displayName). The network must be built before requesting citations."
+            logError(.citation, errorMessage)
+            fatalError(errorMessage)
         }
-        
-        // Fallback to basic citation
-        logInfo(.citation, "📝 Using basic fallback citation for: \(person.displayName)")
-        let citation = CitationGenerator.generateMainFamilyCitation(family: family)
-        
+
+        let citations = workflowGuard!.getActiveCitations()
+        if citations.isEmpty {
+            let errorMessage = "❌ FATAL: No citations in network. Network was not built or citation generation failed."
+            logError(.citation, errorMessage)
+            fatalError(errorMessage)
+        }
+
+        // Build key variations we expect to match for this person
+        let keyVariations: [String] = [
+            person.displayName,
+            person.name,
+            "\(person.name) \(person.patronymic ?? "")"
+        ]
+
+        // Ensure the person exists in the citations map; error out if missing
+        guard let foundKey = keyVariations.first(where: { citations[$0] != nil }) else {
+            let availablePreview = Array(citations.keys).prefix(10)
+            let errorMessage = "❌ FATAL: No workflow citation entry found for person: \(person.displayName). Checked keys: \(keyVariations). Available keys (first 10): \(availablePreview)"
+            logError(.citation, errorMessage)
+            fatalError(errorMessage)
+        }
+
+        // Safe to unwrap now that we validated presence
+        let citation = citations[foundKey]!
+        logInfo(.citation, "✅ Using enhanced citation from workflow for: \(person.displayName)")
         return citation
     }
     

@@ -76,6 +76,16 @@ class FamilyNetworkWorkflow {
         return activeCitations
     }
     
+    /**
+     * Activate precomputed network and citations (e.g., when loading from cache)
+     */
+    func activateCachedResults(network: FamilyNetwork, citations: [String: String]) {
+        logInfo(.citation, "📦 Activating cached results for: \(network.mainFamily.familyId)")
+        self.familyNetwork = network
+        self.activeCitations = citations
+        logInfo(.citation, "✅ Activated cached network and \(citations.count) citations")
+    }
+    
     // MARK: - Private Methods
     
     private func buildFamilyNetwork(for nuclearFamily: Family) async throws -> FamilyNetwork {
@@ -359,3 +369,4 @@ class FamilyNetworkWorkflow {
         return enhancedNetwork
     }
 }
+
