@@ -269,8 +269,24 @@ struct CitationGenerator {
     // MARK: - Date Formatting
     
     /// Convert DD.MM.YYYY to beautiful format like "6 January 1759"
+    /// Also handles approximate dates: "n 1666" becomes "abt 1666"
     private static func formatDate(_ date: String) -> String {
         let trimmed = date.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Handle approximate dates (n 1666 -> abt 1666)
+        if trimmed.hasPrefix("n ") {
+            let yearPart = String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+            return "abt \(yearPart)"
+        }
+        
+        // Handle single 'n' followed by year without space (n1666 -> abt 1666)
+        if trimmed.hasPrefix("n") && trimmed.count > 1 {
+            let yearPart = String(trimmed.dropFirst(1))
+            // Check if the rest is numeric
+            if Int(yearPart) != nil {
+                return "abt \(yearPart)"
+            }
+        }
         
         // Check if it contains dots (DD.MM.YYYY format)
         let components = trimmed.components(separatedBy: ".")
@@ -312,10 +328,10 @@ struct CitationGenerator {
     
     // MARK: - Private Helper Methods
     
-    /// Format parent with beautiful date range format
     private static func formatParentCompact(_ person: Person) -> String {
         let name = person.displayName
         
+        // Handle approximate birth/death dates properly
         if let birthDate = person.birthDate, let deathDate = person.deathDate {
             return "\(name), \(formatDate(birthDate)) - \(formatDate(deathDate))"
         } else if let birthDate = person.birthDate {
@@ -377,7 +393,7 @@ struct CitationGenerator {
         let enhancedBirthDate = nuclearChild.birthDate
         let enhancedDeathDate = asParent?.deathDate ?? nuclearChild.deathDate
         
-        // Use beautiful date range format for target person
+        // Use beautiful date range format for target person with proper 'abt' handling
         if let birthDate = enhancedBirthDate, let deathDate = enhancedDeathDate {
             line += ", \(formatDate(birthDate)) - \(formatDate(deathDate))"
         } else if let birthDate = enhancedBirthDate {
@@ -404,16 +420,18 @@ struct CitationGenerator {
             }
         }
         
-        // 3. Fall back to nuclear child's marriage date
-        if enhancedMarriageDate == nil {
-            enhancedMarriageDate = nuclearChild.bestMarriageDate
-        }
+        // 3. Fall back to nuclear family data
+        enhancedMarriageDate = enhancedMarriageDate ?? nuclearChild.bestMarriageDate
         
-        // Display marriage information
+        // Format marriage information
         if let spouse = nuclearChild.spouse, !spouse.isEmpty {
             line += ", m. \(spouse)"
             if let marriageDate = enhancedMarriageDate {
-                line += " \(formatDate(marriageDate))"
+                if marriageDate.contains(".") {
+                    line += " \(formatDate(marriageDate))"
+                } else {
+                    line += " \(extractMarriageYear(marriageDate))"
+                }
             }
         }
         
