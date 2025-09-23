@@ -51,11 +51,27 @@ struct CitationGenerator {
             }
         }
         
-        // Additional spouses - properly formatted
+        // Additional spouses - properly formatted WITH WIDOW INFO
         if family.couples.count > 1 {
-            for couple in family.couples.dropFirst() {
+            for (index, couple) in family.couples.dropFirst().enumerated() {
                 citation += "Additional spouse:\n"
-                citation += formatParentCompact(couple.wife) + "\n"
+                
+                // Determine which spouse is the additional one
+                let additionalSpouse = couple.husband != family.primaryCouple?.husband ? couple.husband : couple.wife
+                
+                // Format the spouse with widow info if available
+                var spouseInfo = formatParentCompact(additionalSpouse)
+                if let widowInfo = extractWidowInfo(from: family.notes, spouseIndex: index) {
+                    // Insert widow info before the dates
+                    let components = spouseInfo.components(separatedBy: ", ")
+                    if components.count > 0 {
+                        let name = components[0]
+                        let dates = components.count > 1 ? ", " + components[1...].joined(separator: ", ") : ""
+                        spouseInfo = "\(name), widow of \(widowInfo)\(dates)"
+                    }
+                }
+                citation += spouseInfo + "\n"
+                
                 if let marriageDate = couple.marriageDate {
                     citation += "m. \(formatDate(marriageDate))\n"
                 }
@@ -78,10 +94,11 @@ struct CitationGenerator {
             }
         }
         
-        // Notes section with proper formatting
-        if !family.notes.isEmpty {
+        // Notes section with proper formatting - FILTER OUT WIDOW NOTES
+        let filteredNotes = family.notes.filter { !$0.lowercased().contains("leski") }
+        if !filteredNotes.isEmpty {
             citation += "Note(s):\n"
-            for note in family.notes {
+            for note in filteredNotes {
                 citation += "\(note)\n"
             }
         }
@@ -89,7 +106,7 @@ struct CitationGenerator {
         // Child mortality - formatted on its own line
         let totalChildrenDied = family.totalChildrenDiedInfancy
         if totalChildrenDied > 0 {
-            if family.notes.isEmpty {
+            if filteredNotes.isEmpty {  // Check filteredNotes instead of family.notes
                 citation += "Note(s):\n"
             }
             citation += "Children died as infants: \(totalChildrenDied)\n"
@@ -158,10 +175,27 @@ struct CitationGenerator {
                 }
             }
             
-            // Show additional spouse info if this isn't the primary couple
+            // Show additional spouse info if this isn't the primary couple WITH WIDOW INFO
             if couple != asChildFamily.primaryCouple {
                 citation += "Additional spouse:\n"
-                citation += formatParentCompact(couple.wife) + "\n"
+                
+                // Format the spouse with widow info if available
+                var spouseInfo = formatParentCompact(couple.wife)
+                
+                // Find the index of this additional spouse
+                let additionalCouples = asChildFamily.couples.filter { $0 != asChildFamily.primaryCouple }
+                if let index = additionalCouples.firstIndex(of: couple) {
+                    if let widowInfo = extractWidowInfo(from: asChildFamily.notes, spouseIndex: index) {
+                        // Insert widow info before the dates
+                        let components = spouseInfo.components(separatedBy: ", ")
+                        if components.count > 0 {
+                            let name = components[0]
+                            let dates = components.count > 1 ? ", " + components[1...].joined(separator: ", ") : ""
+                            spouseInfo = "\(name), widow of \(widowInfo)\(dates)"
+                        }
+                    }
+                }
+                citation += spouseInfo + "\n"
                 
                 // Marriage date - FIXED FORMATTING
                 if let marriageDate = couple.marriageDate {
@@ -175,10 +209,11 @@ struct CitationGenerator {
             }
         }
         
-        // Notes section
-        if !asChildFamily.notes.isEmpty {
+        // Notes section - FILTER OUT WIDOW NOTES
+        let filteredNotes = asChildFamily.notes.filter { !$0.lowercased().contains("leski") }
+        if !filteredNotes.isEmpty {
             citation += "Note(s):\n"
-            for note in asChildFamily.notes {
+            for note in filteredNotes {
                 citation += "\(note)\n"
             }
         }
@@ -186,7 +221,7 @@ struct CitationGenerator {
         // Child mortality
         let totalChildrenDied = asChildFamily.totalChildrenDiedInfancy
         if totalChildrenDied > 0 {
-            if asChildFamily.notes.isEmpty {
+            if filteredNotes.isEmpty {  // Check filteredNotes instead of asChildFamily.notes
                 citation += "Note(s):\n"
             }
             citation += "Children died as infants: \(totalChildrenDied)\n"
@@ -326,11 +361,14 @@ struct CitationGenerator {
         return trimmed
     }
     
+    /// Extract widow information from notes for a specific spouse
     private static func extractWidowInfo(from notes: [String], spouseIndex: Int) -> String? {
         // Extract all widow notes in order
         let widowNotes = notes.filter { $0.lowercased().contains("leski") }
         
-        // Match by index: 0 = II puoliso, 1 = III puoliso
+        // Use the spouse index to match the correct widow note
+        // Index 0 = II puoliso (first additional spouse)
+        // Index 1 = III puoliso (second additional spouse)
         if spouseIndex < widowNotes.count {
             let note = widowNotes[spouseIndex]
             // Extract the name before "leski"
