@@ -119,6 +119,75 @@ class FamilyNetworkCache {
     }
     
     /**
+     * Delete a specific family from the cache
+     * Useful for regenerating citations after code changes
+     */
+    func deleteCachedFamily(familyId: String) {
+        guard cachedNetworks[familyId] != nil else {
+            logInfo(.cache, "⚠️ Family \(familyId) not found in cache")
+            return
+        }
+        
+        // Remove from memory cache
+        cachedNetworks.removeValue(forKey: familyId)
+        
+        // Update persistence
+        persistenceStore.save(cachedNetworks)
+        
+        // Update ready state if this was the next family
+        if nextFamilyId == familyId {
+            nextFamilyReady = false
+        }
+        
+        logInfo(.cache, "🗑️ Deleted \(familyId) from cache")
+    }
+
+    /**
+     * Get the first cached family ID (sorted alphabetically/numerically)
+     * This will be displayed on startup
+     */
+    func getFirstCachedFamilyId() -> String? {
+        let allCachedIds = Array(cachedNetworks.keys)
+        
+        guard !allCachedIds.isEmpty else { return nil }
+        
+        // Sort them naturally (handles numeric sorting properly)
+        let sortedIds = allCachedIds.sorted { (a, b) in
+            return a.localizedStandardCompare(b) == .orderedAscending
+        }
+        
+        return sortedIds.first
+    }
+
+    /**
+     * Get all cached family IDs in sorted order
+     * Useful for displaying a list of cached families
+     */
+    func getAllCachedFamilyIds() -> [String] {
+        let allCachedIds = Array(cachedNetworks.keys)
+        
+        // Sort them naturally
+        return allCachedIds.sorted { (a, b) in
+            return a.localizedStandardCompare(b) == .orderedAscending
+        }
+    }
+
+    /**
+     * Check if there are any cached families
+     */
+    var hasCachedFamilies: Bool {
+        return !cachedNetworks.isEmpty
+    }
+
+    /**
+     * Get information about a cached family
+     */
+    func getCachedFamilyInfo(familyId: String) -> (cachedAt: Date, extractionTime: TimeInterval)? {
+        guard let cached = cachedNetworks[familyId] else { return nil }
+        return (cached.cachedAt, cached.extractionTime)
+    }
+    
+    /**
      * Start background processing - processes up to 5 families after current
      */
     func startBackgroundProcessing(

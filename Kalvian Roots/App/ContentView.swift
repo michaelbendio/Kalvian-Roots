@@ -4,7 +4,8 @@ import SwiftUI
 struct ContentView: View {
     @Environment(JuuretApp.self) private var app
     @State private var isSidebarExpanded = false  // Start with sidebar closed
-    
+    @State private var hasLoadedStartupFamily = false
+
     var body: some View {
         Group {
             #if os(macOS)
@@ -40,6 +41,34 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.large)
             #endif
         }
+        .task {
+            await loadStartupFamily()
+        }
+    }
+    
+    /// Load the first cached family on startup
+    private func loadStartupFamily() async {
+        // Only run once
+        guard !hasLoadedStartupFamily else { return }
+        hasLoadedStartupFamily = true
+        
+        // Check if we have any cached families
+        guard app.familyNetworkCache.hasCachedFamilies,
+              let firstFamilyId = app.familyNetworkCache.getFirstCachedFamilyId() else {
+            logInfo(.app, "📱 No cached families found at startup")
+            return
+        }
+        
+        // Check if we're already displaying a family
+        guard app.currentFamily == nil else {
+            logInfo(.app, "📱 Family already loaded, skipping startup load")
+            return
+        }
+        
+        logInfo(.app, "🚀 Loading first cached family on startup: \(firstFamilyId)")
+        
+        // Load the first cached family
+        await app.extractFamily(familyId: firstFamilyId)
     }
 }
 
@@ -67,6 +96,39 @@ struct SidebarView: View {
                         }
                     }
                     .buttonStyle(.borderless)
+                }
+            }
+            
+            // NEW SECTION: Cached Families
+            Section("Cached Families") {
+                let cachedIds = app.familyNetworkCache.getAllCachedFamilyIds()
+                
+                if cachedIds.isEmpty {
+                    Text("No cached families")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("\(cachedIds.count) families cached")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    
+                    // Show first few cached families
+                    ForEach(cachedIds.prefix(5), id: \.self) { familyId in
+                        Button(familyId) {
+                            Task {
+                                await app.extractFamily(familyId: familyId)
+                            }
+                        }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                        .foregroundStyle(app.currentFamily?.familyId == familyId ? .primary : .secondary)
+                    }
+                    
+                    if cachedIds.count > 5 {
+                        Text("+ \(cachedIds.count - 5) more...")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
             }
             

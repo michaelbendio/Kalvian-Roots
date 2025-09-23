@@ -19,75 +19,86 @@ struct JuuretView: View {
     #endif
     
     var body: some View {
-        VStack(spacing: 15) {
-            if juuretApp.fileManager.isFileLoaded {
-                familyExtractionInterface
-            } else {
-                fileNotLoadedInterface
-            }
-        }
-        .padding(20)
-        .navigationTitle("Kalvian Roots")
-        #if os(iOS)
-        .sheet(isPresented: $showingFilePicker) {
-            DocumentPickerView { url in
-                Task {
-                    await processSelectedFile(url)
+            VStack(spacing: 15) {
+                if juuretApp.fileManager.isFileLoaded {
+                    familyExtractionInterface
+                } else {
+                    fileNotLoadedInterface
                 }
             }
-        }
-        #endif
-        .alert("Citation", isPresented: $showingCitation) {
-            Button("Copy to Clipboard") {
-                copyToClipboard(citationText)
-            }
-            Button("OK") { }
-        } message: {
-            Text(citationText)
-                .font(.genealogyCallout)
-        }
-        .alert("Hiski Query Result", isPresented: $showingHiskiResult) {
-            Button("Copy URL") {
-                copyToClipboard(hiskiResult)
-            }
-            Button("OK") { }
-        } message: {
-            Text(hiskiResult)
-                .font(.genealogyCallout)
-        }
-        .alert("Spouse Citation", isPresented: $showingSpouseCitation) {
-            Button("Copy to Clipboard") {
-                copyToClipboard(spouseCitationText)
-            }
-            Button("OK") { }
-        } message: {
-            Text(spouseCitationText)
-                .font(.genealogyCallout)
-        }
-        .alert("Error", isPresented: Binding(
-            get: { juuretApp.errorMessage != nil },
-            set: { if !$0 { juuretApp.errorMessage = nil } }
-        )) {
-            Button("Copy Details") {
-                if let text = juuretApp.errorMessage {
-                    #if os(macOS)
-                    let pb = NSPasteboard.general
-                    pb.clearContents()
-                    pb.setString(text, forType: .string)
-                    #else
-                    UIPasteboard.general.string = text
-                    #endif
+            .padding(20)
+            .navigationTitle("Kalvian Roots")
+            #if os(macOS)
+            .toolbar {
+                ToolbarItemGroup(placement: .automatic) {
+                    CachedFamiliesMenu()
                 }
             }
-            Button("OK") { juuretApp.errorMessage = nil }
-        } message: {
-            Text(juuretApp.errorMessage ?? "Unknown error")
-                .font(.genealogyMonospaceSmall)
+            #elseif os(iOS) || os(visionOS)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    CachedFamiliesMenu()
+                }
+            }
+            .sheet(isPresented: $showingFilePicker) {
+                DocumentPickerView { url in
+                    Task {
+                        await processSelectedFile(url)
+                    }
+                }
+            }
+            #endif
+            .alert("Citation", isPresented: $showingCitation) {
+                Button("Copy to Clipboard") {
+                    copyToClipboard(citationText)
+                }
+                Button("OK") { }
+            } message: {
+                Text(citationText)
+                    .font(.genealogyCallout)
+            }
+            .alert("Hiski Query Result", isPresented: $showingHiskiResult) {
+                Button("Copy URL") {
+                    copyToClipboard(hiskiResult)
+                }
+                Button("OK") { }
+            } message: {
+                Text(hiskiResult)
+                    .font(.genealogyCallout)
+            }
+            .alert("Spouse Citation", isPresented: $showingSpouseCitation) {
+                Button("Copy to Clipboard") {
+                    copyToClipboard(spouseCitationText)
+                }
+                Button("OK") { }
+            } message: {
+                Text(spouseCitationText)
+                    .font(.genealogyCallout)
+            }
+            .alert("Error", isPresented: Binding(
+                get: { juuretApp.errorMessage != nil },
+                set: { if !$0 { juuretApp.errorMessage = nil } }
+            )) {
+                Button("Copy Details") {
+                    if let text = juuretApp.errorMessage {
+                        #if os(macOS)
+                        let pb = NSPasteboard.general
+                        pb.clearContents()
+                        pb.setString(text, forType: .string)
+                        #else
+                        UIPasteboard.general.string = text
+                        #endif
+                    }
+                }
+                Button("OK") { juuretApp.errorMessage = nil }
+            } message: {
+                Text(juuretApp.errorMessage ?? "Unknown error")
+                    .font(.genealogyMonospaceSmall)
+            }
+            .onAppear {
+                logInfo(.ui, "JuuretView appeared")
+            }
         }
-        .onAppear {
-            logInfo(.ui, "JuuretView appeared")
-        }
-    }
     
     // MARK: - File Processing for iOS
     

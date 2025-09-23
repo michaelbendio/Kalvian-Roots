@@ -767,3 +767,23 @@ extension JuuretApp {
     }
 }
 
+// MARK: - Cache Management
+
+extension JuuretApp {
+    /// Delete a family from cache and immediately re-extract it
+    /// Useful when citation generation code has changed
+    func regenerateCachedFamily(familyId: String) async {
+        logInfo(.app, "♻️ Regenerating family: \(familyId)")
+        
+        // Delete from cache
+        familyNetworkCache.deleteCachedFamily(familyId: familyId)
+        
+        // Small delay to ensure UI updates
+        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+        
+        // Re-extract with updated citation logic
+        await extractFamily(familyId: familyId)
+        
+        logInfo(.app, "✅ Regenerated family with updated citations: \(familyId)")
+    }
+}
