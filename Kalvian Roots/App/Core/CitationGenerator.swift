@@ -326,6 +326,23 @@ struct CitationGenerator {
         return trimmed
     }
     
+    private static func extractWidowInfo(from notes: [String], spouseIndex: Int) -> String? {
+        // Extract all widow notes in order
+        let widowNotes = notes.filter { $0.lowercased().contains("leski") }
+        
+        // Match by index: 0 = II puoliso, 1 = III puoliso
+        if spouseIndex < widowNotes.count {
+            let note = widowNotes[spouseIndex]
+            // Extract the name before "leski"
+            let components = note.components(separatedBy: " leski")
+            if components.count > 0 {
+                return components[0].trimmingCharacters(in: .whitespaces)
+            }
+        }
+        
+        return nil
+    }
+
     // MARK: - Private Helper Methods
     
     private static func formatParentCompact(_ person: Person) -> String {

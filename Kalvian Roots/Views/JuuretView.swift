@@ -507,8 +507,6 @@ struct JuuretView: View {
             
             let additionalSpouse = isHusbandSame ? couple.wife : couple.husband
             
-            // REMOVED the II puoliso / III puoliso label display
-            
             PersonRowView(
                 person: additionalSpouse,
                 role: "Spouse",
@@ -530,8 +528,8 @@ struct JuuretView: View {
                 }
             )
             
-            // Show widow/widower information if available
-            if let widowInfo = extractWidowInfo(for: additionalSpouse, from: family.notes) {
+            // Show widow/widower information if available - PASS THE INDEX
+            if let widowInfo = extractWidowInfo(for: additionalSpouse, from: family.notes, spouseIndex: index) {
                 Text("(widow of \(widowInfo))")
                     .font(.genealogyCaption)
                     .foregroundColor(.secondary)
@@ -652,28 +650,22 @@ struct JuuretView: View {
     }
     
     // Helper function to extract widow information from notes
-    private func extractWidowInfo(for person: Person, from notes: [String]) -> String? {
-        // Look for patterns like "Matti Pietilän leski" or "Samuel Miekkojan leski"
-        // First, try to match by partial name
-        let personFirstName = person.name.lowercased()
+    private func extractWidowInfo(for person: Person, from notes: [String], spouseIndex: Int) -> String? {
+        // Extract all widow notes in order
+        let widowNotes = notes.filter { $0.lowercased().contains("leski") }
         
-        for note in notes {
-            let lowerNote = note.lowercased()
-            // Check if this note mentions 'leski' (widow/widower)
-            if lowerNote.contains("leski") {
-                // For now, extract the name before "leski"
-                // This is simplified - could be enhanced with more sophisticated parsing
-                let components = note.components(separatedBy: " leski")
-                if components.count > 0 {
-                    let nameBeforeLeski = components[0].trimmingCharacters(in: .whitespaces)
-                    // Simple check: if the note doesn't contain the person's name,
-                    // it's probably about them being a widow
-                    if !lowerNote.contains(personFirstName) {
-                        return nameBeforeLeski
-                    }
-                }
+        // Use the spouse index to match the correct widow note
+        // Index 0 = II puoliso (first additional spouse)
+        // Index 1 = III puoliso (second additional spouse)
+        if spouseIndex < widowNotes.count {
+            let note = widowNotes[spouseIndex]
+            // Extract the name before "leski"
+            let components = note.components(separatedBy: " leski")
+            if components.count > 0 {
+                return components[0].trimmingCharacters(in: .whitespaces)
             }
         }
+        
         return nil
     }
     
