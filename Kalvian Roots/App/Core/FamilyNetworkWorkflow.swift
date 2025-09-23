@@ -309,7 +309,7 @@ class FamilyNetworkWorkflow {
                     
                     // FIX: Pass child as targetPerson so arrow appears for them
                     let citation = CitationGenerator.generateMainFamilyCitation(
-                        family: asParentFamily,
+                        family: family,
                         targetPerson: child  // ← THIS IS THE KEY FIX FOR THE ARROW
                     )
                     
