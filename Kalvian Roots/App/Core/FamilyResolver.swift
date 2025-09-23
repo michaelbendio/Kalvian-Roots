@@ -144,11 +144,16 @@ class FamilyResolver {
                 logInfo(.resolver, "🔍 Attempting to resolve as_child: \(parent.displayName) from \(asChildRef)")
                 
                 if let resolvedFamily = try await findAsChildFamily(for: parent) {
-                    let storageKey = parent.name.trimmingCharacters(in: .whitespaces)
-                    updatedNetwork.asChildFamilies[storageKey] = resolvedFamily
+                    // PRIMARY: Use displayName as the main storage key
+                    let primaryKey = parent.displayName
+                    updatedNetwork.asChildFamilies[primaryKey] = resolvedFamily
+                    
+                    // FALLBACK: Also store under simple name for backwards compatibility
+                    let fallbackKey = parent.name.trimmingCharacters(in: .whitespaces)
+                    updatedNetwork.asChildFamilies[fallbackKey] = resolvedFamily
                     
                     debugLogResolutionResult(for: parent.displayName, reference: asChildRef, success: true, type: "as_child")
-                    logInfo(.resolver, "  ✅ Resolved: \(asChildRef) - stored with key '\(storageKey)'")
+                    logInfo(.resolver, "  ✅ Resolved: \(asChildRef) - stored with keys '\(primaryKey)' and '\(fallbackKey)'")
                 } else {
                     debugLogResolutionResult(for: parent.displayName, reference: asChildRef, success: false, type: "as_child")
                     logWarn(.resolver, "  ⚠️ Not found: \(asChildRef)")
@@ -156,7 +161,7 @@ class FamilyResolver {
             }
         }
         
-        logInfo(.resolver, "  Resolved \(updatedNetwork.asChildFamilies.count) as-child families")
+        logInfo(.resolver, "  Resolved \(updatedNetwork.asChildFamilies.count / 2) unique as-child families") // Divide by 2 since we store each twice
         logInfo(.resolver, "  Storage keys: \(Array(updatedNetwork.asChildFamilies.keys))")
         return updatedNetwork
     }
@@ -173,14 +178,20 @@ class FamilyResolver {
                 logInfo(.resolver, "🔍 Attempting to resolve as_parent: \(child.displayName) in \(asParentRef)")
                 
                 if let resolvedFamily = try await findAsParentFamily(for: child) {
-                    let storageKey = child.name.trimmingCharacters(in: .whitespaces)
-                    updatedNetwork.asParentFamilies[storageKey] = resolvedFamily
+                    // PRIMARY: Use displayName as the main storage key
+                    let primaryKey = child.displayName
+                    updatedNetwork.asParentFamilies[primaryKey] = resolvedFamily
                     
-                    logInfo(.resolver, "✅ Resolved: \(asParentRef)")
+                    // FALLBACK: Also store under simple name for backwards compatibility
+                    let fallbackKey = child.name.trimmingCharacters(in: .whitespaces)
+                    updatedNetwork.asParentFamilies[fallbackKey] = resolvedFamily
+                    
+                    logInfo(.resolver, "✅ Resolved: \(asParentRef) - stored with keys '\(primaryKey)' and '\(fallbackKey)'")
                     
                     // Immediately capture spouse information from this asParent family
                     await captureSpouseFromAsParentFamily(
                         childName: child.name,
+                        childDisplayName: child.displayName,
                         asParentFamily: resolvedFamily,
                         network: &updatedNetwork
                     )
@@ -188,23 +199,33 @@ class FamilyResolver {
             }
         }
         
-        logInfo(.resolver, "✅ Resolved \(updatedNetwork.asParentFamilies.count) as-parent families")
-        logInfo(.resolver, "✅ Resolved \(updatedNetwork.spouseAsChildFamilies.count) spouse families")
+        logInfo(.resolver, "✅ Resolved \(updatedNetwork.asParentFamilies.count / 2) unique as-parent families")
+        logInfo(.resolver, "✅ Resolved \(updatedNetwork.spouseAsChildFamilies.count / 2) unique spouse families")
         return updatedNetwork
     }
     
     private func captureSpouseFromAsParentFamily(
         childName: String,
+        childDisplayName: String,
         asParentFamily: Family,
         network: inout FamilyNetwork
     ) async {
         // Find spouse in the asParent family using the Family extension
-        guard let spouse = asParentFamily.findSpouse(for: childName) else { return }
+        // Try both displayName and simple name to find the spouse
+        var spouse: Person? = asParentFamily.findSpouse(for: childDisplayName)
+        if spouse == nil {
+            spouse = asParentFamily.findSpouse(for: childName)
+        }
+        
+        guard let spouse = spouse else { return }
         
         // Try to resolve spouse's asChild family
         // Method 1: asChild reference (preferred)
         if let asChildRef = spouse.asChild,
            let family = try? await resolveFamilyByReference(asChildRef) {
+            // PRIMARY: Use spouse's displayName
+            network.spouseAsChildFamilies[spouse.displayName] = family
+            // FALLBACK: Also store under simple name
             network.spouseAsChildFamilies[spouse.name] = family
             logInfo(.resolver, "✅ Resolved spouse family via reference: \(spouse.displayName)")
             return
@@ -212,6 +233,9 @@ class FamilyResolver {
         
         // Method 2: birth date search (fallback)
         if let family = try? await findFamilyByBirthDate(person: spouse) {
+            // PRIMARY: Use spouse's displayName
+            network.spouseAsChildFamilies[spouse.displayName] = family
+            // FALLBACK: Also store under simple name
             network.spouseAsChildFamilies[spouse.name] = family
             logInfo(.resolver, "✅ Resolved spouse family via birth date: \(spouse.displayName)")
         }

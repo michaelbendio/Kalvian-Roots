@@ -26,6 +26,9 @@ class FamilyNetworkWorkflow {
     private var familyNetwork: FamilyNetwork?
     private var activeCitations: [String: String] = [:]
     
+    // Track names to detect duplicates for disambiguation
+    private var nameTracker: Set<String> = []
+    
     // MARK: - Initialization
     
     init(nuclearFamily: Family,
@@ -110,8 +113,12 @@ class FamilyNetworkWorkflow {
     private func generateAndActivateCitations(for family: Family, type: CitationType) {
         logInfo(.citation, "📝 Generating citations for family: \(family.familyId) (type: \(type))")
         
-        // Clear any existing citations
+        // Clear any existing citations and name tracker
         activeCitations.removeAll()
+        nameTracker.removeAll()
+        
+        // Build name tracker to identify duplicates
+        buildNameTracker(for: family)
         
         if let network = familyNetwork {
             // Generate person-specific citations with network enhancement
@@ -124,23 +131,109 @@ class FamilyNetworkWorkflow {
         logInfo(.citation, "✅ Generated \(activeCitations.count) citations for \(family.familyId)")
     }
     
+    /**
+     * Build a set of all displayNames to identify duplicates
+     */
+    private func buildNameTracker(for family: Family) {
+        var allNames: [String] = []
+        
+        // Collect all displayNames
+        for parent in family.allParents {
+            allNames.append(parent.displayName)
+        }
+        for couple in family.couples {
+            for child in couple.children {
+                allNames.append(child.displayName)
+            }
+        }
+        
+        // Find duplicates
+        var seen: Set<String> = []
+        for name in allNames {
+            if seen.contains(name) {
+                nameTracker.insert(name)  // This name has duplicates
+            }
+            seen.insert(name)
+        }
+        
+        if !nameTracker.isEmpty {
+            logInfo(.citation, "⚠️ Found duplicate names requiring disambiguation: \(nameTracker)")
+        }
+    }
+    
+    /**
+     * Generate a unique citation key for a person
+     * Uses displayName as primary, with birth date fallback for duplicates
+     */
+    private func generateCitationKey(for person: Person) -> String {
+        let primaryKey = person.displayName
+        
+        // Check if this displayName needs disambiguation
+        if nameTracker.contains(primaryKey) {
+            // Create composite key with birth year
+            let birthYear = extractBirthYear(from: person.birthDate)
+            let uniqueKey = "\(primaryKey):\(birthYear)"
+            logDebug(.citation, "📝 Using disambiguated key: '\(uniqueKey)' for duplicate name '\(primaryKey)'")
+            return uniqueKey
+        }
+        
+        return primaryKey
+    }
+    
+    /**
+     * Extract birth year from various date formats
+     */
+    private func extractBirthYear(from dateString: String?) -> String {
+        guard let dateString = dateString else { return "unknown" }
+        
+        // Handle DD.MM.YYYY format
+        if dateString.contains(".") {
+            let components = dateString.components(separatedBy: ".")
+            if components.count >= 3 {
+                return components[2].trimmingCharacters(in: .whitespaces)
+            }
+        }
+        
+        // Handle plain year format
+        let trimmed = dateString.trimmingCharacters(in: .whitespaces)
+        if trimmed.count == 4, Int(trimmed) != nil {
+            return trimmed
+        }
+        
+        return "unknown"
+    }
+    
+    /**
+     * Store citation with all necessary keys for robust retrieval
+     */
+    private func storeCitation(_ citation: String, for person: Person) {
+        // Primary key using our unique key generation
+        let primaryKey = generateCitationKey(for: person)
+        activeCitations[primaryKey] = citation
+        
+        // Also store under displayName for normal cases
+        activeCitations[person.displayName] = citation
+        
+        // Backwards compatibility - store under simple name
+        activeCitations[person.name] = citation
+        
+        logDebug(.citation, "✅ Stored citation under keys: '\(primaryKey)', '\(person.displayName)', '\(person.name)'")
+    }
+    
     private func generateBasicPersonCitations(for family: Family) {
         logInfo(.citation, "📝 Generating basic person citations (no network)")
         
         let basicCitation = CitationGenerator.generateMainFamilyCitation(family: family)
         
         // Give everyone the same basic family citation as fallback
-        // Use displayName for storage key to avoid ambiguity
         for parent in family.allParents {
-            activeCitations[parent.displayName] = basicCitation
-            activeCitations[parent.name] = basicCitation  // Also store by name for compatibility
+            storeCitation(basicCitation, for: parent)
         }
         
         // Generate citations for all children across all couples
         for couple in family.couples {
             for child in couple.children {
-                activeCitations[child.displayName] = basicCitation
-                activeCitations[child.name] = basicCitation
+                storeCitation(basicCitation, for: child)
             }
         }
         
@@ -193,9 +286,8 @@ class FamilyNetworkWorkflow {
                     nameEquivalenceManager: nil  // Add if you have name equivalence manager
                 )
                 
-                // Store with displayName and name for compatibility
-                activeCitations[parent.displayName] = citation
-                activeCitations[parent.name] = citation
+                // Store with our unique key system
+                storeCitation(citation, for: parent)
                 
                 logInfo(.citation, "✅ Stored enhanced asChild citation for '\(parent.displayName)'")
             } else {
@@ -203,8 +295,7 @@ class FamilyNetworkWorkflow {
                 
                 // Fallback to main family citation
                 let citation = CitationGenerator.generateMainFamilyCitation(family: family)
-                activeCitations[parent.displayName] = citation
-                activeCitations[parent.name] = citation
+                storeCitation(citation, for: parent)
             }
         }
         
@@ -222,8 +313,7 @@ class FamilyNetworkWorkflow {
                         targetPerson: child  // ← THIS IS THE KEY FIX FOR THE ARROW
                     )
                     
-                    activeCitations[child.displayName] = citation
-                    activeCitations[child.name] = citation
+                    storeCitation(citation, for: child)
                     
                     logInfo(.citation, "✅ Generated asParent citation for child: \(child.displayName)")
                     
@@ -252,13 +342,14 @@ class FamilyNetworkWorkflow {
                                     nameEquivalenceManager: NameEquivalenceManager()
                                 )
                                 
-                                // Store under multiple keys for robust lookup
+                                // Store spouse citation
+                                storeCitation(citation, for: spouse)
+                                
+                                // Also store under the spouse name from nuclear family if available
                                 if let nuclearSpouseName = child.spouse {
                                     activeCitations[nuclearSpouseName] = citation
-                                    logInfo(.citation, "✅ Stored spouse citation under UI key: '\(nuclearSpouseName)'")
+                                    logInfo(.citation, "✅ Also stored spouse citation under nuclear family key: '\(nuclearSpouseName)'")
                                 }
-                                activeCitations[spouse.displayName] = citation
-                                activeCitations[spouse.name] = citation
                                 
                             } else {
                                 logInfo(.citation, "❌ NO spouse asChild family found for: \(spouse.name)")
@@ -286,11 +377,11 @@ class FamilyNetworkWorkflow {
                                             nameEquivalenceManager: NameEquivalenceManager()
                                         )
                                         
+                                        storeCitation(citation, for: spouse)
+                                        
                                         if let nuclearSpouseName = child.spouse {
                                             activeCitations[nuclearSpouseName] = citation
                                         }
-                                        activeCitations[spouse.displayName] = citation
-                                        activeCitations[spouse.name] = citation
                                         
                                         break
                                     }
@@ -309,8 +400,7 @@ class FamilyNetworkWorkflow {
                         family: family,
                         targetPerson: child  // ← ALSO PASS TARGET HERE FOR ARROW
                     )
-                    activeCitations[child.displayName] = citation
-                    activeCitations[child.name] = citation
+                    storeCitation(citation, for: child)
                 }
             }
         }
@@ -324,7 +414,10 @@ class FamilyNetworkWorkflow {
         var modifiedNetwork = network
         
         // Store under multiple keys for robust lookup
+        // Use the same unique key generation for consistency
+        let uniqueKey = generateCitationKey(for: parent)
         let storageKeys = [
+            uniqueKey,                    // Unique key with disambiguation if needed
             parent.displayName,           // "Erik Matinp."
             parent.name,                  // "Erik"
             parent.name.trimmingCharacters(in: .whitespaces)  // "Erik" (trimmed)
@@ -352,9 +445,12 @@ class FamilyNetworkWorkflow {
         var enhancedNetwork = network
         
         // Store the asParent family under the spouse's name so the enhancement logic can find it
+        // Use the same unique key generation for consistency
+        let uniqueKey = generateCitationKey(for: spouse)
         let storageKeys = [
-            spouse.displayName,  // "Antti Antinp."
-            spouse.name,         // "Antti"
+            uniqueKey,                   // Unique key with disambiguation if needed
+            spouse.displayName,          // "Antti Antinp."
+            spouse.name,                 // "Antti"
             spouse.name.trimmingCharacters(in: .whitespaces)  // "Antti" (trimmed)
         ]
         
@@ -369,4 +465,3 @@ class FamilyNetworkWorkflow {
         return enhancedNetwork
     }
 }
-

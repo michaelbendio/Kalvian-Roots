@@ -23,15 +23,18 @@ struct FamilyNetwork: Hashable, Sendable, Codable {
     /// The main nuclear family that was initially parsed
     let mainFamily: Family
     
-    /// Resolved families where mainFamily parents came from (parent.name -> their asChild family)
+    /// Resolved families where mainFamily parents came from (parent.displayName -> their asChild family)
     /// These are NON-RECURSIVE - we don't follow references within these families
+    /// Updated to use displayName as primary key to avoid name collisions
     var asChildFamilies: [String: Family] = [:]
     
-    /// Resolved families where mainFamily children are parents (child.name -> their asParent family)
+    /// Resolved families where mainFamily children are parents (child.displayName -> their asParent family)
+    /// Updated to use displayName as primary key to avoid name collisions
     var asParentFamilies: [String: Family] = [:]
     
-    /// Resolved families where spouses came from (spouse.name -> their asChild family)
+    /// Resolved families where spouses came from (spouse.displayName -> their asChild family)
     /// These are NON-RECURSIVE - we don't follow references within these families
+    /// Updated to use displayName as primary key to avoid name collisions
     var spouseAsChildFamilies: [String: Family] = [:]
     
     init(mainFamily: Family) {
@@ -49,75 +52,136 @@ struct FamilyNetwork: Hashable, Sendable, Codable {
     
     /// Get the asParent family for a specific child (where child became a parent)
     func getAsParentFamily(for person: Person) -> Family? {
-        // Try exact match first
-        if let family = asParentFamilies[person.name] {
+        // PRIMARY: Try displayName first (most specific)
+        if let family = asParentFamilies[person.displayName] {
+            logDebug(.citation, "✅ Found asParent family for '\(person.displayName)' using displayName")
             return family
         }
         
-        // Try trimmed version
+        // FALLBACK 1: Try simple name
+        if let family = asParentFamilies[person.name] {
+            logDebug(.citation, "✅ Found asParent family for '\(person.displayName)' using simple name")
+            return family
+        }
+        
+        // FALLBACK 2: Try trimmed version
         let trimmedName = person.name.trimmingCharacters(in: .whitespaces)
         if let family = asParentFamilies[trimmedName] {
+            logDebug(.citation, "✅ Found asParent family for '\(person.displayName)' using trimmed name")
             return family
         }
         
-        // Try case-insensitive match
+        // FALLBACK 3: Try case-insensitive match on displayName
         for (key, family) in asParentFamilies {
-            if key.lowercased() == person.name.lowercased() {
+            if key.lowercased() == person.displayName.lowercased() {
+                logDebug(.citation, "✅ Found asParent family for '\(person.displayName)' using case-insensitive displayName")
                 return family
             }
         }
         
+        // FALLBACK 4: Try case-insensitive match on simple name
+        for (key, family) in asParentFamilies {
+            if key.lowercased() == person.name.lowercased() {
+                logDebug(.citation, "✅ Found asParent family for '\(person.displayName)' using case-insensitive simple name")
+                return family
+            }
+        }
+        
+        logWarn(.citation, "⚠️ No asParent family found for '\(person.displayName)' in keys: \(Array(asParentFamilies.keys))")
         return nil
     }
     
     func getAsChildFamily(for person: Person) -> Family? {
-        // Try exact match first
-        if let family = asChildFamilies[person.name] {
+        // PRIMARY: Try displayName first (most specific)
+        if let family = asChildFamilies[person.displayName] {
+            logDebug(.citation, "✅ Found asChild family for '\(person.displayName)' using displayName")
             return family
         }
         
-        // Try trimmed version
+        // FALLBACK 1: Try simple name
+        if let family = asChildFamilies[person.name] {
+            logDebug(.citation, "✅ Found asChild family for '\(person.displayName)' using simple name")
+            return family
+        }
+        
+        // FALLBACK 2: Try trimmed version
         let trimmedName = person.name.trimmingCharacters(in: .whitespaces)
         if let family = asChildFamilies[trimmedName] {
+            logDebug(.citation, "✅ Found asChild family for '\(person.displayName)' using trimmed name")
             return family
         }
         
-        // Try case-insensitive match
+        // FALLBACK 3: Try case-insensitive match on displayName
+        for (key, family) in asChildFamilies {
+            if key.lowercased() == person.displayName.lowercased() {
+                logDebug(.citation, "✅ Found asChild family for '\(person.displayName)' using case-insensitive displayName")
+                return family
+            }
+        }
+        
+        // FALLBACK 4: Try case-insensitive match on simple name
         for (key, family) in asChildFamilies {
             if key.lowercased() == person.name.lowercased() {
+                logDebug(.citation, "✅ Found asChild family for '\(person.displayName)' using case-insensitive simple name")
                 return family
             }
         }
+        
         // Log failure for debugging
-        logWarn(.citation, "⚠️ No asChild family found for '\(person.name)' in keys: \(Array(asChildFamilies.keys))")
+        logWarn(.citation, "⚠️ No asChild family found for '\(person.displayName)' in keys: \(Array(asChildFamilies.keys))")
         return nil
     }
-        
+    
     /// Get the asChild family for a specific spouse (where spouse came from)
-    /// Uses the same robust lookup logic as getAsChildFamily
-    func getSpouseAsChildFamily(for spouseName: String) -> Family? {
-        // Try exact match first
-        if let family = spouseAsChildFamilies[spouseName] {
+    /// Updated to accept Person object for consistent displayName handling
+    func getSpouseAsChildFamily(for spouse: Person) -> Family? {
+        // PRIMARY: Try displayName first (most specific)
+        if let family = spouseAsChildFamilies[spouse.displayName] {
+            logDebug(.citation, "✅ Found spouse asChild family for '\(spouse.displayName)' using displayName")
             return family
         }
         
-        // Try trimmed version
-        let trimmedName = spouseName.trimmingCharacters(in: .whitespaces)
+        // FALLBACK 1: Try simple name
+        if let family = spouseAsChildFamilies[spouse.name] {
+            logDebug(.citation, "✅ Found spouse asChild family for '\(spouse.displayName)' using simple name")
+            return family
+        }
+        
+        // FALLBACK 2: Try trimmed version
+        let trimmedName = spouse.name.trimmingCharacters(in: .whitespaces)
         if let family = spouseAsChildFamilies[trimmedName] {
+            logDebug(.citation, "✅ Found spouse asChild family for '\(spouse.displayName)' using trimmed name")
             return family
         }
         
-        // Try case-insensitive match
+        // FALLBACK 3: Try case-insensitive match on displayName
         for (key, family) in spouseAsChildFamilies {
-            if key.lowercased() == spouseName.lowercased() {
+            if key.lowercased() == spouse.displayName.lowercased() {
+                logDebug(.citation, "✅ Found spouse asChild family for '\(spouse.displayName)' using case-insensitive displayName")
+                return family
+            }
+        }
+        
+        // FALLBACK 4: Try case-insensitive match on simple name
+        for (key, family) in spouseAsChildFamilies {
+            if key.lowercased() == spouse.name.lowercased() {
+                logDebug(.citation, "✅ Found spouse asChild family for '\(spouse.displayName)' using case-insensitive simple name")
                 return family
             }
         }
         
         // Log failure for debugging
-        logWarn(.citation, "⚠️ No spouse asChild family found for '\(spouseName)' in keys: \(Array(spouseAsChildFamilies.keys))")
+        logWarn(.citation, "⚠️ No spouse asChild family found for '\(spouse.displayName)' in keys: \(Array(spouseAsChildFamilies.keys))")
         return nil
     }
+    
+    /// Overloaded method for backwards compatibility with string parameter
+    func getSpouseAsChildFamily(for spouseName: String) -> Family? {
+        // Create a temporary Person object with the spouse name
+        let tempSpouse = Person(name: spouseName, noteMarkers: [])
+        return getSpouseAsChildFamily(for: tempSpouse)
+    }
+    
     /// Get all families in the network (for comprehensive citation generation)
     var allFamilies: [Family] {
         var families = [mainFamily]
