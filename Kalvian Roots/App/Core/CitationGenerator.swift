@@ -513,11 +513,19 @@ struct CitationGenerator {
         person: Person,
         network: FamilyNetwork
     ) -> String {
+        logInfo(.citation, "🔍 formatChildWithEnhancement called:")
+        logInfo(.citation, "  nuclearChild.name: '\(nuclearChild.name)'")
+        logInfo(.citation, "  nuclearChild.displayName: '\(nuclearChild.displayName)'")
+        logInfo(.citation, "  person.name: '\(person.name)'")
+        logInfo(.citation, "  person.displayName: '\(person.displayName)'")
+        logInfo(.citation, "  asParentFamilies keys: \(Array(network.asParentFamilies.keys))")
+        
         // Get the asParent family for additional information
         guard let asParentFamily = network.getAsParentFamily(for: person) else {
+            logWarn(.citation, "❌ No asParent family found - returning non-enhanced")
             return formatChild(nuclearChild)
         }
-        
+
         // Find the child as they appear in their asParent family
         let asParent = asParentFamily.allParents.first { parent in
             parent.name.lowercased() == nuclearChild.name.lowercased()
