@@ -80,10 +80,9 @@ class FamilyNetworkWorkflow {
     }
     
     /**
-     * Activate precomputed network and citations (e.g., when loading from cache)
+     * Activate cached results (used when loading from cache)
      */
     func activateCachedResults(network: FamilyNetwork, citations: [String: String]) {
-        logInfo(.citation, "📦 Activating cached results for: \(network.mainFamily.familyId)")
         self.familyNetwork = network
         self.activeCitations = citations
         logInfo(.citation, "✅ Activated cached network and \(citations.count) citations")
@@ -103,44 +102,68 @@ class FamilyNetworkWorkflow {
     private enum CitationType {
         case nuclear
         case asChild
-        case asParent
-        case enhanced
     }
     
     /**
-     * Generate and activate citations for the family
+     * Main citation generation workflow
      */
     private func generateAndActivateCitations(for family: Family, type: CitationType) {
-        logInfo(.citation, "📝 Generating citations for family: \(family.familyId) (type: \(type))")
-        
-        // Clear any existing citations and name tracker
-        activeCitations.removeAll()
-        nameTracker.removeAll()
-        
-        // Build name tracker to identify duplicates
-        buildNameTracker(for: family)
-        
-        if let network = familyNetwork {
-            // Generate person-specific citations with network enhancement
-            generatePersonSpecificCitations(for: family, network: network)
-        } else {
-            // Generate basic citations without network
-            generateBasicPersonCitations(for: family)
+        guard let network = familyNetwork else {
+            logWarn(.citation, "⚠️ No network available for enhanced citations")
+            return
         }
         
-        logInfo(.citation, "✅ Generated \(activeCitations.count) citations for \(family.familyId)")
+        logInfo(.citation, "***************************************************************")
+        logInfo(.citation, "🔍 DEBUG: FAMILY CONTENT ANALYSIS")
+        logInfo(.citation, "***************************************************************")
+        logInfo(.citation, "📋 Family: \(family.familyId)")
+        logInfo(.citation, "👥 Couples: \(family.couples.count)")
+        
+        for (index, couple) in family.couples.enumerated() {
+            logInfo(.citation, "--- Couple \(index + 1) ---")
+            logInfo(.citation, "👨 Husband: \(couple.husband.displayName)")
+            logInfo(.citation, "👩 Wife: \(couple.wife.displayName)")
+            logInfo(.citation, "💑 Marriage: \(couple.marriageDate ?? "none")")
+            logInfo(.citation, "👶 Children: \(couple.children.count)")
+            
+            for child in couple.children {
+                logInfo(.citation, "    - \(child.displayName): birthDate: \(child.birthDate ?? "none")")
+                logInfo(.citation, "      Spouse: \(child.spouse ?? "none")")
+                logInfo(.citation, "      AsParent: \(child.asParent ?? "none")")
+                logInfo(.citation, "      IsMarried: \(child.isMarried)")
+            }
+        }
+        
+        logInfo(.citation, "📊 Married children count: \(family.marriedChildren.count)")
+        for marriedChild in family.marriedChildren {
+            logInfo(.citation, "  - \(marriedChild.displayName) -> spouse: \(marriedChild.spouse ?? "none"), asParent: \(marriedChild.asParent ?? "none")")
+        }
+        
+        // Detect duplicate names before generating citations
+        detectDuplicateNames(in: family, network: network)
+        
+        logInfo(.citation, "🔑 AsParent families in network: \(Array(network.asParentFamilies.keys))")
+        logInfo(.citation, "👥 Generating person-specific citations")
+        
+        // Generate citations for all family members
+        generatePersonSpecificCitations(for: family, network: network)
     }
     
     /**
-     * Build a set of all displayNames to identify duplicates
+     * Detect duplicate names in the family for disambiguation
      */
-    private func buildNameTracker(for family: Family) {
+    private func detectDuplicateNames(in family: Family, network: FamilyNetwork) {
+        nameTracker.removeAll()
+        
+        // Collect all names
         var allNames: [String] = []
         
-        // Collect all displayNames
+        // Add parents
         for parent in family.allParents {
             allNames.append(parent.displayName)
         }
+        
+        // Add children
         for couple in family.couples {
             for child in couple.children {
                 allNames.append(child.displayName)
@@ -220,94 +243,33 @@ class FamilyNetworkWorkflow {
         logDebug(.citation, "✅ Stored citation under keys: '\(primaryKey)', '\(person.displayName)', '\(person.name)'")
     }
     
-    private func generateBasicPersonCitations(for family: Family) {
-        logInfo(.citation, "📝 Generating basic person citations (no network)")
-        
-        // Generate basic citation without network
-        let basicCitation = CitationGenerator.generateMainFamilyCitation(
-            family: family,
-            network: nil  // Explicitly pass nil when no network
-        )
-        
-        // Give everyone the same basic family citation as fallback
-        for parent in family.allParents {
-            storeCitation(basicCitation, for: parent)
-        }
-        
-        // Generate citations for all children across all couples
-        for couple in family.couples {
-            for child in couple.children {
-                // For children, generate with targetPerson even without network (for arrow)
-                let childCitation = CitationGenerator.generateMainFamilyCitation(
-                    family: family,
-                    targetPerson: child,
-                    network: nil
-                )
-                storeCitation(childCitation, for: child)
-            }
-        }
-        
-        logInfo(.citation, "✅ Generated \(activeCitations.count) basic person citations")
-    }
-    
+    /**
+     * Generate person-specific citations for all family members
+     */
     private func generatePersonSpecificCitations(for family: Family, network: FamilyNetwork) {
-        logInfo(.citation, "📋 Family: \(family.familyId)")
-        logInfo(.citation, "👥 Couples: \(family.couples.count)")
-        
-        // Debug logging for couples and children
-        for (coupleIndex, couple) in family.couples.enumerated() {
-            logInfo(.citation, "--- Couple \(coupleIndex + 1) ---")
-            logInfo(.citation, "👨 Husband: \(couple.husband.displayName)")
-            logInfo(.citation, "👩 Wife: \(couple.wife.displayName)")
-            logInfo(.citation, "👶 Children: \(couple.children.count)")
-            
-            for (childIndex, child) in couple.children.enumerated() {
-                logInfo(.citation, "  [\(childIndex + 1)] \(child.displayName)")
-                logInfo(.citation, "      Birth: \(child.birthDate ?? "none")")
-                logInfo(.citation, "      Spouse: \(child.spouse ?? "none")")
-                logInfo(.citation, "      AsParent: \(child.asParent ?? "none")")
-                logInfo(.citation, "      IsMarried: \(child.isMarried)")
-            }
-        }
-        
-        logInfo(.citation, "📊 Married children count: \(family.marriedChildren.count)")
-        for marriedChild in family.marriedChildren {
-            logInfo(.citation, "  - \(marriedChild.displayName) -> spouse: \(marriedChild.spouse ?? "none"), asParent: \(marriedChild.asParent ?? "none")")
-        }
-        
-        logInfo(.citation, "🔑 AsParent families in network: \(Array(network.asParentFamilies.keys))")
-        logInfo(.citation, "👥 Generating person-specific citations")
-        
         // SECTION 1: Generate enhanced asChild citations for parents
         for parent in family.allParents {
-            logInfo(.citation, "🔍 Processing parent '\(parent.displayName)' with asChild='\(parent.asChild ?? "nil")'")
+            logInfo(.citation, "🔍 Processing parent '\(parent.displayName)' with asChild='\(parent.asChild ?? "none")'")
             
             if let asChildFamily = network.getAsChildFamily(for: parent) {
                 logInfo(.citation, "✅ Found asChild family: \(asChildFamily.familyId)")
                 
-                // Create a modified network that includes parent's asParent family
+                // Create a modified network that includes parent's asParent info
                 let modifiedNetwork = createNetworkWithParentAsParent(for: parent, network: network)
                 
-                // Generate enhanced citation with parent as target (for arrow)
+                // Generate enhanced citation with arrow support for parent
                 let citation = CitationGenerator.generateAsChildCitation(
                     for: parent,
                     in: asChildFamily,
                     network: modifiedNetwork,
-                    nameEquivalenceManager: nil  // Add if you have name equivalence manager
+                    nameEquivalenceManager: NameEquivalenceManager()
                 )
-                
-                // Store with our unique key system
                 storeCitation(citation, for: parent)
                 
-                logInfo(.citation, "✅ Stored enhanced asChild citation for '\(parent.displayName)'")
             } else {
-                logWarn(.citation, "❌ NO asChild family found for '\(parent.displayName)'")
-                
-                // Fallback to main family citation - PASS NETWORK
-                let citation = CitationGenerator.generateMainFamilyCitation(
-                    family: family,
-                    network: network  // ADD THIS - even without asChild, network has other info
-                )
+                logWarn(.citation, "⚠️ No asChild family found for parent: \(parent.displayName)")
+                // Fallback: Use regular family citation for parents without asChild families
+                let citation = CitationGenerator.generateMainFamilyCitation(family: family)
                 storeCitation(citation, for: parent)
             }
         }
@@ -315,16 +277,18 @@ class FamilyNetworkWorkflow {
         // SECTION 2: Generate enhanced citations for children
         for couple in family.couples {
             for child in couple.children {
-                logInfo(.citation, "🔍 Processing child: \(child.displayName)")
+                logInfo(.citation, "🔍 Processing child '\(child.displayName)' with asParent='\(child.asParent ?? "none")'")
                 
-                if let asParentFamily = network.getAsParentFamily(for: child) {
+                // FIXED: Only process children with explicit asParent references
+                if child.asParent != nil, let asParentFamily = network.getAsParentFamily(for: child) {
                     logInfo(.citation, "✅ Found asParent family: \(asParentFamily.familyId)")
                     
-                    // FIX: Pass child as targetPerson AND network so enhancement works
+                    // Generate enhanced citation with arrow support
+                    // Use generateMainFamilyCitation with targetPerson for enhancement
                     let citation = CitationGenerator.generateMainFamilyCitation(
                         family: family,
                         targetPerson: child,
-                        network: network  // ADD THIS - THIS IS THE KEY FIX FOR ENHANCEMENT!
+                        network: network
                     )
                     
                     storeCitation(citation, for: child)
@@ -407,13 +371,13 @@ class FamilyNetworkWorkflow {
                     }
                     
                 } else {
-                    logWarn(.citation, "⚠️ No asParent family found for child: \(child.name)")
+                    logWarn(.citation, "⚠️ No asParent family found or no asParent reference for child: \(child.name)")
                     
                     // Fallback: Use main family citation with child as target for arrow
                     let citation = CitationGenerator.generateMainFamilyCitation(
                         family: family,
-                        targetPerson: child,  // ← ALSO PASS TARGET HERE FOR ARROW
-                        network: network  // ADD THIS - even without asParent, network might have other info
+                        targetPerson: child,  // Pass target for arrow
+                        network: network
                     )
                     storeCitation(citation, for: child)
                 }
