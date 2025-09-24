@@ -452,6 +452,11 @@ class JuuretApp {
             person.name,
             "\(person.name) \(person.patronymic ?? "")"
         ]
+        
+        logInfo(.citation, "🔍 Looking for citation in workflow citations...")
+        logInfo(.citation, "Available keys: \(citations.keys)")
+        logInfo(.citation, "Looking for: \(keyVariations)")
+        
         if let foundKey = keyVariations.first(where: { citations[$0] != nil }),
            let citation = citations[foundKey] {
             logInfo(.citation, "✅ Using enhanced citation from workflow for: \(person.displayName)")

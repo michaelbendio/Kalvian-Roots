@@ -20,8 +20,13 @@ struct CitationGenerator {
     /**
      * Generate main family citation with proper formatting
      * Used for: nuclear families and as_parent families (children with their spouses)
+     * Enhanced with network information when available for target person
      */
-    static func generateMainFamilyCitation(family: Family, targetPerson: Person? = nil) -> String {
+    static func generateMainFamilyCitation(
+        family: Family,
+        targetPerson: Person? = nil,
+        network: FamilyNetwork? = nil
+    ) -> String {
         var citation = "Information on \(family.pageReferenceString) includes:\n"
         
         // Primary couple with compact date format
@@ -46,7 +51,13 @@ struct CitationGenerator {
                         isTarget = false
                     }
                     let prefix = isTarget ? "→ " : ""
-                    citation += "\(prefix)\(formatChild(child))"
+                    
+                    // For the target person, try to enhance with asParent information
+                    if isTarget, let network = network {
+                        citation += "\(prefix)\(formatChildWithEnhancement(child, person: targetPerson!, network: network))"
+                    } else {
+                        citation += "\(prefix)\(formatChild(child))"
+                    }
                 }
             }
         }
@@ -88,7 +99,13 @@ struct CitationGenerator {
                             isTarget = false
                         }
                         let prefix = isTarget ? "→ " : ""
-                        citation += "\(prefix)\(formatChild(child))"
+                        
+                        // For the target person, try to enhance with asParent information
+                        if isTarget, let network = network {
+                            citation += "\(prefix)\(formatChildWithEnhancement(child, person: targetPerson!, network: network))"
+                        } else {
+                            citation += "\(prefix)\(formatChild(child))"
+                        }
                     }
                 }
             }
@@ -110,6 +127,70 @@ struct CitationGenerator {
                 citation += "Note(s):\n"
             }
             citation += "Children died as infants: \(totalChildrenDied)\n"
+        }
+        
+        // Additional Information section for enhanced children
+        if let targetPerson = targetPerson, let network = network {
+            if let asParentFamily = network.getAsParentFamily(for: targetPerson) {
+                var additionalInfo: [String] = []
+                
+                // Find the target child in the nuclear family
+                var targetChild: Person? = nil
+                for couple in family.couples {
+                    if let found = couple.children.first(where: {
+                        isTargetPerson($0, targetPerson, nameEquivalenceManager: nil)
+                    }) {
+                        targetChild = found
+                        break
+                    }
+                }
+                
+                if let targetChild = targetChild {
+                    // Check for death date enhancement
+                    if let personAsParent = asParentFamily.allParents.first(where: {
+                        $0.name.lowercased() == targetPerson.name.lowercased()
+                    }) {
+                        if personAsParent.deathDate != nil && targetChild.deathDate == nil {
+                            additionalInfo.append("death date")
+                        }
+                    }
+                    
+                    // Check for marriage date enhancement
+                    if let couple = asParentFamily.couples.first(where: { couple in
+                        couple.husband.name.lowercased() == targetPerson.name.lowercased() ||
+                        couple.wife.name.lowercased() == targetPerson.name.lowercased()
+                    }) {
+                        let coupleMarriage = couple.fullMarriageDate ?? couple.marriageDate
+                        let childMarriage = targetChild.marriageDate
+                        
+                        if let coupleMarriage = coupleMarriage,
+                           let childMarriage = childMarriage,
+                           coupleMarriage.count >= 8 && childMarriage.count <= 4 {
+                            if !additionalInfo.contains("marriage date") {
+                                additionalInfo.append("marriage date")
+                            }
+                        } else if let coupleMarriage = coupleMarriage,
+                                  childMarriage == nil,
+                                  coupleMarriage.count >= 8 {
+                            if !additionalInfo.contains("marriage date") {
+                                additionalInfo.append("marriage date")
+                            }
+                        }
+                    }
+                    
+                    // Add Additional Information section if we have enhancements
+                    if !additionalInfo.isEmpty {
+                        citation += "Additional Information:\n"
+                        if additionalInfo.contains("marriage date") && additionalInfo.contains("death date") {
+                            citation += "\(targetPerson.name)'s marriage date and death date found on \(asParentFamily.pageReferenceString)\n"
+                        } else if additionalInfo.contains("marriage date") {
+                            citation += "\(targetPerson.name)'s marriage date found on \(asParentFamily.pageReferenceString)\n"
+                        } else if additionalInfo.contains("death date") {
+                            citation += "\(targetPerson.name)'s death date found on \(asParentFamily.pageReferenceString)\n"
+                        }
+                    }
+                }
+            }
         }
         
         return citation

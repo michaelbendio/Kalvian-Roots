@@ -223,7 +223,11 @@ class FamilyNetworkWorkflow {
     private func generateBasicPersonCitations(for family: Family) {
         logInfo(.citation, "📝 Generating basic person citations (no network)")
         
-        let basicCitation = CitationGenerator.generateMainFamilyCitation(family: family)
+        // Generate basic citation without network
+        let basicCitation = CitationGenerator.generateMainFamilyCitation(
+            family: family,
+            network: nil  // Explicitly pass nil when no network
+        )
         
         // Give everyone the same basic family citation as fallback
         for parent in family.allParents {
@@ -233,7 +237,13 @@ class FamilyNetworkWorkflow {
         // Generate citations for all children across all couples
         for couple in family.couples {
             for child in couple.children {
-                storeCitation(basicCitation, for: child)
+                // For children, generate with targetPerson even without network (for arrow)
+                let childCitation = CitationGenerator.generateMainFamilyCitation(
+                    family: family,
+                    targetPerson: child,
+                    network: nil
+                )
+                storeCitation(childCitation, for: child)
             }
         }
         
@@ -293,8 +303,11 @@ class FamilyNetworkWorkflow {
             } else {
                 logWarn(.citation, "❌ NO asChild family found for '\(parent.displayName)'")
                 
-                // Fallback to main family citation
-                let citation = CitationGenerator.generateMainFamilyCitation(family: family)
+                // Fallback to main family citation - PASS NETWORK
+                let citation = CitationGenerator.generateMainFamilyCitation(
+                    family: family,
+                    network: network  // ADD THIS - even without asChild, network has other info
+                )
                 storeCitation(citation, for: parent)
             }
         }
@@ -307,10 +320,11 @@ class FamilyNetworkWorkflow {
                 if let asParentFamily = network.getAsParentFamily(for: child) {
                     logInfo(.citation, "✅ Found asParent family: \(asParentFamily.familyId)")
                     
-                    // FIX: Pass child as targetPerson so arrow appears for them
+                    // FIX: Pass child as targetPerson AND network so enhancement works
                     let citation = CitationGenerator.generateMainFamilyCitation(
                         family: family,
-                        targetPerson: child  // ← THIS IS THE KEY FIX FOR THE ARROW
+                        targetPerson: child,
+                        network: network  // ADD THIS - THIS IS THE KEY FIX FOR ENHANCEMENT!
                     )
                     
                     storeCitation(citation, for: child)
@@ -398,7 +412,8 @@ class FamilyNetworkWorkflow {
                     // Fallback: Use main family citation with child as target for arrow
                     let citation = CitationGenerator.generateMainFamilyCitation(
                         family: family,
-                        targetPerson: child  // ← ALSO PASS TARGET HERE FOR ARROW
+                        targetPerson: child,  // ← ALSO PASS TARGET HERE FOR ARROW
+                        network: network  // ADD THIS - even without asParent, network might have other info
                     )
                     storeCitation(citation, for: child)
                 }
