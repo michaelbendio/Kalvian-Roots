@@ -66,48 +66,37 @@ final class RootsFileManager {
         logInfo(.file, "🔍 Searching for \(defaultFileName) in iCloud (Documents/)")
 
         guard let docsURL = documentsURL() else {
-            await setError("""
-                Cannot access iCloud Drive.
-
-                Make sure:
-                • You're signed into iCloud
-                • iCloud Drive is enabled
-                • The app has iCloud Documents entitlement
-                """)
-            logError(.file, "❌ iCloud container not accessible")
+            setError("Cannot access iCloud Drive.")
             return
         }
-
-        // Ensure Documents/ exists
-        do {
-            try Foundation.FileManager.default.createDirectory(
-                at: docsURL, withIntermediateDirectories: true, attributes: nil
-            )
-        } catch {
-            logError(.file, "❌ Failed to create Documents/: \(error)")
+        
+        let canonicalURL = docsURL.appendingPathComponent(defaultFileName)
+        
+        // Check if file exists at the canonical location
+        if Foundation.FileManager.default.fileExists(atPath: canonicalURL.path) {
+            // Load it
+            do {
+                let content = try String(contentsOf: canonicalURL, encoding: .utf8)
+                await MainActor.run {
+                    self.currentFileContent = content
+                    self.currentFileURL = canonicalURL
+                    self.isFileLoaded = true
+                }
+                logInfo(.file, "✅ Loaded canonical file from iCloud")
+                return
+            } catch {
+                setError("Failed to read canonical file: \(error.localizedDescription)")
+                return
+            }
         }
-
-        // First, try the straightforward path
-        if let canonical = getCanonicalFileURL(), Foundation.FileManager.default.fileExists(atPath: canonical.path) {
-            await loadFileFromURL(canonical)
-            return
-        }
-
-        // If not present locally, search iCloud via NSMetadataQuery (handles not-yet-downloaded items)
-        logDebug(.file, "Local file not present; starting NSMetadataQuery in Documents/")
-        if let foundURL = await findFileInICloudDocuments(named: defaultFileName) {
-            await loadFileFromURL(foundURL)
-            return
-        }
-
-        // Still not found
-        await setError("""
-            File not found in iCloud Drive.
-
-            Place '\(defaultFileName)' in:
-            iCloud Drive → Kalvian Roots → Documents
+        
+        // File not at canonical location - this is an error condition
+        setError("""
+            JuuretKälviällä.roots not found at canonical location.
+            Expected: ~/Library/Mobile Documents/iCloud~com~michael-bendio~Kalvian-Roots/Documents/
+            
+            Please move the file to the correct location.
             """)
-        logError(.file, "❌ \(defaultFileName) not found under Documents/ in iCloud container")
     }
 
     // MARK: - Loading
