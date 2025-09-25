@@ -124,3 +124,14 @@ class FamilyNetworkWorkflow {
         logDebug(.resolver, "  - Spouse keys: \(Array(network.spouseAsChildFamilies.keys).sorted())")
     }
 }
+
+extension FamilyNetworkWorkflow {
+    /**
+     * Get active citations - returns empty since we generate on-demand now
+     * Kept for backwards compatibility with FamilyNetworkCache
+     */
+    func getActiveCitations() -> [String: String] {
+        // Citations are now generated on-demand, not stored
+        return [:]
+    }
+}
