@@ -2,8 +2,7 @@
 //  FamilyResolver.swift
 //  Kalvian Roots
 //
-//  Family cross-reference resolution for genealogical connections
-//  FIXED: Enhanced storage keys to prevent name collisions
+//  Builds family networks through cross-reference (asChild, asParent) resolution
 //
 
 import Foundation
@@ -110,16 +109,14 @@ class FamilyResolver {
                 logInfo(.resolver, "🔍 Attempting to resolve as_child: \(parent.displayName) from \(asChildRef)")
                 
                 if let resolvedFamily = try await findAsChildFamily(for: parent) {
-                    // Generate unique storage keys for this parent
-                    let storageKeys = generateStorageKeys(for: parent, familyId: family.familyId)
-                    
-                    for key in storageKeys {
-                        updatedNetwork.asChildFamilies[key] = resolvedFamily
-                        logDebug(.citation, "  📝 Stored asChild family under key: '\(key)'")
+                    // SIMPLIFIED: Just store under displayName and simple name
+                    updatedNetwork.asChildFamilies[parent.displayName] = resolvedFamily
+                    if parent.displayName != parent.name {
+                        updatedNetwork.asChildFamilies[parent.name] = resolvedFamily
                     }
                     
                     debugLogResolutionResult(for: parent.displayName, reference: asChildRef, success: true, type: "as_child")
-                    logInfo(.resolver, "  ✅ Resolved: \(asChildRef) - stored with keys: \(storageKeys)")
+                    logInfo(.resolver, "  ✅ Resolved: \(asChildRef) - stored as '\(parent.displayName)'")
                 } else {
                     debugLogResolutionResult(for: parent.displayName, reference: asChildRef, success: false, type: "as_child")
                     logWarn(.resolver, "  ⚠️ Not found: \(asChildRef)")
@@ -128,7 +125,6 @@ class FamilyResolver {
         }
         
         logInfo(.resolver, "  Resolved \(Set(updatedNetwork.asChildFamilies.values).count) unique as-child families")
-        logInfo(.resolver, "  Storage keys: \(Array(updatedNetwork.asChildFamilies.keys))")
         return updatedNetwork
     }
     
@@ -144,23 +140,20 @@ class FamilyResolver {
                 logInfo(.resolver, "🔍 Attempting to resolve as_parent: \(child.displayName) in \(asParentRef)")
                 
                 if let resolvedFamily = try await findAsParentFamily(for: child) {
-                    // Generate unique storage keys for this child
-                    let storageKeys = generateStorageKeys(for: child, familyId: family.familyId)
-                    
-                    for key in storageKeys {
-                        updatedNetwork.asParentFamilies[key] = resolvedFamily
-                        logDebug(.citation, "  📝 Stored asParent family under key: '\(key)'")
+                    // SIMPLIFIED: Just store under displayName and simple name
+                    updatedNetwork.asParentFamilies[child.displayName] = resolvedFamily
+                    if child.displayName != child.name {
+                        updatedNetwork.asParentFamilies[child.name] = resolvedFamily
                     }
                     
-                    logInfo(.resolver, "✅ Resolved: \(asParentRef) - stored with keys: \(storageKeys)")
+                    logInfo(.resolver, "✅ Resolved: \(asParentRef) - stored as '\(child.displayName)'")
                     
                     // Immediately capture spouse information from this asParent family
                     await captureSpouseFromAsParentFamily(
                         childName: child.name,
                         childDisplayName: child.displayName,
                         asParentFamily: resolvedFamily,
-                        network: &updatedNetwork,
-                        nuclearFamilyId: family.familyId
+                        network: &updatedNetwork
                     )
                 }
             }
@@ -171,71 +164,11 @@ class FamilyResolver {
         return updatedNetwork
     }
     
-    /**
-     * Generate multiple storage keys for robust lookup with disambiguation
-     * FIXED: Uses birth dates and family IDs to prevent name collisions
-     */
-    private func generateStorageKeys(for person: Person, familyId: String) -> [String] {
-        var keys: [String] = []
-        
-        // 1. Most specific: Name with birth year (if available)
-        if let birthDate = person.birthDate {
-            let birthYear = extractBirthYear(from: birthDate)
-            if birthYear != "unknown" {
-                let keyWithYear = "\(person.displayName):\(birthYear)"
-                keys.append(keyWithYear)
-                logDebug(.resolver, "📌 Generated birth-year key: '\(keyWithYear)'")
-            }
-        }
-        
-        // 2. Family-specific key (helps when same name appears in multiple families)
-        let familyKey = "\(person.displayName)@\(familyId)"
-        keys.append(familyKey)
-        logDebug(.resolver, "📌 Generated family key: '\(familyKey)'")
-        
-        // 3. Standard displayName (backwards compatibility)
-        keys.append(person.displayName)
-        
-        // 4. Simple name (last resort, only if name is substantial)
-        if person.name.count > 3 && person.name != person.displayName {
-            keys.append(person.name)
-            keys.append(person.name.trimmingCharacters(in: .whitespaces))
-        }
-        
-        // Remove duplicates while preserving order
-        let uniqueKeys = Array(NSOrderedSet(array: keys)) as! [String]
-        
-        logDebug(.resolver, "🔑 Generated \(uniqueKeys.count) storage keys for '\(person.displayName)': \(uniqueKeys)")
-        return uniqueKeys
-    }
-    
-    /**
-     * Extract birth year from various date formats
-     */
-    private func extractBirthYear(from dateString: String) -> String {
-        // Handle DD.MM.YYYY format
-        if dateString.contains(".") {
-            let components = dateString.components(separatedBy: ".")
-            if components.count >= 3 {
-                return components[2].trimmingCharacters(in: .whitespaces)
-            }
-        }
-        
-        // Handle plain year format
-        let trimmed = dateString.trimmingCharacters(in: .whitespaces)
-        if trimmed.count == 4, Int(trimmed) != nil {
-            return trimmed
-        }
-        
-        return "unknown"
-    }
-    
     private func captureSpouseFromAsParentFamily(
         childName: String,
         childDisplayName: String,
         asParentFamily: Family,
-        network: inout FamilyNetwork,
-        nuclearFamilyId: String
+        network: inout FamilyNetwork
     ) async {
         // Find spouse in the asParent family using the Family extension
         // Try both displayName and simple name to find the spouse
@@ -250,12 +183,10 @@ class FamilyResolver {
         // Method 1: asChild reference (preferred)
         if let asChildRef = spouse.asChild,
            let family = try? await resolveFamilyByReference(asChildRef) {
-            // Generate unique storage keys for spouse
-            let storageKeys = generateStorageKeys(for: spouse, familyId: nuclearFamilyId)
-            
-            for key in storageKeys {
-                network.spouseAsChildFamilies[key] = family
-                logDebug(.resolver, "  📝 Stored spouse family under key: '\(key)'")
+            // SIMPLIFIED: Just store under displayName and simple name
+            network.spouseAsChildFamilies[spouse.displayName] = family
+            if spouse.displayName != spouse.name {
+                network.spouseAsChildFamilies[spouse.name] = family
             }
             
             logInfo(.resolver, "✅ Resolved spouse family via reference: \(spouse.displayName)")
@@ -264,12 +195,10 @@ class FamilyResolver {
         
         // Method 2: birth date search (fallback)
         if let family = try? await findFamilyByBirthDate(person: spouse) {
-            // Generate unique storage keys for spouse
-            let storageKeys = generateStorageKeys(for: spouse, familyId: nuclearFamilyId)
-            
-            for key in storageKeys {
-                network.spouseAsChildFamilies[key] = family
-                logDebug(.resolver, "  📝 Stored spouse family under key: '\(key)'")
+            // SIMPLIFIED: Just store under displayName and simple name
+            network.spouseAsChildFamilies[spouse.displayName] = family
+            if spouse.displayName != spouse.name {
+                network.spouseAsChildFamilies[spouse.name] = family
             }
             
             logInfo(.resolver, "✅ Resolved spouse family via birth date: \(spouse.displayName)")
