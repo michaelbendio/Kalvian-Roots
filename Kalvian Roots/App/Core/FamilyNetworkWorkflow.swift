@@ -135,3 +135,10 @@ extension FamilyNetworkWorkflow {
         return [:]
     }
 }
+
+extension Family {
+    /// All children from all couples combined
+    var allChildren: [Person] {
+        return couples.flatMap { $0.children }
+    }
+}

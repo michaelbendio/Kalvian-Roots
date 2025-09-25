@@ -1,8 +1,8 @@
 //
-//  JuuretApp.swift - Fixed for iOS/iPadOS
+//  JuuretApp.swift
 //  Kalvian Roots
 //
-//  Main app coordinator with proper platform detection
+//  Main app coordinator with on-demand citation generation
 //
 
 import Foundation
@@ -19,6 +19,7 @@ import UIKit
  *
  * Central hub that owns all services and manages app state.
  * Uses @Observable for SwiftUI integration.
+ * NEW ARCHITECTURE: Citations are generated on-demand, no storage
  */
 @Observable
 @MainActor
@@ -98,11 +99,12 @@ class JuuretApp {
         logInfo(.ai, "✅ Enhanced AI parsing service initialized with MLX support")
         #else
         // iOS/iPadOS/Intel Mac - use cloud services only
-        let platform = Self.detectPlatform()  // Changed to Self.detectPlatform()
+        let platform = Self.detectPlatform()
         logInfo(.ai, "🧠 Initializing AI services for \(platform)")
         localAIParsingService = AIParsingService()
         logInfo(.ai, "✅ AI parsing service initialized (cloud services only)")
         #endif
+        
         logDebug(.ai, "Available services: \(localAIParsingService.availableServiceNames.joined(separator: ", "))")
         
         let localFamilyResolver = FamilyResolver(
@@ -135,7 +137,6 @@ class JuuretApp {
                 // FileManager encountered an error - propagate it to app level
                 self.errorMessage = fileError
                 logError(.app, "❌ Cannot load canonical file: \(fileError)")
-                // DO NOT suggest using file menu - this is a failure condition
             } else if let fileContent = self.fileManager.currentFileContent {
                 // File loaded successfully
                 logInfo(.file, "✅ Auto-loaded canonical file")
@@ -168,58 +169,35 @@ class JuuretApp {
                 return identifier + String(UnicodeScalar(UInt8(value)))
             }
             
-            // iPad Pro M-series and iPad Air M-series identifiers
-            if identifier.contains("iPad") &&
-               (identifier.contains("13,") || // iPad Pro M1/M2
-                identifier.contains("14,") || // iPad Air M1/M2
-                identifier.contains("15,") || // iPad Pro M4
-                identifier.contains("16,")) { // Future M-series
-                return "iPad with Apple Silicon"
-            } else {
-                return "iPad"
-            }
+            // iPad models with M-series chips
+            let mSeriesIPads = ["iPad14,", "iPad15,", "iPad16,"]
+            let hasAppleSilicon = mSeriesIPads.contains { identifier.hasPrefix($0) }
+            
+            return hasAppleSilicon ? "iPadOS (Apple Silicon)" : "iPadOS"
         } else {
-            return "iPhone"
+            return "iOS"
         }
         #elseif os(macOS)
-        return "macOS"
+        #if arch(x86_64)
+        return "macOS (Intel)"
+        #else
+        return "macOS (Apple Silicon)"
+        #endif
         #else
         return "Unknown Platform"
         #endif
     }
-
-    // MARK: - AI Service Management
+    
+    // MARK: - Family Extraction
     
     /**
-     * Switch to a different AI service
+     * Extract a family by ID with caching support
      */
-    func switchAIService(to serviceName: String) async throws {  // Add 'throws'
-        logInfo(.app, "🔄 Switching AI service to: \(serviceName)")
-        try aiParsingService.switchService(to: serviceName)
-        
-        // Clear any error state since service changed
-        if errorMessage?.contains("not configured") == true {
-            errorMessage = nil
-        }
-    }
-    
-    /// Configure the current AI service with an API key
-    func configureAIService(apiKey: String) async throws {
-        logInfo(.ai, "🔧 Configuring \(currentServiceName) with API key")
-        
-        // Change this line:
-        try aiParsingService.configureService(apiKey: apiKey)  // Not configureCurrentService
-        
-        errorMessage = nil
-        logDebug(.app, "Cleared error state after successful AI configuration")
-        
-        logInfo(.ai, "✅ Successfully configured \(currentServiceName)")
-    }
-    
     func extractFamily(familyId: String) async {
-        // Check if AI service is configured
-        guard aiParsingService.isConfigured else {
-            errorMessage = "\(aiParsingService.currentServiceName) not configured. Please add API key in settings."
+        guard isReady else {
+            errorMessage = aiParsingService.isConfigured ?
+                "No file loaded. Please open JuuretKälviällä.roots first." :
+                "AI service not configured. Please add API key in settings."
             return
         }
         
@@ -236,7 +214,7 @@ class JuuretApp {
         if let cached = familyNetworkCache.getCachedNetwork(familyId: familyId) {
             logInfo(.app, "⚡ Using cached network for: \(familyId)")
             
-            // Use cached network and citations
+            // Use cached network - NO CITATIONS in new architecture
             await MainActor.run {
                 currentFamily = cached.network.mainFamily
                 enhancedFamily = cached.network.mainFamily
@@ -248,8 +226,8 @@ class JuuretApp {
                     resolveCrossReferences: false  // Already resolved in cache
                 )
                 
-                // Activate cached network and citations so UI lookups work
-                familyNetworkWorkflow?.activateCachedResults(network: cached.network, citations: cached.citations)
+                // Just activate the network - no citations
+                familyNetworkWorkflow?.activateCachedNetwork(cached.network)
                 
                 isProcessing = false
                 extractionProgress = .idle
@@ -293,10 +271,10 @@ class JuuretApp {
             
             extractionProgress = .familyExtracted
             
-            // Step 3: Keep the parsed family in a temporary variable
+            // Step 3: Keep the parsed family
             let parsedFamily = family
 
-            // Step 4: Process cross-references for complete citations
+            // Step 4: Process cross-references
             logInfo(.app, "🔄 Processing cross-references for enhanced citations...")
             
             // Create workflow for this family
@@ -306,7 +284,7 @@ class JuuretApp {
                 resolveCrossReferences: true
             )
 
-            // Step 5: Process the workflow to build the network and generate citations
+            // Step 5: Process the workflow to build the network
             do {
                 try await familyNetworkWorkflow?.process()
                 
@@ -317,12 +295,11 @@ class JuuretApp {
                     // Store enhanced version
                     enhancedFamily = network.mainFamily
                     
-                    // CACHE THE RESULT
+                    // CACHE THE RESULT (no citations in new architecture)
                     let extractionTime = Date().timeIntervalSince(startTime)
-                    let citations = familyNetworkWorkflow?.getActiveCitations() ?? [:]
                     familyNetworkCache.cacheNetwork(
                         network,
-                        citations: citations,
+                        citations: [:],  // Empty - citations are generated on-demand
                         extractionTime: extractionTime
                     )
                     
@@ -330,38 +307,28 @@ class JuuretApp {
                 }
                 
             } catch {
-                // Provide detailed context about cross-reference failure without stopping the flow
+                // Provide detailed context about cross-reference failure
                 let parentRefs = parsedFamily.allParents.compactMap { $0.asChild }
-                let childRefs  = parsedFamily.couples.flatMap { $0.children.compactMap { $0.asParent } }
-                let filePreview = String((fileManager.currentFileContent ?? "").prefix(300))
-
+                let childRefs = parsedFamily.couples.flatMap { $0.children.compactMap { $0.asParent } }
+                
                 reportError(
                     "Cross-reference processing failed.",
                     context: [
                         "familyId": familyId,
                         "error": String(describing: error),
                         "parentAsChildRefs": parentRefs,
-                        "childAsParentRefs": childRefs,
-                        "fileContentPreview": filePreview
+                        "childAsParentRefs": childRefs
                     ]
                 )
-                logInfo(.app, "📝 Proceeding with available data; enhanced citations may be unavailable.")
+                logInfo(.app, "📝 Proceeding with available data")
             }
             
-            // Step 6: Update the UI with the fully processed family after citations are ready
-            await MainActor.run {
-                currentFamily = parsedFamily
-                isProcessing = false
-                extractionProgress = .idle
-                
-                // Reset next family state
-                familyNetworkCache.nextFamilyReady = false
-                familyNetworkCache.nextFamilyId = nil
-            }
+            // Step 6: Set the current family (even if cross-refs failed)
+            currentFamily = parsedFamily
+            extractionProgress = .idle
+            isProcessing = false
             
-            logInfo(.app, "✨ Family extraction complete with citations for: \(familyId)")
-            
-            // START BACKGROUND PROCESSING for next family
+            // Start background processing for next family
             familyNetworkCache.startBackgroundProcessing(
                 currentFamilyId: familyId,
                 fileManager: fileManager,
@@ -370,371 +337,280 @@ class JuuretApp {
             )
             
         } catch {
-            // Handle extraction/parsing errors
-            logError(.app, "❌ Failed to extract family: \(error)")
             errorMessage = error.localizedDescription
-            isProcessing = false
             extractionProgress = .idle
-            currentFamily = nil
-            enhancedFamily = nil
+            isProcessing = false
+            logError(.app, "❌ Extraction failed: \(error)")
         }
-    }
-
-    func loadNextFamily() async {
-        guard let nextId = familyNetworkCache.nextFamilyId else {
-            logWarn(.app, "⚠️ No next family ready")
-            return
-        }
-        
-        logInfo(.app, "⏭️ Loading next family: \(nextId)")
-        await extractFamily(familyId: nextId)
-    }
-    
-    func clearFamilyCache() {
-        logInfo(.app, "🗑️ Clearing family cache")
-        familyNetworkCache.clearCache()
-    }
-
-    // MARK: - Citation Generation (ensure it uses workflow citations)
-
-    func generateCitation(for person: Person, in family: Family) -> String {
-        logInfo(.citation, "📝 Generating citation for: \(person.displayName)")
-        
-        // Manual override wins
-        if let manualCitation = getManualCitation(for: person, in: family) {
-            logDebug(.citation, "Using manual citation")
-            return manualCitation
-        }
-        
-        let parent = isParent(person, in: family)
-        let child  = isChild(person, in: family)
-        
-        // Require workflow for enhanced citations, but do NOT crash; report and continue
-        guard let workflow = familyNetworkWorkflow else {
-            reportError(
-                "No active workflow when generating citation.",
-                context: [
-                    "familyId": family.familyId,
-                    "person": person.displayName
-                ]
-            )
-            if parent {
-                return CitationGenerator.generateMainFamilyCitation(family: family)
-            } else if child {
-                return CitationGenerator.generateMainFamilyCitation(family: family, targetPerson: person)
-            } else {
-                return "Citation unavailable for \(person.displayName)."
-            }
-        }
-        
-        let citations = workflow.getActiveCitations()
-        if citations.isEmpty {
-            reportError(
-                "Citations are empty when generating citation.",
-                context: [
-                    "familyId": family.familyId,
-                    "person": person.displayName,
-                    "availableKeys": previewKeys(citations)
-                ]
-            )
-            if parent {
-                return CitationGenerator.generateMainFamilyCitation(family: family)
-            } else if child {
-                return CitationGenerator.generateMainFamilyCitation(family: family, targetPerson: person)
-            } else {
-                return "Citation unavailable for \(person.displayName)."
-            }
-        }
-        
-        // Try different key variations to find the citation
-        let keyVariations: [String] = [
-            person.displayName,
-            person.name,
-            "\(person.name) \(person.patronymic ?? "")"
-        ]
-        
-        logInfo(.citation, "🔍 Looking for citation in workflow citations...")
-        logInfo(.citation, "Available keys: \(citations.keys)")
-        logInfo(.citation, "Looking for: \(keyVariations)")
-        
-        if let foundKey = keyVariations.first(where: { citations[$0] != nil }),
-           let citation = citations[foundKey] {
-            logInfo(.citation, "✅ Using enhanced citation from workflow for: \(person.displayName)")
-            return citation
-        }
-        
-        // No entry found for person: decide based on role and reference validity
-        if parent {
-            let asChildId = person.asChild?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let hasValidAsChild = (asChildId != nil) && FamilyIDs.isValid(familyId: asChildId!)
-            if hasValidAsChild {
-                reportError(
-                    "Parent has valid asChild reference but no enhanced citation was found.",
-                    context: [
-                        "familyId": family.familyId,
-                        "person": person.displayName,
-                        "asChildId": asChildId ?? "",
-                        "availableKeys": previewKeys(citations)
-                    ]
-                )
-            }
-            return CitationGenerator.generateMainFamilyCitation(family: family)
-        }
-        
-        if child {
-            let asParentId = person.asParent?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let hasValidAsParent = (asParentId != nil) && FamilyIDs.isValid(familyId: asParentId!)
-            if hasValidAsParent {
-                reportError(
-                    "Child has valid asParent reference but no enhanced citation was found.",
-                    context: [
-                        "familyId": family.familyId,
-                        "person": person.displayName,
-                        "asParentId": asParentId ?? "",
-                        "availableKeys": previewKeys(citations)
-                    ]
-                )
-            }
-            return CitationGenerator.generateMainFamilyCitation(family: family, targetPerson: person)
-        }
-        
-        // Unknown role in this family context
-        return "Citation unavailable for \(person.displayName)."
     }
     
     /**
-     * Generate citation for a spouse (children's spouses)
-     * This looks up the spouse citation from the active workflow citations
+     * Load the next family from cache
      */
-    func generateSpouseCitation(for spouseName: String, in family: Family) -> String {
-        logInfo(.citation, "📝 Generating spouse citation for: \(spouseName)")
+    func loadNextFamily() async {
+        guard let nextId = familyNetworkCache.nextFamilyId else { return }
+        await extractFamily(familyId: nextId)
+    }
+    
+    // MARK: - Citation Generation (On-Demand from Network)
+    
+    /**
+     * Generate citation for any person in the current family
+     * NEW ARCHITECTURE: No citation dictionary - generate fresh from network
+     */
+    func generateCitation(for person: Person, in family: Family) -> String {
+        logInfo(.citation, "📝 Generating on-demand citation for: \(person.displayName)")
+        logInfo(.citation, "  Birth date: \(person.birthDate ?? "unknown")")
+        logInfo(.citation, "  In family: \(family.familyId)")
         
-        // Prefer workflow, but do not crash; report and continue
-        guard let workflow = familyNetworkWorkflow else {
-            reportError(
-                "No active workflow when generating spouse citation.",
-                context: [
-                    "spouseName": spouseName,
-                    "familyId": family.familyId
-                ]
-            )
-            return CitationGenerator.generateMainFamilyCitation(family: family)
+        // Get the network if available
+        let network = familyNetworkWorkflow?.getFamilyNetwork()
+        
+        // Determine the person's role in this family
+        let isParent = family.allParents.contains { parent in
+            arePersonsEqual(parent, person)
         }
         
-        let citations = workflow.getActiveCitations()
-        if citations.isEmpty {
-            reportError(
-                "Citations are empty when generating spouse citation.",
-                context: [
-                    "spouseName": spouseName,
-                    "familyId": family.familyId
-                ]
-            )
-            return CitationGenerator.generateMainFamilyCitation(family: family)
+        let isChild = family.allChildren.contains { child in
+            arePersonsEqual(child, person)
         }
         
-        // Try direct key variations first
-        let keyVariations = [
-            spouseName,
-            spouseName.trimmingCharacters(in: .whitespaces),
-            spouseName.replacingOccurrences(of: "  ", with: " ")
-        ]
-        if let foundKey = keyVariations.first(where: { citations[$0] != nil }),
-           let citation = citations[foundKey] {
-            logInfo(.citation, "✅ Using spouse citation from workflow for: \(spouseName)")
-            return citation
-        }
+        logInfo(.citation, "  Role: \(isParent ? "parent" : isChild ? "child" : "unknown")")
         
-        // Attempt to resolve spouse Person from the visible family
-        let possibleSpouses: [Person] =
-            family.couples.flatMap { [$0.husband, $0.wife] } +
-            family.couples.flatMap { $0.children }
-        if let spousePerson = possibleSpouses.first(where: { $0.displayName == spouseName || $0.name == spouseName }) {
-            let asChildId = spousePerson.asChild?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let hasValidAsChild = (asChildId != nil) && FamilyIDs.isValid(familyId: asChildId!)
-            if hasValidAsChild {
-                reportError(
-                    "Spouse has valid asChild reference but no spouse citation was found.",
-                    context: [
-                        "spouse": spousePerson.displayName,
-                        "asChildId": asChildId ?? "",
-                        "familyId": family.familyId,
-                        "availableKeys": previewKeys(citations)
-                    ]
+        // Generate appropriate citation based on role
+        if isParent {
+            // Check if this parent has an asChild family in the network
+            if let network = network,
+               let asChildFamily = network.getAsChildFamily(for: person) {
+                logInfo(.citation, "✅ Found parent's asChild family: \(asChildFamily.familyId)")
+                
+                // Create enhanced network with parent's nuclear family as their asParent
+                var enhancedNetwork = network
+                enhancedNetwork.asParentFamilies[person.displayName] = family
+                enhancedNetwork.asParentFamilies[person.name] = family
+                
+                // Generate enhanced asChild citation
+                return CitationGenerator.generateAsChildCitation(
+                    for: person,
+                    in: asChildFamily,
+                    network: enhancedNetwork,
+                    nameEquivalenceManager: nameEquivalenceManager
+                )
+            } else {
+                logInfo(.citation, "ℹ️ No asChild family for parent - using main family citation")
+                return CitationGenerator.generateMainFamilyCitation(
+                    family: family,
+                    targetPerson: nil,
+                    network: network
                 )
             }
-            return CitationGenerator.generateMainFamilyCitation(family: family)
         }
         
-        // Could not resolve spouse Person – treat as no reference and continue with main family citation
-        return CitationGenerator.generateMainFamilyCitation(family: family)
+        if isChild {
+            // For children, always use main family citation with them as target
+            logInfo(.citation, "  Generating child citation with potential enhancement")
+            return CitationGenerator.generateMainFamilyCitation(
+                family: family,
+                targetPerson: person,
+                network: network
+            )
+        }
+        
+        // Unknown role - shouldn't happen but handle gracefully
+        logWarn(.citation, "⚠️ Person role unclear in family context")
+        return CitationGenerator.generateMainFamilyCitation(
+            family: family,
+            targetPerson: nil,
+            network: network
+        )
     }
-
-        // MARK: - Hiski Query Generation
+    
+    /**
+     * Helper method for backwards compatibility with string-based spouse citations
+     * Used by JuuretView which only has the spouse name string
+     */
+    func generateSpouseCitation(for spouseName: String, in family: Family) -> String {
+        logInfo(.citation, "📝 Generating spouse citation from name: \(spouseName)")
+        
+        // Find which child has this spouse
+        var childPerson: Person? = nil
+        
+        // Search all children in the family for one with this spouse
+        for child in family.allChildren {
+            if child.spouse == spouseName {
+                childPerson = child
+                break
+            }
+        }
+        
+        guard let child = childPerson else {
+            logWarn(.citation, "Could not find child with spouse '\(spouseName)' in family")
+            return "Citation unavailable for \(spouseName)"
+        }
+        
+        // Get the network
+        guard let network = familyNetworkWorkflow?.getFamilyNetwork() else {
+            logWarn(.citation, "⚠️ No network available for spouse citation")
+            return "Citation unavailable for \(spouseName)"
+        }
+        
+        // Get the child's asParent family (where the spouse appears)
+        guard let asParentFamily = network.getAsParentFamily(for: child) else {
+            logWarn(.citation, "⚠️ No asParent family found for child")
+            return "Citation unavailable for \(spouseName)"
+        }
+        
+        // Try to find the spouse Person object in the asParent family
+        var spousePerson: Person? = nil
+        for couple in asParentFamily.couples {
+            if couple.husband.name == spouseName || couple.husband.displayName == spouseName {
+                spousePerson = couple.husband
+                break
+            }
+            if couple.wife.name == spouseName || couple.wife.displayName == spouseName {
+                spousePerson = couple.wife
+                break
+            }
+        }
+        
+        // If we couldn't find the spouse Person, create a minimal one
+        if spousePerson == nil {
+            spousePerson = Person(name: spouseName, noteMarkers: [])
+        }
+        
+        // Now check if the spouse has their own asChild family
+        if let spouseAsChildFamily = network.getSpouseAsChildFamily(for: spousePerson!) {
+            logInfo(.citation, "✅ Found spouse's asChild family: \(spouseAsChildFamily.familyId)")
+            
+            // Create enhanced network with spouse's marriage family as their asParent
+            var enhancedNetwork = network
+            enhancedNetwork.asParentFamilies[spousePerson!.displayName] = asParentFamily
+            enhancedNetwork.asParentFamilies[spousePerson!.name] = asParentFamily
+            
+            // Generate enhanced asChild citation for spouse
+            return CitationGenerator.generateAsChildCitation(
+                for: spousePerson!,
+                in: spouseAsChildFamily,
+                network: enhancedNetwork,
+                nameEquivalenceManager: nameEquivalenceManager
+            )
+        } else {
+            logInfo(.citation, "ℹ️ No asChild family for spouse - using marriage family citation")
+            return CitationGenerator.generateMainFamilyCitation(
+                family: asParentFamily,
+                targetPerson: spousePerson!,
+                network: network
+            )
+        }
+    }
+    
+    // MARK: - Helper Methods
+    
+    /**
+     * Check if two Person objects represent the same person
+     * Uses birth date as primary identifier, falls back to name
+     */
+    private func arePersonsEqual(_ person1: Person, _ person2: Person) -> Bool {
+        // First try birth date (most reliable)
+        if let birth1 = person1.birthDate?.trimmingCharacters(in: .whitespaces),
+           let birth2 = person2.birthDate?.trimmingCharacters(in: .whitespaces),
+           !birth1.isEmpty && !birth2.isEmpty {
+            return birth1 == birth2
+        }
+        
+        // Then try display name
+        if person1.displayName == person2.displayName {
+            return true
+        }
+        
+        // Finally try simple name
+        return person1.name.lowercased() == person2.name.lowercased()
+    }
+    
+    // MARK: - AI Service Management (Stubbed)
+    
+    /**
+     * Switch to a different AI service
+     * TODO: Implement when needed
+     */
+    func switchAIService(to serviceName: String) async throws {
+        logInfo(.app, "Switching AI service to: \(serviceName)")
+        // Stub - implement when needed
+    }
+    
+    /**
+     * Configure the current AI service with API key
+     */
+    func configureAIService(apiKey: String) async throws {
+        logInfo(.app, "Configuring AI service with new API key")
+        try aiParsingService.configureService(apiKey: apiKey)
+    }
+    
+    /**
+     * Regenerate a cached family (force re-extraction)
+     * Clears cache entry and re-extracts the family
+     */
+    func regenerateCachedFamily(familyId: String) async {
+        logInfo(.app, "🔄 Regenerating cached family: \(familyId)")
+        
+        // Clear from cache
+        familyNetworkCache.clearCache()
+        
+        // Re-extract the family
+        await extractFamily(familyId: familyId)
+    }
+    
+    // MARK: - Manual Citation Support
+    
+    private func loadManualCitations() {
+        if let data = UserDefaults.standard.data(forKey: "ManualCitations"),
+           let citations = try? JSONDecoder().decode([String: String].self, from: data) {
+            manualCitations = citations
+            logInfo(.app, "📚 Loaded \(citations.count) manual citations")
+        }
+    }
+    
+    func saveManualCitation(for person: Person, in family: Family, citation: String) {
+        let key = "\(family.familyId)|\(person.displayName)"
+        manualCitations[key] = citation
+        
+        if let data = try? JSONEncoder().encode(manualCitations) {
+            UserDefaults.standard.set(data, forKey: "ManualCitations")
+            logInfo(.app, "💾 Saved manual citation for \(person.displayName)")
+        }
+    }
+    
+    func getManualCitation(for person: Person, in family: Family) -> String? {
+        let key = "\(family.familyId)|\(person.displayName)"
+        return manualCitations[key]
+    }
+    
+    // MARK: - Hiski Query Generation
     
     func generateHiskiURL(for date: String, eventType: EventType) -> String {
         let cleanDate = date.replacingOccurrences(of: ".", with: "")
             .replacingOccurrences(of: " ", with: "")
         return "https://hiski.genealogia.fi/hiski?en+query_\(eventType.rawValue)_\(cleanDate)"
     }
-
+    
     func generateHiskiQuery(for person: Person, eventType: EventType) -> String? {
-        logInfo(.citation, "🔗 Generating Hiski URL for person: \(person.displayName), event: \(eventType)")
         guard let query = HiskiQuery.from(person: person, eventType: eventType) else {
-            logWarn(.citation, "No suitable data to build Hiski query for \(eventType)")
             return nil
         }
-        let url = query.queryURL
-        logDebug(.citation, "Generated Hiski URL: \(url)")
-        return url
+        return query.queryURL
     }
     
-    // MARK: - Debug and Testing
+    // MARK: - Error Reporting
     
-    /**
-     * Load sample family for testing
-     */
-    @MainActor
-    func loadSampleFamily() {
-        logInfo(.app, "📋 Loading sample family")
-        
-        currentFamily = Family.sampleFamily()
-        extractionProgress = .familyExtracted
-        errorMessage = nil
-        
-        logDebug(.app, "Sample family loaded successfully")
-    }
-    
-    /// Load complex sample family for cross-reference testing
-    @MainActor
-    func loadComplexSampleFamily() {
-        logInfo(.app, "📋 Loading complex sample family")
-        currentFamily = Family.complexSampleFamily()
-        extractionProgress = .familyExtracted
-        errorMessage = nil
-        logDebug(.app, "Complex sample family loaded successfully")
-    }
-
-    /**
-     * Resolve cross-references for the current family
-     */
-    @MainActor
-    func resolveCrossReferences() async throws {
-        guard let currentFamily = self.currentFamily else { return }
-        let network = try await familyResolver.resolveCrossReferences(for: currentFamily)
-        self.enhancedFamily = network.mainFamily
-    }
-
-    // MARK: - Manual Citation Persistence
-    
-    private func manualCitationKey(familyId: String, personId: String) -> String {
-        "\(familyId)|\(personId)"
-    }
-
-    private func loadManualCitations() {
-        if let data = UserDefaults.standard.data(forKey: "ManualCitations"),
-           let dict = try? JSONDecoder().decode([String: String].self, from: data) {
-            manualCitations = dict
-            logDebug(.citation, "Loaded \(manualCitations.count) manual citations")
-        }
-    }
-
-    private func saveManualCitations() {
-        if let data = try? JSONEncoder().encode(manualCitations) {
-            UserDefaults.standard.set(data, forKey: "ManualCitations")
-        }
-    }
-
-    func setManualCitation(_ citation: String, for person: Person, in family: Family) {
-        let key = manualCitationKey(familyId: family.familyId, personId: person.id)
-        manualCitations[key] = citation
-        saveManualCitations()
-        logInfo(.citation, "Saved manual citation for \(person.displayName) in \(family.familyId)")
-    }
-
-    func getManualCitation(for person: Person, in family: Family) -> String? {
-        manualCitations[manualCitationKey(familyId: family.familyId, personId: person.id)]
-    }
-
-    // MARK: - Error Reporting & Utilities
-
-    private func reportError(
-        _ message: String,
-        context: [String: Any] = [:],
-        file: StaticString = #fileID,
-        function: StaticString = #function,
-        line: UInt = #line
-    ) {
-        var payload: [String: Any] = [
-            "message": message,
-            "location": "\(file):\(line) in \(function)",
-            "timestamp": ISO8601DateFormatter().string(from: Date())
-        ]
-        if !context.isEmpty {
-            payload["context"] = context
-        }
-
-        let details = (try? prettyJSONString(from: payload)) ?? String(describing: payload)
-        logError(.app, details)
-        self.errorMessage = details
-        copyToClipboard(details)
-    }
-
-    private func prettyJSONString(from dict: [String: Any]) throws -> String {
-        let data = try JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys])
-        return String(data: data, encoding: .utf8) ?? String(describing: dict)
-    }
-
-    private func copyToClipboard(_ text: String) {
-        #if os(macOS)
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(text, forType: .string)
-        #elseif os(iOS)
-        UIPasteboard.general.string = text
-        #endif
-    }
-
-    private func previewKeys<V>(_ dict: [String: V], limit: Int = 10) -> [String] {
-        return Array(dict.keys)
-            .map { String(describing: $0) }
-            .sorted()
-            .prefix(limit)
-            .map { $0 }
-    }
-
-    private func isParent(_ person: Person, in family: Family) -> Bool {
-        family.allParents.contains { $0.id == person.id }
-    }
-
-    private func isChild(_ person: Person, in family: Family) -> Bool {
-        family.couples.flatMap { $0.children }.contains { $0.id == person.id }
-    }
-}
-
-// MARK: - Extraction Progress
-
-enum ExtractionProgress: CustomStringConvertible {
-    case idle
-    case extractingText
-    case parsingWithAI
-    case familyExtracted
-    
-    var description: String {
-        switch self {
-        case .idle:
-            return "Ready"
-        case .extractingText:
-            return "Extracting family text..."
-        case .parsingWithAI:
-            return "Parsing with AI..."
-        case .familyExtracted:
-            return "Family extracted"
+    private func reportError(_ message: String, context: [String: Any] = [:]) {
+        logError(.app, message)
+        for (key, value) in context {
+            logDebug(.app, "  \(key): \(value)")
         }
     }
 }
 
-// MARK: - Extraction Errors
+// MARK: - Enums
 
 enum ExtractionError: LocalizedError {
     case familyNotFound(String)
@@ -742,53 +618,28 @@ enum ExtractionError: LocalizedError {
     
     var errorDescription: String? {
         switch self {
-        case .familyNotFound(let familyId):
-            return "Family '\(familyId)' not found in file"
+        case .familyNotFound(let id):
+            return "Family \(id) not found in file"
         case .parsingFailed(let reason):
             return "Failed to parse family: \(reason)"
         }
     }
 }
 
-// Force AI API key sync on launch
-extension JuuretApp {
-    func syncAPIKeys() {
-        let store = NSUbiquitousKeyValueStore.default
-        store.synchronize()
-        logInfo(.app, "🔄 Syncing API keys from iCloud")
-        
-        // Force a check after a short delay to ensure sync completes
-        Task {
-            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-            store.synchronize()
-            
-            // Re-check configuration
-            if aiParsingService.isConfigured {
-                await MainActor.run {
-                    logInfo(.app, "✅ AI service configured via iCloud sync")
-                }
-            }
+enum ExtractionProgress {
+    case idle
+    case extractingText
+    case parsingWithAI
+    case resolvingCrossReferences
+    case familyExtracted
+    
+    var description: String {
+        switch self {
+        case .idle: return "Ready"
+        case .extractingText: return "Extracting family text..."
+        case .parsingWithAI: return "Parsing with AI..."
+        case .resolvingCrossReferences: return "Resolving cross-references..."
+        case .familyExtracted: return "Family extracted"
         }
-    }
-}
-
-// MARK: - Cache Management
-
-extension JuuretApp {
-    /// Delete a family from cache and immediately re-extract it
-    /// Useful when citation generation code has changed
-    func regenerateCachedFamily(familyId: String) async {
-        logInfo(.app, "♻️ Regenerating family: \(familyId)")
-        
-        // Delete from cache
-        familyNetworkCache.deleteCachedFamily(familyId: familyId)
-        
-        // Small delay to ensure UI updates
-        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-        
-        // Re-extract with updated citation logic
-        await extractFamily(familyId: familyId)
-        
-        logInfo(.app, "✅ Regenerated family with updated citations: \(familyId)")
     }
 }

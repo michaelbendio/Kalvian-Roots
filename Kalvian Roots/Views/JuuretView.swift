@@ -414,7 +414,7 @@ struct JuuretView: View {
                 },
                 onSpouseClick: { spouseName in
                     Task {
-                        let citation = await juuretApp.generateSpouseCitation(for: spouseName, childName: child.name, in: family)
+                        let citation = await juuretApp.generateSpouseCitation(for: spouseName, in: family)
                         citationText = citation
                         showingCitation = true
                     }
@@ -469,7 +469,7 @@ struct JuuretView: View {
                     },
                     onSpouseClick: { spouseName in
                         Task {
-                            let citation = await juuretApp.generateSpouseCitation(for: spouseName, childName: child.name, in: family)
+                            let citation = await juuretApp.generateSpouseCitation(for: spouseName, in: family)
                             citationText = citation
                             showingCitation = true
                         }
@@ -521,7 +521,7 @@ struct JuuretView: View {
                 },
                 onSpouseClick: { spouseName in
                     Task {
-                        let citation = await juuretApp.generateSpouseCitation(for: spouseName, childName: child.name, in: family)
+                        let citation = await juuretApp.generateSpouseCitation(for: spouseName, in: family)
                         citationText = citation
                         showingCitation = true
                     }
