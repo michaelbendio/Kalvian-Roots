@@ -42,7 +42,7 @@ final class RootsFileManager {
 
     // MARK: - Canonical iCloud Locations
 
-    /// The app's iCloud container root. (This *is* the “Kalvian Roots” folder in iCloud Drive.)
+    /// The app's iCloud container root. (This *is* the "Kalvian Roots" folder in iCloud Drive.)
     private func containerURL() -> URL? {
         Foundation.FileManager.default.url(forUbiquityContainerIdentifier: nil)
     }
@@ -57,6 +57,34 @@ final class RootsFileManager {
     func getCanonicalFileURL() -> URL? {
         guard let docs = documentsURL() else { return nil }
         return docs.appendingPathComponent(defaultFileName, isDirectory: false)
+    }
+
+    // MARK: - Content Validation
+
+    /// Validate that the file content has the required canonical marker
+    private func validateCanonicalMarker(in content: String) -> Bool {
+        let lines = content.components(separatedBy: .newlines)
+        guard lines.count >= 3 else {
+            logError(.file, "❌ File too short - must have at least 3 lines")
+            return false
+        }
+        
+        // First line must be exactly "canonical"
+        let firstLine = lines[0].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard firstLine == "canonical" else {
+            logError(.file, "❌ First line must be 'canonical', found: '\(firstLine)'")
+            return false
+        }
+        
+        // Second line must be blank
+        let secondLine = lines[1].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard secondLine.isEmpty else {
+            logError(.file, "❌ Second line must be blank, found: '\(secondLine)'")
+            return false
+        }
+        
+        logInfo(.file, "✅ Canonical marker validated")
+        return true
     }
 
     // MARK: - Auto-load
@@ -77,6 +105,21 @@ final class RootsFileManager {
             // Load it
             do {
                 let content = try String(contentsOf: canonicalURL, encoding: .utf8)
+                
+                // Validate canonical marker
+                guard validateCanonicalMarker(in: content) else {
+                    setError("""
+                        FATAL: JuuretKälviällä.roots is missing the canonical marker.
+                        
+                        The first line of the file must be exactly "canonical"
+                        The second line must be blank.
+                        The third line begins the actual content.
+                        
+                        Please add these lines to your file.
+                        """)
+                    return
+                }
+                
                 await MainActor.run {
                     self.currentFileContent = content
                     self.currentFileURL = canonicalURL
@@ -92,8 +135,10 @@ final class RootsFileManager {
         
         // File not at canonical location - this is an error condition
         setError("""
-            JuuretKälviällä.roots not found at canonical location.
-            Expected: ~/Library/Mobile Documents/iCloud~com~michael-bendio~Kalvian-Roots/Documents/
+            FATAL: JuuretKälviällä.roots not found at canonical location.
+            
+            Expected location:
+            ~/Library/Mobile Documents/iCloud~com~michael-bendio~Kalvian-Roots/Documents/JuuretKälviällä.roots
             
             Please move the file to the correct location.
             """)
@@ -103,36 +148,90 @@ final class RootsFileManager {
 
     #if os(macOS)
     func openFile() async throws -> String {
-        // Optional: allow a manual pick on macOS, but still warn if it isn't canonical.
+        // STRICT: Only allow opening from the canonical location
+        guard let canonicalURL = getCanonicalFileURL() else {
+            throw RootsFileManagerError.loadFailed("Cannot determine canonical location")
+        }
+        
+        guard Foundation.FileManager.default.fileExists(atPath: canonicalURL.path) else {
+            throw RootsFileManagerError.fileNotFound("""
+                FATAL: JuuretKälviällä.roots not at canonical location.
+                
+                Expected: \(canonicalURL.path)
+                
+                Please move the file to the correct location.
+                """)
+        }
+        
         return try await MainActor.run {
-            let panel = NSOpenPanel()
-            panel.title = "Open Juuret Kälviällä File"
-            panel.allowedContentTypes = []
-            panel.allowsOtherFileTypes = true
-            panel.allowsMultipleSelection = false
-            panel.canChooseDirectories = false
-            panel.canChooseFiles = true
-            panel.message = "Select your Juuret Kälviällä file (.roots) from iCloud Drive"
-            panel.prompt = "Open File"
-            let response = panel.runModal()
-            guard response == .OK, let url = panel.url else {
-                throw RootsFileManagerError.userCancelled
+            let content = try String(contentsOf: canonicalURL, encoding: .utf8)
+            
+            // Validate canonical marker
+            guard validateCanonicalMarker(in: content) else {
+                throw RootsFileManagerError.loadFailed("""
+                    FATAL: Missing canonical marker.
+                    
+                    First line must be "canonical"
+                    Second line must be blank
+                    Third line starts content
+                    """)
             }
-            if let canonical = getCanonicalFileURL(), url.standardizedFileURL != canonical.standardizedFileURL {
-                logWarn(.file, "⚠️ Selected file is not in canonical iCloud location")
-            }
-            return try processSelectedFile(url)
+            
+            self.currentFileContent = content
+            self.currentFileURL = canonicalURL
+            self.isFileLoaded = true
+            self.errorMessage = nil
+            
+            addToRecentFiles(canonicalURL)
+            logInfo(.file, "✅ Loaded canonical file")
+            return content
         }
     }
     #else
     func openFile() async throws -> String {
-        logWarn(.file, "⚠️ Use UIDocumentPicker and call processSelectedFileFromPicker(_:) on iOS")
-        throw RootsFileManagerError.loadFailed("Use the document picker UI on iOS/iPadOS")
+        // iOS must use the canonical location
+        guard let canonicalURL = getCanonicalFileURL() else {
+            throw RootsFileManagerError.loadFailed("Cannot determine canonical location")
+        }
+        
+        guard Foundation.FileManager.default.fileExists(atPath: canonicalURL.path) else {
+            throw RootsFileManagerError.fileNotFound("""
+                FATAL: JuuretKälviällä.roots not at canonical location.
+                Please place it in the Kalvian Roots folder in iCloud Drive.
+                """)
+        }
+        
+        return try await processSelectedFileFromPicker(canonicalURL)
     }
 
     func processSelectedFileFromPicker(_ url: URL) async throws -> String {
+        // Verify this is the canonical location
+        guard let canonicalURL = getCanonicalFileURL() else {
+            throw RootsFileManagerError.loadFailed("Cannot determine canonical location")
+        }
+        
+        guard url.standardizedFileURL == canonicalURL.standardizedFileURL else {
+            throw RootsFileManagerError.loadFailed("""
+                FATAL: Selected file is not at canonical location.
+                
+                Expected: \(canonicalURL.path)
+                Selected: \(url.path)
+                
+                Please use the file from the Kalvian Roots folder in iCloud Drive.
+                """)
+        }
+        
         do {
             let content = try String(contentsOf: url, encoding: .utf8)
+            
+            // Validate canonical marker
+            guard validateCanonicalMarker(in: content) else {
+                throw RootsFileManagerError.loadFailed("""
+                    FATAL: Missing canonical marker.
+                    The first line must be "canonical"
+                    """)
+            }
+            
             await MainActor.run {
                 self.currentFileURL = url
                 self.currentFileContent = content
@@ -148,106 +247,6 @@ final class RootsFileManager {
     }
     #endif
 
-    // macOS loader with security-scoped access if necessary (usually not needed for our container)
-    #if os(macOS)
-    private func processSelectedFile(_ url: URL) throws -> String {
-        guard Foundation.FileManager.default.fileExists(atPath: url.path) else {
-            throw RootsFileManagerError.fileNotFound(url.path)
-        }
-        let accessing = url.startAccessingSecurityScopedResource()
-        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-        let content = try String(contentsOf: url, encoding: .utf8)
-        currentFileURL = url
-        currentFileContent = content
-        isFileLoaded = true
-        errorMessage = nil
-        addToRecentFiles(url)
-        return content
-    }
-    #endif
-
-    private func loadFileFromURL(_ url: URL) async {
-        do {
-            // If the file is in iCloud but not downloaded, request it.
-            var isDownloaded = true
-            do {
-                let values = try url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
-                if let status = values.ubiquitousItemDownloadingStatus {
-                    isDownloaded = (status == URLUbiquitousItemDownloadingStatus.current || status == URLUbiquitousItemDownloadingStatus.downloaded)
-                }
-            } catch { /* ignore */ }
-
-            if !isDownloaded {
-                logInfo(.file, "📥 Requesting iCloud download...")
-                try Foundation.FileManager.default.startDownloadingUbiquitousItem(at: url)
-            }
-
-            // Read
-            let content = try String(contentsOf: url, encoding: .utf8)
-            await MainActor.run {
-                self.currentFileURL = url
-                self.currentFileContent = content
-                self.isFileLoaded = true
-                self.errorMessage = nil
-            }
-            addToRecentFiles(url)
-            logInfo(.file, "🎉 Loaded canonical file from iCloud: \(url.lastPathComponent)")
-        } catch {
-            await setError("Failed to load file: \(error.localizedDescription)")
-            logError(.file, "❌ \(error)")
-        }
-    }
-
-    // MARK: - NSMetadataQuery search (handles not-downloaded files + Unicode name issues)
-
-    private func findFileInICloudDocuments(named rawName: String) async -> URL? {
-        guard let docsURL = documentsURL() else { return nil }
-
-        let nameCandidates: [String] = [
-            rawName,
-            rawName.precomposedStringWithCanonicalMapping,
-            rawName.decomposedStringWithCanonicalMapping
-        ].uniqued()
-
-        return await withCheckedContinuation { continuation in
-            let query = NSMetadataQuery()
-            query.searchScopes = [NSMetadataQueryUbiquitousDocumentsScope]
-            // Limit to our Documents/ path
-            query.predicate = NSPredicate(format: "%K BEGINSWITH %@",
-                                          NSMetadataItemPathKey, docsURL.path)
-
-            var found: URL?
-
-            // Use a token variable declared before assignment to avoid capture-before-declare
-            var token: NSObjectProtocol?
-            token = NotificationCenter.default.addObserver(
-                forName: NSNotification.Name.NSMetadataQueryDidFinishGathering,
-                object: query,
-                queue: .main
-            ) { _ in
-                query.disableUpdates()
-                for item in query.results.compactMap({ $0 as? NSMetadataItem }) {
-                    guard let url = item.value(forAttribute: NSMetadataItemURLKey) as? URL else { continue }
-                    let last = url.lastPathComponent
-                    let lastNorms = [
-                        last,
-                        last.precomposedStringWithCanonicalMapping,
-                        last.decomposedStringWithCanonicalMapping
-                    ]
-                    if nameCandidates.contains(where: { candidate in lastNorms.contains(candidate) }) {
-                        found = url
-                        break
-                    }
-                }
-                query.stop()
-                if let t = token { NotificationCenter.default.removeObserver(t) }
-                continuation.resume(returning: found)
-            }
-
-            query.start()
-        }
-    }
-
     // MARK: - Family text helpers
 
     func extractFamilyText(familyId: String) -> String? {
@@ -260,8 +259,11 @@ final class RootsFileManager {
         var out: [String] = []
         var capturing = false
         let target = familyId.uppercased()
+        
+        // Skip the first two lines (canonical marker and blank line)
+        let contentLines = Array(lines.dropFirst(2))
 
-        for line in lines {
+        for line in contentLines {
             let t = line.trimmingCharacters(in: .whitespaces)
             
             if !capturing {
@@ -291,14 +293,18 @@ final class RootsFileManager {
         
         return out.isEmpty ? nil : out.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
+    
     func findNextFamilyId(after currentFamilyId: String) -> String? {
         guard let content = currentFileContent else { return nil }
         let lines = content.components(separatedBy: .newlines)
         var foundCurrent = false
         var passedBlank = false
         let target = currentFamilyId.uppercased()
+        
+        // Skip the first two lines (canonical marker and blank line)
+        let contentLines = Array(lines.dropFirst(2))
 
-        for line in lines {
+        for line in contentLines {
             let t = line.trimmingCharacters(in: .whitespaces)
             let u = t.uppercased()
             
@@ -339,9 +345,12 @@ final class RootsFileManager {
         guard let content = currentFileContent else { return [] }
         let lines = content.components(separatedBy: .newlines)
         var familyIds: [String] = []
-        var previousWasBlank = true  // Treat start of file as "after blank"
+        var previousWasBlank = true  // Treat start of content as "after blank"
         
-        for line in lines {
+        // Skip the first two lines (canonical marker and blank line)
+        let contentLines = Array(lines.dropFirst(2))
+        
+        for line in contentLines {
             let t = line.trimmingCharacters(in: .whitespaces)
             
             if t.isEmpty {
@@ -482,4 +491,3 @@ private extension Array where Element: Hashable {
         return filter { seen.insert($0).inserted }
     }
 }
-
