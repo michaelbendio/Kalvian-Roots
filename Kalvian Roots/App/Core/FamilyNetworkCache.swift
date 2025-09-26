@@ -98,9 +98,39 @@ class FamilyNetworkCache {
      * Get cached network
      */
     func getCachedNetwork(familyId: String) -> (network: FamilyNetwork, citations: [String: String])? {
-        guard let cached = cachedNetworks[familyId] else { return nil }
-        logInfo(.cache, "⚡ Retrieved cached network for: \(familyId)")
-        return (cached.network, cached.citations)
+        let startTime = Date()
+        
+        // Check memory cache first
+        if let cached = cachedNetworks[familyId] {
+            let retrieveTime = Date().timeIntervalSince(startTime)
+            logInfo(.cache, "⚡ Retrieved from memory cache: \(familyId) in \(String(format: "%.3f", retrieveTime))s")
+            return (cached.network, cached.citations)
+        }
+        
+        // Check persistent store
+        logInfo(.cache, "🔍 Checking persistent store for: \(familyId)")
+        let diskStartTime = Date()
+        
+        if let persisted = persistenceStore.loadFamily(withId: familyId) {
+            let diskLoadTime = Date().timeIntervalSince(diskStartTime)
+            let totalTime = Date().timeIntervalSince(startTime)
+            
+            logInfo(.cache, """
+                💾 Loaded from disk: \(familyId)
+                - Disk read time: \(String(format: "%.3f", diskLoadTime))s
+                - Total time: \(String(format: "%.3f", totalTime))s
+                - Network size: \(persisted.network.allFamilies.count) families
+                """)
+            
+            // Add to memory cache for next time
+            cachedNetworks[familyId] = persisted
+            
+            return (persisted.network, persisted.citations)
+        }
+        
+        let totalTime = Date().timeIntervalSince(startTime)
+        logInfo(.cache, "❌ Not found in cache: \(familyId) (checked in \(String(format: "%.3f", totalTime))s)")
+        return nil
     }
     
     /**

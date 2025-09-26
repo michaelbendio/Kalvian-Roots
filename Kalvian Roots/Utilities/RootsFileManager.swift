@@ -33,6 +33,10 @@ final class RootsFileManager {
 
     /// The ONE canonical file name (normalize at comparison time)
     private let defaultFileName = "JuuretKälviällä.roots"
+    
+    /// Cache for parsed family IDs to avoid re-parsing
+    private var cachedFamilyIds: [String]?
+    private var cachedFamilyIdsFileContent: String?
 
     // MARK: - Init
     init() {
@@ -124,6 +128,7 @@ final class RootsFileManager {
                     self.currentFileContent = content
                     self.currentFileURL = canonicalURL
                     self.isFileLoaded = true
+                    self.clearFamilyIdCache() // Clear cache for new file
                 }
                 logInfo(.file, "✅ Loaded canonical file from iCloud")
                 return
@@ -181,6 +186,7 @@ final class RootsFileManager {
             self.currentFileURL = canonicalURL
             self.isFileLoaded = true
             self.errorMessage = nil
+            self.clearFamilyIdCache() // Clear cache for new file
             
             addToRecentFiles(canonicalURL)
             logInfo(.file, "✅ Loaded canonical file")
@@ -237,6 +243,7 @@ final class RootsFileManager {
                 self.currentFileContent = content
                 self.isFileLoaded = true
                 self.errorMessage = nil
+                self.clearFamilyIdCache() // Clear cache for new file
             }
             addToRecentFiles(url)
             logInfo(.file, "✅ File loaded via iOS picker")
@@ -247,20 +254,34 @@ final class RootsFileManager {
     }
     #endif
 
-    // MARK: - Family ID Methods (Using Curated List)
+    // MARK: - Family ID Methods (Using Curated List with Caching)
 
     /**
      * Get all family IDs that exist in the file, in file order
-     * Uses the curated FamilyIDs list as the source of truth
+     * WITH ORDER COMPARISON to FamilyIDs list
      */
     func getAllFamilyIds() -> [String] {
         guard let content = currentFileContent else { return [] }
         
-        var foundIds: [String] = []
-        let lines = content.components(separatedBy: .newlines)
+        // Check if we have a valid cache
+        if let cached = cachedFamilyIds,
+           let cachedContent = cachedFamilyIdsFileContent,
+           cachedContent == content {
+            logDebug(.file, "✨ Using cached family IDs (\(cached.count) families)")
+            return cached
+        }
         
-        // Skip the first two lines (canonical marker and blank line)
-        let contentLines = Array(lines.dropFirst(2))
+        // Need to parse - this happens only once per file load
+        logInfo(.file, "📝 Parsing file for family IDs (one-time operation)...")
+        
+        let startTime = Date()
+        var foundIds: [String] = []
+        
+        // Convert validFamilyIds to Set for O(1) lookup
+        let validIdSet = Set(FamilyIDs.validFamilyIds.map { $0.uppercased() })
+        
+        let lines = content.components(separatedBy: .newlines)
+        let contentLines = Array(lines.dropFirst(2)) // Skip canonical marker and blank line
         
         for line in contentLines {
             let t = line.trimmingCharacters(in: .whitespaces)
@@ -268,28 +289,147 @@ final class RootsFileManager {
             // Skip empty lines and bookmarks
             if t.isEmpty || t == "#" { continue }
             
-            // Try each valid family ID to see if this line starts with it
-            for validId in FamilyIDs.validFamilyIds {
-                let upperLine = t.uppercased()
-                let upperValidId = validId.uppercased()
-                
-                if upperLine.hasPrefix(upperValidId) {
-                    // Check what comes after the ID - should be comma, space, or nothing
-                    let afterId = String(upperLine.dropFirst(upperValidId.count))
-                    if afterId.isEmpty || afterId.hasPrefix(",") || afterId.hasPrefix(" ") {
-                        // This is a valid family ID line
-                        if !foundIds.contains(validId) {
-                            foundIds.append(validId)
-                            logTrace(.file, "Found family in file: \(validId)")
-                        }
-                        break // Found the ID for this line, move to next line
+            // Quick check: does it look like a family ID?
+            guard let firstChar = t.first, firstChar.isUppercase else { continue }
+            
+            // Extract the part before comma (if any)
+            let candidateId: String
+            if let commaIndex = t.firstIndex(of: ",") {
+                candidateId = String(t[..<commaIndex]).trimmingCharacters(in: .whitespaces)
+            } else {
+                candidateId = t
+            }
+            
+            // Fast O(1) lookup in Set
+            let upperCandidate = candidateId.uppercased()
+            if validIdSet.contains(upperCandidate) {
+                // Find the original casing from the valid list
+                if let originalId = FamilyIDs.validFamilyIds.first(where: { $0.uppercased() == upperCandidate }) {
+                    if !foundIds.contains(originalId) {
+                        foundIds.append(originalId)
                     }
                 }
             }
         }
         
-        logInfo(.file, "Found \(foundIds.count) valid families in file (from \(FamilyIDs.validFamilyIds.count) known families)")
+        let elapsed = Date().timeIntervalSince(startTime)
+        
+        // Cache the results
+        cachedFamilyIds = foundIds
+        cachedFamilyIdsFileContent = content
+        
+        logInfo(.file, """
+            ✅ Found \(foundIds.count) families in file order
+            - Expected: \(FamilyIDs.validFamilyIds.count)
+            - Time: \(String(format: "%.3f", elapsed))s
+            - Cached for future use
+            """)
+        
+        // COMPARE ORDERS
+        compareOrderWithFamilyIDs(fileOrder: foundIds)
+        
+        // Report any missing families
+        if foundIds.count != FamilyIDs.validFamilyIds.count {
+            let foundSet = Set(foundIds.map { $0.uppercased() })
+            let missing = FamilyIDs.validFamilyIds.filter { !foundSet.contains($0.uppercased()) }
+            logWarn(.file, "⚠️ Missing \(missing.count) families: \(missing.prefix(3).joined(separator: ", "))\(missing.count > 3 ? "..." : "")")
+        }
+        
         return foundIds
+    }
+
+    /**
+     * Compare the file order with FamilyIDs order and report differences
+     */
+    private func compareOrderWithFamilyIDs(fileOrder: [String]) {
+        logInfo(.file, "📊 COMPARING FAMILY ID ORDERS:")
+        logInfo(.file, String(repeating: "=", count: 60))
+        
+        // Convert FamilyIDs to array (it's currently a Set, so order might vary)
+        let familyIdsArray = Array(FamilyIDs.validFamilyIds)
+        
+        // Find common families (in both lists)
+        let fileSet = Set(fileOrder.map { $0.uppercased() })
+        let commonFamilies = fileOrder.filter { family in
+            FamilyIDs.validFamilyIds.contains { $0.uppercased() == family.uppercased() }
+        }
+        
+        logInfo(.file, """
+            📈 Statistics:
+            - Families in file: \(fileOrder.count)
+            - Families in FamilyIDs: \(familyIdsArray.count)
+            - Common families: \(commonFamilies.count)
+            """)
+        
+        // Check if orders match for common families
+        var differencesFound = false
+        var firstDifferences: [(index: Int, file: String, familyIds: String?)] = []
+        
+        for (index, fileFamily) in fileOrder.enumerated() {
+            // Find this family in FamilyIDs array
+            if let familyIdsIndex = familyIdsArray.firstIndex(where: { $0.uppercased() == fileFamily.uppercased() }) {
+                let familyIdsFamily = familyIdsArray[familyIdsIndex]
+                
+                // Check if the index positions differ significantly
+                if abs(index - familyIdsIndex) > 10 {  // Allow some tolerance
+                    if firstDifferences.count < 10 {  // Only track first 10 differences
+                        firstDifferences.append((index: index, file: fileFamily, familyIds: familyIdsFamily))
+                    }
+                    differencesFound = true
+                }
+            }
+        }
+        
+        if differencesFound {
+            logWarn(.file, "⚠️ ORDER MISMATCH DETECTED!")
+            logInfo(.file, "First differences (file index → family):")
+            for diff in firstDifferences {
+                logInfo(.file, "  Position \(diff.index): \(diff.file) (file) vs position in FamilyIDs: \(familyIdsArray.firstIndex(of: diff.familyIds ?? "") ?? -1)")
+            }
+            
+            // Generate Swift code to reorder FamilyIDs
+            logInfo(.file, "\n📝 GENERATED CODE TO FIX FamilyIDs ORDER:")
+            logInfo(.file, "Copy this to replace FamilyIDs.validFamilyIds:")
+            logInfo(.file, String(repeating: "-", count: 60))
+            
+            // Print the corrected array in chunks for readability
+            print("    static let validFamilyIds: Set<String> = [")
+            for (index, family) in fileOrder.enumerated() {
+                let comma = index < fileOrder.count - 1 ? "," : ""
+                let padding = index % 4 == 3 ? "\n        " : " "
+                if index % 4 == 0 && index > 0 {
+                    print("        ", terminator: "")
+                }
+                print("\"\(family)\"\(comma)", terminator: index % 4 == 3 || index == fileOrder.count - 1 ? "\n" : padding)
+            }
+            print("    ]")
+            logInfo(.file, String(repeating: "-", count: 60))
+            
+        } else {
+            logInfo(.file, "✅ ORDER MATCH! FamilyIDs order matches file order perfectly!")
+        }
+        
+        // Show first 10 families from each for manual verification
+        logInfo(.file, "\n🔍 First 10 families comparison:")
+        logInfo(.file, String(format: "%-20s | %-20s", "FILE ORDER", "FAMILYIDS ORDER"))
+        logInfo(.file, String(repeating: "-", count: 41))
+        for i in 0..<min(10, min(fileOrder.count, familyIdsArray.count)) {
+            let fileFamily = i < fileOrder.count ? fileOrder[i] : "---"
+            let familyIdsFamily = i < familyIdsArray.count ? familyIdsArray[i] : "---"
+            let match = fileFamily.uppercased() == familyIdsFamily.uppercased() ? "✓" : "✗"
+//            logInfo(.file, String(format: "%-20s | %-20s %s", fileFamily, familyIdsFamily, match))
+        }
+        
+        logInfo(.file, String(repeating: "=", count: 60))
+    }
+
+    /**
+     * Clear the family ID cache when file changes
+     */
+    private func clearFamilyIdCache() {
+        cachedFamilyIds = nil
+        cachedFamilyIdsFileContent = nil
+        logDebug(.file, "🗑️ Cleared family ID cache")
     }
 
     /**
