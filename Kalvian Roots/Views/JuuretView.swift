@@ -16,17 +16,14 @@ struct JuuretView: View {
     @State private var alertTitle = ""
     @State private var alertMessage = ""
     @State private var showingAlert = false
-    
-    #if os(iOS)
-    @State private var showingFilePicker = false
-    #endif
+    @State private var showingFatalError = false
     
     var body: some View {
         VStack(spacing: 15) {
             if juuretApp.fileManager.isFileLoaded {
                 familyExtractionInterface
             } else {
-                fileNotLoadedInterface
+                Color.clear
             }
         }
         .padding(20)
@@ -43,14 +40,8 @@ struct JuuretView: View {
                 CachedFamiliesMenu()
             }
         }
-        .sheet(isPresented: $showingFilePicker) {
-            DocumentPickerView { url in
-                Task {
-                    await processSelectedFile(url)
-                }
-            }
-        }
         #endif
+        
         .alert("Citation", isPresented: $showingCitation) {
             Button("Copy to Clipboard") {
                 copyToClipboard(citationText)
@@ -103,42 +94,33 @@ struct JuuretView: View {
             Text(juuretApp.errorMessage ?? "Unknown error")
                 .font(.genealogyMonospaceSmall)
         }
+        .alert("Fatal Error: Canonical File Not Found", isPresented: $showingFatalError) {
+            Button("Quit", role: .destructive) {
+                #if os(macOS)
+                NSApplication.shared.terminate(nil)
+                #else
+                fatalError("JuuretKälviällä.roots not found at canonical location")
+                #endif
+            }
+        } message: {
+            Text("""
+                JuuretKälviällä.roots must be in:
+                ~/Library/Mobile Documents/iCloud~com~michael-bendio~Kalvian-Roots/Documents/
+                
+                First line must be: canonical
+                Second line must be: blank
+                """)
+        }
         .onAppear {
             logInfo(.ui, "JuuretView appeared")
-        }
-    }
-    
-    // MARK: - File Processing for iOS
-    
-    #if os(iOS)
-    private func processSelectedFile(_ url: URL) async {
-        logInfo(.ui, "📂 Processing selected file: \(url.lastPathComponent)")
-        
-        do {
-            let accessing = url.startAccessingSecurityScopedResource()
-            defer {
-                if accessing {
-                    url.stopAccessingSecurityScopedResource()
+            Task {
+                await juuretApp.fileManager.autoLoadDefaultFile()
+                if !juuretApp.fileManager.isFileLoaded {
+                    showingFatalError = true
                 }
             }
-            
-            let content = try String(contentsOf: url, encoding: .utf8)
-            
-            await MainActor.run {
-                juuretApp.fileManager.currentFileContent = content
-                juuretApp.fileManager.currentFileURL = url
-                juuretApp.fileManager.isFileLoaded = true
-            }
-            logInfo(.file, "Content preview:\n\(String(content.prefix(15)))...")
-            logInfo(.ui, "✅ File loaded successfully via document picker")
-        } catch {
-            logError(.ui, "❌ Failed to load file: \(error)")
-            await MainActor.run {
-                juuretApp.errorMessage = "Failed to load file: \(error.localizedDescription)"
-            }
         }
     }
-    #endif
     
     // MARK: - Main Interface Views
     
@@ -179,54 +161,6 @@ struct JuuretView: View {
                 }
             }
         }
-    }
-    
-    private var fileNotLoadedInterface: some View {
-        VStack(spacing: 20) {
-            // Extract Family section at the top even when no file is loaded
-            familyInputSection
-            
-            Spacer()
-            
-            Image(systemName: "doc.text.magnifyingglass")
-                .font(.system(size: 60))
-                .foregroundColor(.gray)
-            
-            Text("No file loaded")
-                .font(.genealogyHeadline)
-                .foregroundColor(.primary)
-            
-            Text("Open JuuretKälviällä.roots to begin")
-                .font(.genealogyBody)
-                .foregroundColor(.secondary)
-            
-            #if os(iOS)
-            Button(action: {
-                showingFilePicker = true
-            }) {
-                Label("Open File", systemImage: "folder.open")
-                    .font(.genealogySubheadline)
-                    .frame(width: 200, height: 50)
-            }
-            .buttonStyle(.borderedProminent)
-            #elseif os(macOS)
-            Button("Open File...") {
-                Task {
-                    do {
-                        // Call RootsFileManager's openFile directly
-                        _ = try await juuretApp.fileManager.openFile()
-                    } catch {
-                        juuretApp.errorMessage = error.localizedDescription
-                    }
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            .font(.genealogySubheadline)
-            #endif
-            
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
     // MARK: - Family Input Section
@@ -700,49 +634,7 @@ struct JuuretView: View {
     }
 }
 
-// MARK: - Supporting Types and Views
-
-#if os(iOS)
-struct DocumentPickerView: UIViewControllerRepresentable {
-    let urlPicked: (URL) -> Void
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
-    
-    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let supportedTypes = [
-            UTType.text,
-            UTType.plainText,
-            UTType(filenameExtension: "roots") ?? .plainText,
-            .data
-        ]
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: supportedTypes, asCopy: false)
-        picker.delegate = context.coordinator
-        picker.allowsMultipleSelection = false
-        picker.shouldShowFileExtensions = true
-        return picker
-    }
-    
-    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
-    
-    class Coordinator: NSObject, UIDocumentPickerDelegate {
-        let parent: DocumentPickerView
-        
-        init(_ parent: DocumentPickerView) {
-            self.parent = parent
-        }
-        
-        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-            if let url = urls.first {
-                parent.urlPicked(url)
-            }
-        }
-        
-        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {}
-    }
-}
-#endif
+// MARK: - Supporting Type
 
 enum PersonRole {
     case father, mother, child

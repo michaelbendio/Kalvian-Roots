@@ -2,6 +2,8 @@
 //  FamilyIDs.swift
 //  Kalvian Roots
 //
+//  Hybrid array/set--Array for order + Set for O(1) lookups
+//
 //  Created by Michael Bendio on 7/11/25.
 //
 
@@ -9,8 +11,8 @@ import Foundation
 
 // Family IDs in Juuret Kalvialla
 struct FamilyIDs {
-    static let validFamilyIds: Set<String> = [
-"HERLEVI 1", "HERLEVI 2", "HERLEVI 3", "HERLEVI 4",
+    static let validFamilyIds: [String] = [
+        "HERLEVI 1", "HERLEVI 2", "HERLEVI 3", "HERLEVI 4",
         "HERLEVI 5", "HERLEVI 6", "HERLEVI 7", "HERLEVI 8",
         "HERLEVI 9", "HERLEVI 10", "HERLEVI 11", "HERLEVI II 1",
         "HERLEVI II 2", "HERLEVI II 3", "HERLEVI II 4", "HERLEVI II 5",
@@ -416,22 +418,74 @@ struct FamilyIDs {
         "KUUSIMÄKI 6", "RUMPALI 1", "RUMPALI 2"
     ]
 
-    // Normalized lookup set for case/diacritic-insensitive validation
-    private static let normalizedValidFamilyIds: Set<String> = {
-        return Set(validFamilyIds.map { normalize($0) })
+    // MARK: - Secondary Storage (Sets for O(1) lookups)
+    
+    private static let validFamilyIdSet: Set<String> = Set(validFamilyIds)
+    private static let uppercasedFamilyIdSet: Set<String> = Set(validFamilyIds.map { $0.uppercased() })
+    private static let normalizedValidFamilyIds: Set<String> = Set(validFamilyIds.map { normalize($0) })
+    
+    // MARK: - Lookup Dictionary (for O(1) index finding)
+    
+    private static let familyIdToIndex: [String: Int] = {
+        var dict = [String: Int]()
+        for (index, familyId) in validFamilyIds.enumerated() {
+            dict[familyId.uppercased()] = index
+        }
+        return dict
     }()
-
-    /// Normalize a family ID for robust comparisons (case/diacritic-insensitive, collapse whitespace)
+    
+    // MARK: - Private Helper
+    
     private static func normalize(_ s: String) -> String {
         let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Collapse multiple spaces to a single space
         let collapsed = trimmed.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-        // Fold case and remove diacritics for tolerant matching
         return collapsed.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
     }
-
-    /// Check if a given family ID exists in the canonical list
+    
+    // MARK: - Public API (All O(1) operations!)
+    
     static func isValid(familyId: String) -> Bool {
-        return normalizedValidFamilyIds.contains(normalize(familyId))
+        return uppercasedFamilyIdSet.contains(familyId.uppercased())
+    }
+    
+    static func indexOf(familyId: String) -> Int? {
+        return familyIdToIndex[familyId.uppercased()]
+    }
+    
+    static func familyAt(index: Int) -> String? {
+        guard index >= 0 && index < validFamilyIds.count else { return nil }
+        return validFamilyIds[index]
+    }
+    
+    static func nextFamilyAfter(_ familyId: String) -> String? {
+        guard let currentIndex = indexOf(familyId: familyId) else { return nil }
+        return familyAt(index: currentIndex + 1)
+    }
+    
+    static func previousFamilyBefore(_ familyId: String) -> String? {
+        guard let currentIndex = indexOf(familyId: familyId) else { return nil }
+        return familyAt(index: currentIndex - 1)
+    }
+    
+    static var count: Int {
+        return validFamilyIds.count
+    }
+    
+    static func isFirst(_ familyId: String) -> Bool {
+        return indexOf(familyId: familyId) == 0
+    }
+    
+    static func isLast(_ familyId: String) -> Bool {
+        guard let index = indexOf(familyId: familyId) else { return false }
+        return index == validFamilyIds.count - 1
+    }
+    
+    // Batch operations for caching
+    static func familiesAfter(_ familyId: String, maxCount: Int = Int.max) -> [String] {
+        guard let currentIndex = indexOf(familyId: familyId) else { return [] }
+        let startIndex = currentIndex + 1
+        guard startIndex < validFamilyIds.count else { return [] }
+        let endIndex = min(startIndex + maxCount, validFamilyIds.count)
+        return Array(validFamilyIds[startIndex..<endIndex])
     }
 }

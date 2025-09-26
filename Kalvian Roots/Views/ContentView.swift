@@ -5,6 +5,7 @@ struct ContentView: View {
     @Environment(JuuretApp.self) private var app
     @State private var isSidebarExpanded = false  // Start with sidebar closed
     @State private var hasLoadedStartupFamily = false
+    @State private var showingFatalError = false
 
     var body: some View {
         Group {
@@ -24,14 +25,6 @@ struct ContentView: View {
                     }
                 }
             }
-            #elseif os(visionOS)
-            NavigationSplitView(columnVisibility: $columnVisibility) {
-                SidebarView()
-            } detail: {
-                JuuretView()
-            }
-            .environment(app)
-            .navigationTitle("Kalvian Roots")
             #else
             NavigationView {
                 JuuretView()
@@ -141,10 +134,10 @@ struct ContentView: View {
             logError(.app, "❌ Failed to retrieve cached family: \(firstFamilyId)")
         }
     }
-
 }
 
-// MARK: - Simplified Sidebar
+// MARK: - Sidebar
+
 struct SidebarView: View {
     @Environment(JuuretApp.self) private var app
     @State private var fm = RootsFileManager()
@@ -156,18 +149,9 @@ struct SidebarView: View {
                     Circle()
                         .fill(fm.isFileLoaded ? .green : .red)
                         .frame(width: 8, height: 8)
-                    Text(fm.isFileLoaded ? "File Loaded" : "No File")
+                    Text(fm.isFileLoaded ? "File Loaded" : "File Missing")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                }
-                
-                if !fm.isFileLoaded {
-                    Button("Open File") {
-                        Task {
-                            try? await fm.openFile()
-                        }
-                    }
-                    .buttonStyle(.borderless)
                 }
             }
             
