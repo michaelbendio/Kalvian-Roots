@@ -61,13 +61,25 @@ class JuuretApp {
 
     // MARK: - Manual Citation Overrides
     private var manualCitations: [String: String] = [:] // key: familyId|personId
-    private var familyNetworkWorkflow: FamilyNetworkWorkflow?
+    
+    /// Current family network workflow
+    var familyNetworkWorkflow: FamilyNetworkWorkflow?
+    
+    // MARK: - File Loading Coordination
+    
+    /// Continuation for waiting for file to load
+    private var fileLoadContinuation: CheckedContinuation<Bool, Never>?
     
     // MARK: - Computed Properties
     
     /// Check if app is ready for family extraction
     var isReady: Bool {
         fileManager.isFileLoaded && aiParsingService.isConfigured
+    }
+    
+    /// Check if we can load from cache (doesn't need file)
+    var canLoadFromCache: Bool {
+        familyNetworkCache.hasCachedFamilies
     }
     
     /// Available AI services for switching
@@ -137,14 +149,26 @@ class JuuretApp {
                 // FileManager encountered an error - propagate it to app level
                 self.errorMessage = fileError
                 logError(.app, "❌ Cannot load canonical file: \(fileError)")
+                
+                // Resume any waiting continuation with failure
+                self.fileLoadContinuation?.resume(returning: false)
+                self.fileLoadContinuation = nil
             } else if let fileContent = self.fileManager.currentFileContent {
                 // File loaded successfully
                 logInfo(.file, "✅ Auto-loaded canonical file")
                 logDebug(.file, "File content length: \(fileContent.count) characters")
+                
+                // Resume any waiting continuation with success
+                self.fileLoadContinuation?.resume(returning: true)
+                self.fileLoadContinuation = nil
             } else {
                 // No file and no error means something unexpected happened
                 self.errorMessage = "Unexpected state: No file loaded and no error reported"
                 logError(.app, "❌ Unexpected state in auto-load")
+                
+                // Resume any waiting continuation with failure
+                self.fileLoadContinuation?.resume(returning: false)
+                self.fileLoadContinuation = nil
             }
         }
         
@@ -153,6 +177,28 @@ class JuuretApp {
 
         // Load manual citations
         loadManualCitations()
+    }
+    
+    // MARK: - File Ready Coordination
+    
+    /**
+     * Async method to wait for file to be ready
+     */
+    func waitForFileReady() async -> Bool {
+        // If already loaded, return immediately
+        if fileManager.isFileLoaded {
+            return true
+        }
+        
+        // If there's an error, return false
+        if fileManager.errorMessage != nil {
+            return false
+        }
+        
+        // Wait for file to load
+        return await withCheckedContinuation { continuation in
+            self.fileLoadContinuation = continuation
+        }
     }
     
     // MARK: - Platform Detection Helper
@@ -194,10 +240,20 @@ class JuuretApp {
      * Extract a family by ID with caching support
      */
     func extractFamily(familyId: String) async {
-        guard isReady else {
-            errorMessage = aiParsingService.isConfigured ?
-                "No file loaded. Please open JuuretKälviällä.roots first." :
-                "AI service not configured. Please add API key in settings."
+        // More specific error checking
+        if !fileManager.isFileLoaded {
+            if fileManager.errorMessage != nil {
+                // File failed to load - show the actual error
+                errorMessage = fileManager.errorMessage
+            } else {
+                // File is still loading
+                errorMessage = "File is still loading. Please wait a moment and try again."
+            }
+            return
+        }
+        
+        if !aiParsingService.isConfigured {
+            errorMessage = "AI service not configured. Please add API key in settings."
             return
         }
         
@@ -279,47 +335,50 @@ class JuuretApp {
             
             // Create workflow for this family
             familyNetworkWorkflow = FamilyNetworkWorkflow(
-                nuclearFamily: parsedFamily,
+                nuclearFamily: family,
                 familyResolver: familyResolver,
-                resolveCrossReferences: true
+                resolveCrossReferences: true  // Process cross-references
             )
-
-            // Step 5: Process the workflow to build the network
+            
+            // Step 5: Process the workflow
+            extractionProgress = .resolvingReferences
             do {
                 try await familyNetworkWorkflow?.process()
                 
-                // Log what we found
-                if let network = familyNetworkWorkflow?.getFamilyNetwork() {
-                    logInfo(.app, "✅ Family network processed successfully")
-                    
-                    // Store enhanced version
+                // Get the enhanced family (main family with resolved references)
+                if let workflow = familyNetworkWorkflow,
+                   let network = workflow.getFamilyNetwork() {
                     enhancedFamily = network.mainFamily
                     
-                    // CACHE THE RESULT (no citations in new architecture)
+                    // Cache the network for future use
                     let extractionTime = Date().timeIntervalSince(startTime)
                     familyNetworkCache.cacheNetwork(
                         network,
-                        citations: [:],  // Empty - citations are generated on-demand
+                        citations: [:],  // No citations in new architecture
                         extractionTime: extractionTime
                     )
-                    
                     logInfo(.app, "💾 Cached network for future use")
                 }
                 
-            } catch {
-                // Provide detailed context about cross-reference failure
-                let parentRefs = parsedFamily.allParents.compactMap { $0.asChild }
-                let childRefs = parsedFamily.couples.flatMap { $0.children.compactMap { $0.asParent } }
+                extractionProgress = .complete
+                logInfo(.app, "✅ Family network processed successfully")
                 
-                reportError(
-                    "Cross-reference processing failed.",
-                    context: [
-                        "familyId": familyId,
-                        "error": String(describing: error),
-                        "parentAsChildRefs": parentRefs,
-                        "childAsParentRefs": childRefs
-                    ]
-                )
+            } catch {
+                // Log cross-reference errors but continue with the family
+                logError(.app, "⚠️ Cross-reference resolution failed: \(error)")
+                
+                // Collect some debugging info for logging
+                let parentRefs = family.allParents.compactMap { $0.asChild }
+                let childRefs = family.allChildren.compactMap { $0.asParent }
+                
+                logError(.app, """
+                    Cross-reference resolution failed:
+                    - Family ID: \(familyId)
+                    - Parent refs: \(parentRefs.joined(separator: ", "))
+                    - Child refs: \(childRefs.joined(separator: ", "))
+                    - Error: \(error.localizedDescription)
+                    """)
+                
                 logInfo(.app, "📝 Proceeding with available data")
             }
             
@@ -375,192 +434,75 @@ class JuuretApp {
             arePersonsEqual(child, person)
         }
         
-        logInfo(.citation, "  Role: \(isParent ? "parent" : isChild ? "child" : "unknown")")
+        logInfo(.citation, "  Role: \(isParent ? "parent" : isChild ? "child" : "spouse")")
+        
+        // Check for manual override first
+        let overrideKey = "\(family.familyId)|\(person.id)"
+        if let manualCitation = manualCitations[overrideKey] {
+            logInfo(.citation, "  Using manual override")
+            return manualCitation
+        }
         
         // Generate appropriate citation based on role
+        let citation: String
         if isParent {
-            // Check if this parent has an asChild family in the network
+            // For parents, try to find their asChild family
             if let network = network,
                let asChildFamily = network.getAsChildFamily(for: person) {
-                logInfo(.citation, "✅ Found parent's asChild family: \(asChildFamily.familyId)")
-                
-                // Create enhanced network with parent's nuclear family as their asParent
-                var enhancedNetwork = network
-                enhancedNetwork.asParentFamilies[person.displayName] = family
-                enhancedNetwork.asParentFamilies[person.name] = family
-                
-                // Generate enhanced asChild citation
-                return CitationGenerator.generateAsChildCitation(
+                citation = CitationGenerator.generateAsChildCitation(
                     for: person,
                     in: asChildFamily,
-                    network: enhancedNetwork,
+                    network: network,
                     nameEquivalenceManager: nameEquivalenceManager
                 )
             } else {
-                logInfo(.citation, "ℹ️ No asChild family for parent - using main family citation")
-                return CitationGenerator.generateMainFamilyCitation(
+                // No asChild family, use main citation
+                citation = CitationGenerator.generateMainFamilyCitation(
                     family: family,
-                    targetPerson: nil,
+                    targetPerson: person,
                     network: network
                 )
             }
-        }
-        
-        if isChild {
-            // For children, always use main family citation with them as target
-            logInfo(.citation, "  Generating child citation with potential enhancement")
-            return CitationGenerator.generateMainFamilyCitation(
+        } else if isChild {
+            // For children, use main family citation with them as target
+            citation = CitationGenerator.generateMainFamilyCitation(
+                family: family,
+                targetPerson: person,
+                network: network
+            )
+        } else {
+            // Must be a spouse - use main citation
+            citation = CitationGenerator.generateMainFamilyCitation(
                 family: family,
                 targetPerson: person,
                 network: network
             )
         }
         
-        // Unknown role - shouldn't happen but handle gracefully
-        logWarn(.citation, "⚠️ Person role unclear in family context")
-        return CitationGenerator.generateMainFamilyCitation(
-            family: family,
-            targetPerson: nil,
-            network: network
-        )
+        logInfo(.citation, "  Generated: \(citation)")
+        return citation
     }
     
-    /**
-     * Helper method for backwards compatibility with string-based spouse citations
-     * Used by JuuretView which only has the spouse name string
-     */
-    func generateSpouseCitation(for spouseName: String, in family: Family) -> String {
-        logInfo(.citation, "📝 Generating spouse citation from name: \(spouseName)")
-        
-        // Find which child has this spouse
-        var childPerson: Person? = nil
-        
-        // Search all children in the family for one with this spouse
-        for child in family.allChildren {
-            if child.spouse == spouseName {
-                childPerson = child
-                break
-            }
-        }
-        
-        guard let child = childPerson else {
-            logWarn(.citation, "Could not find child with spouse '\(spouseName)' in family")
-            return "Citation unavailable for \(spouseName)"
-        }
-        
-        // Get the network
-        guard let network = familyNetworkWorkflow?.getFamilyNetwork() else {
-            logWarn(.citation, "⚠️ No network available for spouse citation")
-            return "Citation unavailable for \(spouseName)"
-        }
-        
-        // Get the child's asParent family (where the spouse appears)
-        guard let asParentFamily = network.getAsParentFamily(for: child) else {
-            logWarn(.citation, "⚠️ No asParent family found for child")
-            return "Citation unavailable for \(spouseName)"
-        }
-        
-        // Try to find the spouse Person object in the asParent family
-        var spousePerson: Person? = nil
-        for couple in asParentFamily.couples {
-            if couple.husband.name == spouseName || couple.husband.displayName == spouseName {
-                spousePerson = couple.husband
-                break
-            }
-            if couple.wife.name == spouseName || couple.wife.displayName == spouseName {
-                spousePerson = couple.wife
-                break
-            }
-        }
-        
-        // If we couldn't find the spouse Person, create a minimal one
-        if spousePerson == nil {
-            spousePerson = Person(name: spouseName, noteMarkers: [])
-        }
-        
-        // Now check if the spouse has their own asChild family
-        if let spouseAsChildFamily = network.getSpouseAsChildFamily(for: spousePerson!) {
-            logInfo(.citation, "✅ Found spouse's asChild family: \(spouseAsChildFamily.familyId)")
-            
-            // Create enhanced network with spouse's marriage family as their asParent
-            var enhancedNetwork = network
-            enhancedNetwork.asParentFamilies[spousePerson!.displayName] = asParentFamily
-            enhancedNetwork.asParentFamilies[spousePerson!.name] = asParentFamily
-            
-            // Generate enhanced asChild citation for spouse
-            return CitationGenerator.generateAsChildCitation(
-                for: spousePerson!,
-                in: spouseAsChildFamily,
-                network: enhancedNetwork,
-                nameEquivalenceManager: nameEquivalenceManager
-            )
-        } else {
-            logInfo(.citation, "ℹ️ No asChild family for spouse - using marriage family citation")
-            return CitationGenerator.generateMainFamilyCitation(
-                family: asParentFamily,
-                targetPerson: spousePerson!,
-                network: network
-            )
-        }
+    // MARK: - Manual Citation Management
+    
+    func setManualCitation(for person: Person, in family: Family, citation: String) {
+        let key = "\(family.familyId)|\(person.id)"
+        manualCitations[key] = citation
+        saveManualCitations()
+        logInfo(.app, "💾 Saved manual citation for \(person.displayName) in \(family.familyId)")
     }
     
-    // MARK: - Helper Methods
-    
-    /**
-     * Check if two Person objects represent the same person
-     * Uses birth date as primary identifier, falls back to name
-     */
-    private func arePersonsEqual(_ person1: Person, _ person2: Person) -> Bool {
-        // First try birth date (most reliable)
-        if let birth1 = person1.birthDate?.trimmingCharacters(in: .whitespaces),
-           let birth2 = person2.birthDate?.trimmingCharacters(in: .whitespaces),
-           !birth1.isEmpty && !birth2.isEmpty {
-            return birth1 == birth2
-        }
-        
-        // Then try display name
-        if person1.displayName == person2.displayName {
-            return true
-        }
-        
-        // Finally try simple name
-        return person1.name.lowercased() == person2.name.lowercased()
+    func getManualCitation(for person: Person, in family: Family) -> String? {
+        let key = "\(family.familyId)|\(person.id)"
+        return manualCitations[key]
     }
     
-    // MARK: - AI Service Management (Stubbed)
-    
-    /**
-     * Switch to a different AI service
-     * TODO: Implement when needed
-     */
-    func switchAIService(to serviceName: String) async throws {
-        logInfo(.app, "Switching AI service to: \(serviceName)")
-        // Stub - implement when needed
+    func clearManualCitation(for person: Person, in family: Family) {
+        let key = "\(family.familyId)|\(person.id)"
+        manualCitations.removeValue(forKey: key)
+        saveManualCitations()
+        logInfo(.app, "🗑️ Cleared manual citation for \(person.displayName) in \(family.familyId)")
     }
-    
-    /**
-     * Configure the current AI service with API key
-     */
-    func configureAIService(apiKey: String) async throws {
-        logInfo(.app, "Configuring AI service with new API key")
-        try aiParsingService.configureService(apiKey: apiKey)
-    }
-    
-    /**
-     * Regenerate a cached family (force re-extraction)
-     * Clears cache entry and re-extracts the family
-     */
-    func regenerateCachedFamily(familyId: String) async {
-        logInfo(.app, "🔄 Regenerating cached family: \(familyId)")
-        
-        // Clear from cache
-        familyNetworkCache.clearCache()
-        
-        // Re-extract the family
-        await extractFamily(familyId: familyId)
-    }
-    
-    // MARK: - Manual Citation Support
     
     private func loadManualCitations() {
         if let data = UserDefaults.standard.data(forKey: "ManualCitations"),
@@ -570,29 +512,74 @@ class JuuretApp {
         }
     }
     
-    func saveManualCitation(for person: Person, in family: Family, citation: String) {
-        let key = "\(family.familyId)|\(person.displayName)"
-        manualCitations[key] = citation
-        
+    private func saveManualCitations() {
         if let data = try? JSONEncoder().encode(manualCitations) {
             UserDefaults.standard.set(data, forKey: "ManualCitations")
-            logInfo(.app, "💾 Saved manual citation for \(person.displayName)")
         }
     }
     
-    func getManualCitation(for person: Person, in family: Family) -> String? {
-        let key = "\(family.familyId)|\(person.displayName)"
-        return manualCitations[key]
+    // MARK: - Regeneration
+    
+    /**
+     * Delete a family from cache and re-extract it
+     * Useful for regenerating with updated citations
+     */
+    func regenerateCachedFamily(familyId: String) async {
+        logInfo(.app, "♻️ Regenerating family: \(familyId)")
+        
+        // Delete from cache
+        familyNetworkCache.deleteCachedFamily(familyId: familyId)
+        
+        // Re-extract
+        await extractFamily(familyId: familyId)
+    }
+    
+    // MARK: - Spouse Citation Generation
+    
+    /**
+     * Generate citation for a spouse (by name)
+     * This is used when clicking on spouse names in the UI
+     */
+    func generateSpouseCitation(for spouseName: String, in family: Family) -> String {
+        logInfo(.citation, "📝 Generating spouse citation for: \(spouseName)")
+        
+        // Find which child has this spouse
+        for couple in family.couples {
+            for child in couple.children {
+                if child.spouse == spouseName {
+                    // Create a temporary Person object for the spouse
+                    let spousePerson = Person(
+                        name: spouseName,
+                        patronymic: nil,
+                        birthDate: nil,
+                        deathDate: nil,
+                        noteMarkers: []
+                    )
+                    
+                    // Generate citation using the main family citation
+                    return CitationGenerator.generateMainFamilyCitation(
+                        family: family,
+                        targetPerson: spousePerson,
+                        network: familyNetworkWorkflow?.getFamilyNetwork()
+                    )
+                }
+            }
+        }
+        
+        // Fallback - just return basic family citation
+        return CitationGenerator.generateMainFamilyCitation(
+            family: family,
+            targetPerson: nil,
+            network: familyNetworkWorkflow?.getFamilyNetwork()
+        )
     }
     
     // MARK: - Hiski Query Generation
     
-    func generateHiskiURL(for date: String, eventType: EventType) -> String {
-        let cleanDate = date.replacingOccurrences(of: ".", with: "")
-            .replacingOccurrences(of: " ", with: "")
-        return "https://hiski.genealogia.fi/hiski?en+query_\(eventType.rawValue)_\(cleanDate)"
-    }
-    
+    /**
+     * Generate Hiski query for a person
+     * Returns the query URL string
+     */
     func generateHiskiQuery(for person: Person, eventType: EventType) -> String? {
         guard let query = HiskiQuery.from(person: person, eventType: eventType) else {
             return nil
@@ -600,46 +587,146 @@ class JuuretApp {
         return query.queryURL
     }
     
-    // MARK: - Error Reporting
+    // MARK: - Hiski Search URL Generation
     
-    private func reportError(_ message: String, context: [String: Any] = [:]) {
-        logError(.app, message)
-        for (key, value) in context {
-            logDebug(.app, "  \(key): \(value)")
+    /**
+     * Generate Hiski search URL for a person
+     */
+    func generateHiskiURL(for person: Person) -> URL? {
+        var components = URLComponents(string: "https://hiski.genealogia.fi/hiski")
+        
+        var queryItems: [URLQueryItem] = []
+        
+        // Add name components
+        let nameParts = person.name.split(separator: " ")
+        if let firstName = nameParts.first {
+            queryItems.append(URLQueryItem(name: "en", value: String(firstName)))
         }
+        if nameParts.count > 1 {
+            let lastName = nameParts.dropFirst().joined(separator: " ")
+            queryItems.append(URLQueryItem(name: "sn", value: lastName))
+        }
+        
+        // Add patronymic if available
+        if let patronymic = person.patronymic {
+            queryItems.append(URLQueryItem(name: "pn", value: patronymic))
+        }
+        
+        // Add birth year if available
+        if let birthDate = person.birthDate {
+            let year = extractYear(from: birthDate)
+            if let year = year {
+                queryItems.append(URLQueryItem(name: "sy", value: year))
+            }
+        }
+        
+        // Add location (Kälviä)
+        queryItems.append(URLQueryItem(name: "kr", value: "Kälviä"))
+        
+        components?.queryItems = queryItems
+        return components?.url
+    }
+    
+    private func extractYear(from dateString: String) -> String? {
+        // Handle various date formats
+        let components = dateString.components(separatedBy: CharacterSet.decimalDigits.inverted)
+        for component in components.reversed() {
+            if component.count == 4 && component.hasPrefix("1") {
+                return component
+            }
+        }
+        return nil
+    }
+    
+    // MARK: - AI Service Management
+    
+    /**
+     * Switch to a different AI service
+     */
+    func switchAIService(to serviceName: String) async throws {
+        try aiParsingService.switchService(to: serviceName)
+        logInfo(.app, "✅ Switched to AI service: \(serviceName)")
+    }
+    
+    /**
+     * Configure the current AI service
+     */
+    func configureAIService(apiKey: String) async throws {
+        try aiParsingService.configureService(apiKey: apiKey)
+        
+        // Save the API key for the current service
+        let currentService = aiParsingService.currentServiceName
+        UserDefaults.standard.set(apiKey, forKey: "AIService_\(currentService)_APIKey")
+        
+        logInfo(.app, "✅ Configured AI service: \(currentService)")
+    }
+    
+    // MARK: - Utility Methods
+    
+    /**
+     * Compare two persons for equality (used in citation generation)
+     */
+    private func arePersonsEqual(_ person1: Person, _ person2: Person) -> Bool {
+        // First check ID
+        if person1.id == person2.id {
+            return true
+        }
+        
+        // Then check birth date if available
+        if let birth1 = person1.birthDate, let birth2 = person2.birthDate {
+            if birth1 == birth2 && person1.name.lowercased() == person2.name.lowercased() {
+                return true
+            }
+        }
+        
+        // Finally check name
+        return person1.name.lowercased() == person2.name.lowercased()
     }
 }
 
-// MARK: - Enums
-
-enum ExtractionError: LocalizedError {
-    case familyNotFound(String)
-    case parsingFailed(String)
-    
-    var errorDescription: String? {
-        switch self {
-        case .familyNotFound(let id):
-            return "Family \(id) not found in file"
-        case .parsingFailed(let reason):
-            return "Failed to parse family: \(reason)"
-        }
-    }
-}
+// MARK: - Extraction Progress States
 
 enum ExtractionProgress {
     case idle
     case extractingText
     case parsingWithAI
-    case resolvingCrossReferences
     case familyExtracted
+    case resolvingReferences
+    case extractingNuclear
+    case extractingAsChild
+    case extractingAsParent
+    case complete
     
     var description: String {
         switch self {
         case .idle: return "Ready"
         case .extractingText: return "Extracting family text..."
         case .parsingWithAI: return "Parsing with AI..."
-        case .resolvingCrossReferences: return "Resolving cross-references..."
         case .familyExtracted: return "Family extracted"
+        case .resolvingReferences: return "Resolving cross-references..."
+        case .extractingNuclear: return "Extracting nuclear family..."
+        case .extractingAsChild: return "Finding parent families..."
+        case .extractingAsParent: return "Finding child families..."
+        case .complete: return "Complete"
+        }
+    }
+}
+
+// MARK: - Extraction Errors
+
+enum ExtractionError: LocalizedError {
+    case familyNotFound(String)
+    case parsingFailed(String)
+    case crossReferenceFailed(String)
+    
+    var errorDescription: String? {
+        switch self {
+        case .familyNotFound(let id):
+            return "Family '\(id)' not found in file"
+        case .parsingFailed(let details):
+            return "Failed to parse family: \(details)"
+        case .crossReferenceFailed(let details):
+            return "Cross-reference resolution failed: \(details)"
         }
     }
 }

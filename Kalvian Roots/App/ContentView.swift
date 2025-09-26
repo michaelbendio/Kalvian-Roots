@@ -65,10 +65,48 @@ struct ContentView: View {
             return
         }
         
-        logInfo(.app, "🚀 Loading first cached family on startup: \(firstFamilyId)")
+        logInfo(.app, "🚀 Loading cached family immediately: \(firstFamilyId)")
         
-        // Load the first cached family
-        await app.extractFamily(familyId: firstFamilyId)
+        // Load from cache directly WITHOUT checking if file is ready
+        // The cache is self-contained and doesn't need the file
+        if let cached = app.familyNetworkCache.getCachedNetwork(familyId: firstFamilyId) {
+            await MainActor.run {
+                // Set the family directly from cache
+                app.currentFamily = cached.network.mainFamily
+                app.enhancedFamily = cached.network.mainFamily
+                
+                // Create workflow with cached network
+                app.familyNetworkWorkflow = FamilyNetworkWorkflow(
+                    nuclearFamily: cached.network.mainFamily,
+                    familyResolver: app.familyResolver,
+                    resolveCrossReferences: false  // Already resolved in cache
+                )
+                
+                // Activate the cached network
+                app.familyNetworkWorkflow?.activateCachedNetwork(cached.network)
+                
+                // Clear any error state
+                app.errorMessage = nil
+                app.isProcessing = false
+                app.extractionProgress = .idle
+                
+                logInfo(.app, "✅ Loaded cached family on startup: \(firstFamilyId)")
+            }
+            
+            // Start background processing for next family once file loads
+            Task {
+                // Wait for file to be ready before starting background processing
+                let fileReady = await app.waitForFileReady()
+                if fileReady {
+                    app.familyNetworkCache.startBackgroundProcessing(
+                        currentFamilyId: firstFamilyId,
+                        fileManager: app.fileManager,
+                        aiService: app.aiParsingService,
+                        familyResolver: app.familyResolver
+                    )
+                }
+            }
+        }
     }
 }
 

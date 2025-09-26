@@ -247,9 +247,61 @@ final class RootsFileManager {
     }
     #endif
 
-    // MARK: - Family text helpers
+    // MARK: - Family ID Methods (Using Curated List)
 
+    /**
+     * Get all family IDs that exist in the file, in file order
+     * Uses the curated FamilyIDs list as the source of truth
+     */
+    func getAllFamilyIds() -> [String] {
+        guard let content = currentFileContent else { return [] }
+        
+        var foundIds: [String] = []
+        let lines = content.components(separatedBy: .newlines)
+        
+        // Skip the first two lines (canonical marker and blank line)
+        let contentLines = Array(lines.dropFirst(2))
+        
+        for line in contentLines {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            
+            // Skip empty lines and bookmarks
+            if t.isEmpty || t == "#" { continue }
+            
+            // Try each valid family ID to see if this line starts with it
+            for validId in FamilyIDs.validFamilyIds {
+                let upperLine = t.uppercased()
+                let upperValidId = validId.uppercased()
+                
+                if upperLine.hasPrefix(upperValidId) {
+                    // Check what comes after the ID - should be comma, space, or nothing
+                    let afterId = String(upperLine.dropFirst(upperValidId.count))
+                    if afterId.isEmpty || afterId.hasPrefix(",") || afterId.hasPrefix(" ") {
+                        // This is a valid family ID line
+                        if !foundIds.contains(validId) {
+                            foundIds.append(validId)
+                            logTrace(.file, "Found family in file: \(validId)")
+                        }
+                        break // Found the ID for this line, move to next line
+                    }
+                }
+            }
+        }
+        
+        logInfo(.file, "Found \(foundIds.count) valid families in file (from \(FamilyIDs.validFamilyIds.count) known families)")
+        return foundIds
+    }
+
+    /**
+     * Extract family text for a specific family ID
+     */
     func extractFamilyText(familyId: String) -> String? {
+        // First verify this is a valid family ID
+        guard FamilyIDs.isValid(familyId: familyId) else {
+            logWarn(.file, "Invalid family ID requested: \(familyId)")
+            return nil
+        }
+        
         guard let content = currentFileContent else {
             logWarn(.file, "No file content loaded")
             return nil
@@ -258,126 +310,106 @@ final class RootsFileManager {
         let lines = content.components(separatedBy: .newlines)
         var out: [String] = []
         var capturing = false
-        let target = familyId.uppercased()
+        var skipNextBlank = false
         
         // Skip the first two lines (canonical marker and blank line)
         let contentLines = Array(lines.dropFirst(2))
-
-        for line in contentLines {
+        
+        for (index, line) in contentLines.enumerated() {
             let t = line.trimmingCharacters(in: .whitespaces)
             
             if !capturing {
-                // Check if this line starts with our target family ID
-                let lineUpper = t.uppercased()
+                // Check for bookmark immediately before a family
+                if t == "#" {
+                    // Check if next non-empty line is our target
+                    if index + 1 < contentLines.count {
+                        let nextLine = contentLines[index + 1].trimmingCharacters(in: .whitespaces)
+                        if nextLine.uppercased().hasPrefix(familyId.uppercased()) {
+                            // Include the bookmark
+                            out.append("#")
+                            skipNextBlank = false
+                        }
+                    }
+                    continue
+                }
                 
-                // Handle both formats: "KYKYRI II 9, page 264" and "KYKYRI II 9"
-                if lineUpper.hasPrefix(target) {
-                    // Verify it's the exact family (not a prefix match)
-                    let afterTarget = String(lineUpper.dropFirst(target.count))
-                    // Should be either empty, start with comma, or start with whitespace
-                    if afterTarget.isEmpty || afterTarget.hasPrefix(",") || afterTarget.first?.isWhitespace == true {
+                // Check if this line is our target family
+                if t.uppercased().hasPrefix(familyId.uppercased()) {
+                    // Verify it's exact match (not a prefix of another family)
+                    let afterId = String(t.uppercased().dropFirst(familyId.count))
+                    if afterId.isEmpty || afterId.hasPrefix(",") || afterId.first?.isWhitespace == true {
                         capturing = true
-                        out.append(line)
+                        out.append(line) // Use original line with formatting
                         logDebug(.file, "Started capturing family: \(familyId)")
                     }
                 }
             } else {
-                // Stop at blank line
-                if t.isEmpty {
+                // Stop at blank line (unless it's a bookmark)
+                if t.isEmpty && !skipNextBlank {
                     logDebug(.file, "Finished capturing family: \(familyId)")
                     break
                 }
+                skipNextBlank = false
                 out.append(line)
             }
         }
         
         return out.isEmpty ? nil : out.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    
-    func findNextFamilyId(after currentFamilyId: String) -> String? {
-        guard let content = currentFileContent else { return nil }
-        let lines = content.components(separatedBy: .newlines)
-        var foundCurrent = false
-        var passedBlank = false
-        let target = currentFamilyId.uppercased()
-        
-        // Skip the first two lines (canonical marker and blank line)
-        let contentLines = Array(lines.dropFirst(2))
 
-        for line in contentLines {
-            let t = line.trimmingCharacters(in: .whitespaces)
-            let u = t.uppercased()
-            
-            if !foundCurrent {
-                // Look for the current family
-                if u.hasPrefix(target) {
-                    foundCurrent = true
-                    logDebug(.file, "Found current family: \(t)")
-                }
-            } else if !passedBlank {
-                // Wait for a blank line after current family
-                if t.isEmpty {
-                    passedBlank = true
-                    logDebug(.file, "Passed blank line after \(currentFamilyId)")
-                }
-            } else if !t.isEmpty {
-                // Found the next non-empty line - extract the family ID
-                
-                // Family ID is everything before the comma (or the whole line if no comma)
-                let familyId: String
-                if let commaIndex = t.firstIndex(of: ",") {
-                    familyId = String(t[..<commaIndex]).trimmingCharacters(in: .whitespaces)
-                } else {
-                    familyId = t
-                }
-                
-                logInfo(.file, "Found next family ID: \(familyId)")
-                return familyId
-            }
+    /**
+     * Find the next family ID after the given one
+     */
+    func findNextFamilyId(after currentFamilyId: String) -> String? {
+        // Get all family IDs in file order
+        let allIds = getAllFamilyIds()
+        
+        // Find current position
+        guard let currentIndex = allIds.firstIndex(where: {
+            $0.uppercased() == currentFamilyId.uppercased()
+        }) else {
+            logWarn(.file, "Current family \(currentFamilyId) not found in file")
+            return nil
         }
         
-        logInfo(.file, "No next family found after \(currentFamilyId)")
-        return nil
+        // Return next one if it exists
+        let nextIndex = currentIndex + 1
+        if nextIndex < allIds.count {
+            let nextId = allIds[nextIndex]
+            logInfo(.file, "Found next family ID: \(nextId)")
+            return nextId
+        } else {
+            logInfo(.file, "No family after \(currentFamilyId) - reached end of file")
+            return nil
+        }
     }
 
-    // Helper method to find all family IDs in order
-    func getAllFamilyIds() -> [String] {
-        guard let content = currentFileContent else { return [] }
-        let lines = content.components(separatedBy: .newlines)
-        var familyIds: [String] = []
-        var previousWasBlank = true  // Treat start of content as "after blank"
+    /**
+     * Check if a family ID exists in the file
+     */
+    func familyExistsInFile(_ familyId: String) -> Bool {
+        guard FamilyIDs.isValid(familyId: familyId) else { return false }
         
-        // Skip the first two lines (canonical marker and blank line)
-        let contentLines = Array(lines.dropFirst(2))
+        let allIds = getAllFamilyIds()
+        return allIds.contains { $0.uppercased() == familyId.uppercased() }
+    }
+
+    /**
+     * Get statistics about families in the file
+     */
+    func getFamilyStatistics() -> (total: Int, found: Int, missing: [String]) {
+        let foundIds = getAllFamilyIds()
+        let foundSet = Set(foundIds.map { $0.uppercased() })
         
-        for line in contentLines {
-            let t = line.trimmingCharacters(in: .whitespaces)
-            
-            if t.isEmpty {
-                previousWasBlank = true
-                continue
-            }
-            
-            // If previous line was blank, this might be a family ID
-            if previousWasBlank {
-                // Extract everything before the comma (or whole line if no comma)
-                let familyId: String
-                if let commaIndex = t.firstIndex(of: ",") {
-                    familyId = String(t[..<commaIndex]).trimmingCharacters(in: .whitespaces)
-                } else {
-                    familyId = t
-                }
-                
-                // Simple check: starts with uppercase letter (most family IDs do)
-                if let firstChar = familyId.first, firstChar.isUppercase {
-                    familyIds.append(familyId)
-                }
-            }
-            
-            previousWasBlank = false
+        let missing = FamilyIDs.validFamilyIds.filter { validId in
+            !foundSet.contains(validId.uppercased())
         }
         
-        return familyIds
+        return (
+            total: FamilyIDs.validFamilyIds.count,
+            found: foundIds.count,
+            missing: missing.sorted()
+        )
     }
 
     // MARK: - Recent files
