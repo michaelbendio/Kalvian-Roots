@@ -58,7 +58,7 @@ class JuuretApp {
     
     /// Extraction progress tracking
     var extractionProgress: ExtractionProgress = .idle
-
+    
     // MARK: - Manual Citation Overrides
     private var manualCitations: [String: String] = [:] // key: familyId|personId
     
@@ -104,18 +104,18 @@ class JuuretApp {
         let localAIParsingService: AIParsingService
         
         // FIXED: Proper platform detection for all Apple devices
-        #if os(macOS) && arch(arm64)
+#if os(macOS) && arch(arm64)
         // Apple Silicon Mac - use enhanced service with MLX support
         logInfo(.ai, "🧠 Initializing AI services with MLX support (Apple Silicon Mac)")
         localAIParsingService = AIParsingService()
         logInfo(.ai, "✅ Enhanced AI parsing service initialized with MLX support")
-        #else
+#else
         // iOS/iPadOS/Intel Mac - use cloud services only
         let platform = Self.detectPlatform()
         logInfo(.ai, "🧠 Initializing AI services for \(platform)")
         localAIParsingService = AIParsingService()
         logInfo(.ai, "✅ AI parsing service initialized (cloud services only)")
-        #endif
+#endif
         
         logDebug(.ai, "Available services: \(localAIParsingService.availableServiceNames.joined(separator: ", "))")
         
@@ -124,9 +124,9 @@ class JuuretApp {
             nameEquivalenceManager: localNameEquivalenceManager,
             fileManager: localFileManager
         )
-
+        
         let localFamilyNetworkCache = FamilyNetworkCache(rootsFileManager: localFileManager)
-
+        
         // Assign all to self properties at the end
         self.nameEquivalenceManager = localNameEquivalenceManager
         self.fileManager = localFileManager
@@ -174,7 +174,7 @@ class JuuretApp {
         
         logInfo(.app, "🎉 JuuretApp initialization complete")
         logDebug(.app, "Ready state: \(self.isReady)")
-
+        
         // Load manual citations
         loadManualCitations()
     }
@@ -204,7 +204,7 @@ class JuuretApp {
     // MARK: - Platform Detection Helper
     
     private static func detectPlatform() -> String {
-        #if os(iOS)
+#if os(iOS)
         if UIDevice.current.userInterfaceIdiom == .pad {
             // Check if it's an Apple Silicon iPad
             var systemInfo = utsname()
@@ -223,15 +223,15 @@ class JuuretApp {
         } else {
             return "iOS"
         }
-        #elseif os(macOS)
-        #if arch(x86_64)
+#elseif os(macOS)
+#if arch(x86_64)
         return "macOS (Intel)"
-        #else
+#else
         return "macOS (Apple Silicon)"
-        #endif
-        #else
+#endif
+#else
         return "Unknown Platform"
-        #endif
+#endif
     }
     
     // MARK: - Family Extraction
@@ -329,7 +329,7 @@ class JuuretApp {
             
             // Step 3: Keep the parsed family
             let parsedFamily = family
-
+            
             // Step 4: Process cross-references
             logInfo(.app, "🔄 Processing cross-references for enhanced citations...")
             
@@ -543,37 +543,42 @@ class JuuretApp {
     func generateSpouseCitation(for spouseName: String, in family: Family) -> String {
         logInfo(.citation, "📝 Generating spouse citation for: \(spouseName)")
         
-        // Find which child has this spouse
+        guard let network = familyNetworkWorkflow?.getFamilyNetwork() else {
+            return "Network not available for spouse citation"
+        }
+        
+        // First try to find the spouse in spouseAsChildFamilies
+        let spousePerson = Person(name: spouseName, noteMarkers: [])
+        if let spouseAsChildFamily = network.getSpouseAsChildFamily(for: spousePerson) {
+            logInfo(.citation, "📝 Found spouse's asChild family: \(spouseAsChildFamily.familyId)")
+            return CitationGenerator.generateAsChildCitation(
+                for: spousePerson,
+                in: spouseAsChildFamily,
+                network: network,
+                nameEquivalenceManager: nameEquivalenceManager
+            )
+        }
+        
+        // If not found as spouse asChild, try finding them through the child's asParent family
+        // (but this would be a secondary citation, not their primary one)
         for couple in family.couples {
             for child in couple.children {
                 if child.spouse == spouseName {
-                    // Create a temporary Person object for the spouse
-                    let spousePerson = Person(
-                        name: spouseName,
-                        patronymic: nil,
-                        birthDate: nil,
-                        deathDate: nil,
-                        noteMarkers: []
-                    )
-                    
-                    // Generate citation using the main family citation
-                    return CitationGenerator.generateMainFamilyCitation(
-                        family: family,
-                        targetPerson: spousePerson,
-                        network: familyNetworkWorkflow?.getFamilyNetwork()
-                    )
+                    if let childAsParentFamily = network.getAsParentFamily(for: child) {
+                        logInfo(.citation, "📝 Using child's asParent family as fallback: \(childAsParentFamily.familyId)")
+                        return CitationGenerator.generateMainFamilyCitation(
+                            family: childAsParentFamily,
+                            targetPerson: nil,
+                            network: network
+                        )
+                    }
                 }
             }
         }
         
-        // Fallback - just return basic family citation
-        return CitationGenerator.generateMainFamilyCitation(
-            family: family,
-            targetPerson: nil,
-            network: familyNetworkWorkflow?.getFamilyNetwork()
-        )
+        // Fallback
+        return "No family information found for \(spouseName)"
     }
-    
     // MARK: - Hiski Query Generation
     
     /**
@@ -672,61 +677,59 @@ class JuuretApp {
             return true
         }
         
-        // Then check birth date if available
+        // Then check birth date AND name
         if let birth1 = person1.birthDate, let birth2 = person2.birthDate {
-            if birth1 == birth2 && person1.name.lowercased() == person2.name.lowercased() {
-                return true
-            }
+            return birth1 == birth2 && person1.name.lowercased() == person2.name.lowercased()
         }
         
-        // Finally check name
-        return person1.name.lowercased() == person2.name.lowercased()
+        // Don't match on name alone when there are multiple people with same name!
+        return false
     }
-}
-
-// MARK: - Extraction Progress States
-
-enum ExtractionProgress {
-    case idle
-    case extractingText
-    case parsingWithAI
-    case familyExtracted
-    case resolvingReferences
-    case extractingNuclear
-    case extractingAsChild
-    case extractingAsParent
-    case complete
     
-    var description: String {
-        switch self {
-        case .idle: return "Ready"
-        case .extractingText: return "Extracting family text..."
-        case .parsingWithAI: return "Parsing with AI..."
-        case .familyExtracted: return "Family extracted"
-        case .resolvingReferences: return "Resolving cross-references..."
-        case .extractingNuclear: return "Extracting nuclear family..."
-        case .extractingAsChild: return "Finding parent families..."
-        case .extractingAsParent: return "Finding child families..."
-        case .complete: return "Complete"
+    // MARK: - Extraction Progress States
+    
+    enum ExtractionProgress {
+        case idle
+        case extractingText
+        case parsingWithAI
+        case familyExtracted
+        case resolvingReferences
+        case extractingNuclear
+        case extractingAsChild
+        case extractingAsParent
+        case complete
+        
+        var description: String {
+            switch self {
+            case .idle: return "Ready"
+            case .extractingText: return "Extracting family text..."
+            case .parsingWithAI: return "Parsing with AI..."
+            case .familyExtracted: return "Family extracted"
+            case .resolvingReferences: return "Resolving cross-references..."
+            case .extractingNuclear: return "Extracting nuclear family..."
+            case .extractingAsChild: return "Finding parent families..."
+            case .extractingAsParent: return "Finding child families..."
+            case .complete: return "Complete"
+            }
         }
     }
-}
-
-// MARK: - Extraction Errors
-
-enum ExtractionError: LocalizedError {
-    case familyNotFound(String)
-    case parsingFailed(String)
-    case crossReferenceFailed(String)
     
-    var errorDescription: String? {
-        switch self {
-        case .familyNotFound(let id):
-            return "Family '\(id)' not found in file"
-        case .parsingFailed(let details):
-            return "Failed to parse family: \(details)"
-        case .crossReferenceFailed(let details):
-            return "Cross-reference resolution failed: \(details)"
+    // MARK: - Extraction Errors
+    
+    enum ExtractionError: LocalizedError {
+        case familyNotFound(String)
+        case parsingFailed(String)
+        case crossReferenceFailed(String)
+        
+        var errorDescription: String? {
+            switch self {
+            case .familyNotFound(let id):
+                return "Family '\(id)' not found in file"
+            case .parsingFailed(let details):
+                return "Failed to parse family: \(details)"
+            case .crossReferenceFailed(let details):
+                return "Cross-reference resolution failed: \(details)"
+            }
         }
     }
 }

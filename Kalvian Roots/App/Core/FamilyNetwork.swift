@@ -87,7 +87,7 @@ struct FamilyNetwork: Hashable, Sendable, Codable {
             }
         }
         
-        // FALLBAXK 5: ry extracting just the first name if searching for a compound name
+        // FALLBACK 5: try extracting just the first name if searching for a compound name
         let searchTermWords = person.displayName.components(separatedBy: " ")
         if searchTermWords.count > 1, let firstName = searchTermWords.first {
             for (key, family) in asParentFamilies {
@@ -189,6 +189,18 @@ struct FamilyNetwork: Hashable, Sendable, Codable {
             if key.lowercased() == spouse.name.lowercased() {
                 logDebug(.citation, "✅ Found spouse asChild family for '\(spouse.displayName)' using case-insensitive simple name")
                 return family
+            }
+        }
+        
+        // FALLBACK 5: Extract first name from compound names
+        let searchWords = spouse.name.components(separatedBy: " ")
+        if searchWords.count > 1, let firstName = searchWords.first {
+            for (key, family) in spouseAsChildFamilies {
+                // Check if the key starts with the first name
+                if key.lowercased().hasPrefix(firstName.lowercased()) {
+                    logDebug(.citation, "✅ Found spouse asChild family for '\(spouse.name)' using first-name prefix match")
+                    return family
+                }
             }
         }
         
