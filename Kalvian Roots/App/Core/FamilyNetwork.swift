@@ -87,6 +87,28 @@ struct FamilyNetwork: Hashable, Sendable, Codable {
             }
         }
         
+        // FALLBAXK 5: ry extracting just the first name if searching for a compound name
+        let searchTermWords = person.displayName.components(separatedBy: " ")
+        if searchTermWords.count > 1, let firstName = searchTermWords.first {
+            for (key, family) in asParentFamilies {
+                if key.lowercased() == firstName.lowercased() {
+                    logDebug(.citation, "✅ Found asParent family for '\(person.displayName)' using first-name extraction from compound name")
+                    return family
+                }
+            }
+        }
+
+        // Do the same for person.name if it's different from displayName
+        let nameWords = person.name.components(separatedBy: " ")
+        if nameWords.count > 1, let firstName = nameWords.first {
+            for (key, family) in asParentFamilies {
+                if key.lowercased() == firstName.lowercased() {
+                    logDebug(.citation, "✅ Found asParent family for '\(person.name)' using first-name extraction")
+                    return family
+                }
+            }
+        }
+        
         logWarn(.citation, "⚠️ No asParent family found for '\(person.displayName)' in keys: \(Array(asParentFamilies.keys))")
         return nil
     }
