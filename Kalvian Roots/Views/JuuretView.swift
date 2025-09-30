@@ -432,15 +432,30 @@ struct JuuretView: View {
         .cornerRadius(10)
     }
     
-    @ViewBuilder
     private func additionalSpouseView(couple: Couple, index: Int, family: Family) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Determine which spouse is the additional one
-            let isHusbandSame = (index == 0 && couple.husband.name == family.primaryCouple?.husband.name) ||
-                               (index > 0 && couple.husband.name == family.couples[index].husband.name)
-            
-            let additionalSpouse = isHusbandSame ? couple.wife : couple.husband
-            
+        let actualCoupleIndex = index + 1
+        let previousCouple = family.couples[actualCoupleIndex - 1]
+        
+        // Check if husband continues (same name AND birth date)
+        let isHusbandContinuing = couple.husband.name == previousCouple.husband.name &&
+                                  couple.husband.birthDate == previousCouple.husband.birthDate
+        
+        // Check if wife continues (same name AND birth date)
+        let isWifeContinuing = couple.wife.name == previousCouple.wife.name &&
+                              couple.wife.birthDate == previousCouple.wife.birthDate
+
+        let additionalSpouse: Person
+        if isHusbandContinuing && !isWifeContinuing {
+            additionalSpouse = couple.wife  // Wife is new
+        } else if isWifeContinuing && !isHusbandContinuing {
+            additionalSpouse = couple.husband  // Husband is new
+        } else {
+            // Fallback (shouldn't happen with valid data)
+            additionalSpouse = couple.wife
+        }
+        
+        // NOW create the VStack with the computed values
+        return VStack(alignment: .leading, spacing: 8) {
             PersonRowView(
                 person: additionalSpouse,
                 role: "Spouse",
@@ -462,7 +477,7 @@ struct JuuretView: View {
                 }
             )
             
-            // Show widow/widower information if available - PASS THE INDEX
+            // Show widow/widower information if available
             if let widowInfo = extractWidowInfo(for: additionalSpouse, from: family.notes, spouseIndex: index) {
                 Text("(widow of \(widowInfo))")
                     .font(.genealogyCaption)
@@ -673,3 +688,4 @@ extension Font {
     JuuretView()
         .environment(JuuretApp())
 }
+

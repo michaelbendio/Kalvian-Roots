@@ -1,4 +1,4 @@
-// DeepSeekService.swift - Improved version with better multiple spouse handling
+// AIServices.swift - Improved version with better multiple spouse handling
 
 import Foundation
 
@@ -86,88 +86,26 @@ class DeepSeekService: AIService {
         
         logInfo(.ai, "🤖 DeepSeek parsing family: \(familyId)")
         
-        // IMPROVED PROMPT with better multiple spouse handling
+        // IMPROVED PROMPT with explicit JSON schema
         let prompt = """
-        You are a Finnish genealogy expert. Extract structured data from this family record and return ONLY a valid JSON object.
+        You are a Finnish genealogy expert. Parse the following family record and return ONLY a valid JSON object.
         
-        CRITICAL: Your response must be ONLY the JSON object, with no markdown formatting, no explanation, no ```json tags.
+        CRITICAL: Return ONLY the JSON object - no markdown, no explanation, no ```json tags.
         
-        EXTRACTION RULES:
-        1. FAMILY ID: Extract the main family identifier (e.g., "PIENI-PORKOLA 5")
-        2. PAGE REFERENCES: Extract all page numbers from format like "page 268-269" as ["268", "269"]
-        
-        3. COUPLES STRUCTURE - INTELLIGENT SPOUSE DETERMINATION:
-           - The PRIMARY COUPLE is the first couple listed (primary husband + primary wife)
-           - "II puoliso" or "III puoliso" means ADDITIONAL SPOUSE for the surviving partner
-           
-           CRITICAL LOGIC FOR DETERMINING WHO REMARRIED:
-           a) Check death dates:
-              - If HUSBAND died before the additional spouse's marriage → WIFE remarried (keep same wife, new husband)
-              - If WIFE died before the additional spouse's marriage → HUSBAND remarried (keep same husband, new wife)
-           b) If no death date is available, look for contextual clues:
-              - "leski" (widow/widower) indicates who survived
-              - Position in text and children's dates can provide hints
-           c) Default only if no information: assume husband remarried
-        
-        4. MULTIPLE SPOUSES HANDLING EXAMPLES:
-           
-           Example 1 - Husband dies, wife remarries:
-           ★ 1726 Jaakko Jaakonp. † 1735
-           ★ 1700 Malin Matint. † 1771
-           ∞ 1724
-           II puoliso
-           ★ 1689 Erik Jaakonp. † 1778
-           ∞ 1736
-           
-           Creates TWO couples:
-           Couple 1: {husband: Jaakko (d.1735), wife: Malin, marriage: 1724}
-           Couple 2: {husband: Erik, wife: Malin (same), marriage: 1736}
-           
-           Example 2 - Wife dies, husband remarries:
-           ★ 1726 Jaakko Jaakonp. † 1789
-           ★ 1733 Maria Jaakont. † 1753
-           ∞ 1752
-           II puoliso
-           ★ 1732 Brita Eliant. † 1767
-           ∞ 1754
-           
-           Creates TWO couples:
-           Couple 1: {husband: Jaakko, wife: Maria (d.1753), marriage: 1752}
-           Couple 2: {husband: Jaakko (same), wife: Brita, marriage: 1754}
-        
-        5. CHILDREN: The "Lapset" section contains children for the current couple
-        6. NOTES: Extract general notes and note definitions
-        7. CHILDREN DIED INFANCY: Extract from "Lapsena kuollut X"
-        
-        SYMBOL MEANINGS:
-        - ★ = Birth date
-        - † = Death date  
-        - ∞ = Marriage information
-        - {Family ID} = asChild reference
-        - Family ID after child = asParent reference
-        - <ID> = FamilySearch ID
-        - *) **) = Note markers
-        
-        MARRIAGE DATE HANDLING:
-        - 2 digits (e.g., "48") → "marriageDate"
-        - Full date (e.g., "28.11.1725") → "fullMarriageDate"
-        
-        Family record to parse:
-        \(familyText)
-        
-        Return JSON with this structure:
+        JSON SCHEMA TO USE:
         {
           "familyId": "string",
-          "pageReferences": ["string"],
+          "pageReferences": ["array of page numbers as strings"],
           "couples": [
             {
               "husband": {
-                "name": "string",
+                "name": "string (given name only)",
                 "patronymic": "string or null",
-                "birthDate": "string or null",
-                "deathDate": "string or null",
-                "asChild": "string or null",
-                "familySearchId": "string or null"
+                "birthDate": "string or null", 
+                "deathDate": "string or null (keep 'isoviha' as-is)",
+                "asChild": "string or null (from {family ref})",
+                "familySearchId": "string or null (from <ID>)",
+                "noteMarkers": []
               },
               "wife": {
                 "name": "string",
@@ -175,10 +113,11 @@ class DeepSeekService: AIService {
                 "birthDate": "string or null",
                 "deathDate": "string or null",
                 "asChild": "string or null",
-                "familySearchId": "string or null"
+                "familySearchId": "string or null",
+                "noteMarkers": []
               },
-              "marriageDate": "string or null",
-              "fullMarriageDate": "string or null",
+              "marriageDate": "string or null (2-digit year)",
+              "fullMarriageDate": "string or null (dd.mm.yyyy)",
               "children": [
                 {
                   "name": "string",
@@ -187,25 +126,36 @@ class DeepSeekService: AIService {
                   "marriageDate": "string or null",
                   "spouse": "string or null",
                   "asParent": "string or null",
-                  "familySearchId": "string or null"
+                  "familySearchId": "string or null",
+                  "noteMarkers": []
                 }
               ],
-              "childrenDiedInfancy": number or null
+              "childrenDiedInfancy": null,
+              "coupleNotes": []
             }
           ],
-          "notes": ["string"],
-          "noteDefinitions": {"marker": "definition"} or null,
-          "childrenDiedInfancy": number or null
+          "notes": ["array of family notes"],
+          "noteDefinitions": {"*": "note text"}
         }
         
-        DECISION TREE FOR ADDITIONAL SPOUSES:
-        1. Is there a death date for primary husband before additional marriage? → Wife remarried (new husband)
-        2. Is there a death date for primary wife before additional marriage? → Husband remarried (new wife)
-        3. Does text say "[name] leski" (widow/widower)? → That person is the survivor who remarried
-        4. Are there contextual date clues? → Use them to determine who survived
-        5. Only if no information available → Default to husband remarried (but try to avoid this)
+        EXTRACTION RULES:
+        1. Parse ONLY family \(familyId) - ignore any other families in the text
+        2. Create a separate couple entry for each marriage
+        3. If a person appears in multiple marriages, they appear in multiple couples
+        4. Extract dates exactly as written (including historical periods like "isoviha")
+        5. Marriage dates: Store 2-digit as marriageDate, full date as fullMarriageDate
+        6. Extract {family references} as asChild or asParent
+        7. Extract <IDs> as familySearchId
+        8. Note markers (*) go in noteMarkers array, definitions in noteDefinitions
         
-        ALWAYS analyze the dates to determine the correct couple structure!
+        DETERMINING COUPLES:
+        - Look for "II puoliso" or "III puoliso" to identify additional marriages
+        - The person who survives and remarries appears in multiple couples
+        - Use death dates and marriage dates to determine the correct sequence
+        - Each "Lapset" (Children) section belongs to the couple above it
+        
+        Family text to parse:
+        \(familyText)
         """
         
         let requestBody: [String: Any] = [
@@ -227,6 +177,11 @@ class DeepSeekService: AIService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+        
+        // Increase timeout to 120 seconds for complex families
+        request.timeoutInterval = 120.0
+        
+        logDebug(.ai, "📤 Sending request with 120s timeout")
         
         let (data, response) = try await URLSession.shared.data(for: request)
         
