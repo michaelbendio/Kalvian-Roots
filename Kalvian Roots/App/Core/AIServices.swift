@@ -87,11 +87,13 @@ class DeepSeekService: AIService {
         logInfo(.ai, "🤖 DeepSeek parsing family: \(familyId)")
         
         // IMPROVED PROMPT with explicit JSON schema
+        // In AIServices.swift - Update the DeepSeekService parseFamily method prompt:
+
         let prompt = """
-        You are a Finnish genealogy expert. Parse the following family record and return ONLY a valid JSON object.
-        
+        Parse the following family record and return ONLY a valid JSON object.
+
         CRITICAL: Return ONLY the JSON object - no markdown, no explanation, no ```json tags.
-        
+
         JSON SCHEMA TO USE:
         {
           "familyId": "string",
@@ -116,8 +118,8 @@ class DeepSeekService: AIService {
                 "familySearchId": "string or null",
                 "noteMarkers": []
               },
-              "marriageDate": "string or null (2-digit year)",
-              "fullMarriageDate": "string or null (dd.mm.yyyy)",
+              "marriageDate": "string or null (2-digit year, MAY include 'n' prefix)",
+              "fullMarriageDate": "string or null (dd.mm.yyyy, MAY include 'n' prefix)",
               "children": [
                 {
                   "name": "string",
@@ -137,27 +139,38 @@ class DeepSeekService: AIService {
           "notes": ["array of family notes"],
           "noteDefinitions": {"*": "note text"}
         }
-        
+
         EXTRACTION RULES:
         1. Parse ONLY family \(familyId) - ignore any other families in the text
         2. Create a separate couple entry for each marriage
         3. If a person appears in multiple marriages, they appear in multiple couples
-        4. Extract dates exactly as written (including historical periods like "isoviha")
-        5. Marriage dates: Store 2-digit as marriageDate, full date as fullMarriageDate
+        4. Extract dates EXACTLY as written, preserving ALL formatting:
+           - Keep historical periods like "isoviha" as-is
+           - **CRITICAL**: Keep "n" prefix for approximate dates (e.g., "n 1730", "n 30")
+           - Do NOT strip or remove the "n " prefix - it indicates an approximate date
+        5. Marriage dates: 
+           - Store 2-digit as marriageDate (e.g., "30" or "n 30")
+           - Store full date as fullMarriageDate (e.g., "01.02.1730" or "n 1730")
+           - **PRESERVE** the "n " prefix in BOTH fields if present
         6. Extract {family references} as asChild or asParent
         7. Extract <IDs> as familySearchId
         8. Note markers (*) go in noteMarkers array, definitions in noteDefinitions
-        
+
+        DATE FORMAT EXAMPLES:
+        - "n 1730" → marriageDate: null, fullMarriageDate: "n 1730" (approximate full year)
+        - "n 30" → marriageDate: "n 30", fullMarriageDate: null (approximate 2-digit)
+        - "30" → marriageDate: "30", fullMarriageDate: null (exact 2-digit)
+        - "01.02.1730" → marriageDate: null, fullMarriageDate: "01.02.1730" (exact full date)
+
         DETERMINING COUPLES:
         - Look for "II puoliso" or "III puoliso" to identify additional marriages
         - The person who survives and remarries appears in multiple couples
         - Use death dates and marriage dates to determine the correct sequence
         - Each "Lapset" (Children) section belongs to the couple above it
-        
+
         Family text to parse:
         \(familyText)
         """
-        
         let requestBody: [String: Any] = [
             "model": "deepseek-chat",
             "messages": [
