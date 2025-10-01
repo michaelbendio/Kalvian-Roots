@@ -547,10 +547,47 @@ class JuuretApp {
             return "Network not available for spouse citation"
         }
         
-        // First try to find the spouse in spouseAsChildFamilies
+        // Create a Person object for the spouse
         let spousePerson = Person(name: spouseName, noteMarkers: [])
+        
+        // First try to find the spouse in spouseAsChildFamilies
         if let spouseAsChildFamily = network.getSpouseAsChildFamily(for: spousePerson) {
             logInfo(.citation, "📝 Found spouse's asChild family: \(spouseAsChildFamily.familyId)")
+            
+            // Find which child has this spouse to get context
+            var childWithSpouse: Person? = nil
+            for couple in family.couples {
+                for child in couple.children {
+                    if child.spouse == spouseName {
+                        childWithSpouse = child
+                        break
+                    }
+                }
+                if childWithSpouse != nil { break }
+            }
+            
+            // If we found the child, we can look for their asParent family
+            // which contains enhanced information about the spouse
+            if let child = childWithSpouse,
+               let childAsParentFamily = network.getAsParentFamily(for: child) {
+                // Find the spouse in the asParent family to get enhanced data
+                if let enhancedSpouse = childAsParentFamily.findSpouseInFamily(for: child.name) {
+                    // Create an enhanced version of spousePerson with the additional data
+                    var enhancedSpousePerson = spousePerson
+                    enhancedSpousePerson.birthDate = enhancedSpouse.birthDate
+                    enhancedSpousePerson.deathDate = enhancedSpouse.deathDate
+                    
+                    // Generate citation with enhancement
+                    return CitationGenerator.generateAsChildCitation(
+                        for: enhancedSpousePerson,
+                        in: spouseAsChildFamily,
+                        network: network,
+                        nameEquivalenceManager: nameEquivalenceManager
+                    )
+                }
+            }
+            
+            // Fallback: generate without enhancement
             return CitationGenerator.generateAsChildCitation(
                 for: spousePerson,
                 in: spouseAsChildFamily,
@@ -559,8 +596,7 @@ class JuuretApp {
             )
         }
         
-        // If not found as spouse asChild, try finding them through the child's asParent family
-        // (but this would be a secondary citation, not their primary one)
+        // If not found as spouse asChild, try finding through child's asParent family
         for couple in family.couples {
             for child in couple.children {
                 if child.spouse == spouseName {
@@ -579,6 +615,7 @@ class JuuretApp {
         // Fallback
         return "No family information found for \(spouseName)"
     }
+    
     // MARK: - Hiski Query Generation
     
     /**
@@ -672,18 +709,30 @@ class JuuretApp {
      * Compare two persons for equality (used in citation generation)
      */
     private func arePersonsEqual(_ person1: Person, _ person2: Person) -> Bool {
-        // First check ID
+        // First check ID if both have one
         if person1.id == person2.id {
             return true
         }
         
-        // Then check birth date AND name
+        // For people with birth dates, require BOTH name and birth date to match
         if let birth1 = person1.birthDate, let birth2 = person2.birthDate {
-            return birth1 == birth2 && person1.name.lowercased() == person2.name.lowercased()
+            // Birth dates must match exactly
+            if birth1 != birth2 {
+                return false
+            }
+            // And names must match
+            return person1.name.lowercased() == person2.name.lowercased()
         }
         
-        // Don't match on name alone when there are multiple people with same name!
-        return false
+        // If only one has a birth date, they're not equal
+        // This prevents matching Matti (1679) with Matti (1712)
+        if person1.birthDate != nil || person2.birthDate != nil {
+            return false
+        }
+        
+        // Only if neither has a birth date, match on name alone
+        // This should be rare in genealogical data
+        return person1.name.lowercased() == person2.name.lowercased()
     }
     
     // MARK: - Extraction Progress States

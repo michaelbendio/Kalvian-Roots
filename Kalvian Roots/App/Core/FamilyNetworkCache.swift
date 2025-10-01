@@ -435,7 +435,7 @@ class FamilyNetworkCache {
 
             // Extract family text
             guard let familyText = fileManager.extractFamilyText(familyId: familyId) else {
-                throw ExtractionError.familyNotFound(familyId)
+                throw JuuretApp.ExtractionError.familyNotFound(familyId)
             }
             
             if Task.isCancelled { return }
@@ -460,7 +460,7 @@ class FamilyNetworkCache {
             
             // Get the network and citations
             guard let network = workflow.getFamilyNetwork() else {
-                throw ExtractionError.parsingFailed("Failed to build network")
+                throw JuuretApp.ExtractionError.parsingFailed("Failed to build network")
             }
             
             let citations = workflow.getActiveCitations()
@@ -548,3 +548,4 @@ class FamilyNetworkCache {
         )
     }
 }
+
