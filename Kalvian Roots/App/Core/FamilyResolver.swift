@@ -165,45 +165,54 @@ class FamilyResolver {
     }
     
     private func captureSpouseFromAsParentFamily(
-        childName: String,
-        childDisplayName: String,
-        asParentFamily: Family,
-        network: inout FamilyNetwork
-    ) async {
-        // Find spouse in the asParent family using the Family extension
-        // Try both displayName and simple name to find the spouse
-        var spouse: Person? = asParentFamily.findSpouseInFamily(for: childDisplayName)
-        if spouse == nil {
-            spouse = asParentFamily.findSpouseInFamily(for: childName)
-        }
-        
-        guard let spouse = spouse else { return }
-        
-        // Try to resolve spouse's asChild family
-        // Method 1: asChild reference (preferred)
-        if let asChildRef = spouse.asChild,
-           let family = try? await resolveFamilyByReference(asChildRef) {
-            // SIMPLIFIED: Just store under displayName and simple name
-            network.spouseAsChildFamilies[spouse.displayName] = family
-            if spouse.displayName != spouse.name {
-                network.spouseAsChildFamilies[spouse.name] = family
+            childName: String,
+            childDisplayName: String,
+            asParentFamily: Family,
+            network: inout FamilyNetwork
+        ) async {
+            // Find spouse in the asParent family using the Family extension
+            // Try both displayName and simple name to find the spouse
+            var spouse: Person? = asParentFamily.findSpouseInFamily(for: childDisplayName)
+            if spouse == nil {
+                spouse = asParentFamily.findSpouseInFamily(for: childName)
             }
             
-            logInfo(.resolver, "✅ Resolved spouse family via reference: \(spouse.displayName)")
-            return
-        }
-        
-        // Method 2: birth date search (fallback)
-        if let family = try? await findFamilyByBirthDate(person: spouse) {
-            // SIMPLIFIED: Just store under displayName and simple name
-            network.spouseAsChildFamilies[spouse.displayName] = family
+            guard let spouse = spouse else { return }
+            
+            // Also store the asParent family under the SPOUSE's name
+            // This allows the spouse's citation to be enhanced with death/marriage dates
+            // from the asParent family where they are a parent
+            network.asParentFamilies[spouse.displayName] = asParentFamily
             if spouse.displayName != spouse.name {
-                network.spouseAsChildFamilies[spouse.name] = family
+                network.asParentFamilies[spouse.name] = asParentFamily
+            }
+            logInfo(.resolver, "✅ Stored asParent family '\(asParentFamily.familyId)' under spouse key '\(spouse.displayName)'")
+            
+            // Try to resolve spouse's asChild family
+            // Method 1: asChild reference (preferred)
+            if let asChildRef = spouse.asChild,
+               let family = try? await resolveFamilyByReference(asChildRef) {
+                // SIMPLIFIED: Just store under displayName and simple name
+                network.spouseAsChildFamilies[spouse.displayName] = family
+                if spouse.displayName != spouse.name {
+                    network.spouseAsChildFamilies[spouse.name] = family
+                }
+                
+                logInfo(.resolver, "✅ Resolved spouse family via reference: \(spouse.displayName)")
+                return
             }
             
-            logInfo(.resolver, "✅ Resolved spouse family via birth date: \(spouse.displayName)")
+            // Method 2: birth date search (fallback)
+            if let family = try? await findFamilyByBirthDate(person: spouse) {
+                // SIMPLIFIED: Just store under displayName and simple name
+                network.spouseAsChildFamilies[spouse.displayName] = family
+                if spouse.displayName != spouse.name {
+                    network.spouseAsChildFamilies[spouse.name] = family
+                }
+                
+                logInfo(.resolver, "✅ Resolved spouse family via birth date: \(spouse.displayName)")
+            }
         }
-    }
     
     // MARK: - Family Finding Methods
     
