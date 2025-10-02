@@ -40,8 +40,8 @@ struct JuuretView: View {
                 CachedFamiliesMenu()
             }
         }
+        .setupHiskiSafariHost()
         #endif
-        
         .alert("Citation", isPresented: $showingCitation) {
             Button("Copy to Clipboard") {
                 copyToClipboard(citationText)
@@ -59,8 +59,7 @@ struct JuuretView: View {
             Button("OK") {
                 juuretApp.closeHiskiWebViews()
             }
-        }
-        message: {
+        } message: {
             Text(hiskiResult)
                 .font(.genealogyCallout)
         }

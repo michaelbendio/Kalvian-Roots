@@ -243,6 +243,56 @@ class JuuretApp {
         #endif
     }
     
+    
+    
+    // MARK: - Hiski Query Methods
+
+    /**
+     * Process Hiski query for a person's life event
+     */
+    func processHiskiQuery(for person: Person, eventType: EventType, familyId: String) async -> String {
+        let hiskiService = HiskiService()
+        hiskiService.setCurrentFamily(familyId)
+        
+        do {
+            let citation: HiskiCitation
+            
+            switch eventType {
+            case .birth:
+                guard let birthDate = person.birthDate else {
+                    return "No birth date available for \(person.name)"
+                }
+                citation = try await hiskiService.queryBirth(name: person.name, date: birthDate)
+                
+            case .death:
+                guard let deathDate = person.deathDate else {
+                    return "No death date available for \(person.name)"
+                }
+                citation = try await hiskiService.queryDeath(name: person.name, date: deathDate)
+                
+            case .marriage:
+                guard let marriageDate = person.bestMarriageDate,
+                      let spouse = person.spouse else {
+                    return "No marriage information available for \(person.name)"
+                }
+                citation = try await hiskiService.queryMarriage(
+                    husbandName: person.displayName,
+                    wifeName: spouse,
+                    date: marriageDate
+                )
+                
+            default:
+                return "Query type \(eventType.displayName) not supported"
+            }
+            
+            return citation.url
+            
+        } catch {
+            logError(.app, "Hiski query failed: \(error)")
+            return "Error querying Hiski: \(error.localizedDescription)"
+        }
+    }
+    
     // MARK: - Family Extraction
     
     /**

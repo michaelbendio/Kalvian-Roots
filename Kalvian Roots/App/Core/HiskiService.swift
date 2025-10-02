@@ -12,6 +12,8 @@ import SwiftUI
 #if os(macOS)
 import AppKit
 import WebKit
+#elseif os(iOS)
+import SafariServices
 #endif
 
 // MARK: - Error Types
@@ -76,29 +78,94 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
     }
     
     func closeAllWindows() {
-        print("DEBUG: closeAllWindows called")
         closeSearchWindow()
         closeRecordWindow()
     }
     
     private func closeSearchWindow() {
-        print("DEBUG: closeSearchWindow - window exists: \(searchWindow != nil)")
         if let window = searchWindow {
             window.orderOut(nil)
             window.close()
             searchWindow = nil
-            print("DEBUG: Search window closed")
         }
     }
     
     private func closeRecordWindow() {
-        print("DEBUG: closeRecordWindow - window exists: \(recordWindow != nil)")
         if let window = recordWindow {
             window.orderOut(nil)
             window.close()
             recordWindow = nil
-            print("DEBUG: Record window closed")
         }
+    }
+}
+#elseif os(iOS)
+@MainActor
+class HiskiWebViewManager: NSObject {
+    static let shared = HiskiWebViewManager()
+    
+    private var searchSafari: SFSafariViewController?
+    private var recordSafari: SFSafariViewController?
+    private weak var presentingViewController: UIViewController?
+    
+    private override init() {
+        super.init()
+    }
+    
+    func setPresentingViewController(_ viewController: UIViewController) {
+        self.presentingViewController = viewController
+    }
+    
+    func openSearchResults(url: URL) {
+        guard let presenter = presentingViewController else {
+            logError(.app, "No presenting view controller for Safari")
+            return
+        }
+        
+        // Dismiss existing search if present
+        if let existing = searchSafari {
+            existing.dismiss(animated: false)
+        }
+        
+        let config = SFSafariViewController.Configuration()
+        config.entersReaderIfAvailable = false
+        config.barCollapsingEnabled = true
+        
+        let safari = SFSafariViewController(url: url, configuration: config)
+        safari.preferredControlTintColor = .systemBlue
+        safari.dismissButtonStyle = .close
+        
+        searchSafari = safari
+        presenter.present(safari, animated: true)
+    }
+    
+    func openRecordView(url: URL) {
+        guard let presenter = presentingViewController else {
+            logError(.app, "No presenting view controller for Safari")
+            return
+        }
+        
+        // Dismiss existing record if present
+        if let existing = recordSafari {
+            existing.dismiss(animated: false)
+        }
+        
+        let config = SFSafariViewController.Configuration()
+        config.entersReaderIfAvailable = false
+        config.barCollapsingEnabled = true
+        
+        let safari = SFSafariViewController(url: url, configuration: config)
+        safari.preferredControlTintColor = .systemGreen
+        safari.dismissButtonStyle = .close
+        
+        recordSafari = safari
+        presenter.present(safari, animated: true)
+    }
+    
+    func closeAllWindows() {
+        searchSafari?.dismiss(animated: true)
+        recordSafari?.dismiss(animated: true)
+        searchSafari = nil
+        recordSafari = nil
     }
 }
 #endif
@@ -255,9 +322,7 @@ class HiskiService {
     
     func closeWebViewWindows() {
         Task { @MainActor in
-            #if os(macOS)
             HiskiWebViewManager.shared.closeAllWindows()
-            #endif
         }
     }
     
@@ -265,16 +330,12 @@ class HiskiService {
     
     @MainActor
     private func openSearchWindow(_ url: URL) async {
-        #if os(macOS)
         HiskiWebViewManager.shared.openSearchResults(url: url)
-        #endif
     }
     
     @MainActor
     private func openRecordWindow(_ url: URL) async {
-        #if os(macOS)
         HiskiWebViewManager.shared.openRecordView(url: url)
-        #endif
     }
     
     private func getSession() async throws -> String {
@@ -362,8 +423,8 @@ class HiskiService {
             "alkuvuosi": date,
             "loppuvuosi": date,
             "maxkpl": "15",
-            "ietunimi": "",
-            "aetunimi": "",
+            "ietunimi": husbandName,
+            "aetunimi": wifeName,
             "ipatronyymi": "",
             "apatronyymi": "",
             "isukunimi": "",
