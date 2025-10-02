@@ -54,9 +54,13 @@ struct JuuretView: View {
         .alert("Hiski Query Result", isPresented: $showingHiskiResult) {
             Button("Copy URL") {
                 copyToClipboard(hiskiResult)
+                juuretApp.closeHiskiWebViews()
             }
-            Button("OK") { }
-        } message: {
+            Button("OK") {
+                juuretApp.closeHiskiWebViews()
+            }
+        }
+        message: {
             Text(hiskiResult)
                 .font(.genealogyCallout)
         }
@@ -70,46 +74,19 @@ struct JuuretView: View {
                 .font(.genealogyCallout)
         }
         .alert(alertTitle, isPresented: $showingAlert) {
-            Button("OK", role: .cancel) { }
+            Button("OK") { }
         } message: {
             Text(alertMessage)
         }
-        .alert("Error", isPresented: Binding(
-            get: { juuretApp.errorMessage != nil },
-            set: { if !$0 { juuretApp.errorMessage = nil } }
-        )) {
-            Button("Copy Details") {
-                if let text = juuretApp.errorMessage {
-                    #if os(macOS)
-                    let pb = NSPasteboard.general
-                    pb.clearContents()
-                    pb.setString(text, forType: .string)
-                    #else
-                    UIPasteboard.general.string = text
-                    #endif
-                }
-            }
-            Button("OK") { juuretApp.errorMessage = nil }
-        } message: {
-            Text(juuretApp.errorMessage ?? "Unknown error")
-                .font(.genealogyMonospaceSmall)
-        }
-        .alert("Fatal Error: Canonical File Not Found", isPresented: $showingFatalError) {
+        .alert("Fatal Error", isPresented: $showingFatalError) {
             Button("Quit", role: .destructive) {
                 #if os(macOS)
                 NSApplication.shared.terminate(nil)
-                #else
-                fatalError("JuuretKälviällä.roots not found at canonical location")
                 #endif
             }
         } message: {
-            Text("""
-                JuuretKälviällä.roots must be in:
-                ~/Library/Mobile Documents/iCloud~com~michael-bendio~Kalvian-Roots/Documents/
-                
-                First line must be: canonical
-                Second line must be: blank
-                """)
+            Text(juuretApp.errorMessage ?? "Unknown error")
+                .font(.genealogyMonospaceSmall)
         }
         .onAppear {
             logInfo(.ui, "JuuretView appeared")
@@ -126,20 +103,16 @@ struct JuuretView: View {
     
     private var familyExtractionInterface: some View {
         VStack(spacing: 20) {
-            // Simplified input section at the top
             familyInputSection
             
-            // Show processing status if processing
             if juuretApp.isProcessing {
                 processingStatusView
             }
             
-            // Show error if there's an error
             if let errorMessage = juuretApp.errorMessage {
                 errorDisplayView(errorMessage)
             }
             
-            // CACHE CLEAR BUTTON - Always visible when cache has items
             if juuretApp.familyNetworkCache.cachedFamilyCount > 0 {
                 Button(action: {
                     juuretApp.familyNetworkCache.clearCache()
@@ -154,7 +127,6 @@ struct JuuretView: View {
                 .buttonStyle(.plain)
             }
             
-            // Show family if extracted
             if let family = juuretApp.currentFamily {
                 ScrollView {
                     familyDisplaySection(family: family)
@@ -167,7 +139,6 @@ struct JuuretView: View {
     
     private var familyInputSection: some View {
         VStack(spacing: 12) {
-            // Family ID input with "Citations for" label
             HStack {
                 Text("Citations for")
                     .font(.genealogyHeadline)
@@ -184,7 +155,6 @@ struct JuuretView: View {
             .padding(.horizontal)
             .frame(maxWidth: 600)
             
-            // NEXT BUTTON - Shows when next family is ready
             if juuretApp.familyNetworkCache.nextFamilyReady,
                let nextId = juuretApp.familyNetworkCache.nextFamilyId {
                 Button(action: {
@@ -208,77 +178,41 @@ struct JuuretView: View {
                 .animation(.spring(response: 0.3), value: juuretApp.familyNetworkCache.nextFamilyReady)
             }
             
-            // STATUS MESSAGE - Shows "KLEEMOLA 6 ready" when families are cached
             if let statusMessage = juuretApp.familyNetworkCache.statusMessage {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
-                        .font(.system(size: 14))
                     Text(statusMessage)
-                        .font(.genealogyCaption)
-                        .foregroundColor(.primary)
+                        .font(.genealogyCallout)
+                        .foregroundColor(.secondary)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Color.green.opacity(0.1))
-                .cornerRadius(6)
-                .transition(.scale.combined(with: .opacity))
-                .animation(.spring(response: 0.3), value: statusMessage)
-            }
-            
-            // ERROR DISPLAY - Shows if background processing failed
-            if let error = juuretApp.familyNetworkCache.backgroundError {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
-                    Text(error)
-                        .font(.genealogyCaption)
-                        .foregroundColor(.orange)
-                        .lineLimit(2)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Color.orange.opacity(0.1))
-                .cornerRadius(6)
             }
         }
     }
     
-    // MARK: - Status Views
-    
     private var processingStatusView: some View {
-        HStack(spacing: 15) {
+        VStack(spacing: 8) {
             ProgressView()
-                .scaleEffect(1.0)
-            Text(juuretApp.extractionProgress.description)
-                .font(.genealogySubheadline)
+                .progressViewStyle(CircularProgressViewStyle())
+            Text("Processing family...")
+                .font(.genealogyCallout)
                 .foregroundColor(.secondary)
         }
         .padding(20)
-        .background(Color.blue.opacity(0.1))
-        .cornerRadius(10)
+        .background(Color.gray.opacity(0.05))
+        .cornerRadius(12)
     }
     
     private func errorDisplayView(_ errorMessage: String) -> some View {
-        VStack(alignment: .leading, spacing: 15) {
-            HStack {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundColor(.red)
-                    .font(.genealogySubheadline)
-                Text("Error")
-                    .font(.genealogyHeadline)
-                    .foregroundColor(.red)
-            }
-            
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(.red)
             Text(errorMessage)
-                .font(.genealogyBody)
-                .foregroundColor(.primary)
-                .padding(16)
-                .background(Color.red.opacity(0.1))
-                .cornerRadius(10)
+                .font(.genealogyCallout)
+                .foregroundColor(.red)
         }
         .padding(20)
-        .background(Color.gray.opacity(0.05))
+        .background(Color.red.opacity(0.05))
         .cornerRadius(12)
     }
     
@@ -303,22 +237,18 @@ struct JuuretView: View {
         let allChildren = family.couples.flatMap { $0.children }
         
         return VStack(alignment: .leading, spacing: 20) {
-            // Parents section
             if let primaryCouple = family.primaryCouple {
                 parentsSection(primaryCouple: primaryCouple, family: family)
             }
             
-            // Children section
             if !allChildren.isEmpty {
                 childrenSection(children: allChildren, family: family)
             }
             
-            // Additional Spouses section
             if family.couples.count > 1 {
                 additionalSpousesSection(family: family)
             }
             
-            // Notes section
             if !family.notes.isEmpty {
                 notesSection(notes: family.notes)
             }
@@ -341,8 +271,13 @@ struct JuuretView: View {
                     generateCitation(for: person, in: family)
                 },
                 onDateClick: { date, eventType in
-                    if let query = juuretApp.generateHiskiQuery(for: primaryCouple.husband, eventType: eventType) {
-                        hiskiResult = query
+                    Task {
+                        let result = await juuretApp.processHiskiQuery(
+                            for: primaryCouple.husband,
+                            eventType: eventType,
+                            familyId: family.familyId
+                        )
+                        hiskiResult = result
                         showingHiskiResult = true
                     }
                 },
@@ -362,8 +297,13 @@ struct JuuretView: View {
                     generateCitation(for: person, in: family)
                 },
                 onDateClick: { date, eventType in
-                    if let query = juuretApp.generateHiskiQuery(for: primaryCouple.wife, eventType: eventType) {
-                        hiskiResult = query
+                    Task {
+                        let result = await juuretApp.processHiskiQuery(
+                            for: primaryCouple.wife,
+                            eventType: eventType,
+                            familyId: family.familyId
+                        )
+                        hiskiResult = result
                         showingHiskiResult = true
                     }
                 },
@@ -396,8 +336,13 @@ struct JuuretView: View {
                         generateCitation(for: person, in: family)
                     },
                     onDateClick: { date, eventType in
-                        if let query = juuretApp.generateHiskiQuery(for: child, eventType: eventType) {
-                            hiskiResult = query
+                        Task {
+                            let result = await juuretApp.processHiskiQuery(
+                                for: child,
+                                eventType: eventType,
+                                familyId: family.familyId
+                            )
+                            hiskiResult = result
                             showingHiskiResult = true
                         }
                     },
@@ -409,6 +354,7 @@ struct JuuretView: View {
                         }
                     }
                 )
+                .padding(.leading, 25)
             }
         }
         .padding()
@@ -436,25 +382,21 @@ struct JuuretView: View {
         let actualCoupleIndex = index + 1
         let previousCouple = family.couples[actualCoupleIndex - 1]
         
-        // Check if husband continues (same name AND birth date)
         let isHusbandContinuing = couple.husband.name == previousCouple.husband.name &&
                                   couple.husband.birthDate == previousCouple.husband.birthDate
         
-        // Check if wife continues (same name AND birth date)
         let isWifeContinuing = couple.wife.name == previousCouple.wife.name &&
                               couple.wife.birthDate == previousCouple.wife.birthDate
 
         let additionalSpouse: Person
         if isHusbandContinuing && !isWifeContinuing {
-            additionalSpouse = couple.wife  // Wife is new
+            additionalSpouse = couple.wife
         } else if isWifeContinuing && !isHusbandContinuing {
-            additionalSpouse = couple.husband  // Husband is new
+            additionalSpouse = couple.husband
         } else {
-            // Fallback (shouldn't happen with valid data)
             additionalSpouse = couple.wife
         }
         
-        // NOW create the VStack with the computed values
         return VStack(alignment: .leading, spacing: 8) {
             PersonRowView(
                 person: additionalSpouse,
@@ -463,8 +405,13 @@ struct JuuretView: View {
                     handleAdditionalSpouseClick(person: person, family: family)
                 },
                 onDateClick: { date, eventType in
-                    if let query = juuretApp.generateHiskiQuery(for: additionalSpouse, eventType: eventType) {
-                        hiskiResult = query
+                    Task {
+                        let result = await juuretApp.processHiskiQuery(
+                            for: additionalSpouse,
+                            eventType: eventType,
+                            familyId: family.familyId
+                        )
+                        hiskiResult = result
                         showingHiskiResult = true
                     }
                 },
@@ -477,7 +424,6 @@ struct JuuretView: View {
                 }
             )
             
-            // Show widow/widower information if available
             if let widowInfo = extractWidowInfo(for: additionalSpouse, from: family.notes, spouseIndex: index) {
                 Text("(widow of \(widowInfo))")
                     .font(.genealogyCaption)
@@ -486,7 +432,6 @@ struct JuuretView: View {
                     .padding(.leading, 25)
             }
             
-            // Marriage date with this spouse
             if let marriageDate = couple.marriageDate {
                 HStack(spacing: 4) {
                     Text("∞")
@@ -498,7 +443,6 @@ struct JuuretView: View {
                 .foregroundColor(.secondary)
             }
             
-            // Children with this spouse
             if !couple.children.isEmpty {
                 additionalSpouseChildren(children: couple.children, family: family)
             }
@@ -522,8 +466,13 @@ struct JuuretView: View {
                         generateCitation(for: person, in: family)
                     },
                     onDateClick: { date, eventType in
-                        if let query = juuretApp.generateHiskiQuery(for: child, eventType: eventType) {
-                            hiskiResult = query
+                        Task {
+                            let result = await juuretApp.processHiskiQuery(
+                                for: child,
+                                eventType: eventType,
+                                familyId: family.familyId
+                            )
+                            hiskiResult = result
                             showingHiskiResult = true
                         }
                     },
@@ -535,14 +484,13 @@ struct JuuretView: View {
                         }
                     }
                 )
-                .padding(.leading, 25)
+                .padding(.leading, 50)
             }
         }
     }
     
     @ViewBuilder
     private func notesSection(notes: [String]) -> some View {
-        // Filter out widow/widower notes (those containing "leski")
         let filteredNotes = notes.filter { !$0.lowercased().contains("leski") }
         
         if !filteredNotes.isEmpty {
@@ -568,47 +516,28 @@ struct JuuretView: View {
         if person.asChild != nil {
             generateCitation(for: person, in: family)
         } else {
-            // Show modal error message but still generate main family citation
             alertTitle = "No Reference Available"
             alertMessage = "\(person.displayName) has no as_child reference in the source data. Showing citation for the main family instead."
             showingAlert = true
-            
-            // Generate citation for the main family (unenhanced)
-            Task {
-                let citation = CitationGenerator.generateMainFamilyCitation(family: family)
-                citationText = citation
-                // Show citation alert after the warning alert
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    showingCitation = true
-                }
-            }
+            generateCitation(for: person, in: family)
         }
     }
     
-    // Helper function to format date for display
     private func formatDateDisplay(_ date: String) -> String {
-        // If it's a 2-digit year, add "17" or "18" prefix
         if date.count == 2 {
             if let year = Int(date) {
-                let century = year < 30 ? "18" : "17"
+                let century = year < 50 ? "19" : "18"
                 return "\(century)\(date)"
             }
         }
-        // Otherwise return as-is
         return date
     }
     
-    // Helper function to extract widow information from notes
     private func extractWidowInfo(for person: Person, from notes: [String], spouseIndex: Int) -> String? {
-        // Extract all widow notes in order
         let widowNotes = notes.filter { $0.lowercased().contains("leski") }
         
-        // Use the spouse index to match the correct widow note
-        // Index 0 = II puoliso (first additional spouse)
-        // Index 1 = III puoliso (second additional spouse)
         if spouseIndex < widowNotes.count {
             let note = widowNotes[spouseIndex]
-            // Extract the name before "leski"
             let components = note.components(separatedBy: " leski")
             if components.count > 0 {
                 return components[0].trimmingCharacters(in: .whitespaces)
@@ -649,27 +578,6 @@ struct JuuretView: View {
     }
 }
 
-// MARK: - Supporting Type
-
-enum PersonRole {
-    case father, mother, child
-    
-    var icon: String {
-        switch self {
-        case .father: return "person.fill"
-        case .mother: return "person.fill"
-        case .child: return "person"
-        }
-    }
-    
-    var color: Color {
-        switch self {
-        case .father, .mother: return .blue
-        case .child: return .green
-        }
-    }
-}
-
 // MARK: - Font Extensions
 
 extension Font {
@@ -688,4 +596,3 @@ extension Font {
     JuuretView()
         .environment(JuuretApp())
 }
-

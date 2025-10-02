@@ -234,6 +234,15 @@ class JuuretApp {
 #endif
     }
     
+    func closeHiskiWebViews() {
+        #if os(macOS)
+        Task { @MainActor in
+            // Access the shared manager
+            HiskiWebViewManager.shared.closeAllWindows()
+        }
+        #endif
+    }
+    
     // MARK: - Family Extraction
     
     /**
@@ -618,56 +627,46 @@ class JuuretApp {
     
     // MARK: - Hiski Query Generation
     
-    /**
-     * Generate Hiski query for a person
-     * Returns the query URL string
-     */
-    func generateHiskiQuery(for person: Person, eventType: EventType) -> String? {
-        guard let query = HiskiQuery.from(person: person, eventType: eventType) else {
+    // MARK: - Hiski Query with Service
+
+    func queryHiski(for person: Person, eventType: EventType, familyId: String) async -> String? {
+        let hiskiService = HiskiService()
+        hiskiService.setCurrentFamily(familyId)
+        
+        do {
+            let citation: HiskiCitation
+            
+            switch eventType {
+            case .birth:
+                guard let birthDate = person.birthDate else { return nil }
+                citation = try await hiskiService.queryBirth(name: person.name, date: birthDate)
+                
+            case .death:
+                guard let deathDate = person.deathDate else { return nil }
+                citation = try await hiskiService.queryDeath(name: person.name, date: deathDate)
+                
+            case .marriage:
+                guard let marriageDate = person.bestMarriageDate,
+                      let spouse = person.spouse else { return nil }
+                citation = try await hiskiService.queryMarriage(
+                    husbandName: person.displayName,
+                    wifeName: spouse,
+                    date: marriageDate
+                )
+                
+            default:
+                return nil
+            }
+            
+            return citation.url
+            
+        } catch {
+            logError(.app, "Hiski query failed: \(error)")
             return nil
         }
-        return query.queryURL
     }
     
     // MARK: - Hiski Search URL Generation
-    
-    /**
-     * Generate Hiski search URL for a person
-     */
-    func generateHiskiURL(for person: Person) -> URL? {
-        var components = URLComponents(string: "https://hiski.genealogia.fi/hiski")
-        
-        var queryItems: [URLQueryItem] = []
-        
-        // Add name components
-        let nameParts = person.name.split(separator: " ")
-        if let firstName = nameParts.first {
-            queryItems.append(URLQueryItem(name: "en", value: String(firstName)))
-        }
-        if nameParts.count > 1 {
-            let lastName = nameParts.dropFirst().joined(separator: " ")
-            queryItems.append(URLQueryItem(name: "sn", value: lastName))
-        }
-        
-        // Add patronymic if available
-        if let patronymic = person.patronymic {
-            queryItems.append(URLQueryItem(name: "pn", value: patronymic))
-        }
-        
-        // Add birth year if available
-        if let birthDate = person.birthDate {
-            let year = extractYear(from: birthDate)
-            if let year = year {
-                queryItems.append(URLQueryItem(name: "sy", value: year))
-            }
-        }
-        
-        // Add location (Kälviä)
-        queryItems.append(URLQueryItem(name: "kr", value: "Kälviä"))
-        
-        components?.queryItems = queryItems
-        return components?.url
-    }
     
     private func extractYear(from dateString: String) -> String? {
         // Handle various date formats
