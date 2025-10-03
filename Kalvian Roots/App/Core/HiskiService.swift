@@ -38,6 +38,21 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
     private var recordWindow: NSWindow?
     private var urlObservers = Set<AnyCancellable>()
     
+    // MARK: - Window Size and Position Configuration
+    
+    // Adjust these values to change window sizes and positions
+    private let searchWindowX: CGFloat = 950
+    private let searchWindowY: CGFloat = 800
+    private let searchWindowWidth: CGFloat = 600
+    private let searchWindowHeight: CGFloat = 800
+    private let addressBarHeight: CGFloat = 24
+    private let addressBarPadding: CGFloat = 10  // Left/right padding
+    
+    private let recordWindowX: CGFloat = 950
+    private let recordWindowY: CGFloat = 250
+    private let recordWindowWidth: CGFloat = 600
+    private let recordWindowHeight: CGFloat = 450
+    
     private override init() {
         super.init()
     }
@@ -45,25 +60,31 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
     func openSearchResults(url: URL) {
         closeSearchWindow()
         
+        // Calculate derived dimensions
+        let addressBarWidth = searchWindowWidth - (addressBarPadding * 2)
+        let webViewHeight = searchWindowHeight - addressBarHeight - addressBarPadding
+        
+        // Create container view with address bar
+        let containerView = NSView(frame: NSRect(x: 0, y: 0, width: searchWindowWidth, height: searchWindowHeight))
+        
         // Create WKWebView with visible navigation
-        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 1200, height: 800))
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: searchWindowWidth, height: webViewHeight))
         webView.navigationDelegate = self
         webView.allowsBackForwardNavigationGestures = true
         
-        // Create container view with address bar
-        let containerView = NSView(frame: NSRect(x: 0, y: 0, width: 1200, height: 800))
-        
-        // Address bar
-        let addressField = NSTextField(frame: NSRect(x: 10, y: 770, width: 1180, height: 24))
+        // Address bar - selectable but not editable
+        let addressBarY = searchWindowHeight - addressBarHeight - (addressBarPadding / 2)
+        let addressField = NSTextField(frame: NSRect(x: addressBarPadding,
+                                                     y: addressBarY,
+                                                     width: addressBarWidth,
+                                                     height: addressBarHeight))
         addressField.isEditable = false
+        addressField.isSelectable = true  // Allow text selection
         addressField.isBordered = true
         addressField.backgroundColor = .controlBackgroundColor
         addressField.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
         addressField.stringValue = url.absoluteString
         addressField.lineBreakMode = .byTruncatingMiddle
-        
-        // WebView (below address bar)
-        webView.frame = NSRect(x: 0, y: 0, width: 1200, height: 765)
         
         containerView.addSubview(addressField)
         containerView.addSubview(webView)
@@ -76,7 +97,7 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
             .store(in: &urlObservers)
         
         // Create window
-        let window = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 1200, height: 800),
+        let window = NSWindow(contentRect: NSRect(x: searchWindowX, y: searchWindowY, width: searchWindowWidth, height: searchWindowHeight),
                              styleMask: [.titled, .closable, .resizable, .miniaturizable],
                              backing: .buffered,
                              defer: false)
@@ -92,43 +113,18 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
     func openRecordView(url: URL) {
         closeRecordWindow()
         
-        // Create WKWebView with visible navigation
-        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 1000, height: 800))
+        // Create WKWebView - NO address bar for record window
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: recordWindowWidth, height: recordWindowHeight))
         webView.navigationDelegate = self
         webView.allowsBackForwardNavigationGestures = true
         
-        // Create container view with address bar
-        let containerView = NSView(frame: NSRect(x: 0, y: 0, width: 1000, height: 800))
-        
-        // Address bar
-        let addressField = NSTextField(frame: NSRect(x: 10, y: 770, width: 980, height: 24))
-        addressField.isEditable = false
-        addressField.isBordered = true
-        addressField.backgroundColor = .controlBackgroundColor
-        addressField.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
-        addressField.stringValue = url.absoluteString
-        addressField.lineBreakMode = .byTruncatingMiddle
-        
-        // WebView (below address bar)
-        webView.frame = NSRect(x: 0, y: 0, width: 1000, height: 765)
-        
-        containerView.addSubview(addressField)
-        containerView.addSubview(webView)
-        
-        // Update address field when URL changes
-        webView.publisher(for: \.url)
-            .sink { [weak addressField] newUrl in
-                addressField?.stringValue = newUrl?.absoluteString ?? ""
-            }
-            .store(in: &urlObservers)
-        
-        // Create window
-        let window = NSWindow(contentRect: NSRect(x: 150, y: 150, width: 1000, height: 800),
+        // Create window - no container, just webView directly
+        let window = NSWindow(contentRect: NSRect(x: recordWindowX, y: recordWindowY, width: recordWindowWidth, height: recordWindowHeight),
                              styleMask: [.titled, .closable, .resizable, .miniaturizable],
                              backing: .buffered,
                              defer: false)
         window.title = "Hiski Record"
-        window.contentView = containerView
+        window.contentView = webView
         window.isReleasedWhenClosed = false
         window.makeKeyAndOrderFront(nil)
         
