@@ -243,12 +243,13 @@ class JuuretApp {
         #endif
     }
     
-    
-    
     // MARK: - Hiski Query Methods
 
     /**
      * Process Hiski query for a person's life event
+     * 
+     * Queries the Hiski database for birth, death, or marriage records
+     * and returns a citation URL. Opens browser windows/sheets to display results.
      */
     func processHiskiQuery(for person: Person, eventType: EventType, familyId: String) async -> String {
         let hiskiService = HiskiService()
@@ -262,7 +263,12 @@ class JuuretApp {
                 guard let birthDate = person.birthDate else {
                     return "No birth date available for \(person.name)"
                 }
-                citation = try await hiskiService.queryBirth(name: person.name, date: birthDate)
+                // Pass father's name to narrow search results
+                citation = try await hiskiService.queryBirth(
+                    name: person.name, 
+                    date: birthDate,
+                    fatherName: person.fatherName
+                )
                 
             case .death:
                 guard let deathDate = person.deathDate else {

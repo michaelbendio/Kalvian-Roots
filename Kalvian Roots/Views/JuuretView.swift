@@ -42,6 +42,7 @@ struct JuuretView: View {
         }
         .setupHiskiSafariHost()
         #endif
+        
         .alert("Citation", isPresented: $showingCitation) {
             Button("Copy to Clipboard") {
                 copyToClipboard(citationText)
@@ -266,6 +267,8 @@ struct JuuretView: View {
             PersonRowView(
                 person: primaryCouple.husband,
                 role: "Father",
+                enhancedDeathDate: nil,
+                enhancedMarriageDate: nil,
                 onNameClick: { person in
                     generateCitation(for: person, in: family)
                 },
@@ -292,6 +295,8 @@ struct JuuretView: View {
             PersonRowView(
                 person: primaryCouple.wife,
                 role: "Mother",
+                enhancedDeathDate: nil,
+                enhancedMarriageDate: nil,
                 onNameClick: { person in
                     generateCitation(for: person, in: family)
                 },
@@ -331,6 +336,8 @@ struct JuuretView: View {
                 PersonRowView(
                     person: child,
                     role: "Child",
+                    enhancedDeathDate: getEnhancedDeathDate(for: child, in: family),
+                    enhancedMarriageDate: getEnhancedMarriageDate(for: child, in: family),
                     onNameClick: { person in
                         generateCitation(for: person, in: family)
                     },
@@ -353,12 +360,9 @@ struct JuuretView: View {
                         }
                     }
                 )
-                .padding(.leading, 25)
+                .padding(.leading, 50)
             }
         }
-        .padding()
-        .background(Color.green.opacity(0.05))
-        .cornerRadius(10)
     }
     
     @ViewBuilder
@@ -400,6 +404,8 @@ struct JuuretView: View {
             PersonRowView(
                 person: additionalSpouse,
                 role: "Spouse",
+                enhancedDeathDate: nil,
+                enhancedMarriageDate: nil,
                 onNameClick: { person in
                     handleAdditionalSpouseClick(person: person, family: family)
                 },
@@ -461,6 +467,8 @@ struct JuuretView: View {
                 PersonRowView(
                     person: child,
                     role: "Child",
+                    enhancedDeathDate: getEnhancedDeathDate(for: child, in: family),
+                    enhancedMarriageDate: getEnhancedMarriageDate(for: child, in: family),
                     onNameClick: { person in
                         generateCitation(for: person, in: family)
                     },
@@ -483,9 +491,12 @@ struct JuuretView: View {
                         }
                     }
                 )
-                .padding(.leading, 50)
+                .padding(.leading, 25)
             }
         }
+        .padding()
+        .background(Color.green.opacity(0.05))
+        .cornerRadius(10)
     }
     
     @ViewBuilder
@@ -509,6 +520,53 @@ struct JuuretView: View {
             .background(Color.yellow.opacity(0.05))
             .cornerRadius(10)
         }
+    }
+    
+    // MARK: - Helper Methods
+    
+    /// Get enhanced death date for a person from their asParent family
+    private func getEnhancedDeathDate(for person: Person, in family: Family) -> String? {
+        guard let network = juuretApp.familyNetworkWorkflow?.getFamilyNetwork() else {
+            return person.deathDate
+        }
+        
+        guard let asParentFamily = network.getAsParentFamily(for: person) else {
+            return person.deathDate
+        }
+        
+        let asParentPerson = asParentFamily.allParents.first { parent in
+            parent.name.lowercased() == person.name.lowercased() ||
+            (parent.birthDate == person.birthDate && parent.birthDate != nil)
+        }
+        
+        return asParentPerson?.deathDate ?? person.deathDate
+    }
+    
+    /// Get enhanced marriage date for a person from their asParent family
+    private func getEnhancedMarriageDate(for person: Person, in family: Family) -> String? {
+        guard let network = juuretApp.familyNetworkWorkflow?.getFamilyNetwork() else {
+            return person.fullMarriageDate ?? person.marriageDate
+        }
+        
+        guard let asParentFamily = network.getAsParentFamily(for: person) else {
+            return person.fullMarriageDate ?? person.marriageDate
+        }
+        
+        let asParentPerson = asParentFamily.allParents.first { parent in
+            parent.name.lowercased() == person.name.lowercased() ||
+            (parent.birthDate == person.birthDate && parent.birthDate != nil)
+        }
+        
+        let matchingCouple = asParentFamily.couples.first { couple in
+            couple.husband.name.lowercased() == person.name.lowercased() ||
+            couple.wife.name.lowercased() == person.name.lowercased()
+        }
+        
+        return asParentPerson?.fullMarriageDate
+            ?? matchingCouple?.fullMarriageDate
+            ?? asParentPerson?.marriageDate
+            ?? person.fullMarriageDate
+            ?? person.marriageDate
     }
     
     private func handleAdditionalSpouseClick(person: Person, family: Family) {

@@ -7,8 +7,10 @@
 //  Created by Michael Bendio on 10/1/25.
 //
 
+
 import Foundation
 import SwiftUI
+import Combine
 #if os(macOS)
 import AppKit
 import WebKit
@@ -34,6 +36,7 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
     
     private var searchWindow: NSWindow?
     private var recordWindow: NSWindow?
+    private var urlObservers = Set<AnyCancellable>()
     
     private override init() {
         super.init()
@@ -42,15 +45,43 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
     func openSearchResults(url: URL) {
         closeSearchWindow()
         
+        // Create WKWebView with visible navigation
         let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 1200, height: 800))
         webView.navigationDelegate = self
+        webView.allowsBackForwardNavigationGestures = true
         
+        // Create container view with address bar
+        let containerView = NSView(frame: NSRect(x: 0, y: 0, width: 1200, height: 800))
+        
+        // Address bar
+        let addressField = NSTextField(frame: NSRect(x: 10, y: 770, width: 1180, height: 24))
+        addressField.isEditable = false
+        addressField.isBordered = true
+        addressField.backgroundColor = .controlBackgroundColor
+        addressField.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+        addressField.stringValue = url.absoluteString
+        addressField.lineBreakMode = .byTruncatingMiddle
+        
+        // WebView (below address bar)
+        webView.frame = NSRect(x: 0, y: 0, width: 1200, height: 765)
+        
+        containerView.addSubview(addressField)
+        containerView.addSubview(webView)
+        
+        // Update address field when URL changes
+        webView.publisher(for: \.url)
+            .sink { [weak addressField] newUrl in
+                addressField?.stringValue = newUrl?.absoluteString ?? ""
+            }
+            .store(in: &urlObservers)
+        
+        // Create window
         let window = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 1200, height: 800),
                              styleMask: [.titled, .closable, .resizable, .miniaturizable],
                              backing: .buffered,
                              defer: false)
         window.title = "Hiski Search Results"
-        window.contentView = webView
+        window.contentView = containerView
         window.isReleasedWhenClosed = false
         window.makeKeyAndOrderFront(nil)
         
@@ -61,15 +92,43 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
     func openRecordView(url: URL) {
         closeRecordWindow()
         
+        // Create WKWebView with visible navigation
         let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 1000, height: 800))
         webView.navigationDelegate = self
+        webView.allowsBackForwardNavigationGestures = true
         
+        // Create container view with address bar
+        let containerView = NSView(frame: NSRect(x: 0, y: 0, width: 1000, height: 800))
+        
+        // Address bar
+        let addressField = NSTextField(frame: NSRect(x: 10, y: 770, width: 980, height: 24))
+        addressField.isEditable = false
+        addressField.isBordered = true
+        addressField.backgroundColor = .controlBackgroundColor
+        addressField.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+        addressField.stringValue = url.absoluteString
+        addressField.lineBreakMode = .byTruncatingMiddle
+        
+        // WebView (below address bar)
+        webView.frame = NSRect(x: 0, y: 0, width: 1000, height: 765)
+        
+        containerView.addSubview(addressField)
+        containerView.addSubview(webView)
+        
+        // Update address field when URL changes
+        webView.publisher(for: \.url)
+            .sink { [weak addressField] newUrl in
+                addressField?.stringValue = newUrl?.absoluteString ?? ""
+            }
+            .store(in: &urlObservers)
+        
+        // Create window
         let window = NSWindow(contentRect: NSRect(x: 150, y: 150, width: 1000, height: 800),
                              styleMask: [.titled, .closable, .resizable, .miniaturizable],
                              backing: .buffered,
                              defer: false)
         window.title = "Hiski Record"
-        window.contentView = webView
+        window.contentView = containerView
         window.isReleasedWhenClosed = false
         window.makeKeyAndOrderFront(nil)
         
@@ -184,10 +243,17 @@ class HiskiService {
         self.currentFamilyId = familyId
     }
     
-    func queryBirth(name: String, date: String) async throws -> HiskiCitation {
+    func queryBirth(name: String, date: String, fatherName: String? = nil) async throws -> HiskiCitation {
         let session = try await getSession()
         let firstName = name.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? name
-        let searchUrl = try buildBirthSearchUrl(session: session, name: firstName, date: date)
+        
+        // Extract father's first name if provided
+        var fatherFirstName: String? = nil
+        if let father = fatherName {
+            fatherFirstName = father.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        
+        let searchUrl = try buildBirthSearchUrl(session: session, name: firstName, date: date, fatherName: fatherFirstName)
         
         let (searchData, _) = try await URLSession.shared.data(from: searchUrl)
         guard let searchHtml = String(data: searchData, encoding: .isoLatin1) else {
@@ -358,8 +424,8 @@ class HiskiService {
         return String(html[sessionRange])
     }
     
-    private func buildBirthSearchUrl(session: String, name: String, date: String) throws -> URL {
-        let params = [
+    private func buildBirthSearchUrl(session: String, name: String, date: String, fatherName: String? = nil) throws -> URL {
+        var params = [
             "komento": "haku",
             "srk": parishes,
             "kirja": "kastetut",
@@ -382,6 +448,11 @@ class HiskiService {
             "ksukunimi": "",
             "kammatti": ""
         ]
+        
+        // Add father's first name if available (narrows search results significantly)
+        if let fatherFirst = fatherName, !fatherFirst.isEmpty {
+            params["ietunimi"] = fatherFirst
+        }
         
         return try buildSearchUrl(session: session, params: params)
     }

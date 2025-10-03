@@ -52,7 +52,7 @@ class FamilyNetworkCache {
     
     /// Track how many families processed in this session
     private var familiesProcessedInSession = 0
-    private let maxFamiliesToProcess = 5
+    private let maxFamiliesToProcess = 0
 
     // MARK: - Initialization
 
