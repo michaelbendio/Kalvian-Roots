@@ -29,7 +29,8 @@ class FamilyResolver {
     private let fileManager: RootsFileManager
     private let nameEquivalenceManager: NameEquivalenceManager
     private let aiParsingService: AIParsingService
-    
+    private weak var familyNetworkCache: FamilyNetworkCache?
+
     // Track resolution statistics
     private var resolutionStatistics = ResolutionStatistics()
     
@@ -37,14 +38,15 @@ class FamilyResolver {
     
     init(aiParsingService: AIParsingService,
          nameEquivalenceManager: NameEquivalenceManager,
-         fileManager: RootsFileManager) {
+         fileManager: RootsFileManager,
+         familyNetworkCache: FamilyNetworkCache? = nil) {
         self.aiParsingService = aiParsingService
         self.nameEquivalenceManager = nameEquivalenceManager
         self.fileManager = fileManager
+        self.familyNetworkCache = familyNetworkCache
         
-        logInfo(.resolver, "🔗 FamilyResolver initialized")
+        logInfo(.resolver, "🔗 FamilyResolver initialized \(familyNetworkCache != nil ? "WITH cache" : "without cache")")
     }
-    
     // MARK: - Main Resolution Method
     
     /**
@@ -269,6 +271,16 @@ class FamilyResolver {
     private func resolveFamilyByReference(_ reference: String) async throws -> Family? {
         // Clean and validate the family ID
         let cleanedRef = reference.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // NEW: Check cache first to avoid redundant AI calls!
+        if let cache = familyNetworkCache,
+           let cachedFamily = cache.getCachedNuclearFamily(familyId: cleanedRef) {
+            logInfo(.resolver, "⚡ Using cached family (avoiding AI call): \(cleanedRef)")
+            return cachedFamily
+        }
+        
+        // Cache miss - parse from file with AI
+        logInfo(.resolver, "💨 Cache miss, parsing with AI: \(cleanedRef)")
         
         // Try to extract and parse the family
         if let familyText = fileManager.extractFamilyText(familyId: cleanedRef) {

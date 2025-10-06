@@ -25,45 +25,60 @@ struct CitationGenerator {
     // MARK: - Main Family Citation
     
     /**
-     * Generate main family citation with proper formatting
-     * Used for: nuclear families and as_parent families (children with their spouses)
-     * Enhanced with network information when available for target person
+     * Generate main family citation (nuclear family)
+     * Tracks and reports where enhanced data comes from
      */
     static func generateMainFamilyCitation(
         family: Family,
         targetPerson: Person? = nil,
-        network: FamilyNetwork? = nil
+        network: FamilyNetwork? = nil,
+        nameEquivalenceManager: NameEquivalenceManager? = nil
     ) -> String {
         var citation = "Information on \(family.pageReferenceString) includes:\n"
         
-        // Primary couple with compact date format
+        // Track which children got enhanced data
+        var enhancementSources: [EnhancementSource] = []
+        
+        // Parents with beautiful date format
         if let primaryCouple = family.primaryCouple {
             citation += formatParentCompact(primaryCouple.husband) + "\n"
             citation += formatParentCompact(primaryCouple.wife) + "\n"
             
-            // Marriage date for primary couple with context-aware formatting
+            // Marriage date with context-aware formatting
             if let fullMarriageDate = primaryCouple.fullMarriageDate {
                 citation += "m. \(formatDate(fullMarriageDate))\n"
             } else if let marriageDate = primaryCouple.marriageDate {
-                let parentBirthYear = extractBirthYear(from: primaryCouple.husband) 
+                let parentBirthYear = extractBirthYear(from: primaryCouple.husband)
                                     ?? extractBirthYear(from: primaryCouple.wife)
                 citation += "m. \(extractMarriageYear(marriageDate, parentBirthYear: parentBirthYear))\n"
             }
             
-            // Children from primary couple
+            // Primary couple's children
             if !primaryCouple.children.isEmpty {
                 citation += "Children:\n"
                 for child in primaryCouple.children {
                     let isTarget: Bool
                     if let target = targetPerson {
-                        isTarget = isTargetPerson(child, target, nameEquivalenceManager: nil)
+                        isTarget = isTargetPerson(child, target, nameEquivalenceManager: nameEquivalenceManager)
                     } else {
                         isTarget = false
                     }
                     let prefix = isTarget ? "→ " : ""
                     
-                    if isTarget, let network = network {
-                        citation += "\(prefix)\(formatChildWithEnhancement(child, person: targetPerson!, network: network))"
+                    if isTarget, let network = network, let target = targetPerson {
+                        // Track enhancements for this child
+                        if let asParentFamily = network.getAsParentFamily(for: target) {
+                            let enhancementInfo = trackEnhancement(
+                                nuclearChild: child,
+                                person: target,
+                                asParentFamily: asParentFamily
+                            )
+                            if let info = enhancementInfo {
+                                enhancementSources.append(info)
+                            }
+                        }
+                        
+                        citation += "\(prefix)\(formatChildWithEnhancement(child, person: target, network: network))"
                     } else {
                         citation += "\(prefix)\(formatChild(child))"
                     }
@@ -107,8 +122,20 @@ struct CitationGenerator {
                         }
                         let prefix = isTarget ? "→ " : ""
                         
-                        if isTarget, let network = network {
-                            citation += "\(prefix)\(formatChildWithEnhancement(child, person: targetPerson!, network: network))"
+                        if isTarget, let network = network, let target = targetPerson {
+                            // Track enhancements for this child
+                            if let asParentFamily = network.getAsParentFamily(for: target) {
+                                let enhancementInfo = trackEnhancement(
+                                    nuclearChild: child,
+                                    person: target,
+                                    asParentFamily: asParentFamily
+                                )
+                                if let info = enhancementInfo {
+                                    enhancementSources.append(info)
+                                }
+                            }
+                            
+                            citation += "\(prefix)\(formatChildWithEnhancement(child, person: target, network: network))"
                         } else {
                             citation += "\(prefix)\(formatChild(child))"
                         }
@@ -120,7 +147,7 @@ struct CitationGenerator {
         // Notes section
         let filteredNotes = family.notes.filter { !$0.lowercased().contains("leski") }
         if !filteredNotes.isEmpty {
-            citation += "Note(s):\n"
+            citation += "Note:\n"
             for note in filteredNotes {
                 citation += "\(note)\n"
             }
@@ -129,12 +156,133 @@ struct CitationGenerator {
         let totalChildrenDied = family.totalChildrenDiedInfancy
         if totalChildrenDied > 0 {
             if filteredNotes.isEmpty {
-                citation += "Note(s):\n"
+                citation += "Note:\n"
             }
             citation += "Children died as infants: \(totalChildrenDied)\n"
         }
         
+        // Additional Information section - report where enhanced data came from
+        if !enhancementSources.isEmpty {
+            citation += "Additional information:\n"
+            for source in enhancementSources {
+                var parts: [String] = []
+                
+                if source.hasEnhancedMarriage && source.hasEnhancedDeath {
+                    parts.append("death and marriage dates are")
+                } else if source.hasEnhancedMarriage {
+                    parts.append("marriage date is")
+                } else if source.hasEnhancedDeath {
+                    parts.append("death date is")
+                }
+                
+                if !parts.isEmpty {
+                    let dataTypes = parts.joined(separator: " and ")
+                    citation += "\(source.childName)'s \(dataTypes) on \(source.asParentPages)\n"
+                }
+            }
+        }
+        
         return citation
+    }
+
+    /// Track what data was enhanced for a child
+    private static func trackEnhancement(
+        nuclearChild: Person,
+        person: Person,
+        asParentFamily: Family
+    ) -> EnhancementSource? {
+        // First, check if child is married (unmarried children can't have enhancements)
+        guard nuclearChild.spouse != nil && !nuclearChild.spouse!.isEmpty else {
+            return nil
+        }
+        
+        // Try to find the person in the asParent family
+        var asParent: Person? = nil
+        
+        // STEP 1: Try birth date matching (most reliable)
+        if let nuclearBirth = nuclearChild.birthDate?.trimmingCharacters(in: .whitespaces),
+           !nuclearBirth.isEmpty {
+            asParent = asParentFamily.allParents.first { parent in
+                if let parentBirth = parent.birthDate?.trimmingCharacters(in: .whitespaces),
+                   !parentBirth.isEmpty {
+                    return parentBirth == nuclearBirth
+                }
+                return false
+            }
+        }
+        
+        // STEP 2: Try name matching with spouse verification
+        if asParent == nil {
+            asParent = asParentFamily.allParents.first { parent in
+                let nameMatches = parent.name.lowercased() == nuclearChild.name.lowercased() ||
+                                parent.name.lowercased() == person.name.lowercased()
+                
+                if nameMatches, let spouse = nuclearChild.spouse {
+                    let couple = asParentFamily.couples.first { c in
+                        c.husband.name.lowercased() == parent.name.lowercased() ||
+                        c.wife.name.lowercased() == parent.name.lowercased()
+                    }
+                    
+                    if let couple = couple {
+                        let spouseInFamily = parent.name.lowercased() == couple.husband.name.lowercased()
+                            ? couple.wife
+                            : couple.husband
+                        
+                        return spouseInFamily.name.lowercased() == spouse.lowercased() ||
+                               spouseInFamily.displayName.lowercased().contains(spouse.lowercased())
+                    }
+                }
+                return false
+            }
+        }
+        
+        // If we found a match, check what was enhanced
+        guard let asParent = asParent else {
+            return nil
+        }
+        
+        let hasEnhancedDeath = asParent.deathDate != nil && nuclearChild.deathDate == nil
+        
+        // Check if marriage date was enhanced
+        var hasEnhancedMarriage = false
+        
+        // Check person-level marriage date
+        if asParent.fullMarriageDate != nil || asParent.marriageDate != nil {
+            let nuclearMarriage = nuclearChild.fullMarriageDate ?? nuclearChild.marriageDate
+            let asParentMarriage = asParent.fullMarriageDate ?? asParent.marriageDate
+            
+            // Consider it enhanced if asParent has a more complete date
+            if asParentMarriage != nil && nuclearMarriage != asParentMarriage {
+                hasEnhancedMarriage = true
+            }
+        }
+        
+        // Check couple-level marriage date
+        if !hasEnhancedMarriage {
+            if let couple = asParentFamily.couples.first(where: { c in
+                c.husband.name.lowercased() == person.name.lowercased() ||
+                c.wife.name.lowercased() == person.name.lowercased()
+            }) {
+                let coupleMarriage = couple.fullMarriageDate ?? couple.marriageDate
+                let nuclearMarriage = nuclearChild.fullMarriageDate ?? nuclearChild.marriageDate
+                
+                if coupleMarriage != nil && nuclearMarriage != coupleMarriage {
+                    hasEnhancedMarriage = true
+                }
+            }
+        }
+        
+        // Only return if something was actually enhanced
+        if hasEnhancedDeath || hasEnhancedMarriage {
+            return EnhancementSource(
+                childName: nuclearChild.name,
+                hasEnhancedMarriage: hasEnhancedMarriage,
+                hasEnhancedDeath: hasEnhancedDeath,
+                asParentPages: asParentFamily.pageReferenceString
+            )
+        }
+        
+        return nil
     }
     
     // MARK: - As-Child Citation
@@ -220,7 +368,7 @@ struct CitationGenerator {
         // Notes section
         let filteredNotes = asChildFamily.notes.filter { !$0.lowercased().contains("leski") }
         if !filteredNotes.isEmpty {
-            citation += "Note(s):\n"
+            citation += "Note:\n"
             for note in filteredNotes {
                 citation += "\(note)\n"
             }
@@ -229,7 +377,7 @@ struct CitationGenerator {
         let totalChildrenDied = asChildFamily.totalChildrenDiedInfancy
         if totalChildrenDied > 0 {
             if filteredNotes.isEmpty {
-                citation += "Note(s):\n"
+                citation += "Note:\n"
             }
             citation += "Children died as infants: \(totalChildrenDied)\n"
         }
@@ -468,35 +616,86 @@ struct CitationGenerator {
         logInfo(.citation, "  person.displayName: '\(person.displayName)'")
         logInfo(.citation, "  asParentFamilies keys: \(Array(network.asParentFamilies.keys))")
         
+        // CRITICAL: If the child has no spouse, they cannot have an asParent family
+        // Return immediately without enhancement to prevent incorrect matching
+        guard let spouse = nuclearChild.spouse, !spouse.isEmpty else {
+            logInfo(.citation, "⚠️ Child has no spouse - cannot have asParent family, skipping enhancement")
+            return formatChild(nuclearChild)
+        }
+        
         guard let asParentFamily = network.getAsParentFamily(for: person) else {
             logWarn(.citation, "❌ No asParent family found - returning non-enhanced")
             return formatChild(nuclearChild)
         }
 
-        // Find person in asParent family
-        var asParent = asParentFamily.allParents.first { parent in
-            parent.name.lowercased() == nuclearChild.name.lowercased() ||
-            parent.name.lowercased() == person.name.lowercased()
-        }
+        // STEP 1: Try PRIMARY matching - birth date match (most reliable)
+        var asParent: Person? = nil
         
-        // Try birth date matching if name match fails
-        if asParent == nil {
-            if let nuclearBirth = nuclearChild.birthDate?.trimmingCharacters(in: .whitespaces),
-               !nuclearBirth.isEmpty {
-                asParent = asParentFamily.allParents.first { parent in
-                    if let parentBirth = parent.birthDate?.trimmingCharacters(in: .whitespaces),
-                       !parentBirth.isEmpty {
-                        return parentBirth == nuclearBirth
-                    }
-                    return false
+        if let nuclearBirth = nuclearChild.birthDate?.trimmingCharacters(in: .whitespaces),
+           !nuclearBirth.isEmpty {
+            asParent = asParentFamily.allParents.first { parent in
+                if let parentBirth = parent.birthDate?.trimmingCharacters(in: .whitespaces),
+                   !parentBirth.isEmpty {
+                    return parentBirth == nuclearBirth
                 }
+                return false
+            }
+            
+            if asParent != nil {
+                logInfo(.citation, "✅ Found match by BIRTH DATE: \(nuclearBirth)")
             }
         }
         
+        // STEP 2: Only if birth date match fails AND we have a spouse,
+        // try name matching with spouse verification
+        if asParent == nil {
+            logInfo(.citation, "⚠️ No birth date match found, trying name match with spouse verification")
+            
+            asParent = asParentFamily.allParents.first { parent in
+                let nameMatches = parent.name.lowercased() == nuclearChild.name.lowercased() ||
+                                parent.name.lowercased() == person.name.lowercased()
+                
+                // If names match, verify this is the right person by checking spouse
+                if nameMatches {
+                    // Find the couple this parent belongs to
+                    let couple = asParentFamily.couples.first { c in
+                        c.husband.name.lowercased() == parent.name.lowercased() ||
+                        c.wife.name.lowercased() == parent.name.lowercased()
+                    }
+                    
+                    if let couple = couple {
+                        let spouseInFamily = parent.name.lowercased() == couple.husband.name.lowercased()
+                            ? couple.wife
+                            : couple.husband
+                        
+                        // Check if the spouse name matches
+                        let spouseMatches = spouseInFamily.name.lowercased() == spouse.lowercased() ||
+                                          spouseInFamily.displayName.lowercased().contains(spouse.lowercased())
+                        
+                        if spouseMatches {
+                            logInfo(.citation, "✅ Found match by NAME + SPOUSE verification")
+                            return true
+                        } else {
+                            logWarn(.citation, "❌ Name matched but spouse doesn't match: expected '\(spouse)', found '\(spouseInFamily.name)'")
+                            return false
+                        }
+                    }
+                }
+                return false
+            }
+        }
+        
+        // If still no match found, return non-enhanced
+        guard let asParent = asParent else {
+            logWarn(.citation, "❌ No matching person found in asParent family - returning non-enhanced")
+            return formatChild(nuclearChild)
+        }
+        
+        // Build the enhanced citation line
         var line = nuclearChild.name
         
         let enhancedBirthDate = nuclearChild.birthDate
-        let enhancedDeathDate = asParent?.deathDate ?? nuclearChild.deathDate
+        let enhancedDeathDate = asParent.deathDate ?? nuclearChild.deathDate
         
         // Use beautiful date range format
         if let birthDate = enhancedBirthDate, let deathDate = enhancedDeathDate {
@@ -511,9 +710,7 @@ struct CitationGenerator {
         var enhancedMarriageDate: String? = nil
         
         // 1. Check asParent person-level dates
-        if let asParent = asParent {
-            enhancedMarriageDate = asParent.fullMarriageDate ?? asParent.marriageDate
-        }
+        enhancedMarriageDate = asParent.fullMarriageDate ?? asParent.marriageDate
         
         // 2. Check couple-level date in asParent family
         if enhancedMarriageDate == nil {
@@ -535,26 +732,32 @@ struct CitationGenerator {
         logInfo(.citation, "  nuclearChild.bestMarriageDate: '\(nuclearChild.bestMarriageDate ?? "nil")'")
         
         // Format marriage information
-        if let spouse = nuclearChild.spouse, !spouse.isEmpty {
-            line += ", m. \(spouse)"
-            if let marriageDate = enhancedMarriageDate {
-                let birthYear = extractBirthYear(from: nuclearChild)
-                
-                logInfo(.citation, "  marriageDate contains '.': \(marriageDate.contains("."))")
-                logInfo(.citation, "  calling extractMarriageYear with: '\(marriageDate)'")
-                
-                if marriageDate.contains(".") {
-                    line += " \(formatDate(marriageDate))"
-                } else {
-                    let formatted = extractMarriageYear(marriageDate, parentBirthYear: birthYear)
-                    logInfo(.citation, "  extractMarriageYear returned: '\(formatted)'")
-                    line += " \(formatted)"
-                }
+        line += ", m. \(spouse)"
+        if let marriageDate = enhancedMarriageDate {
+            let birthYear = extractBirthYear(from: nuclearChild)
+            
+            logInfo(.citation, "  marriageDate contains '.': \(marriageDate.contains("."))")
+            logInfo(.citation, "  calling extractMarriageYear with: '\(marriageDate)'")
+            
+            if marriageDate.contains(".") {
+                line += " \(formatDate(marriageDate))"
+            } else {
+                let formatted = extractMarriageYear(marriageDate, parentBirthYear: birthYear)
+                logInfo(.citation, "  extractMarriageYear returned: '\(formatted)'")
+                line += " \(formatted)"
             }
         }
         
         line += "\n"
         return line
+    }
+
+    /// Track enhancement sources for Additional Information section
+    private struct EnhancementSource {
+        let childName: String
+        let hasEnhancedMarriage: Bool
+        let hasEnhancedDeath: Bool
+        let asParentPages: String
     }
     
     // MARK: - Helper Methods

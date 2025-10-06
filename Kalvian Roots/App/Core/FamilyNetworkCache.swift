@@ -134,6 +134,29 @@ class FamilyNetworkCache {
     }
     
     /**
+     * Get just the nuclear/main family from cache (without the full network)
+     * This is useful for cross-reference resolution to avoid redundant AI calls
+     */
+    func getCachedNuclearFamily(familyId: String) -> Family? {
+        // Check memory cache first
+        if let cached = cachedNetworks[familyId] {
+            logInfo(.cache, "⚡ Cache hit (nuclear) for: \(familyId)")
+            return cached.network.mainFamily
+        }
+        
+        // Check persistent store
+        if let persisted = persistenceStore.loadFamily(withId: familyId) {
+            logInfo(.cache, "💾 Cache hit (nuclear, disk) for: \(familyId)")
+            // Add to memory cache for next time
+            cachedNetworks[familyId] = persisted
+            return persisted.network.mainFamily
+        }
+        
+        logTrace(.cache, "❌ Cache miss (nuclear) for: \(familyId)")
+        return nil
+    }
+    
+    /**
      * Cache a network
      */
     func cacheNetwork(_ network: FamilyNetwork, citations: [String: String], extractionTime: TimeInterval) {

@@ -96,44 +96,46 @@ class JuuretApp {
     
     init() {
         logInfo(.app, "🚀 JuuretApp initialization started")
-        
+
         // Initialize core services locally first
         let localNameEquivalenceManager = NameEquivalenceManager()
         let localFileManager = RootsFileManager()
-        
+
         let localAIParsingService: AIParsingService
-        
+
         // FIXED: Proper platform detection for all Apple devices
-#if os(macOS) && arch(arm64)
-        // Apple Silicon Mac - use enhanced service with MLX support
-        logInfo(.ai, "🧠 Initializing AI services with MLX support (Apple Silicon Mac)")
-        localAIParsingService = AIParsingService()
-        logInfo(.ai, "✅ Enhanced AI parsing service initialized with MLX support")
-#else
-        // iOS/iPadOS/Intel Mac - use cloud services only
-        let platform = Self.detectPlatform()
-        logInfo(.ai, "🧠 Initializing AI services for \(platform)")
-        localAIParsingService = AIParsingService()
-        logInfo(.ai, "✅ AI parsing service initialized (cloud services only)")
-#endif
-        
+        #if os(macOS) && arch(arm64)
+            // Apple Silicon Mac - use enhanced service with MLX support
+            logInfo(.ai, "🧠 Initializing AI services with MLX support (Apple Silicon Mac)")
+            localAIParsingService = AIParsingService()
+            logInfo(.ai, "✅ Enhanced AI parsing service initialized with MLX support")
+        #else
+            // iOS/iPadOS/Intel Mac - use cloud services only
+            let platform = Self.detectPlatform()
+            logInfo(.ai, "🧠 Initializing AI services for \(platform)")
+            localAIParsingService = AIParsingService()
+            logInfo(.ai, "✅ AI parsing service initialized (cloud services only)")
+        #endif
+
         logDebug(.ai, "Available services: \(localAIParsingService.availableServiceNames.joined(separator: ", "))")
-        
+
+        // CREATE CACHE FIRST (before resolver)
+        let localFamilyNetworkCache = FamilyNetworkCache(rootsFileManager: localFileManager)
+
+        // NOW create resolver WITH cache reference
         let localFamilyResolver = FamilyResolver(
             aiParsingService: localAIParsingService,
             nameEquivalenceManager: localNameEquivalenceManager,
-            fileManager: localFileManager
+            fileManager: localFileManager,
+            familyNetworkCache: localFamilyNetworkCache  // NEW: pass cache!
         )
-        
-        let localFamilyNetworkCache = FamilyNetworkCache(rootsFileManager: localFileManager)
-        
+
         // Assign all to self properties at the end
         self.nameEquivalenceManager = localNameEquivalenceManager
         self.fileManager = localFileManager
         self.aiParsingService = localAIParsingService
         self.familyResolver = localFamilyResolver
         self.familyNetworkCache = localFamilyNetworkCache
-        
         logInfo(.app, "✅ Core services initialized with memory-efficient architecture")
         logInfo(.app, "Current AI service: \(self.currentServiceName)")
         logDebug(.app, "Available services: \(self.availableServices.joined(separator: ", "))")

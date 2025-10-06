@@ -540,4 +540,5 @@ class HiskiService {
         
         return String(html[idRange])
     }
+
 }
