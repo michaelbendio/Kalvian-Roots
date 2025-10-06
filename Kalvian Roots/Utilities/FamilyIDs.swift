@@ -183,7 +183,7 @@ struct FamilyIDs {
         "HERRONEN 7", "HERRONEN 8", "HERRONEN 9", "HERRONEN 10",
         "HERRONEN 11", "HERRONEN II 1", "HERRONEN II 2", "HERRONEN II 3",
         "HERRONEN II 4", "HERRONEN II 5", "RITA 1", "RITA 2",
-        "RITA 3", "RITA 4", "RITA 5", "RITA 6",
+        "RITA 3", "RITA 4", "RITA 5", "RITA 6", "RITA 7",
         "RITA 8", "RITA 9", "RITA 10", "RITA 11",
         "RITA II 1", "RITA II 2", "RITA II 3", "RITA II 4",
         "RITA II 5", "RITA II 6", "RITA II 7", "HASSINEN 1",

@@ -2,7 +2,7 @@
 //  CachedFamiliesMenu.swift
 //  Kalvian Roots
 //
-//  Cache management menu with search capability
+//  Cache management with popover-based search capability
 //
 //  Created by Michael Bendio on 9/23/25.
 //
@@ -12,6 +12,7 @@ import SwiftUI
 struct CachedFamiliesMenu: View {
     @Environment(JuuretApp.self) private var app
     @State private var searchText = ""
+    @State private var showingPopover = false
     @State private var showingDeleteConfirmation = false
     @State private var familyToDelete: String?
     @State private var showingClearAllConfirmation = false
@@ -31,7 +32,7 @@ struct CachedFamiliesMenu: View {
         }
     }
     
-    // Limit display to prevent menu from becoming too tall
+    // Limit display to prevent list from becoming too long
     var displayedFamilyIds: ArraySlice<String> {
         filteredFamilyIds.prefix(20)  // Show max 20 at a time
     }
@@ -41,72 +42,14 @@ struct CachedFamiliesMenu: View {
     }
     
     var body: some View {
-        Menu {
-            if allCachedFamilyIds.isEmpty {
-                Text("No cached families")
-                    .foregroundStyle(.secondary)
-            } else {
-                // Search field at the top of menu
-                if allCachedFamilyIds.count > 5 {  // Only show search if more than 5 families
-                    SearchFieldMenuItem(text: $searchText)
-                    
-                    Divider()
-                }
-                
-                // Show filtered results
-                if filteredFamilyIds.isEmpty && !searchText.isEmpty {
-                    Text("No families matching '\(searchText)'")
-                        .foregroundStyle(.secondary)
-                } else {
-                    // Display families
-                    ForEach(Array(displayedFamilyIds), id: \.self) { familyId in
-                        FamilyMenuItem(
-                            familyId: familyId,
-                            isCurrentFamily: app.currentFamily?.familyId == familyId,
-                            onLoad: {
-                                Task {
-                                    await app.extractFamily(familyId: familyId)
-                                }
-                            },
-                            onDelete: {
-                                familyToDelete = familyId
-                                showingDeleteConfirmation = true
-                            }
-                        )
-                    }
-                    
-                    // Show if there are more results
-                    if hasMore {
-                        Divider()
-                        Text("+ \(filteredFamilyIds.count - 20) more families")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text("Refine search to see more")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                
-                Divider()
-                
-                // Cache management section
-                Menu("Manage Cache") {
-                    HStack {
-                        Image(systemName: "info.circle")
-                        Text("\(allCachedFamilyIds.count) families cached")
-                    }
-                    
-                    Divider()
-                    
-                    Button(role: .destructive) {
-                        showingClearAllConfirmation = true
-                    } label: {
-                        Label("Clear All Cache", systemImage: "trash.fill")
-                    }
-                }
-            }
+        Button {
+            showingPopover.toggle()
         } label: {
             Label("Cached Families (\(allCachedFamilyIds.count))", systemImage: "internaldrive")
+        }
+        .popover(isPresented: $showingPopover) {
+            cachedFamiliesContent
+                .frame(width: 400, height: 550)
         }
         .confirmationDialog(
             "Delete from Cache",
@@ -143,103 +86,264 @@ struct CachedFamiliesMenu: View {
             Text("This will remove all \(allCachedFamilyIds.count) families from the cache.")
         }
     }
+    
+    // MARK: - Popover Content
+    
+    private var cachedFamiliesContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header
+            HStack {
+                Text("Cached Families")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    showingPopover = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                        .imageScale(.large)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding()
+            
+            Divider()
+            
+            if allCachedFamilyIds.isEmpty {
+                // Empty state
+                VStack(spacing: 12) {
+                    Image(systemName: "internaldrive")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.secondary)
+                    Text("No cached families")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                    Text("Families will be cached as you extract them")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding()
+            } else {
+                VStack(spacing: 0) {
+                    // Search field (only show if more than 5 families)
+                    if allCachedFamilyIds.count > 5 {
+                        SearchFieldView(text: $searchText)
+                            .padding(.horizontal)
+                            .padding(.top, 12)
+                            .padding(.bottom, 8)
+                    }
+                    
+                    Divider()
+                    
+                    // Scrollable family list
+                    ScrollView {
+                        if filteredFamilyIds.isEmpty && !searchText.isEmpty {
+                            // No search results
+                            VStack(spacing: 8) {
+                                Image(systemName: "magnifyingglass")
+                                    .font(.system(size: 32))
+                                    .foregroundStyle(.secondary)
+                                Text("No families matching '\(searchText)'")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 40)
+                        } else {
+                            // Family list
+                            LazyVStack(alignment: .leading, spacing: 0) {
+                                ForEach(Array(displayedFamilyIds), id: \.self) { familyId in
+                                    FamilyRow(
+                                        familyId: familyId,
+                                        isCurrentFamily: app.currentFamily?.familyId == familyId,
+                                        onLoad: {
+                                            showingPopover = false
+                                            Task {
+                                                await app.extractFamily(familyId: familyId)
+                                            }
+                                        },
+                                        onRegenerate: {
+                                            showingPopover = false
+                                            Task {
+                                                await app.regenerateCachedFamily(familyId: familyId)
+                                            }
+                                        },
+                                        onDelete: {
+                                            familyToDelete = familyId
+                                            showingDeleteConfirmation = true
+                                        }
+                                    )
+                                    
+                                    Divider()
+                                }
+                                
+                                // Show count if more results available
+                                if hasMore {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("+ \(filteredFamilyIds.count - 20) more families")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                        Text("Refine search to see more")
+                                            .font(.caption2)
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                    .padding(.horizontal)
+                                    .padding(.vertical, 8)
+                                }
+                            }
+                        }
+                    }
+                    
+                    Divider()
+                    
+                    // Footer with cache info and actions
+                    HStack {
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(.secondary)
+                            .imageScale(.small)
+                        Text("\(allCachedFamilyIds.count) families cached")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        
+                        Spacer()
+                        
+                        Button(role: .destructive) {
+                            showingClearAllConfirmation = true
+                        } label: {
+                            Label("Clear All", systemImage: "trash")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                    .padding()
+                }
+            }
+        }
+    }
 }
 
 // MARK: - Search Field Component
 
-/// Custom search field that works in a menu
-private struct SearchFieldMenuItem: View {
+/// Search field that properly works in a popover (unlike in menus)
+private struct SearchFieldView: View {
     @Binding var text: String
     @FocusState private var isFocused: Bool
     
     var body: some View {
-        HStack {
+        HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
+                .imageScale(.medium)
             
-            TextField("Search families...", text: $text)
-                .textFieldStyle(.plain)
+            TextField("Search family ID...", text: $text)
+                .textFieldStyle(.roundedBorder)
                 .focused($isFocused)
-                .onAppear {
-                    // Auto-focus the search field when menu opens
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        isFocused = true
-                    }
-                }
             
             if !text.isEmpty {
                 Button {
                     text = ""
+                    isFocused = true
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.secondary)
+                        .imageScale(.medium)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 4)
+        .onAppear {
+            // Auto-focus works properly in popovers!
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                isFocused = true
+            }
+        }
     }
 }
 
-// MARK: - Family Menu Item Component
+// MARK: - Family Row Component
 
-/// Individual family menu item with submenu
-private struct FamilyMenuItem: View {
+/// Individual family row with actions menu
+private struct FamilyRow: View {
     let familyId: String
     let isCurrentFamily: Bool
     let onLoad: () -> Void
+    let onRegenerate: () -> Void
     let onDelete: () -> Void
     
     @Environment(JuuretApp.self) private var app
+    @State private var isHovered = false
     
     var body: some View {
-        Menu {
+        HStack(spacing: 8) {
+            // Main button to load family
             Button {
                 onLoad()
             } label: {
-                Label("Load", systemImage: "doc.text")
-            }
-            
-            Button {
-                Task {
-                    await app.regenerateCachedFamily(familyId: familyId)
+                HStack {
+                    Text(familyId)
+                        .fontWeight(isCurrentFamily ? .semibold : .regular)
+                        .foregroundStyle(isCurrentFamily ? .primary : .primary)
+                    
+                    Spacer()
+                    
+                    if isCurrentFamily {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.accentColor)
+                            .imageScale(.small)
+                    }
                 }
-            } label: {
-                Label("Regenerate", systemImage: "arrow.clockwise")
+                .contentShape(Rectangle())
             }
-            .help("Delete and re-extract with updated citations")
+            .buttonStyle(.plain)
             
-            Divider()
-            
-            Button(role: .destructive) {
-                onDelete()
-            } label: {
-                Label("Delete from Cache", systemImage: "trash")
-            }
-            
-            // Show cache info
-            if let info = app.familyNetworkCache.getCachedFamilyInfo(familyId: familyId) {
+            // Actions menu
+            Menu {
+                Button {
+                    onLoad()
+                } label: {
+                    Label("Load Family", systemImage: "doc.text")
+                }
+                
+                Button {
+                    onRegenerate()
+                } label: {
+                    Label("Regenerate", systemImage: "arrow.clockwise")
+                }
+                
                 Divider()
                 
-                Text("Cached: \(info.cachedAt.formatted(date: .abbreviated, time: .shortened))")
-                    .font(.caption)
-                
-                Text("Extraction: \(String(format: "%.1f", info.extractionTime))s")
-                    .font(.caption)
-            }
-        } label: {
-            HStack {
-                Text(familyId)
-                    .fontWeight(isCurrentFamily ? .semibold : .regular)
-                
-                Spacer()
-                
-                if isCurrentFamily {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.accentColor)
-                        .imageScale(.small)
+                Button(role: .destructive) {
+                    onDelete()
+                } label: {
+                    Label("Delete from Cache", systemImage: "trash")
                 }
+                
+                // Show cache metadata
+                if let info = app.familyNetworkCache.getCachedFamilyInfo(familyId: familyId) {
+                    Divider()
+                    
+                    Text("Cached: \(info.cachedAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.caption)
+                    
+                    Text("Extraction: \(String(format: "%.1f", info.extractionTime))s")
+                        .font(.caption)
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .foregroundStyle(isHovered ? .primary : .secondary)
+                    .imageScale(.medium)
             }
+            .menuStyle(.borderlessButton)
+            .frame(width: 24, height: 24)
+            .help("Family actions")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(isHovered ? Color.secondary.opacity(0.08) : Color.clear)
+        .onHover { hovering in
+            isHovered = hovering
         }
     }
 }
