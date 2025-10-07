@@ -194,26 +194,70 @@ class FamilyResolver {
         // Method 1: asChild reference (preferred)
         if let asChildRef = spouse.asChild,
            let family = try? await resolveFamilyByReference(asChildRef) {
-            // Store under displayName and simple name
+            
+            // CRITICAL: Store under MULTIPLE keys to handle different name formats
+            // The spouse might be referenced as "Kalle", "Kalle Kallenp.", or "Kalle Rita"
+            
+            // Key 1: displayName (e.g., "Kalle Kallenp.")
             network.spouseAsChildFamilies[spouse.displayName] = family
+            
+            // Key 2: simple name (e.g., "Kalle")
             if spouse.displayName != spouse.name {
                 network.spouseAsChildFamilies[spouse.name] = family
             }
             
-            logInfo(.resolver, "✅ Resolved spouse family via reference: \(spouse.displayName)")
+            // Key 3: firstname + asParent family surname (e.g., "Kalle Rita")
+            // Extract the surname from the asParent family ID
+            let asParentSurname = extractSurname(from: asParentFamily.familyId)
+            if let surname = asParentSurname {
+                let firstName = extractFirstName(from: spouse.name)
+                let fullNameWithSurname = "\(firstName) \(surname)"
+                network.spouseAsChildFamilies[fullNameWithSurname] = family
+                logInfo(.resolver, "✅ Also stored spouse asChild under: '\(fullNameWithSurname)'")
+            }
+            
+            logInfo(.resolver, "✅ Resolved spouse family via reference: \(spouse.displayName) -> \(family.familyId)")
             return
         }
         
         // Method 2: birth date search (fallback)
         if let family = try? await findFamilyByBirthDate(person: spouse) {
-            // Store under displayName and simple name
+            // Store under the same multiple keys
             network.spouseAsChildFamilies[spouse.displayName] = family
             if spouse.displayName != spouse.name {
                 network.spouseAsChildFamilies[spouse.name] = family
             }
             
-            logInfo(.resolver, "✅ Resolved spouse family via birth date: \(spouse.displayName)")
+            // Also store with asParent family surname
+            let asParentSurname = extractSurname(from: asParentFamily.familyId)
+            if let surname = asParentSurname {
+                let firstName = extractFirstName(from: spouse.name)
+                let fullNameWithSurname = "\(firstName) \(surname)"
+                network.spouseAsChildFamilies[fullNameWithSurname] = family
+                logInfo(.resolver, "✅ Also stored spouse asChild under: '\(fullNameWithSurname)'")
+            }
+            
+            logInfo(.resolver, "✅ Resolved spouse family via birth date: \(spouse.displayName) -> \(family.familyId)")
         }
+    }
+    
+    // MARK: - Helper Methods for Name Extraction
+
+    /// Extract surname from family ID (e.g., "RITA 9" -> "Rita")
+    private func extractSurname(from familyId: String) -> String? {
+        let components = familyId.components(separatedBy: " ")
+        guard let firstComponent = components.first else { return nil }
+        
+        // Capitalize first letter, lowercase rest
+        return firstComponent.prefix(1).uppercased() + firstComponent.dropFirst().lowercased()
+    }
+
+    /// Extract first name from a person's name (handles patronymic)
+    /// "Kalle Kallenp." -> "Kalle"
+    /// "Maria Matint." -> "Maria"
+    private func extractFirstName(from name: String) -> String {
+        let components = name.components(separatedBy: " ")
+        return components.first ?? name
     }
     
     // MARK: - Family Finding Methods
