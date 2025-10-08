@@ -155,9 +155,9 @@ class FamilyResolver {
                         childName: child.name,
                         childDisplayName: child.displayName,
                         asParentFamily: resolvedFamily,
+                        childNuclearFamilyId: family.familyId,  // NEW: Pass the nuclear family ID
                         network: &updatedNetwork
-                    )
-                }
+                    )                }
             }
         }
         
@@ -170,6 +170,7 @@ class FamilyResolver {
         childName: String,
         childDisplayName: String,
         asParentFamily: Family,
+        childNuclearFamilyId: String,  // NEW: Pass the child's nuclear family ID
         network: inout FamilyNetwork
     ) async {
         // Find spouse in the asParent family using the Family extension
@@ -196,7 +197,7 @@ class FamilyResolver {
            let family = try? await resolveFamilyByReference(asChildRef) {
             
             // CRITICAL: Store under MULTIPLE keys to handle different name formats
-            // The spouse might be referenced as "Kalle", "Kalle Kallenp.", or "Kalle Rita"
+            // The spouse might be referenced as "Kalle", "Kalle Kallenp.", or "Kalle Kleemola"
             
             // Key 1: displayName (e.g., "Kalle Kallenp.")
             network.spouseAsChildFamilies[spouse.displayName] = family
@@ -206,14 +207,15 @@ class FamilyResolver {
                 network.spouseAsChildFamilies[spouse.name] = family
             }
             
-            // Key 3: firstname + asParent family surname (e.g., "Kalle Rita")
-            // Extract the surname from the asParent family ID
-            let asParentSurname = extractSurname(from: asParentFamily.familyId)
-            if let surname = asParentSurname {
+            // Key 3: firstname + CHILD'S NUCLEAR FAMILY surname (e.g., "Kalle Kleemola")
+            // CRITICAL FIX: Use the child's nuclear family surname, NOT the asParent family surname
+            // This is because the spouse is referenced in the nuclear family (e.g., "Kalle Kleemola" in Maria's family)
+            let nuclearFamilySurname = extractSurname(from: childNuclearFamilyId)
+            if let surname = nuclearFamilySurname {
                 let firstName = extractFirstName(from: spouse.name)
                 let fullNameWithSurname = "\(firstName) \(surname)"
                 network.spouseAsChildFamilies[fullNameWithSurname] = family
-                logInfo(.resolver, "✅ Also stored spouse asChild under: '\(fullNameWithSurname)'")
+                logInfo(.resolver, "✅ Also stored spouse asChild under: '\(fullNameWithSurname)' (using nuclear family surname)")
             }
             
             logInfo(.resolver, "✅ Resolved spouse family via reference: \(spouse.displayName) -> \(family.familyId)")
@@ -228,13 +230,13 @@ class FamilyResolver {
                 network.spouseAsChildFamilies[spouse.name] = family
             }
             
-            // Also store with asParent family surname
-            let asParentSurname = extractSurname(from: asParentFamily.familyId)
-            if let surname = asParentSurname {
+            // Also store with child's nuclear family surname
+            let nuclearFamilySurname = extractSurname(from: childNuclearFamilyId)
+            if let surname = nuclearFamilySurname {
                 let firstName = extractFirstName(from: spouse.name)
                 let fullNameWithSurname = "\(firstName) \(surname)"
                 network.spouseAsChildFamilies[fullNameWithSurname] = family
-                logInfo(.resolver, "✅ Also stored spouse asChild under: '\(fullNameWithSurname)'")
+                logInfo(.resolver, "✅ Also stored spouse asChild under: '\(fullNameWithSurname)' (using nuclear family surname)")
             }
             
             logInfo(.resolver, "✅ Resolved spouse family via birth date: \(spouse.displayName) -> \(family.familyId)")
