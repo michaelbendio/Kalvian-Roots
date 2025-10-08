@@ -315,8 +315,11 @@ class FamilyResolver {
     // MARK: - Resolution Strategies
     
     private func resolveFamilyByReference(_ reference: String) async throws -> Family? {
-        // Clean and validate the family ID
-        let cleanedRef = reference.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Clean and validate the family ID - remove curly braces that AI includes
+        var cleanedRef = reference.trimmingCharacters(in: .whitespacesAndNewlines)
+        cleanedRef = cleanedRef.replacingOccurrences(of: "{", with: "")
+        cleanedRef = cleanedRef.replacingOccurrences(of: "}", with: "")
+        cleanedRef = cleanedRef.trimmingCharacters(in: .whitespacesAndNewlines)
         
         // NEW: Check cache first to avoid redundant AI calls!
         if let cache = familyNetworkCache,

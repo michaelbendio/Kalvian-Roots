@@ -148,13 +148,21 @@ class DeepSeekService: AIService {
            - Keep historical periods like "isoviha" as-is
            - **CRITICAL**: Keep "n" prefix for approximate dates (e.g., "n 1730", "n 30")
            - Do NOT strip or remove the "n " prefix - it indicates an approximate date
-        5. Marriage dates: 
+        5. **DEATH DATES - CRITICAL**:
+           - Death dates ONLY appear after the † symbol
+           - Lines ending with codes like "-94 Kokkola" or "-92 Veteli" are NOT death dates
+           - These codes indicate migration/relocation, not death
+           - ONLY extract deathDate if explicitly preceded by † symbol
+           - Examples:
+             ✓ CORRECT: "Maria † 15.03.1842" → deathDate: "15.03.1842"
+             ✗ WRONG: "Maria -94 Kokkola" → deathDate: null (location code, not death)
+        6. Marriage dates: 
            - Store 2-digit as marriageDate (e.g., "30" or "n 30")
            - Store full date as fullMarriageDate (e.g., "01.02.1730" or "n 1730")
            - **PRESERVE** the "n " prefix in BOTH fields if present
-        6. Extract {family references} as asChild or asParent
-        7. Extract <IDs> as familySearchId
-        8. Note markers (*) go in noteMarkers array, definitions in noteDefinitions
+        7. Extract {family references} as asChild or asParent (strip the curly braces)
+        8. Extract <IDs> as familySearchId (strip the angle brackets)
+        9. Note markers (*) go in noteMarkers array, definitions in noteDefinitions
 
         DATE FORMAT EXAMPLES:
         - "n 1730" → marriageDate: null, fullMarriageDate: "n 1730" (approximate full year)
