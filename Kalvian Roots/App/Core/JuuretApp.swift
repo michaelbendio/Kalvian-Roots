@@ -59,6 +59,157 @@ class JuuretApp {
     /// Extraction progress tracking
     var extractionProgress: ExtractionProgress = .idle
     
+    // MARK: - Navigation State
+
+    /// Navigation history stack of family IDs
+    var navigationHistory: [String] = []
+
+    /// Current position in navigation history
+    var historyIndex: Int = -1
+
+    /// Home family ID (set when explicitly navigating via address bar or back/forward)
+    var homeFamily: String?
+
+    /// PDF mode toggle state
+    var showPDFMode: Bool = false
+
+    // MARK: - Navigation Methods
+
+    /**
+     * Navigate to a family, optionally adding to history
+     *
+     * - Parameters:
+     *   - familyId: The family ID to navigate to
+     *   - updateHistory: If true, adds this navigation to history and sets as home
+     */
+    func navigateToFamily(_ familyId: String, updateHistory: Bool) {
+        let normalizedId = familyId.uppercased().trimmingCharacters(in: .whitespaces)
+        
+        // Validate family ID
+        guard FamilyIDs.isValid(familyId: normalizedId) else {
+            logWarn(.app, "⚠️ Invalid family ID: \(familyId)")
+            errorMessage = "Invalid family ID: \(familyId)"
+            return
+        }
+        
+        // If updating history, manage the history stack
+        if updateHistory {
+            // Remove any forward history if we're not at the end
+            if historyIndex < navigationHistory.count - 1 {
+                navigationHistory.removeSubrange((historyIndex + 1)...)
+            }
+            
+            // Add to history
+            navigationHistory.append(normalizedId)
+            historyIndex = navigationHistory.count - 1
+            
+            // Set as home family
+            homeFamily = normalizedId
+            
+            logInfo(.app, "📍 Set home family: \(normalizedId)")
+        }
+        
+        // Extract the family
+        Task {
+            await extractFamily(familyId: normalizedId)
+        }
+    }
+
+    /**
+     * Navigate to the previous family in history
+     */
+    func navigateBack() {
+        guard historyIndex > 0 else {
+            logWarn(.app, "⚠️ Cannot navigate back - at start of history")
+            return
+        }
+        
+        historyIndex -= 1
+        let familyId = navigationHistory[historyIndex]
+        
+        logInfo(.app, "⬅️ Navigating back to: \(familyId)")
+        
+        Task {
+            await extractFamily(familyId: familyId)
+        }
+    }
+
+    /**
+     * Navigate to the next family in history
+     */
+    func navigateForward() {
+        guard historyIndex < navigationHistory.count - 1 else {
+            logWarn(.app, "⚠️ Cannot navigate forward - at end of history")
+            return
+        }
+        
+        historyIndex += 1
+        let familyId = navigationHistory[historyIndex]
+        
+        logInfo(.app, "➡️ Navigating forward to: \(familyId)")
+        
+        Task {
+            await extractFamily(familyId: familyId)
+        }
+    }
+
+    /**
+     * Navigate to the home family
+     */
+    func navigateHome() {
+        guard let home = homeFamily else {
+            logWarn(.app, "⚠️ No home family set")
+            errorMessage = "No home family set"
+            return
+        }
+        
+        logInfo(.app, "🏠 Navigating to home: \(home)")
+        
+        Task {
+            await extractFamily(familyId: home)
+        }
+    }
+
+    /**
+     * Set the current family as home
+     */
+    func setHomeFamily(_ familyId: String) {
+        let normalizedId = familyId.uppercased().trimmingCharacters(in: .whitespaces)
+        
+        guard FamilyIDs.isValid(familyId: normalizedId) else {
+            logWarn(.app, "⚠️ Invalid family ID for home: \(familyId)")
+            return
+        }
+        
+        homeFamily = normalizedId
+        logInfo(.app, "🏠 Home family set to: \(normalizedId)")
+    }
+
+    // MARK: - Navigation State Helpers
+
+    /// Check if we can navigate backward
+    var canNavigateBack: Bool {
+        return historyIndex > 0
+    }
+
+    /// Check if we can navigate forward
+    var canNavigateForward: Bool {
+        return historyIndex < navigationHistory.count - 1
+    }
+
+    /// Check if we can navigate home
+    var canNavigateHome: Bool {
+        return homeFamily != nil
+    }
+
+    /// Get the current family ID from history (if in history)
+    var currentFamilyIdInHistory: String? {
+        guard historyIndex >= 0 && historyIndex < navigationHistory.count else {
+            return nil
+        }
+        return navigationHistory[historyIndex]
+    }
+    
     // MARK: - Manual Citation Overrides
     private var manualCitations: [String: String] = [:] // key: familyId|personId
     
