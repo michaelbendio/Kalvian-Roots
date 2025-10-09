@@ -151,7 +151,7 @@ final class UIIntegrationTests: XCTestCase {
     
     func testClanBrowserGrouping() {
         // Test: Clan browser groups families correctly
-        let clans = FamilyIDs.groupedByClans()
+        let clans = ClanBrowserView.groupFamilyIDsByClan()
         
         XCTAssertFalse(clans.isEmpty, "Should have clans")
         
@@ -164,16 +164,116 @@ final class UIIntegrationTests: XCTestCase {
             XCTAssertTrue(korpi.suffixes.contains("6"), "KORPI 6 should exist")
         }
     }
-    
+
     func testClanNamesAreSorted() {
         // Test: Clans are alphabetically sorted
-        let clans = FamilyIDs.groupedByClans()
+        let clans = ClanBrowserView.groupFamilyIDsByClan()
         let clanNames = clans.map { $0.clanName }
         let sortedNames = clanNames.sorted()
         
         XCTAssertEqual(clanNames, sortedNames, "Clans should be sorted")
     }
-    
+
+    func testClanSuffixesAreSortedNaturally() {
+        // Test: Within each clan, suffixes are sorted naturally (1, 2, ... 10, 11, not 1, 10, 11, 2)
+        let clans = ClanBrowserView.groupFamilyIDsByClan()
+        
+        // Find KORPI which should have suffixes 1-12
+        let korpiClan = clans.first { $0.clanName == "KORPI" }
+        XCTAssertNotNil(korpiClan, "KORPI clan should exist")
+        
+        if let clan = korpiClan {
+            let numericSuffixes = clan.suffixes.filter { Int($0) != nil }
+            
+            // Check that 1 comes before 10
+            if let index1 = clan.suffixes.firstIndex(of: "1"),
+               let index10 = clan.suffixes.firstIndex(of: "10") {
+                XCTAssertLessThan(index1, index10, "1 should come before 10")
+            }
+            
+            // Check that 2 comes before 10
+            if let index2 = clan.suffixes.firstIndex(of: "2"),
+               let index10 = clan.suffixes.firstIndex(of: "10") {
+                XCTAssertLessThan(index2, index10, "2 should come before 10")
+            }
+        }
+    }
+
+    func testClanBrowserHandlesRomanNumerals() {
+        // Test: Clans with roman numeral suffixes are handled correctly
+        let clans = ClanBrowserView.groupFamilyIDsByClan()
+        
+        // Find a clan with roman numerals (e.g., HERLEVI has II 1, II 2, etc.)
+        let herleviClan = clans.first { $0.clanName == "HERLEVI" }
+        
+        if let clan = herleviClan {
+            // Should have both plain numbers and roman numeral prefixes
+            let hasPlainNumbers = clan.suffixes.contains { Int($0) != nil }
+            let hasRomanNumerals = clan.suffixes.contains { $0.contains("II") || $0.contains("III") }
+            
+            XCTAssertTrue(hasPlainNumbers || hasRomanNumerals, "HERLEVI should have suffixes")
+            
+            // If it has both, plain should come before roman numerals
+            if hasPlainNumbers && hasRomanNumerals {
+                if let lastPlain = clan.suffixes.lastIndex(where: { Int($0) != nil }),
+                   let firstRoman = clan.suffixes.firstIndex(where: { $0.contains("II") || $0.contains("III") }) {
+                    XCTAssertLessThan(lastPlain, firstRoman, "Plain numbers should come before roman numerals")
+                }
+            }
+        }
+    }
+
+    func testClanBrowserHandlesMultiWordClans() {
+        // Test: Multi-word clan names are handled correctly
+        let clans = ClanBrowserView.groupFamilyIDsByClan()
+        
+        // Check for PIENI SIKALA or similar multi-word clans
+        let multiWordClans = clans.filter { $0.clanName.contains(" ") }
+        
+        if !multiWordClans.isEmpty {
+            let pieniSikala = clans.first { $0.clanName == "PIENI SIKALA" }
+            
+            if let clan = pieniSikala {
+                XCTAssertFalse(clan.suffixes.isEmpty, "Multi-word clan should have suffixes")
+                
+                // Verify the suffixes are valid numbers
+                for suffix in clan.suffixes {
+                    let isValidSuffix = Int(suffix) != nil || suffix.contains("II") || suffix.contains("III")
+                    XCTAssertTrue(isValidSuffix, "Suffix '\(suffix)' should be valid")
+                }
+            }
+        }
+    }
+
+    func testAllFamilyIDsAreCategorized() {
+        // Test: Every family ID in FamilyIDs appears in exactly one clan
+        let clans = ClanBrowserView.groupFamilyIDsByClan()
+        
+        // Reconstruct all family IDs from clans
+        var reconstructed = Set<String>()
+        for clan in clans {
+            for suffix in clan.suffixes {
+                reconstructed.insert("\(clan.clanName) \(suffix)")
+            }
+        }
+        
+        // Compare with original set
+        let original = Set(FamilyIDs.validFamilyIds)
+        
+        XCTAssertEqual(reconstructed.count, original.count, "Should have same number of families")
+        XCTAssertEqual(reconstructed, original, "Should be able to reconstruct all original family IDs")
+    }
+
+    func testNoDuplicateSuffixesWithinClan() {
+        // Test: No clan has duplicate suffixes
+        let clans = ClanBrowserView.groupFamilyIDsByClan()
+        
+        for clan in clans {
+            let uniqueSuffixes = Set(clan.suffixes)
+            XCTAssertEqual(clan.suffixes.count, uniqueSuffixes.count,
+                          "Clan \(clan.clanName) should not have duplicate suffixes")
+        }
+    }
     // MARK: - Phase 3: Enhanced Display Tests
     
     func testEnhancedDatesFromAsParentFamily() async throws {

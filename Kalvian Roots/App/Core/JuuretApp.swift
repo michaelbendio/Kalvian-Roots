@@ -75,6 +75,8 @@ class JuuretApp {
 
     // MARK: - Navigation Methods
 
+    // MARK: - Navigation Methods
+
     /**
      * Navigate to a family, optionally adding to history
      *
@@ -155,6 +157,9 @@ class JuuretApp {
 
     /**
      * Navigate to the home family
+     * 
+     * This adds the home family to history (so back/forward work correctly)
+     * but does NOT change which family is considered "home"
      */
     func navigateHome() {
         guard let home = homeFamily else {
@@ -165,8 +170,23 @@ class JuuretApp {
         
         logInfo(.app, "🏠 Navigating to home: \(home)")
         
+        // Add to history but don't change home
+        let normalizedId = home.uppercased().trimmingCharacters(in: .whitespaces)
+        
+        // Remove any forward history if we're not at the end
+        if historyIndex < navigationHistory.count - 1 {
+            navigationHistory.removeSubrange((historyIndex + 1)...)
+        }
+        
+        // Add to history
+        navigationHistory.append(normalizedId)
+        historyIndex = navigationHistory.count - 1
+        
+        // DON'T change homeFamily - it stays the same
+        // This allows you to navigate around and always come back to the same home
+        
         Task {
-            await extractFamily(familyId: home)
+            await extractFamily(familyId: normalizedId)
         }
     }
 

@@ -170,15 +170,50 @@ final class FamilyViewTests: XCTestCase {
         // Find a married child with spouse
         let marriedChildren = family.allChildren.filter { $0.isMarried && $0.spouse != nil }
         
+        XCTAssertFalse(marriedChildren.isEmpty, "Test requires married children to validate spouse families")
+        
+        var foundSpouseFamily = false
+        
         for child in marriedChildren {
             guard let spouseName = child.spouse else { continue }
             
-            let spousePerson = Person(name: spouseName, noteMarkers: [])
+            // Create a Person object for the spouse with minimal required parameters
+            // The noteMarkers parameter is required and has no default value
+            let spousePerson = Person(
+                name: spouseName,
+                patronymic: nil,
+                birthDate: nil,
+                deathDate: nil,
+                marriageDate: nil,
+                fullMarriageDate: nil,
+                spouse: nil,
+                asChild: nil,
+                asParent: nil,
+                familySearchId: nil,
+                noteMarkers: [],  // Required parameter - empty array
+                fatherName: nil,
+                motherName: nil,
+                spouseBirthDate: nil,
+                spouseParentsFamilyId: nil
+            )
+            
             if let spouseFamily = network.getSpouseAsChildFamily(for: spousePerson) {
                 XCTAssertNotNil(spouseFamily, "Spouse asChild family should exist")
-                XCTAssertFalse(spouseFamily.familyId.isEmpty, "Spouse family should have ID")
-                return // Test passed
+                XCTAssertFalse(spouseFamily.familyId.isEmpty, "Spouse family should have valid ID")
+                foundSpouseFamily = true
+                
+                logInfo(.ui, "✅ Found spouse family: \(spouseFamily.familyId) for spouse: \(spouseName)")
+                break // Test passed - found at least one spouse family
             }
+        }
+        
+        // If no spouse families were found, check if that's expected
+        if !foundSpouseFamily {
+            XCTAssertTrue(
+                network.spouseAsChildFamilies.isEmpty,
+                "No spouse families found but network has \(network.spouseAsChildFamilies.count) spouse families cached"
+            )
+            logInfo(.ui, "ℹ️ No spouse families resolved in this test - this may be expected for test data")
         }
     }
     
