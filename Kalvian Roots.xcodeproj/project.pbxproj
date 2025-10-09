@@ -36,6 +36,23 @@
 		09CB185F2E2170CD0083983B /* FoundationModels.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FoundationModels.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/FoundationModels.framework; sourceTree = DEVELOPER_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		096483192E97805300B1F026 /* Exceptions for "Kalvian RootsTests" folder in "Kalvian RootsTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				FamilyLayoutTests.swift,
+			);
+			target = 09CB183A2E216DB20083983B /* Kalvian RootsTests */;
+		};
+		0964831A2E97805300B1F026 /* Exceptions for "Kalvian RootsTests" folder in "Kalvian RootsUITests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				FamilyLayoutTests.swift,
+			);
+			target = 09CB18442E216DB20083983B /* Kalvian RootsUITests */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		09CB18302E216DB10083983B /* Kalvian Roots */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -44,6 +61,10 @@
 		};
 		09CB183E2E216DB20083983B /* Kalvian RootsTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				096483192E97805300B1F026 /* Exceptions for "Kalvian RootsTests" folder in "Kalvian RootsTests" target */,
+				0964831A2E97805300B1F026 /* Exceptions for "Kalvian RootsTests" folder in "Kalvian RootsUITests" target */,
+			);
 			path = "Kalvian RootsTests";
 			sourceTree = "<group>";
 		};
