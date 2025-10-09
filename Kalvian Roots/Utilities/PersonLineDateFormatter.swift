@@ -115,7 +115,7 @@ extension PersonLineDateFormatter {
         assert(expandTwoDigitYear("78", parentBirthYear: 1727) == "1778", "Year expansion failed")
         assert(expandTwoDigitYear("04", parentBirthYear: 1760) == "1804", "Year expansion for 1800s failed")
         
-        print("✅ All EnhancedDateFormatter tests passed")
+        print("✅ All PersonLineDateFormatter tests passed")
     }
 }
 #endif

@@ -8,9 +8,10 @@
 //
 
 import XCTest
+import SwiftUI
 @testable import Kalvian_Roots
 
-final class EnhancedDisplayTests: XCTestCase {
+final class DisplayTests: XCTestCase {
     
     var testPerson: Person!
     var testNetwork: FamilyNetwork!
@@ -338,8 +339,8 @@ final class EnhancedDisplayTests: XCTestCase {
         
         return Family(
             familyId: "KORPI 6",
-            couples: [couple],
             pageReferences: ["105", "106"],
+            couples: [couple],
             notes: [],
             noteDefinitions: [:]
         )
@@ -373,8 +374,8 @@ final class EnhancedDisplayTests: XCTestCase {
         
         return Family(
             familyId: "Korvela 3",
-            couples: [couple],
             pageReferences: ["120"],
+            couples: [couple],
             notes: [],
             noteDefinitions: [:]
         )
@@ -410,8 +411,8 @@ final class EnhancedDisplayTests: XCTestCase {
         
         return Family(
             familyId: "Korvela 2",
-            couples: [couple],
             pageReferences: ["119"],
+            couples: [couple],
             notes: [],
             noteDefinitions: [:]
         )

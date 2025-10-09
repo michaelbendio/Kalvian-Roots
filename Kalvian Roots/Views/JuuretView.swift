@@ -1,4 +1,10 @@
-// JuuretView.swift
+//
+//  JuuretView.swift
+//  Kalvian Roots
+//
+//  Main family display view with PersonLineView integration
+//
+
 import SwiftUI
 #if os(iOS)
 import UniformTypeIdentifiers
@@ -158,69 +164,68 @@ struct JuuretView: View {
             if juuretApp.familyNetworkCache.nextFamilyReady,
                let nextId = juuretApp.familyNetworkCache.nextFamilyId {
                 Button(action: {
-                    Task {
-                        await juuretApp.loadNextFamily()
-                    }
+                    familyId = nextId
+                    extractFamily()
                 }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "arrow.forward.circle.fill")
+                    HStack {
+                        Image(systemName: "arrow.right.circle.fill")
                         Text("Next: \(nextId)")
-                            .fontWeight(.medium)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(Color.green)
-                    .foregroundColor(.white)
-                    .cornerRadius(8)
+                    .font(.genealogyCallout)
+                    .foregroundColor(.green)
                 }
                 .buttonStyle(.plain)
-                .transition(.scale.combined(with: .opacity))
-                .animation(.spring(response: 0.3), value: juuretApp.familyNetworkCache.nextFamilyReady)
             }
             
             if let statusMessage = juuretApp.familyNetworkCache.statusMessage {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                    Text(statusMessage)
-                        .font(.genealogyCallout)
-                        .foregroundColor(.secondary)
-                }
+                Text(statusMessage)
+                    .font(.genealogyCaption)
+                    .foregroundColor(.secondary)
             }
         }
     }
     
+    // MARK: - Status Views
+    
     private var processingStatusView: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 12) {
             ProgressView()
-                .progressViewStyle(CircularProgressViewStyle())
-            Text("Processing family...")
-                .font(.genealogyCallout)
+                .progressViewStyle(.linear)
+                .frame(maxWidth: 300)
+            
+            Text(juuretApp.extractionProgress.description)
+                .font(.genealogyCaption)
                 .foregroundColor(.secondary)
         }
-        .padding(20)
-        .background(Color.gray.opacity(0.05))
-        .cornerRadius(12)
+        .padding()
     }
     
-    private func errorDisplayView(_ errorMessage: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundColor(.red)
-            Text(errorMessage)
-                .font(.genealogyCallout)
-                .foregroundColor(.red)
+    private func errorDisplayView(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.red)
+                Text("Error")
+                    .font(.genealogyHeadline)
+                    .foregroundColor(.red)
+            }
+            
+            Text(message)
+                .font(.genealogyBody)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(20)
-        .background(Color.red.opacity(0.05))
-        .cornerRadius(12)
+        .padding()
+        .background(Color.red.opacity(0.1))
+        .cornerRadius(10)
+        .frame(maxWidth: 600)
     }
     
-    // MARK: - Family Display
+    // MARK: - Family Display Section
     
     private func familyDisplaySection(family: Family) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(family.familyId)
                     .font(.genealogyTitle)
                     .fontWeight(.bold)
@@ -264,11 +269,9 @@ struct JuuretView: View {
                 .font(.genealogyHeadline)
                 .fontWeight(.semibold)
             
-            PersonRowView(
+            PersonLineView(
                 person: primaryCouple.husband,
-                role: "Father",
-                enhancedDeathDate: nil,
-                enhancedMarriageDate: nil,
+                network: juuretApp.familyNetworkWorkflow?.getFamilyNetwork(),
                 onNameClick: { person in
                     generateCitation(for: person, in: family)
                 },
@@ -283,20 +286,14 @@ struct JuuretView: View {
                         showingHiskiResult = true
                     }
                 },
-                onSpouseClick: { spouseName in
-                    Task {
-                        let citation = await juuretApp.generateSpouseCitation(for: spouseName, in: family)
-                        citationText = citation
-                        showingCitation = true
-                    }
+                onFamilyIdClick: { familyId in
+                    juuretApp.navigateToFamily(familyId, updateHistory: false)
                 }
             )
             
-            PersonRowView(
+            PersonLineView(
                 person: primaryCouple.wife,
-                role: "Mother",
-                enhancedDeathDate: nil,
-                enhancedMarriageDate: nil,
+                network: juuretApp.familyNetworkWorkflow?.getFamilyNetwork(),
                 onNameClick: { person in
                     generateCitation(for: person, in: family)
                 },
@@ -311,12 +308,8 @@ struct JuuretView: View {
                         showingHiskiResult = true
                     }
                 },
-                onSpouseClick: { spouseName in
-                    Task {
-                        let citation = await juuretApp.generateSpouseCitation(for: spouseName, in: family)
-                        citationText = citation
-                        showingCitation = true
-                    }
+                onFamilyIdClick: { familyId in
+                    juuretApp.navigateToFamily(familyId, updateHistory: false)
                 }
             )
         }
@@ -333,11 +326,9 @@ struct JuuretView: View {
                 .fontWeight(.semibold)
             
             ForEach(children) { child in
-                PersonRowView(
+                PersonLineView(
                     person: child,
-                    role: "Child",
-                    enhancedDeathDate: getEnhancedDeathDate(for: child, in: family),
-                    enhancedMarriageDate: getEnhancedMarriageDate(for: child, in: family),
+                    network: juuretApp.familyNetworkWorkflow?.getFamilyNetwork(),
                     onNameClick: { person in
                         generateCitation(for: person, in: family)
                     },
@@ -352,12 +343,8 @@ struct JuuretView: View {
                             showingHiskiResult = true
                         }
                     },
-                    onSpouseClick: { spouseName in
-                        Task {
-                            let citation = await juuretApp.generateSpouseCitation(for: spouseName, in: family)
-                            citationText = citation
-                            showingCitation = true
-                        }
+                    onFamilyIdClick: { familyId in
+                        juuretApp.navigateToFamily(familyId, updateHistory: false)
                     }
                 )
                 .padding(.leading, 50)
@@ -401,11 +388,9 @@ struct JuuretView: View {
         }
         
         return VStack(alignment: .leading, spacing: 8) {
-            PersonRowView(
+            PersonLineView(
                 person: additionalSpouse,
-                role: "Spouse",
-                enhancedDeathDate: nil,
-                enhancedMarriageDate: nil,
+                network: juuretApp.familyNetworkWorkflow?.getFamilyNetwork(),
                 onNameClick: { person in
                     handleAdditionalSpouseClick(person: person, family: family)
                 },
@@ -420,12 +405,8 @@ struct JuuretView: View {
                         showingHiskiResult = true
                     }
                 },
-                onSpouseClick: { spouseName in
-                    Task {
-                        let citation = await juuretApp.generateSpouseCitation(for: spouseName, in: family)
-                        citationText = citation
-                        showingCitation = true
-                    }
+                onFamilyIdClick: { familyId in
+                    juuretApp.navigateToFamily(familyId, updateHistory: false)
                 }
             )
             
@@ -464,11 +445,9 @@ struct JuuretView: View {
                 .padding(.leading, 25)
             
             ForEach(children) { child in
-                PersonRowView(
+                PersonLineView(
                     person: child,
-                    role: "Child",
-                    enhancedDeathDate: getEnhancedDeathDate(for: child, in: family),
-                    enhancedMarriageDate: getEnhancedMarriageDate(for: child, in: family),
+                    network: juuretApp.familyNetworkWorkflow?.getFamilyNetwork(),
                     onNameClick: { person in
                         generateCitation(for: person, in: family)
                     },
@@ -483,91 +462,34 @@ struct JuuretView: View {
                             showingHiskiResult = true
                         }
                     },
-                    onSpouseClick: { spouseName in
-                        Task {
-                            let citation = await juuretApp.generateSpouseCitation(for: spouseName, in: family)
-                            citationText = citation
-                            showingCitation = true
-                        }
+                    onFamilyIdClick: { familyId in
+                        juuretApp.navigateToFamily(familyId, updateHistory: false)
                     }
                 )
-                .padding(.leading, 25)
+                .padding(.leading, 50)
             }
         }
-        .padding()
-        .background(Color.green.opacity(0.05))
-        .cornerRadius(10)
     }
     
     @ViewBuilder
     private func notesSection(notes: [String]) -> some View {
-        let filteredNotes = notes.filter { !$0.lowercased().contains("leski") }
-        
-        if !filteredNotes.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Notes")
-                    .font(.genealogyHeadline)
-                    .fontWeight(.semibold)
-                
-                ForEach(filteredNotes, id: \.self) { note in
-                    Text(note)
-                        .font(.genealogyBody)
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Notes")
+                .font(.genealogyHeadline)
+                .fontWeight(.semibold)
+            
+            ForEach(Array(notes.enumerated()), id: \.offset) { _, note in
+                Text("• \(note)")
+                    .font(.genealogyBody)
+                    .foregroundColor(.secondary)
             }
-            .padding()
-            .background(Color.yellow.opacity(0.05))
-            .cornerRadius(10)
         }
+        .padding()
+        .background(Color.gray.opacity(0.05))
+        .cornerRadius(10)
     }
     
     // MARK: - Helper Methods
-    
-    /// Get enhanced death date for a person from their asParent family
-    private func getEnhancedDeathDate(for person: Person, in family: Family) -> String? {
-        guard let network = juuretApp.familyNetworkWorkflow?.getFamilyNetwork() else {
-            return person.deathDate
-        }
-        
-        guard let asParentFamily = network.getAsParentFamily(for: person) else {
-            return person.deathDate
-        }
-        
-        let asParentPerson = asParentFamily.allParents.first { parent in
-            parent.name.lowercased() == person.name.lowercased() ||
-            (parent.birthDate == person.birthDate && parent.birthDate != nil)
-        }
-        
-        return asParentPerson?.deathDate ?? person.deathDate
-    }
-    
-    /// Get enhanced marriage date for a person from their asParent family
-    private func getEnhancedMarriageDate(for person: Person, in family: Family) -> String? {
-        guard let network = juuretApp.familyNetworkWorkflow?.getFamilyNetwork() else {
-            return person.fullMarriageDate ?? person.marriageDate
-        }
-        
-        guard let asParentFamily = network.getAsParentFamily(for: person) else {
-            return person.fullMarriageDate ?? person.marriageDate
-        }
-        
-        let asParentPerson = asParentFamily.allParents.first { parent in
-            parent.name.lowercased() == person.name.lowercased() ||
-            (parent.birthDate == person.birthDate && parent.birthDate != nil)
-        }
-        
-        let matchingCouple = asParentFamily.couples.first { couple in
-            couple.husband.name.lowercased() == person.name.lowercased() ||
-            couple.wife.name.lowercased() == person.name.lowercased()
-        }
-        
-        return asParentPerson?.fullMarriageDate
-            ?? matchingCouple?.fullMarriageDate
-            ?? asParentPerson?.marriageDate
-            ?? person.fullMarriageDate
-            ?? person.marriageDate
-    }
     
     private func handleAdditionalSpouseClick(person: Person, family: Family) {
         if person.asChild != nil {
