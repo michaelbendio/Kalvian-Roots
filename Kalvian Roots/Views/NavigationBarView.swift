@@ -130,6 +130,7 @@ struct NavigationBarView: View {
                 endPoint: .trailing
             )
         )
+        .frame(minHeight: 60)
         .sheet(isPresented: $showingClanBrowser) {
             ClanBrowserView(isPresented: $showingClanBrowser)
         }
@@ -157,6 +158,7 @@ struct NavigationButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundColor(.white)
+            .frame(height: 36)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .background(
@@ -176,6 +178,7 @@ struct PDFToggleButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundColor(isActive ? Color(hex: "667eea") : .white)
+            .frame(height: 36)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .background(
