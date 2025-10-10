@@ -81,14 +81,14 @@ class FamilyResolver {
         resolutionStatistics = ResolutionStatistics()
         
         logInfo(.resolver, "🔗 Storing nuclear family as asParent family for parents")
+        logInfo(.resolver, "🔗 Storing nuclear family as asParent family for parents")
         for parent in family.allParents {
-            if parent.isMarried {  // Only for married parents (they have an asParent family - the nuclear one!)
-                network.asParentFamilies[parent.displayName] = family
-                if parent.displayName != parent.name {
-                    network.asParentFamilies[parent.name] = family
-                }
-                logInfo(.resolver, "  ✅ Stored '\(family.familyId)' as asParent for parent '\(parent.displayName)'")
+            // All parents are in couples by definition, so they all need asParent family stored
+            network.asParentFamilies[parent.displayName] = family
+            if parent.displayName != parent.name {
+                network.asParentFamilies[parent.name] = family
             }
+            logInfo(.resolver, "  ✅ Stored '\(family.familyId)' as asParent for parent '\(parent.displayName)'")
         }
         
         // Resolve as-child families (parents' birth families)
