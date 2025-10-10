@@ -41,14 +41,14 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
     // MARK: - Window Size and Position Configuration
     
     // Adjust these values to change window sizes and positions
-    private let searchWindowX: CGFloat = 950
+    private let searchWindowX: CGFloat = 1300
     private let searchWindowY: CGFloat = 800
     private let searchWindowWidth: CGFloat = 600
     private let searchWindowHeight: CGFloat = 800
     private let addressBarHeight: CGFloat = 24
     private let addressBarPadding: CGFloat = 10  // Left/right padding
     
-    private let recordWindowX: CGFloat = 950
+    private let recordWindowX: CGFloat = 1300
     private let recordWindowY: CGFloat = 250
     private let recordWindowWidth: CGFloat = 600
     private let recordWindowHeight: CGFloat = 450

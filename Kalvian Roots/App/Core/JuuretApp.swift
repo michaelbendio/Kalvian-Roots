@@ -75,8 +75,6 @@ class JuuretApp {
 
     // MARK: - Navigation Methods
 
-    // MARK: - Navigation Methods
-
     /**
      * Navigate to a family, optionally adding to history
      *
@@ -205,6 +203,79 @@ class JuuretApp {
         logInfo(.app, "🏠 Home family set to: \(normalizedId)")
     }
 
+    // MARK: - Sequential File Navigation (Previous/Next in file order)
+
+    // Add to JuuretApp
+    var pendingFamilyId: String?
+
+    // MARK: - Sequential File Navigation (Previous/Next in file order)
+
+    /**
+     * Navigate to the previous family in the JuuretKälviällä.roots file
+     */
+    func navigateToPreviousFamily() {
+        // Use pendingFamilyId if set, otherwise use currentFamily
+        // This ensures arrows work based on what's shown in nav bar
+        let referenceId = pendingFamilyId ?? currentFamily?.familyId
+        
+        guard let referenceId = referenceId else {
+            logWarn(.app, "⚠️ No reference family to navigate from")
+            return
+        }
+        
+        guard let previousId = FamilyIDs.previousFamilyBefore(referenceId) else {
+            logWarn(.app, "⚠️ Already at first family in file")
+            errorMessage = "Already at the first family"
+            return
+        }
+        
+        logInfo(.app, "⬅️ Navigating to previous family in file: \(previousId)")
+        
+        // Navigate without updating history
+        navigateToFamily(previousId, updateHistory: false)
+    }
+
+    /**
+     * Navigate to the next family in the JuuretKälviällä.roots file
+     */
+    func navigateToNextFamily() {
+        // Use pendingFamilyId if set, otherwise use currentFamily
+        // This ensures arrows work based on what's shown in nav bar
+        let referenceId = pendingFamilyId ?? currentFamily?.familyId
+        
+        guard let referenceId = referenceId else {
+            logWarn(.app, "⚠️ No reference family to navigate from")
+            return
+        }
+        
+        guard let nextId = FamilyIDs.nextFamilyAfter(referenceId) else {
+            logWarn(.app, "⚠️ Already at last family in file")
+            errorMessage = "Already at the last family"
+            return
+        }
+        
+        logInfo(.app, "➡️ Navigating to next family in file: \(nextId)")
+        
+        // Navigate without updating history
+        navigateToFamily(nextId, updateHistory: false)
+    }
+
+    // MARK: - Navigation State Helpers for Sequential Navigation
+
+    /// Check if we can navigate to previous family in file
+    var canNavigateToPreviousFamily: Bool {
+        let referenceId = pendingFamilyId ?? currentFamily?.familyId
+        guard let referenceId = referenceId else { return false }
+        return !FamilyIDs.isFirst(referenceId)
+    }
+
+    /// Check if we can navigate to next family in file
+    var canNavigateToNextFamily: Bool {
+        let referenceId = pendingFamilyId ?? currentFamily?.familyId
+        guard let referenceId = referenceId else { return false }
+        return !FamilyIDs.isLast(referenceId)
+    }
+    
     // MARK: - Navigation State Helpers
 
     /// Check if we can navigate backward
@@ -475,40 +546,65 @@ class JuuretApp {
     // MARK: - Family Extraction
     
     /**
-     * Extract a family by ID with caching support
+     * Extract and parse a family from the file
+     *
+     * This is the main entry point for family extraction.
+     * It handles caching, AI parsing, and cross-reference resolution.
      */
     func extractFamily(familyId: String) async {
-        // More specific error checking
-        if !fileManager.isFileLoaded {
-            if fileManager.errorMessage != nil {
-                // File failed to load - show the actual error
-                errorMessage = fileManager.errorMessage
-            } else {
-                // File is still loading
-                errorMessage = "File is still loading. Please wait a moment and try again."
+        // Normalize the family ID
+        let normalizedId = familyId.uppercased().trimmingCharacters(in: .whitespaces)
+        
+        // Validate the family ID
+        guard FamilyIDs.isValid(familyId: normalizedId) else {
+            await MainActor.run {
+                errorMessage = "Invalid family ID: \(familyId)"
+                isProcessing = false
+                pendingFamilyId = nil
             }
+            logWarn(.app, "⚠️ Invalid family ID: \(familyId)")
             return
         }
         
-        if !aiParsingService.isConfigured {
-            errorMessage = "AI service not configured. Please add API key in settings."
+        // Check if file is ready
+        guard fileManager.isFileLoaded else {
+            await MainActor.run {
+                errorMessage = "File not loaded. Please wait for file to load or load manually."
+                isProcessing = false
+                pendingFamilyId = nil
+            }
+            logWarn(.app, "⚠️ Cannot extract - file not loaded")
             return
         }
         
-        logInfo(.app, "🔍 Starting extraction for family: \(familyId)")
+        // Check if AI service is configured
+        guard aiParsingService.isConfigured else {
+            await MainActor.run {
+                errorMessage = "AI service not configured. Please add API key in settings."
+                isProcessing = false
+                pendingFamilyId = nil
+            }
+            logWarn(.app, "⚠️ Cannot extract - AI not configured")
+            return
+        }
         
-        // Reset state
-        isProcessing = true
-        errorMessage = nil
-        currentFamily = nil
-        enhancedFamily = nil
-        extractionProgress = .extractingText
+        logInfo(.app, "🔍 Starting extraction for family: \(normalizedId)")
+        
+        // Set processing state and pending family ID
+        await MainActor.run {
+            isProcessing = true
+            errorMessage = nil
+            currentFamily = nil
+            enhancedFamily = nil
+            extractionProgress = .extractingText
+            pendingFamilyId = normalizedId  // Show this in nav bar immediately
+        }
         
         // CHECK CACHE FIRST
-        if let cached = familyNetworkCache.getCachedNetwork(familyId: familyId) {
-            logInfo(.app, "⚡ Using cached network for: \(familyId)")
+        if let cached = familyNetworkCache.getCachedNetwork(familyId: normalizedId) {
+            logInfo(.app, "⚡ Using cached network for: \(normalizedId)")
             
-            // Use cached network - NO CITATIONS in new architecture
+            // Use cached network
             await MainActor.run {
                 currentFamily = cached.network.mainFamily
                 enhancedFamily = cached.network.mainFamily
@@ -520,22 +616,23 @@ class JuuretApp {
                     resolveCrossReferences: false  // Already resolved in cache
                 )
                 
-                // Just activate the network - no citations
+                // Activate the cached network
                 familyNetworkWorkflow?.activateCachedNetwork(cached.network)
                 
                 isProcessing = false
                 extractionProgress = .idle
+                pendingFamilyId = nil  // Clear pending - we're done
                 
                 // Reset next family state
                 familyNetworkCache.nextFamilyReady = false
                 familyNetworkCache.nextFamilyId = nil
             }
             
-            logInfo(.app, "✨ Family loaded from cache: \(familyId)")
+            logInfo(.app, "✨ Family loaded from cache: \(normalizedId)")
             
             // Start background processing for next family
             familyNetworkCache.startBackgroundProcessing(
-                currentFamilyId: familyId,
+                currentFamilyId: normalizedId,
                 fileManager: fileManager,
                 aiService: aiParsingService,
                 familyResolver: familyResolver
@@ -549,44 +646,53 @@ class JuuretApp {
             let startTime = Date()
             
             // Step 1: Extract family text from file
-            guard let familyText = fileManager.extractFamilyText(familyId: familyId) else {
-                throw ExtractionError.familyNotFound(familyId)
+            guard let familyText = fileManager.extractFamilyText(familyId: normalizedId) else {
+                throw ExtractionError.familyNotFound(normalizedId)
             }
             
-            logDebug(.app, "📄 Extracted text for family \(familyId):\n\(familyText.prefix(200))...")
+            logDebug(.app, "📄 Extracted text for family \(normalizedId)")
             
             // Step 2: Parse with AI
-            extractionProgress = .parsingWithAI
+            await MainActor.run {
+                extractionProgress = .parsingWithAI
+            }
             
             let family = try await aiParsingService.parseFamily(
-                familyId: familyId,
+                familyId: normalizedId,
                 familyText: familyText
             )
             
-            extractionProgress = .familyExtracted
+            await MainActor.run {
+                extractionProgress = .familyExtracted
+            }
             
-            // Step 3: Keep the parsed family
-            let parsedFamily = family
-            
-            // Step 4: Process cross-references
+            // Step 3: Process cross-references
             logInfo(.app, "🔄 Processing cross-references for enhanced citations...")
             
             // Create workflow for this family
-            familyNetworkWorkflow = FamilyNetworkWorkflow(
-                nuclearFamily: family,
-                familyResolver: familyResolver,
-                resolveCrossReferences: true  // Process cross-references
-            )
+            await MainActor.run {
+                familyNetworkWorkflow = FamilyNetworkWorkflow(
+                    nuclearFamily: family,
+                    familyResolver: familyResolver,
+                    resolveCrossReferences: true  // Process cross-references
+                )
+            }
             
-            // Step 5: Process the workflow
-            extractionProgress = .resolvingReferences
+            // Step 4: Process the workflow
+            await MainActor.run {
+                extractionProgress = .resolvingReferences
+            }
+            
             do {
                 try await familyNetworkWorkflow?.process()
                 
-                // Get the enhanced family (main family with resolved references)
+                // Get the enhanced family
                 if let workflow = familyNetworkWorkflow,
                    let network = workflow.getFamilyNetwork() {
-                    enhancedFamily = network.mainFamily
+                    
+                    await MainActor.run {
+                        enhancedFamily = network.mainFamily
+                    }
                     
                     // Cache the network for future use
                     let extractionTime = Date().timeIntervalSince(startTime)
@@ -598,45 +704,56 @@ class JuuretApp {
                     logInfo(.app, "💾 Cached network for future use")
                 }
                 
-                extractionProgress = .complete
+                await MainActor.run {
+                    extractionProgress = .complete
+                }
                 logInfo(.app, "✅ Family network processed successfully")
                 
             } catch {
                 // Log cross-reference errors but continue with the family
                 logError(.app, "⚠️ Cross-reference resolution failed: \(error)")
                 
-                // Collect some debugging info for logging
-                let parentRefs = family.allParents.compactMap { $0.asChild }
-                let childRefs = family.allChildren.compactMap { $0.asParent }
-                
-                logError(.app, """
-                    Cross-reference resolution failed:
-                    - Family ID: \(familyId)
-                    - Parent refs: \(parentRefs.joined(separator: ", "))
-                    - Child refs: \(childRefs.joined(separator: ", "))
-                    - Error: \(error.localizedDescription)
-                    """)
-                
-                logInfo(.app, "📝 Proceeding with available data")
+                // Still use the base family even if cross-references fail
+                await MainActor.run {
+                    enhancedFamily = family
+                }
             }
             
-            // Step 6: Set the current family (even if cross-refs failed)
-            currentFamily = parsedFamily
-            extractionProgress = .idle
-            isProcessing = false
+            // Step 5: Update UI with the family
+            await MainActor.run {
+                currentFamily = family
+                isProcessing = false
+                extractionProgress = .idle
+                pendingFamilyId = nil  // Clear pending - we're done
+                errorMessage = nil
+            }
+            
+            let totalTime = Date().timeIntervalSince(startTime)
+            logInfo(.app, "✅ Family extraction complete in \(String(format: "%.2f", totalTime))s")
             
             // Start background processing for next family
             familyNetworkCache.startBackgroundProcessing(
-                currentFamilyId: familyId,
+                currentFamilyId: normalizedId,
                 fileManager: fileManager,
                 aiService: aiParsingService,
                 familyResolver: familyResolver
             )
             
         } catch {
-            errorMessage = error.localizedDescription
-            extractionProgress = .idle
-            isProcessing = false
+            await MainActor.run {
+                currentFamily = nil
+                enhancedFamily = nil
+                isProcessing = false
+                extractionProgress = .idle
+                pendingFamilyId = nil  // Clear pending on error
+                
+                if let extractionError = error as? ExtractionError {
+                    errorMessage = extractionError.localizedDescription
+                } else {
+                    errorMessage = "Extraction failed: \(error.localizedDescription)"
+                }
+            }
+            
             logError(.app, "❌ Extraction failed: \(error)")
         }
     }
