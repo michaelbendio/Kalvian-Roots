@@ -22,12 +22,12 @@ struct JuuretView: View {
     var body: some View {
         VStack(spacing: 0) {
             if juuretApp.fileManager.isFileLoaded {
-                // Navigation bar at top - respects safe area
+                // Navigation bar at top
                 NavigationBarView()
                 
-                // Main content area
+                // Main content area - CHECK FOR PENDING ID FIRST
                 if let pendingId = juuretApp.pendingFamilyId {
-                    // LOADING STATE
+                    // LOADING STATE - Show while extracting
                     VStack(spacing: 16) {
                         ProgressView()
                             .scaleEffect(1.5)
@@ -59,8 +59,6 @@ struct JuuretView: View {
                 Color.clear
             }
         }
-        // Only ignore safe area for the navigation bar itself
-        .edgesIgnoringSafeArea(.top)
         .navigationTitle("Kalvian Roots")
         #if os(macOS)
         .toolbar {

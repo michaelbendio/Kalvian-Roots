@@ -69,6 +69,7 @@ struct NavigationBarView: View {
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(.primary)
                     .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
                     .background(Color.white.opacity(0.9))
                     .cornerRadius(6)
                     .onSubmit {
@@ -121,7 +122,7 @@ struct NavigationBarView: View {
             .buttonStyle(PDFToggleButtonStyle(isActive: juuretApp.showPDFMode))
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .padding(.vertical, 16)
         .background(
             LinearGradient(
                 colors: [Color(hex: "667eea"), Color(hex: "764ba2")],
@@ -129,12 +130,11 @@ struct NavigationBarView: View {
                 endPoint: .trailing
             )
         )
-        .frame(minHeight: 60)
         .sheet(isPresented: $showingClanBrowser) {
             ClanBrowserView(isPresented: $showingClanBrowser)
         }
     }
-
+    
     // MARK: - Helpers
     
     private var isCurrentFamilyCached: Bool {
@@ -157,8 +157,8 @@ struct NavigationButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundColor(.white)
-            .frame(height: 36)
             .padding(.horizontal, 16)
+            .padding(.vertical, 8)
             .background(
                 Color.white.opacity(configuration.isPressed ? 0.3 : 0.2)
             )
@@ -176,8 +176,8 @@ struct PDFToggleButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundColor(isActive ? Color(hex: "667eea") : .white)
-            .frame(height: 36)
             .padding(.horizontal, 16)
+            .padding(.vertical, 8)
             .background(
                 isActive ? Color.white.opacity(0.95) : Color.white.opacity(0.2)
             )
