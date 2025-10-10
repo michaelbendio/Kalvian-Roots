@@ -16,23 +16,24 @@ struct NavigationBarView: View {
         HStack(spacing: 12) {
             // Back button - navigates to PREVIOUS FAMILY IN FILE
             Button(action: {
-                juuretApp.navigateToPreviousFamily()  // Changed from navigateBack()
+                juuretApp.navigateToPreviousFamily()
             }) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 14, weight: .semibold))
             }
             .buttonStyle(NavigationButtonStyle())
-            .disabled(!juuretApp.canNavigateToPreviousFamily)  // Changed from canNavigateBack
+            .disabled(!juuretApp.canNavigateToPreviousFamily)
 
             // Forward button - navigates to NEXT FAMILY IN FILE
             Button(action: {
-                juuretApp.navigateToNextFamily()  // Changed from navigateForward()
+                juuretApp.navigateToNextFamily()
             }) {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .semibold))
             }
             .buttonStyle(NavigationButtonStyle())
-            .disabled(!juuretApp.canNavigateToNextFamily)  // Changed from canNavigateForward
+            .disabled(!juuretApp.canNavigateToNextFamily)
+            
             // Home button
             Button(action: {
                 juuretApp.navigateHome()
@@ -62,7 +63,6 @@ struct NavigationBarView: View {
             .disabled(juuretApp.currentFamily == nil)
             
             // Family ID input with dropdown
-            // Family ID input with dropdown
             HStack(spacing: 4) {
                 TextField("Enter family ID...", text: $familyIdInput)
                     .textFieldStyle(.plain)
@@ -74,7 +74,7 @@ struct NavigationBarView: View {
                     .onSubmit {
                         navigateToInputFamily()
                     }
-                    // FIXED: Watch BOTH pendingFamilyId and currentFamily
+                    // Watch BOTH pendingFamilyId and currentFamily
                     .onChange(of: juuretApp.pendingFamilyId) { oldValue, newValue in
                         if let pendingId = newValue {
                             familyIdInput = pendingId
@@ -94,8 +94,23 @@ struct NavigationBarView: View {
                             familyIdInput = currentId
                         }
                     }
-               }
-            
+                
+                // Dropdown button - OPTION 1: Simple visible version
+                Button(action: {
+                    print("🔽 Dropdown button pressed!")
+                    print("   showingClanBrowser before: \(showingClanBrowser)")
+                    showingClanBrowser.toggle()
+                    print("   showingClanBrowser after: \(showingClanBrowser)")
+                }) {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.primary)  // Dark color so it's visible
+                        .padding(8)
+                        .background(Color.white.opacity(0.9))
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+            }
             .frame(maxWidth: .infinity)
             
             // PDF toggle button

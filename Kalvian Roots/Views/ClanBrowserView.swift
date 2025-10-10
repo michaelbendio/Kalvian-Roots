@@ -15,10 +15,61 @@ struct ClanBrowserView: View {
     
     init(isPresented: Binding<Bool>) {
         self._isPresented = isPresented
-        self.clans = Self.groupFamilyIDsByClan()
+        
+        print("🔍 ClanBrowserView init called")
+        print("   FamilyIDs.validFamilyIds.count = \(FamilyIDs.validFamilyIds.count)")
+        print("   First 3 IDs: \(FamilyIDs.validFamilyIds.prefix(3))")
+        
+        let result = Self.groupFamilyIDsByClan()
+        print("   Grouped into \(result.count) clans")
+        
+        if result.isEmpty {
+            print("   ❌ ERROR: groupFamilyIDsByClan returned empty!")
+        } else {
+            print("   ✅ First clan: \(result[0].clanName) with \(result[0].suffixes.count) suffixes")
+            print("      Suffixes: \(result[0].suffixes.prefix(5))")
+        }
+        
+        self.clans = result
     }
     
     var body: some View {
+        #if os(macOS)
+        // macOS version - simpler, no NavigationView needed in sheet
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Text("Family Clans")
+                    .font(.headline)
+                    .padding()
+                Spacer()
+                Button("Close") {
+                    isPresented = false
+                }
+                .padding()
+            }
+            .background(Color(nsColor: .windowBackgroundColor))
+            
+            Divider()
+            
+            // Content
+            if clans.isEmpty {
+                Text("No clans found")
+                    .padding()
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(clans, id: \.clanName) { clan in
+                            clanGroupView(clan: clan)
+                        }
+                    }
+                    .padding(.top, 8)
+                }
+            }
+        }
+        .frame(minWidth: 600, minHeight: 400)
+        #else
+        // iOS version - with NavigationView
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -28,9 +79,7 @@ struct ClanBrowserView: View {
                 }
             }
             .navigationTitle("Family Clans")
-            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
-            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") {
@@ -39,6 +88,7 @@ struct ClanBrowserView: View {
                 }
             }
         }
+        #endif
     }
     
     // MARK: - Views
@@ -186,10 +236,33 @@ struct ClanBrowserView: View {
             clanMap[clanName]?.append(suffix)
         }
         
-        // Sort clans alphabetically and suffixes naturally
-        let sortedClans = clanMap.keys.sorted()
-        
-        return sortedClans.map { clanName in
+        // Preserve the order from FamilyIDs.validFamilyIds (file order)
+        // Build list of clans in the order they first appear
+        var clanOrder: [String] = []
+        var seenClans: Set<String> = []
+
+        for familyId in FamilyIDs.validFamilyIds {
+            let components = familyId.components(separatedBy: " ")
+            guard components.count >= 2 else { continue }
+            
+            var suffixStartIndex = components.count - 1
+            if components.count >= 3 {
+                let possibleRoman = components[components.count - 2]
+                if ["I", "II", "III", "IV"].contains(possibleRoman) {
+                    suffixStartIndex = components.count - 2
+                }
+            }
+            
+            let clanName = components[0..<suffixStartIndex].joined(separator: " ")
+            
+            if !seenClans.contains(clanName) {
+                clanOrder.append(clanName)
+                seenClans.insert(clanName)
+            }
+        }
+
+        // Return clans in file order with naturally sorted suffixes
+        return clanOrder.map { clanName in
             let suffixes = clanMap[clanName]!.sorted { lhs, rhs in
                 return naturalCompare(lhs, rhs)
             }
