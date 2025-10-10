@@ -388,8 +388,44 @@ struct CitationGenerator {
                 var additionalInfo: [String] = []
                 
                 if let asParent = findPersonInAsParentFamily(person, in: asParentFamily) {
+                    // Track death date enhancement
+                    var hasEnhancedDeath = false
                     if asParent.deathDate != nil && targetChildInAsChild.deathDate == nil {
-                        additionalInfo.append("\(person.displayName)'s death date found on \(asParentFamily.pageReferenceString)")
+                        hasEnhancedDeath = true
+                    }
+                    
+                    // Track marriage date enhancement
+                    var hasEnhancedMarriage = false
+                    
+                    // Check person-level marriage date
+                    let nuclearMarriage = targetChildInAsChild.fullMarriageDate ?? targetChildInAsChild.marriageDate
+                    let asParentMarriage = asParent.fullMarriageDate ?? asParent.marriageDate
+                    
+                    if asParentMarriage != nil && nuclearMarriage != asParentMarriage {
+                        hasEnhancedMarriage = true
+                    }
+                    
+                    // Check couple-level marriage date if not yet enhanced
+                    if !hasEnhancedMarriage {
+                        if let couple = asParentFamily.couples.first(where: { c in
+                            c.husband.name.lowercased() == person.name.lowercased() ||
+                            c.wife.name.lowercased() == person.name.lowercased()
+                        }) {
+                            let coupleMarriage = couple.fullMarriageDate ?? couple.marriageDate
+                            
+                            if coupleMarriage != nil && nuclearMarriage != coupleMarriage {
+                                hasEnhancedMarriage = true
+                            }
+                        }
+                    }
+                    
+                    // Build the appropriate message based on what was enhanced
+                    if hasEnhancedDeath && hasEnhancedMarriage {
+                        additionalInfo.append("\(person.displayName)'s death and marriage dates are on \(asParentFamily.pageReferenceString)")
+                    } else if hasEnhancedDeath {
+                        additionalInfo.append("\(person.displayName)'s death date is on \(asParentFamily.pageReferenceString)")
+                    } else if hasEnhancedMarriage {
+                        additionalInfo.append("\(person.displayName)'s marriage date is on \(asParentFamily.pageReferenceString)")
                     }
                 }
                 
@@ -401,7 +437,6 @@ struct CitationGenerator {
                 }
             }
         }
-        
         return citation
     }
     
