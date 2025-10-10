@@ -14,7 +14,7 @@ struct NavigationBarView: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            // Back button - navigates to PREVIOUS FAMILY IN FILE
+            // Back/Forward buttons
             Button(action: {
                 juuretApp.navigateToPreviousFamily()
             }) {
@@ -66,7 +66,8 @@ struct NavigationBarView: View {
             HStack(spacing: 4) {
                 TextField("Enter family ID...", text: $familyIdInput)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 14))
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.primary)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(Color.white.opacity(0.9))
@@ -74,6 +75,7 @@ struct NavigationBarView: View {
                     .onSubmit {
                         navigateToInputFamily()
                     }
+                    .frame(minWidth: 150, idealWidth: 250, maxWidth: 400)
                     // Watch BOTH pendingFamilyId and currentFamily
                     .onChange(of: juuretApp.pendingFamilyId) { oldValue, newValue in
                         if let pendingId = newValue {
@@ -97,10 +99,7 @@ struct NavigationBarView: View {
                 
                 // Dropdown button - OPTION 1: Simple visible version
                 Button(action: {
-                    print("🔽 Dropdown button pressed!")
-                    print("   showingClanBrowser before: \(showingClanBrowser)")
                     showingClanBrowser.toggle()
-                    print("   showingClanBrowser after: \(showingClanBrowser)")
                 }) {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 14, weight: .semibold))

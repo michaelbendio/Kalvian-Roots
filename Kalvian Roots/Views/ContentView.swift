@@ -8,36 +8,35 @@ struct ContentView: View {
     @State private var showingFatalError = false
 
     var body: some View {
-        Group {
-            #if os(macOS)
-            NavigationSplitView(columnVisibility: .constant(isSidebarExpanded ? .all : .detailOnly)) {
-                SidebarView()
-            } detail: {
-                JuuretView()
-            }
-            .environment(app)
-            .navigationTitle("Kalvian Roots")
-            .toolbar {
-                ToolbarItem(placement: .navigation) {
-                    Button(action: { isSidebarExpanded.toggle() }) {
-                        Image(systemName: "sidebar.left")
-                            .help("Toggle Sidebar")
-                    }
-                }
-            }
-            #else
-            NavigationView {
-                JuuretView()
-            }
-            .environment(app)
-            .navigationTitle("Kalvian Roots")
-            .navigationBarTitleDisplayMode(.large)
-            #endif
-        }
-        .task {
-            await loadStartupFamily()
-        }
-    }
+         Group {
+             #if os(macOS)
+             NavigationSplitView(columnVisibility: .constant(isSidebarExpanded ? .all : .detailOnly)) {
+                 SidebarView()
+             } detail: {
+                 JuuretView()
+             }
+             .environment(app)
+             .navigationTitle("Kalvian Roots")
+             .toolbar {
+                 ToolbarItem(placement: .navigation) {
+                     Button(action: { isSidebarExpanded.toggle() }) {
+                         Image(systemName: "sidebar.left")
+                             .help("Toggle Sidebar")
+                     }
+                 }
+             }
+             #else
+             // iPad/iOS: Show JuuretView directly without NavigationView
+             // since JuuretView has its own navigation system
+             JuuretView()
+                 .environment(app)
+                 .ignoresSafeArea(.all) // Use full screen
+             #endif
+         }
+         .task {
+             await loadStartupFamily()
+         }
+     }
     
     /// Load the first cached family on startup
     private func loadStartupFamily() async {

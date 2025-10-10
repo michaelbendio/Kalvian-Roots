@@ -158,8 +158,6 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
 class HiskiWebViewManager: NSObject {
     static let shared = HiskiWebViewManager()
     
-    private var searchSafari: SFSafariViewController?
-    private var recordSafari: SFSafariViewController?
     private weak var presentingViewController: UIViewController?
     
     private override init() {
@@ -171,56 +169,33 @@ class HiskiWebViewManager: NSObject {
     }
     
     func openSearchResults(url: URL) {
-        guard let presenter = presentingViewController else {
-            logError(.app, "No presenting view controller for Safari")
-            return
+        // Open in actual Safari app
+        // This allows full Safari features with address bar, tabs, and Split View support
+        UIApplication.shared.open(url, options: [:]) { success in
+            if success {
+                logInfo(.app, "📱 Opened Hiski search in Safari")
+            } else {
+                logError(.app, "Failed to open search URL in Safari")
+            }
         }
-        
-        // Dismiss existing search if present
-        if let existing = searchSafari {
-            existing.dismiss(animated: false)
-        }
-        
-        let config = SFSafariViewController.Configuration()
-        config.entersReaderIfAvailable = false
-        config.barCollapsingEnabled = true
-        
-        let safari = SFSafariViewController(url: url, configuration: config)
-        safari.preferredControlTintColor = .systemBlue
-        safari.dismissButtonStyle = .close
-        
-        searchSafari = safari
-        presenter.present(safari, animated: true)
     }
     
     func openRecordView(url: URL) {
-        guard let presenter = presentingViewController else {
-            logError(.app, "No presenting view controller for Safari")
-            return
+        // Open in Safari - will create a new tab
+        // Small delay to ensure it opens after search results
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            UIApplication.shared.open(url, options: [:]) { success in
+                if success {
+                    logInfo(.app, "📱 Opened Hiski record in Safari (new tab)")
+                } else {
+                    logError(.app, "Failed to open record URL in Safari")
+                }
+            }
         }
-        
-        // Dismiss existing record if present
-        if let existing = recordSafari {
-            existing.dismiss(animated: false)
-        }
-        
-        let config = SFSafariViewController.Configuration()
-        config.entersReaderIfAvailable = false
-        config.barCollapsingEnabled = true
-        
-        let safari = SFSafariViewController(url: url, configuration: config)
-        safari.preferredControlTintColor = .systemGreen
-        safari.dismissButtonStyle = .close
-        
-        recordSafari = safari
-        presenter.present(safari, animated: true)
     }
     
     func closeAllWindows() {
-        searchSafari?.dismiss(animated: true)
-        recordSafari?.dismiss(animated: true)
-        searchSafari = nil
-        recordSafari = nil
+        // Nothing to do - Safari manages its own tabs
     }
 }
 #endif

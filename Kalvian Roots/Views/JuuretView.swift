@@ -22,12 +22,12 @@ struct JuuretView: View {
     var body: some View {
         VStack(spacing: 0) {
             if juuretApp.fileManager.isFileLoaded {
-                // Navigation bar at top
+                // Navigation bar at top - respects safe area
                 NavigationBarView()
                 
-                // Main content area - CHECK FOR PENDING ID FIRST
+                // Main content area
                 if let pendingId = juuretApp.pendingFamilyId {
-                    // LOADING STATE - Show while extracting
+                    // LOADING STATE
                     VStack(spacing: 16) {
                         ProgressView()
                             .scaleEffect(1.5)
@@ -59,6 +59,8 @@ struct JuuretView: View {
                 Color.clear
             }
         }
+        // Only ignore safe area for the navigation bar itself
+        .edgesIgnoringSafeArea(.top)
         .navigationTitle("Kalvian Roots")
         #if os(macOS)
         .toolbar {
@@ -90,11 +92,6 @@ struct JuuretView: View {
             Button("Copy URL") {
                 copyToClipboard(hiskiResult)
             }
-            #if os(iOS) || os(visionOS)
-            Button("Open in Safari") {
-                HiskiWebHelper.openInSafari(hiskiResult)
-            }
-            #endif
             Button("OK", role: .cancel) { }
         } message: {
             Text(hiskiResult)
