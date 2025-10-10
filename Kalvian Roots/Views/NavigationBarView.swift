@@ -62,6 +62,7 @@ struct NavigationBarView: View {
             .disabled(juuretApp.currentFamily == nil)
             
             // Family ID input with dropdown
+            // Family ID input with dropdown
             HStack(spacing: 4) {
                 TextField("Enter family ID...", text: $familyIdInput)
                     .textFieldStyle(.plain)
@@ -73,26 +74,28 @@ struct NavigationBarView: View {
                     .onSubmit {
                         navigateToInputFamily()
                     }
+                    // FIXED: Watch BOTH pendingFamilyId and currentFamily
+                    .onChange(of: juuretApp.pendingFamilyId) { oldValue, newValue in
+                        if let pendingId = newValue {
+                            familyIdInput = pendingId
+                        }
+                    }
                     .onChange(of: juuretApp.currentFamily?.familyId) { oldValue, newValue in
-                        if let newId = newValue {
+                        // Only update if there's no pending ID
+                        if juuretApp.pendingFamilyId == nil, let newId = newValue {
                             familyIdInput = newId
                         }
                     }
                     .onAppear {
-                        if let currentId = juuretApp.currentFamily?.familyId {
+                        // Show pending ID if set, otherwise current family
+                        if let pendingId = juuretApp.pendingFamilyId {
+                            familyIdInput = pendingId
+                        } else if let currentId = juuretApp.currentFamily?.familyId {
                             familyIdInput = currentId
                         }
                     }
-                
-                // Dropdown button
-                Button(action: {
-                    showingClanBrowser.toggle()
-                }) {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .buttonStyle(NavigationButtonStyle())
-            }
+               }
+            
             .frame(maxWidth: .infinity)
             
             // PDF toggle button

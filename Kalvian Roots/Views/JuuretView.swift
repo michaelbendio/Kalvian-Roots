@@ -25,8 +25,21 @@ struct JuuretView: View {
                 // Navigation bar at top
                 NavigationBarView()
                 
-                // Main content area
-                if let family = juuretApp.currentFamily {
+                // Main content area - CHECK FOR PENDING ID FIRST
+                if let pendingId = juuretApp.pendingFamilyId {
+                    // LOADING STATE - Show while extracting
+                    VStack(spacing: 16) {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                        Text("Loading \(pendingId)...")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(hex: "fefdf8"))
+                    
+                } else if let family = juuretApp.currentFamily {
+                    // FAMILY LOADED - Show content
                     FamilyContentView(
                         family: family,
                         onShowCitation: { citation in
@@ -39,6 +52,7 @@ struct JuuretView: View {
                         }
                     )
                 } else {
+                    // NO FAMILY - Show empty state
                     emptyStateView
                 }
             } else {
@@ -66,46 +80,24 @@ struct JuuretView: View {
             Button("Copy to Clipboard") {
                 copyToClipboard(citationText)
             }
-            Button("OK") { }
+            Button("OK", role: .cancel) { }
         } message: {
             Text(citationText)
-                .font(.system(size: 13, design: .monospaced))
         }
         
         // Hiski result alert
-        .alert("Hiski Query Result", isPresented: $showingHiskiResult) {
+        .alert("Hiski Query", isPresented: $showingHiskiResult) {
             Button("Copy URL") {
                 copyToClipboard(hiskiResult)
-                juuretApp.closeHiskiWebViews()
             }
-            Button("OK") {
-                juuretApp.closeHiskiWebViews()
+            #if os(iOS) || os(visionOS)
+            Button("Open in Safari") {
+                HiskiWebHelper.openInSafari(hiskiResult)
             }
+            #endif
+            Button("OK", role: .cancel) { }
         } message: {
             Text(hiskiResult)
-                .font(.system(size: 13, design: .monospaced))
-        }
-        
-        // Fatal error alert
-        .alert("Fatal Error", isPresented: $showingFatalError) {
-            Button("Quit", role: .destructive) {
-                #if os(macOS)
-                NSApplication.shared.terminate(nil)
-                #endif
-            }
-        } message: {
-            Text(juuretApp.errorMessage ?? "Unknown error")
-                .font(.system(size: 13, design: .monospaced))
-        }
-        
-        .onAppear {
-            logInfo(.ui, "JuuretView appeared")
-            Task {
-                await juuretApp.fileManager.autoLoadDefaultFile()
-                if !juuretApp.fileManager.isFileLoaded {
-                    showingFatalError = true
-                }
-            }
         }
     }
     

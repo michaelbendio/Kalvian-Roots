@@ -47,6 +47,9 @@ class JuuretApp {
     /// Currently extracted family
     var currentFamily: Family?
     
+    /// Family ID being loaded (shows in nav bar during extraction)
+    var pendingFamilyId: String?
+
     /// Enhanced family with cross-reference data
     var enhancedFamily: Family?
     
@@ -202,11 +205,6 @@ class JuuretApp {
         homeFamily = normalizedId
         logInfo(.app, "🏠 Home family set to: \(normalizedId)")
     }
-
-    // MARK: - Sequential File Navigation (Previous/Next in file order)
-
-    // Add to JuuretApp
-    var pendingFamilyId: String?
 
     // MARK: - Sequential File Navigation (Previous/Next in file order)
 
