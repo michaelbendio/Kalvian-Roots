@@ -121,6 +121,7 @@ struct NavigationBarView: View {
             }
             .buttonStyle(PDFToggleButtonStyle(isActive: juuretApp.showPDFMode))
         }
+        .frame(minHeight: 120)
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
         .background(
