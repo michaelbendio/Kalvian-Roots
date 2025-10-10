@@ -80,6 +80,17 @@ class FamilyResolver {
         var network = FamilyNetwork(mainFamily: family)
         resolutionStatistics = ResolutionStatistics()
         
+        logInfo(.resolver, "🔗 Storing nuclear family as asParent family for parents")
+        for parent in family.allParents {
+            if parent.isMarried {  // Only for married parents (they have an asParent family - the nuclear one!)
+                network.asParentFamilies[parent.displayName] = family
+                if parent.displayName != parent.name {
+                    network.asParentFamilies[parent.name] = family
+                }
+                logInfo(.resolver, "  ✅ Stored '\(family.familyId)' as asParent for parent '\(parent.displayName)'")
+            }
+        }
+        
         // Resolve as-child families (parents' birth families)
         network = try await resolveAsChildFamilies(for: family, network: network)
         

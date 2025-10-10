@@ -382,7 +382,57 @@ struct CitationGenerator {
             citation += "Children died as infants: \(totalChildrenDied)\n"
         }
         
+        //////////////////////////////////////////////////////////////////////////////////// REMOVE THIS
+        // DEBUG: Log what we're about to check
+        print("🔍 DEBUG asChild Citation:")
+        print("  - targetPersonFound: \(targetPersonFound)")
+        if let child = targetChildInAsChild {
+            print("  - targetChildInAsChild: \(child.name)")
+        } else {
+            print("  - targetChildInAsChild: nil")
+        }
+        print("  - network provided: \(network != nil)")
+        print("  - person.displayName: \(person.displayName)")
+
+        if targetPersonFound, let targetChildInAsChild = targetChildInAsChild {
+            if let network = network {
+                print("  ✅ All conditions met, checking for asParent family...")
+                print("  - Available asParentFamilies keys: \(Array(network.asParentFamilies.keys))")
+                
+                if let asParentFamily = network.getAsParentFamily(for: person) {
+                    print("  ✅ Found asParent family: \(asParentFamily.familyId)")
+                    
+                    if let asParent = findPersonInAsParentFamily(person, in: asParentFamily) {
+                        print("  ✅ Found person in asParent family:")
+                        print("     - asParent.name: \(asParent.name)")
+                        print("     - asParent.deathDate: \(asParent.deathDate ?? "nil")")
+                        print("     - targetChildInAsChild.deathDate: \(targetChildInAsChild.deathDate ?? "nil")")
+                        print("     - asParent.marriageDate: \(asParent.marriageDate ?? "nil")")
+                        print("     - asParent.fullMarriageDate: \(asParent.fullMarriageDate ?? "nil")")
+                        print("     - targetChildInAsChild.marriageDate: \(targetChildInAsChild.marriageDate ?? "nil")")
+                        print("     - targetChildInAsChild.fullMarriageDate: \(targetChildInAsChild.fullMarriageDate ?? "nil")")
+                    } else {
+                        print("  ❌ Could not find person in asParent family")
+                    }
+                } else {
+                    print("  ❌ No asParent family found")
+                }
+            } else {
+                print("  ❌ network is nil")
+            }
+        } else {
+            print("  ❌ Conditions not met:")
+            if !targetPersonFound {
+                print("     - targetPersonFound is false")
+            }
+            if targetChildInAsChild == nil {
+                print("     - targetChildInAsChild is nil")
+            }
+        }
+        ///
+        /////////////////////////////////////////////////////////////////////////////////// REMOVE THIS
         // Additional Information section for enhanced data
+        
         if targetPersonFound, let targetChildInAsChild = targetChildInAsChild, let network = network {
             if let asParentFamily = network.getAsParentFamily(for: person) {
                 var additionalInfo: [String] = []
