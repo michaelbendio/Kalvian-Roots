@@ -42,11 +42,6 @@ struct PersonLineView: View {
             // Name with patronymic (clickable)
             clickableName()
             
-            // Enhanced death date (brown brackets)
-            if let deathDate = enhancedData?.deathDate {
-                enhancedDeathDate(deathDate)
-            }
-            
             // FamilySearch ID (non-clickable, angle brackets)
             if let fsId = person.familySearchId {
                 Text("<\(fsId)>")
@@ -54,12 +49,39 @@ struct PersonLineView: View {
                     .foregroundColor(.secondary)
             }
             
-            // Marriage symbol and enhanced date
+            // asChild family ID (clickable, in braces) - FOR PARENTS
+            if let asChild = person.asChild {
+                Text("{")
+                    .font(.system(size: 16, design: .monospaced))
+                    .foregroundColor(.primary)
+                
+                clickableFamilyId(asChild)
+                
+                Text("}")
+                    .font(.system(size: 16, design: .monospaced))
+                    .foregroundColor(.primary)
+            }
+            
+            // Death date (regular, not enhanced) - FOR PARENTS
+            if let deathDate = person.deathDate, !person.isMarried {
+                Text("†")
+                    .font(.system(size: 16, design: .monospaced))
+                    .foregroundColor(.primary)
+                
+                clickableDate(deathDate, type: .death)
+            }
+            
+            // Enhanced death date (brown brackets) - FOR MARRIED CHILDREN
+            if let deathDate = enhancedData?.deathDate {
+                enhancedDeathDate(deathDate)
+            }
+            
+            // Marriage symbol and enhanced date - FOR MARRIED CHILDREN
             if person.isMarried {
                 marriageSection()
             }
             
-            // Family ID (clickable if valid)
+            // asParent family ID (clickable) - FOR MARRIED CHILDREN
             if let familyId = person.asParent {
                 clickableFamilyId(familyId)
             }
