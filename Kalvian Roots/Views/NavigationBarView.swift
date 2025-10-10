@@ -121,9 +121,8 @@ struct NavigationBarView: View {
             }
             .buttonStyle(PDFToggleButtonStyle(isActive: juuretApp.showPDFMode))
         }
-        .frame(minHeight: 120)
         .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(.vertical, 12)
         .background(
             LinearGradient(
                 colors: [Color(hex: "667eea"), Color(hex: "764ba2")],
@@ -135,7 +134,7 @@ struct NavigationBarView: View {
             ClanBrowserView(isPresented: $showingClanBrowser)
         }
     }
-    
+
     // MARK: - Helpers
     
     private var isCurrentFamilyCached: Bool {
