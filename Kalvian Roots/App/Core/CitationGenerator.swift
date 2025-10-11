@@ -308,7 +308,7 @@ struct CitationGenerator {
             if let fullMarriageDate = primaryCouple.fullMarriageDate {
                 citation += "m. \(formatDate(fullMarriageDate))\n"
             } else if let marriageDate = primaryCouple.marriageDate {
-                let parentBirthYear = extractBirthYear(from: primaryCouple.husband) 
+                let parentBirthYear = extractBirthYear(from: primaryCouple.husband)
                                     ?? extractBirthYear(from: primaryCouple.wife)
                 citation += "m. \(extractMarriageYear(marriageDate, parentBirthYear: parentBirthYear))\n"
             }
@@ -382,10 +382,7 @@ struct CitationGenerator {
             citation += "Children died as infants: \(totalChildrenDied)\n"
         }
         
-        ///
         // Additional Information section for enhanced data
-        ///
-
         if targetPersonFound, let targetChildInAsChild = targetChildInAsChild, let network = network {
             if let asParentFamily = network.getAsParentFamily(for: person) {
                 var additionalInfo: [String] = []
@@ -422,24 +419,28 @@ struct CitationGenerator {
                         }
                     }
                     
-                    // Build the appropriate message based on what was enhanced
-                    if hasEnhancedDeath && hasEnhancedMarriage {
-                        additionalInfo.append("\(person.displayName)'s death and marriage dates are on \(asParentFamily.pageReferenceString)")
-                    } else if hasEnhancedDeath {
-                        additionalInfo.append("\(person.displayName)'s death date is on \(asParentFamily.pageReferenceString)")
-                    } else if hasEnhancedMarriage {
-                        additionalInfo.append("\(person.displayName)'s marriage date is on \(asParentFamily.pageReferenceString)")
-                    }
-                }
-                
-                if !additionalInfo.isEmpty {
-                    citation += "Additional Information:\n"
-                    for info in additionalInfo {
-                        citation += "\(info)\n"
+                    // Build additional info text
+                    if hasEnhancedMarriage || hasEnhancedDeath {
+                        citation += "Additional information:\n"
+                        
+                        var parts: [String] = []
+                        if hasEnhancedMarriage && hasEnhancedDeath {
+                            parts.append("marriage and death dates are")
+                        } else if hasEnhancedMarriage {
+                            parts.append("marriage date is")
+                        } else if hasEnhancedDeath {
+                            parts.append("death date is")
+                        }
+                        
+                        if !parts.isEmpty {
+                            let dataTypes = parts.joined(separator: " and ")
+                            citation += "\(person.name)'s \(dataTypes) on \(asParentFamily.pageReferenceString)\n"
+                        }
                     }
                 }
             }
         }
+        
         return citation
     }
     

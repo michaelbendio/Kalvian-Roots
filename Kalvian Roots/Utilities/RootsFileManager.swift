@@ -282,6 +282,10 @@ final class RootsFileManager {
     /**
      * Extract family text for a specific family ID
      */
+    /**
+     * Extract family text for a specific family ID
+     * FIXED: Properly stops at blank line followed by new family ID
+     */
     func extractFamilyText(familyId: String) -> String? {
         guard FamilyIDs.isValid(familyId: familyId) else {
             logWarn(.file, "⚠️ Invalid family ID: \(familyId)")
@@ -297,10 +301,15 @@ final class RootsFileManager {
         var out = [String]()
         var found = false
         var previousWasBlank = false
+        var shouldStop = false
         
         let contentLines = Array(lines.dropFirst(2)) // Skip canonical marker and blank line
         
-        for line in contentLines {
+        for (index, line) in contentLines.enumerated() {
+            if shouldStop {
+                break
+            }
+            
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             
             if trimmed == "#" {
@@ -319,25 +328,66 @@ final class RootsFileManager {
                 // We're inside our target family
                 if isBlank && previousWasBlank {
                     // Two consecutive blank lines = end of family
+                    logDebug(.file, "✅ Found end of family (double blank) at line \(index)")
                     break
                 } else if isBlank && !previousWasBlank {
-                    // First blank line after content - might be end
-                    // Check if next non-blank line is a new family ID
-                    var nextNonBlankIndex = contentLines.firstIndex(of: line)! + 1
-                    while nextNonBlankIndex < contentLines.count {
-                        let nextLine = contentLines[nextNonBlankIndex].trimmingCharacters(in: .whitespaces)
-                        if !nextLine.isEmpty && nextLine != "#" {
-                            // Check if it looks like a family ID
-                            if let firstChar = nextLine.first, firstChar.isUppercase {
-                                // This is likely a new family, stop here
-                                break
-                            }
+                    // First blank line after content - check if next family starts
+                    // Look ahead to see if next non-blank line is a new family ID
+                    var lookAheadIndex = index + 1
+                    var foundNextFamily = false
+                    
+                    while lookAheadIndex < contentLines.count {
+                        let nextLine = contentLines[lookAheadIndex].trimmingCharacters(in: .whitespaces)
+                        
+                        if nextLine == "#" {
+                            // Skip bookmarks
+                            lookAheadIndex += 1
+                            continue
+                        }
+                        
+                        if nextLine.isEmpty {
+                            // Another blank line - definitely end of family
+                            logDebug(.file, "✅ Found end of family (double blank detected during lookahead) at line \(index)")
+                            shouldStop = true
+                            foundNextFamily = true
                             break
                         }
-                        nextNonBlankIndex += 1
+                        
+                        // Found non-blank content - check if it's a family ID
+                        if let firstChar = nextLine.first, firstChar.isUppercase {
+                            // Looks like a family ID - check if it's in our valid set
+                            let potentialFamilyId = nextLine.components(separatedBy: .whitespaces)
+                                .prefix(while: { !$0.isEmpty })
+                                .joined(separator: " ")
+                            
+                            // Try matching with 1-3 words + number
+                            let words = nextLine.components(separatedBy: .whitespaces)
+                            for wordCount in 1...min(3, words.count) {
+                                let candidate = words.prefix(wordCount).joined(separator: " ")
+                                if FamilyIDs.validFamilyIds.contains(where: { $0.hasPrefix(candidate) }) {
+                                    logDebug(.file, "✅ Found end of family (next family '\(candidate)' detected) at line \(index)")
+                                    shouldStop = true
+                                    foundNextFamily = true
+                                    break
+                                }
+                            }
+                            if foundNextFamily {
+                                break
+                            }
+                        }
+                        
+                        // If we hit non-family content, this blank is part of current family
+                        break
                     }
+                    
+                    if !foundNextFamily {
+                        // The blank line is part of the current family
+                        out.append(line)
+                    }
+                } else {
+                    // Normal content line
+                    out.append(line)
                 }
-                out.append(line)
             }
             
             previousWasBlank = isBlank
@@ -348,7 +398,20 @@ final class RootsFileManager {
             return nil
         }
         
-        return out.isEmpty ? nil : out.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        let result = out.isEmpty ? nil : out.joined(separator: "\n")
+        
+        if let result = result {
+            let lineCount = out.count
+            let charCount = result.count
+            logInfo(.file, "✅ Extracted \(familyId): \(lineCount) lines, \(charCount) characters")
+            
+            // Log a warning if the extraction seems unusually large
+            if charCount > 10000 {
+                logWarn(.file, "⚠️ Large extraction detected (\(charCount) chars) - may exceed token limits")
+            }
+        }
+        
+        return result
     }
 
     /**

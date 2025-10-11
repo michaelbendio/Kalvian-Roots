@@ -770,7 +770,7 @@ class JuuretApp {
      * Generate citation for any person in the current family
      * NEW ARCHITECTURE: No citation dictionary - generate fresh from network
      */
-    func generateCitation(for person: Person, in family: Family) -> String {
+    func generateCitation(for person: Person, in family: Family) async -> String {
         logInfo(.citation, "📝 Generating on-demand citation for: \(person.displayName)")
         logInfo(.citation, "  Birth date: \(person.birthDate ?? "unknown")")
         logInfo(.citation, "  In family: \(family.familyId)")
@@ -824,12 +824,25 @@ class JuuretApp {
                 network: network
             )
         } else {
-            // Must be a spouse - use main citation
-            citation = CitationGenerator.generateMainFamilyCitation(
-                family: family,
-                targetPerson: person,
-                network: network
-            )
+            // Must be a spouse - try to find their asChild family first
+            if let network = network,
+               let spouseAsChildFamily = network.getSpouseAsChildFamily(for: person) {
+                logInfo(.citation, "  Found spouse's asChild family: \(spouseAsChildFamily.familyId)")
+                citation = CitationGenerator.generateAsChildCitation(
+                    for: person,
+                    in: spouseAsChildFamily,
+                    network: network,
+                    nameEquivalenceManager: nameEquivalenceManager
+                )
+            } else {
+                // No asChild family for spouse, use main citation
+                logInfo(.citation, "  No asChild family found for spouse, using main family citation")
+                citation = CitationGenerator.generateMainFamilyCitation(
+                    family: family,
+                    targetPerson: person,
+                    network: network
+                )
+            }
         }
         
         logInfo(.citation, "  Generated: \(citation)")
