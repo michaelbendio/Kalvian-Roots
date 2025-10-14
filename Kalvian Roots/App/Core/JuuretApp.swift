@@ -828,12 +828,29 @@ class JuuretApp {
             if let network = network,
                let spouseAsChildFamily = network.getSpouseAsChildFamily(for: person) {
                 logInfo(.citation, "  Found spouse's asChild family: \(spouseAsChildFamily.familyId)")
-                citation = CitationGenerator.generateAsChildCitation(
-                    for: person,
-                    in: spouseAsChildFamily,
-                    network: network,
-                    nameEquivalenceManager: nameEquivalenceManager
-                )
+                
+                // Use helper to find and enhance the spouse
+                if let enhancedSpouse = findEnhancedSpouseInAsChildFamily(
+                    spouseName: person.name,
+                    spouseAsChildFamily: spouseAsChildFamily,
+                    nuclearFamily: family,
+                    network: network
+                ) {
+                    citation = CitationGenerator.generateAsChildCitation(
+                        for: enhancedSpouse,
+                        in: spouseAsChildFamily,
+                        network: network,
+                        nameEquivalenceManager: nameEquivalenceManager
+                    )
+                } else {
+                    // Fallback: generate without enhancement
+                    citation = CitationGenerator.generateAsChildCitation(
+                        for: person,
+                        in: spouseAsChildFamily,
+                        network: network,
+                        nameEquivalenceManager: nameEquivalenceManager
+                    )
+                }
             } else {
                 // No asChild family for spouse, use main citation
                 logInfo(.citation, "  No asChild family found for spouse, using main family citation")
@@ -916,50 +933,32 @@ class JuuretApp {
         // Create a Person object for the spouse
         let spousePerson = Person(name: spouseName, noteMarkers: [])
         
-        // First try to find the spouse in spouseAsChildFamilies
+        // Try to find the spouse in spouseAsChildFamilies
         if let spouseAsChildFamily = network.getSpouseAsChildFamily(for: spousePerson) {
             logInfo(.citation, "📝 Found spouse's asChild family: \(spouseAsChildFamily.familyId)")
             
-            // Find which child has this spouse to get context
-            var childWithSpouse: Person? = nil
-            for couple in family.couples {
-                for child in couple.children {
-                    if child.spouse == spouseName {
-                        childWithSpouse = child
-                        break
-                    }
-                }
-                if childWithSpouse != nil { break }
+            // Use helper to find and enhance the spouse
+            if let enhancedSpouse = findEnhancedSpouseInAsChildFamily(
+                spouseName: spouseName,
+                spouseAsChildFamily: spouseAsChildFamily,
+                nuclearFamily: family,
+                network: network
+            ) {
+                return CitationGenerator.generateAsChildCitation(
+                    for: enhancedSpouse,
+                    in: spouseAsChildFamily,
+                    network: network,
+                    nameEquivalenceManager: nameEquivalenceManager
+                )
+            } else {
+                // Fallback: generate without enhancement
+                return CitationGenerator.generateAsChildCitation(
+                    for: spousePerson,
+                    in: spouseAsChildFamily,
+                    network: network,
+                    nameEquivalenceManager: nameEquivalenceManager
+                )
             }
-            
-            // If we found the child, we can look for their asParent family
-            // which contains enhanced information about the spouse
-            if let child = childWithSpouse,
-               let childAsParentFamily = network.getAsParentFamily(for: child) {
-                // Find the spouse in the asParent family to get enhanced data
-                if let enhancedSpouse = childAsParentFamily.findSpouseInFamily(for: child.name) {
-                    // Create an enhanced version of spousePerson with the additional data
-                    var enhancedSpousePerson = spousePerson
-                    enhancedSpousePerson.birthDate = enhancedSpouse.birthDate
-                    enhancedSpousePerson.deathDate = enhancedSpouse.deathDate
-                    
-                    // Generate citation with enhancement
-                    return CitationGenerator.generateAsChildCitation(
-                        for: enhancedSpousePerson,
-                        in: spouseAsChildFamily,
-                        network: network,
-                        nameEquivalenceManager: nameEquivalenceManager
-                    )
-                }
-            }
-            
-            // Fallback: generate without enhancement
-            return CitationGenerator.generateAsChildCitation(
-                for: spousePerson,
-                in: spouseAsChildFamily,
-                network: network,
-                nameEquivalenceManager: nameEquivalenceManager
-            )
         }
         
         // If not found as spouse asChild, try finding through child's asParent family
@@ -980,6 +979,69 @@ class JuuretApp {
         
         // Fallback
         return "No family information found for \(spouseName)"
+    }
+    
+    // MARK: - Helper Methods
+
+    /**
+     * Find and enhance a spouse person from their asChild family
+     * Returns the actual Person object from the family with all data populated
+     */
+    private func findEnhancedSpouseInAsChildFamily(
+        spouseName: String,
+        spouseAsChildFamily: Family,
+        nuclearFamily: Family,
+        network: FamilyNetwork
+    ) -> Person? {
+        logInfo(.citation, "🔍 Finding enhanced spouse in asChild family")
+        
+        // Step 1: Find the actual child in the asChild family
+        let actualChild = spouseAsChildFamily.allChildren.first { child in
+            // Match by name (flexible matching)
+            let childNameLower = child.name.lowercased()
+            let spouseNameLower = spouseName.lowercased()
+            
+            // Try exact match or partial match
+            return childNameLower == spouseNameLower ||
+                   spouseNameLower.contains(childNameLower) ||
+                   childNameLower.contains(spouseNameLower.components(separatedBy: " ").first ?? "")
+        }
+        
+        guard var spouse = actualChild else {
+            logWarn(.citation, "⚠️ Could not find spouse '\(spouseName)' in asChild family")
+            return nil
+        }
+        
+        logInfo(.citation, "✅ Found spouse in asChild family: \(spouse.displayName)")
+        
+        // Step 2: Try to enhance with data from their asParent family
+        // Find which child in the nuclear family has this spouse
+        var childWithSpouse: Person? = nil
+        for couple in nuclearFamily.couples {
+            for child in couple.children {
+                if child.spouse == spouseName {
+                    childWithSpouse = child
+                    break
+                }
+            }
+            if childWithSpouse != nil { break }
+        }
+        
+        // If we found the child, look for their asParent family which has enhanced spouse data
+        if let child = childWithSpouse,
+           let childAsParentFamily = network.getAsParentFamily(for: child) {
+            // Find the spouse in the asParent family to get enhanced data
+            if let enhancedSpouse = childAsParentFamily.findSpouseInFamily(for: child.name) {
+                logInfo(.citation, "✅ Found enhanced spouse data in asParent family")
+                // Merge the enhanced data
+                spouse.birthDate = enhancedSpouse.birthDate ?? spouse.birthDate
+                spouse.deathDate = enhancedSpouse.deathDate ?? spouse.deathDate
+                spouse.fullMarriageDate = enhancedSpouse.fullMarriageDate ?? spouse.fullMarriageDate
+                spouse.marriageDate = enhancedSpouse.marriageDate ?? spouse.marriageDate
+            }
+        }
+        
+        return spouse
     }
     
     // MARK: - Hiski Query Generation
