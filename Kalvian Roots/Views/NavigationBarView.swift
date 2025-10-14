@@ -16,7 +16,7 @@ struct NavigationBarView: View {
         HStack(spacing: 12) {
             // Back button
             Button(action: {
-                juuretApp.navigateBack()
+                juuretApp.navigateToPreviousFamily()
             }) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 14, weight: .semibold))
@@ -26,7 +26,7 @@ struct NavigationBarView: View {
 
             // Forward button
             Button(action: {
-                juuretApp.navigateForward()
+                juuretApp.navigateToNextFamily()
             }) {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .semibold))
