@@ -434,9 +434,9 @@ struct FamilyIDs {
         return dict
     }()
     
-    // MARK: - Private Helper
+    // MARK: - Public Helper
     
-    private static func normalize(_ s: String) -> String {
+    public static func normalize(_ s: String) -> String {
         let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
         let collapsed = trimmed.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
         return collapsed.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)

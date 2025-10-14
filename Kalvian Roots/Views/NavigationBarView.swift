@@ -14,25 +14,25 @@ struct NavigationBarView: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            // Back/Forward buttons
+            // Back button
             Button(action: {
-                juuretApp.navigateToPreviousFamily()
+                juuretApp.navigateBack()
             }) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 14, weight: .semibold))
             }
             .buttonStyle(NavigationButtonStyle())
-            .disabled(!juuretApp.canNavigateToPreviousFamily)
+            .disabled(!juuretApp.canNavigateBack)
 
-            // Forward button - navigates to NEXT FAMILY IN FILE
+            // Forward button
             Button(action: {
-                juuretApp.navigateToNextFamily()
+                juuretApp.navigateForward()
             }) {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .semibold))
             }
             .buttonStyle(NavigationButtonStyle())
-            .disabled(!juuretApp.canNavigateToNextFamily)
+            .disabled(!juuretApp.canNavigateForward)
             
             // Home button
             Button(action: {
@@ -46,7 +46,9 @@ struct NavigationBarView: View {
                 }
             }
             .buttonStyle(NavigationButtonStyle())
-            .disabled(!juuretApp.canNavigateHome)
+            .disabled(juuretApp.homeFamily == nil)
+            
+            // ... rest of the file
             
             // Reload/Load button
             Button(action: {
