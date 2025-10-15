@@ -279,12 +279,12 @@ struct FamilyContentView: View {
             let result = await juuretApp.processHiskiQuery(
                 for: person,
                 eventType: eventType,
-                familyId: family.familyId
+                familyId: family.familyId,
+                explicitDate: date
             )
             onShowHiski(result)
         }
     }
-    
     private func romanNumeral(_ number: Int) -> String {
         switch number {
         case 1: return "I"

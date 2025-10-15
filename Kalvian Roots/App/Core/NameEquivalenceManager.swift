@@ -250,7 +250,8 @@ class NameEquivalenceManager {
             ("Erik", "Erkki"),
             ("Henrik", "Heikki"),
             ("Margareta", "Marketta"),
-            ("Kristina", "Kirstine")
+            ("Kristina", "Kirstine"),
+            ("Pietari", "Petrus")
         ]
         
         for (name1, name2) in defaultPairs {

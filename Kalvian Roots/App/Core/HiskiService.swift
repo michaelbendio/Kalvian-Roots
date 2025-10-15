@@ -375,6 +375,29 @@ class HiskiService {
         HiskiWebViewManager.shared.openRecordView(url: url)
     }
     
+    // Add this private helper method in HiskiService
+    private func formatDateForHiski(_ date: String) -> String {
+        // Hiski expects dates without leading zeros: 20.7.1797 instead of 20.07.1797
+        // Handle: "20.07.1797" → "20.7.1797", "09.03.1755" → "9.3.1755"
+        // Also handle: "1797" → "1797", "n 1797" → "1797"
+        
+        let cleaned = date.replacingOccurrences(of: "n ", with: "").trimmingCharacters(in: .whitespaces)
+        
+        // If it contains dots, it's a full date (DD.MM.YYYY)
+        if cleaned.contains(".") {
+            let components = cleaned.components(separatedBy: ".")
+            if components.count == 3 {
+                let day = String(Int(components[0]) ?? 0)      // Removes leading zero
+                let month = String(Int(components[1]) ?? 0)    // Removes leading zero
+                let year = components[2]
+                return "\(day).\(month).\(year)"
+            }
+        }
+        
+        // Otherwise return as-is (already just a year)
+        return cleaned
+    }
+    
     private func getSession() async throws -> String {
         guard let url = URL(string: baseUrl) else {
             throw HiskiServiceError.sessionFailed
@@ -396,14 +419,16 @@ class HiskiService {
     }
     
     private func buildBirthSearchUrl(session: String, name: String, date: String, fatherName: String? = nil) throws -> URL {
+        let formattedDate = formatDateForHiski(date)
+        
         var params = [
             "komento": "haku",
             "srk": parishes,
             "kirja": "kastetut",
             "kieli": "en",
             "etunimi": name,
-            "alkuvuosi": date,
-            "loppuvuosi": date,
+            "alkuvuosi": formattedDate,
+            "loppuvuosi": formattedDate,
             "ikyla": "",
             "maxkpl": "15",
             "ietunimi": "",
@@ -429,13 +454,15 @@ class HiskiService {
     }
     
     private func buildDeathSearchUrl(session: String, name: String, date: String) throws -> URL {
+        let formattedDate = formatDateForHiski(date)
+        
         let params = [
             "komento": "haku",
             "srk": parishes,
             "kirja": "haudatut",
             "kieli": "en",
-            "alkuvuosi": date,
-            "loppuvuosi": date,
+            "alkuvuosi": formattedDate,
+            "loppuvuosi": formattedDate,
             "maxkpl": "15",
             "ietunimi": name,
             "aetunimi": "",
@@ -457,13 +484,14 @@ class HiskiService {
     }
     
     private func buildMarriageSearchUrl(session: String, husbandName: String, wifeName: String, date: String) throws -> URL {
+        let formattedDate = formatDateForHiski(date)
+        
         let params = [
             "komento": "haku",
             "srk": parishes,
             "kirja": "vihityt",
             "kieli": "en",
-            "alkuvuosi": date,
-            "loppuvuosi": date,
+            "loppuvuosi": formattedDate,
             "maxkpl": "15",
             "ietunimi": husbandName,
             "aetunimi": wifeName,

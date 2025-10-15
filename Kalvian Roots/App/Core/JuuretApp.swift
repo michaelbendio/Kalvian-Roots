@@ -493,7 +493,7 @@ class JuuretApp {
      * Queries the Hiski database for birth, death, or marriage records
      * and returns a citation URL. Opens browser windows/sheets to display results.
      */
-    func processHiskiQuery(for person: Person, eventType: EventType, familyId: String) async -> String {
+    func processHiskiQuery(for person: Person, eventType: EventType, familyId: String, explicitDate: String? = nil) async -> String {
         let hiskiService = HiskiService()
         hiskiService.setCurrentFamily(familyId)
         
@@ -502,7 +502,8 @@ class JuuretApp {
             
             switch eventType {
             case .birth:
-                guard let birthDate = person.birthDate else {
+                let birthDate = explicitDate ?? person.birthDate
+                guard let birthDate = birthDate else {
                     return "No birth date available for \(person.name)"
                 }
                 // Pass father's name to narrow search results
@@ -513,31 +514,31 @@ class JuuretApp {
                 )
                 
             case .death:
-                guard let deathDate = person.deathDate else {
+                let deathDate = explicitDate ?? person.deathDate
+                guard let deathDate = deathDate else {
                     return "No death date available for \(person.name)"
                 }
                 citation = try await hiskiService.queryDeath(name: person.name, date: deathDate)
                 
             case .marriage:
-                guard let marriageDate = person.bestMarriageDate,
-                      let spouse = person.spouse else {
-                    return "No marriage information available for \(person.name)"
+                let marriageDate = explicitDate ?? person.fullMarriageDate ?? person.marriageDate
+                guard let marriageDate = marriageDate else {
+                    return "No marriage date available for \(person.name)"
                 }
                 citation = try await hiskiService.queryMarriage(
-                    husbandName: person.displayName,
-                    wifeName: spouse,
+                    husbandName: person.name,
+                    wifeName: person.spouse ?? "",
                     date: marriageDate
                 )
                 
-            default:
-                return "Query type \(eventType.displayName) not supported"
+            case .baptism, .burial:
+                return "Hiski queries for \(eventType.displayName) are not yet supported"
             }
             
             return citation.url
             
         } catch {
-            logError(.app, "Hiski query failed: \(error)")
-            return "Error querying Hiski: \(error.localizedDescription)"
+            return "Hiski query failed: \(error.localizedDescription)"
         }
     }
     
