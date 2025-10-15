@@ -494,7 +494,7 @@ class JuuretApp {
      * and returns a citation URL. Opens browser windows/sheets to display results.
      */
     func processHiskiQuery(for person: Person, eventType: EventType, familyId: String, explicitDate: String? = nil) async -> String {
-        let hiskiService = HiskiService()
+        let hiskiService = HiskiService(nameEquivalenceManager: nameEquivalenceManager)
         hiskiService.setCurrentFamily(familyId)
         
         do {
@@ -1050,7 +1050,7 @@ class JuuretApp {
     // MARK: - Hiski Query with Service
 
     func queryHiski(for person: Person, eventType: EventType, familyId: String) async -> String? {
-        let hiskiService = HiskiService()
+        let hiskiService = HiskiService(nameEquivalenceManager: nameEquivalenceManager)
         hiskiService.setCurrentFamily(familyId)
         
         do {
