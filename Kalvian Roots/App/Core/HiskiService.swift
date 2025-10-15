@@ -207,7 +207,14 @@ class HiskiService {
     private let parishes = "srk=0053%2C0093%2C0165%2C0183%2C0218%2C0172%2C0265%2C0295%2C0301%2C0386%2C0555%2C0581%2C0614"
     
     private var currentFamilyId: String = ""
+    private let nameEquivalenceManager: NameEquivalenceManager
     
+    // MARK: - Initialization
+    
+    init(nameEquivalenceManager: NameEquivalenceManager = NameEquivalenceManager()) {
+        self.nameEquivalenceManager = nameEquivalenceManager
+    }
+ 
     // MARK: - Public Methods
     
     func setCurrentFamily(_ familyId: String) {
@@ -216,15 +223,20 @@ class HiskiService {
     
     func queryBirth(name: String, date: String, fatherName: String? = nil) async throws -> HiskiCitation {
         let session = try await getSession()
-        let firstName = name.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? name
         
-        // Extract father's first name if provided
+        // Translate Finnish name to Swedish equivalent for better Hiski results
+        let swedishName = getSwedishEquivalent(for: name)
+        let firstName = swedishName.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishName
+        
+        // Extract father's first name if provided and translate
         var fatherFirstName: String? = nil
         if let father = fatherName {
-            fatherFirstName = father.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let swedishFather = getSwedishEquivalent(for: father)
+            fatherFirstName = swedishFather.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         
-        let searchUrl = try buildBirthSearchUrl(session: session, name: firstName, date: date, fatherName: fatherFirstName)
+        let formattedDate = formatDateForHiski(date)
+        let searchUrl = try buildBirthSearchUrl(session: session, name: firstName, date: formattedDate, fatherName: fatherFirstName)
         
         let (searchData, _) = try await URLSession.shared.data(from: searchUrl)
         guard let searchHtml = String(data: searchData, encoding: .isoLatin1) else {
@@ -268,8 +280,13 @@ class HiskiService {
     
     func queryDeath(name: String, date: String) async throws -> HiskiCitation {
         let session = try await getSession()
-        let firstName = name.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? name
-        let searchUrl = try buildDeathSearchUrl(session: session, name: firstName, date: date)
+        
+        // Translate Finnish name to Swedish equivalent for better Hiski results
+        let swedishName = getSwedishEquivalent(for: name)
+        let firstName = swedishName.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishName
+        
+        let formattedDate = formatDateForHiski(date)
+        let searchUrl = try buildDeathSearchUrl(session: session, name: firstName, date: formattedDate)
         
         let (searchData, _) = try await URLSession.shared.data(from: searchUrl)
         guard let searchHtml = String(data: searchData, encoding: .isoLatin1) else {
@@ -313,9 +330,16 @@ class HiskiService {
     
     func queryMarriage(husbandName: String, wifeName: String, date: String) async throws -> HiskiCitation {
         let session = try await getSession()
-        let husbandFirst = husbandName.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? husbandName
-        let wifeFirst = wifeName.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? wifeName
-        let searchUrl = try buildMarriageSearchUrl(session: session, husbandName: husbandFirst, wifeName: wifeFirst, date: date)
+        
+        // Translate names to Swedish equivalents
+        let swedishHusband = getSwedishEquivalent(for: husbandName)
+        let swedishWife = getSwedishEquivalent(for: wifeName)
+        
+        let husbandFirst = swedishHusband.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishHusband
+        let wifeFirst = swedishWife.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishWife
+        
+        let formattedDate = formatDateForHiski(date)
+        let searchUrl = try buildMarriageSearchUrl(session: session, husbandName: husbandFirst, wifeName: wifeFirst, date: formattedDate)
         
         let (searchData, _) = try await URLSession.shared.data(from: searchUrl)
         guard let searchHtml = String(data: searchData, encoding: .isoLatin1) else {
@@ -373,6 +397,25 @@ class HiskiService {
     @MainActor
     private func openRecordWindow(_ url: URL) async {
         HiskiWebViewManager.shared.openRecordView(url: url)
+    }
+    
+    /// Translate Finnish name to Swedish/Latin equivalent for Hiski queries
+    private func getSwedishEquivalent(for finnishName: String) -> String {
+        // Get all equivalent names
+        let equivalents = nameEquivalenceManager.getEquivalentNames(for: finnishName)
+        
+        // For Hiski queries in Swedish records, prefer Swedish/Latin forms
+        let swedishPreferred = ["Petrus", "Johannes", "Henricus", "Ericus", "Matthias", "Elisabet", "Birgitta"]
+        
+        for preferred in swedishPreferred {
+            if equivalents.contains(where: { $0.lowercased() == preferred.lowercased() }) {
+                logDebug(.app, "🔄 Translated '\(finnishName)' → '\(preferred)' for Hiski query")
+                return preferred
+            }
+        }
+        
+        // If no Swedish equivalent found, return original name
+        return finnishName
     }
     
     // Add this private helper method in HiskiService
