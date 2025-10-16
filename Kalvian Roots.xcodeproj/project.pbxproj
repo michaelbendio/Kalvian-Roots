@@ -51,11 +51,24 @@
 			);
 			target = 09CB18442E216DB20083983B /* Kalvian RootsUITests */;
 		};
+		096483202E98372000B1F026 /* Exceptions for "Kalvian Roots" folder in "Kalvian RootsTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				App/Core/FamilyNetwork.swift,
+				Models/Family.swift,
+				Models/Person.swift,
+				Views/NavigationBarView.swift,
+			);
+			target = 09CB183A2E216DB20083983B /* Kalvian RootsTests */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		09CB18302E216DB10083983B /* Kalvian Roots */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				096483202E98372000B1F026 /* Exceptions for "Kalvian Roots" folder in "Kalvian RootsTests" target */,
+			);
 			path = "Kalvian Roots";
 			sourceTree = "<group>";
 		};

@@ -79,6 +79,7 @@ struct JuuretView: View {
         .alert("Citation", isPresented: $showingCitation) {
             Button("Copy to Clipboard") {
                 copyToClipboard(citationText)
+                juuretApp.closeHiskiWebViews()
             }
             Button("OK", role: .cancel) { }
         } message: {
@@ -89,6 +90,7 @@ struct JuuretView: View {
         .alert("Hiski Query", isPresented: $showingHiskiResult) {
             Button("Copy URL") {
                 copyToClipboard(hiskiResult)
+                juuretApp.closeHiskiWebViews()
             }
             Button("OK", role: .cancel) { }
         } message: {

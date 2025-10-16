@@ -21,6 +21,9 @@ class NameEquivalenceManager {
     
     private var equivalences: [String: Set<String>] = [:]
     private let userDefaultsKey = "NameEquivalences"
+    private let userDefaultsVersionKey = "NameEquivalencesVersion"
+    private let currentVersion = 2      // Increment this when you change defaultPairs
+
     
     // MARK: - Computed Properties
     
@@ -209,31 +212,42 @@ class NameEquivalenceManager {
             let serializable = equivalences.mapValues { Array($0) }
             let data = try JSONEncoder().encode(serializable)
             UserDefaults.standard.set(data, forKey: userDefaultsKey)
+            UserDefaults.standard.set(currentVersion, forKey: userDefaultsVersionKey)
             
-            logTrace(.nameEquivalence, "💾 Equivalences saved to UserDefaults")
+            logTrace(.nameEquivalence, "💾 Equivalences saved to UserDefaults (v\(currentVersion))")
         } catch {
             logError(.nameEquivalence, "❌ Failed to save equivalences: \(error)")
         }
     }
     
     private func loadEquivalences() {
-        guard let data = UserDefaults.standard.data(forKey: userDefaultsKey) else {
-            logDebug(.nameEquivalence, "No saved equivalences found")
+        let savedVersion = UserDefaults.standard.integer(forKey: userDefaultsVersionKey)
+        
+        // Check if we have saved data AND it matches the current version
+        guard savedVersion == currentVersion,
+              let data = UserDefaults.standard.data(forKey: userDefaultsKey) else {
+            if savedVersion != currentVersion && savedVersion != 0 {
+                logInfo(.nameEquivalence, "📦 Version mismatch (saved: \(savedVersion), current: \(currentVersion)), reloading defaults")
+            } else {
+                logDebug(.nameEquivalence, "No saved equivalences found, loading defaults")
+            }
             loadDefaultEquivalences()
+            UserDefaults.standard.set(currentVersion, forKey: userDefaultsVersionKey)
             return
         }
         
+        // Load saved data
         do {
             let serializable = try JSONDecoder().decode([String: [String]].self, from: data)
             equivalences = serializable.mapValues { Set($0) }
             
-            logDebug(.nameEquivalence, "📂 Loaded \(equivalences.count) equivalence groups")
+            logDebug(.nameEquivalence, "📂 Loaded \(equivalences.count) equivalence groups from UserDefaults (v\(savedVersion))")
         } catch {
             logError(.nameEquivalence, "❌ Failed to load equivalences: \(error)")
             loadDefaultEquivalences()
+            UserDefaults.standard.set(currentVersion, forKey: userDefaultsVersionKey)
         }
     }
-    
     private func loadDefaultEquivalences() {
         logInfo(.nameEquivalence, "📚 Loading default Finnish name equivalences")
         
@@ -251,7 +265,7 @@ class NameEquivalenceManager {
             ("Henrik", "Heikki"),
             ("Margareta", "Marketta"),
             ("Kristina", "Kirstine"),
-            ("Pietari", "Petrus")
+            ("Pietari", "Petrus")   // INCREMENT currentVersion WHEN YOU CHANGE THIS
         ]
         
         for (name1, name2) in defaultPairs {
