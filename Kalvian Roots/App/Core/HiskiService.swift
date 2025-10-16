@@ -38,6 +38,9 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
     private var recordWindow: NSWindow?
     private var urlObservers = Set<AnyCancellable>()
     
+    private var searchWebView: WKWebView?
+    private var recordWebView: WKWebView?
+    
     private let searchWindowX: CGFloat = 1300
     private let searchWindowY: CGFloat = 800
     private let searchWindowWidth: CGFloat = 600
@@ -47,7 +50,7 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
     
     private let recordWindowX: CGFloat = 1300
     private let recordWindowY: CGFloat = 250
-    private let recordWindowWidth: CGFloat = 1200  // Doubled from 600
+    private let recordWindowWidth: CGFloat = 1200
     private let recordWindowHeight: CGFloat = 450
     
     private override init() {
@@ -65,6 +68,7 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
         let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: searchWindowWidth, height: webViewHeight))
         webView.navigationDelegate = self
         webView.allowsBackForwardNavigationGestures = true
+        self.searchWebView = webView  // Keep strong reference
         
         let addressBarY = searchWindowHeight - addressBarHeight - (addressBarPadding / 2)
         let addressField = NSTextField(frame: NSRect(x: addressBarPadding,
@@ -110,6 +114,7 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
         let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: recordWindowWidth, height: recordWindowHeight))
         webView.navigationDelegate = self
         webView.allowsBackForwardNavigationGestures = true
+        self.recordWebView = webView  // Keep strong reference
         
         recordWindow = NSWindow(
             contentRect: NSRect(x: recordWindowX, y: recordWindowY, width: recordWindowWidth, height: recordWindowHeight),
@@ -128,14 +133,13 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
     }
     
     func closeSearchWindow() {
-        searchWindow?.close()
-        searchWindow = nil
-        urlObservers.removeAll()
+        searchWindow?.orderOut(nil)
+        logInfo(.app, "🪟 Hid Hiski search window")
     }
-    
+
     func closeRecordWindow() {
-        recordWindow?.close()
-        recordWindow = nil
+        recordWindow?.orderOut(nil)
+        logInfo(.app, "🪟 Hid Hiski record window")
     }
     
     func closeAllWindows() {
@@ -162,6 +166,14 @@ class HiskiWebViewManager {
     }
     
     func openSearchResults(url: URL) {
+        // If window exists, reuse it
+        if let existingWebView = searchWindow?.contentView?.subviews.first(where: { $0 is WKWebView }) as? WKWebView {
+            existingWebView.load(URLRequest(url: url))
+            searchWindow?.makeKeyAndOrderFront(nil)
+            logInfo(.app, "🪟 Reused Hiski search window")
+            return
+        }
+
         UIApplication.shared.open(url, options: [:]) { success in
             if success {
                 logInfo(.app, "📱 Opened Hiski search in Safari")
@@ -172,6 +184,14 @@ class HiskiWebViewManager {
     }
     
     func openRecordView(url: URL) {
+        // If window exists, reuse it
+        if let existingWebView = recordWindow?.contentView as? WKWebView {
+            existingWebView.load(URLRequest(url: url))
+            recordWindow?.makeKeyAndOrderFront(nil)
+            logInfo(.app, "🪟 Reused Hiski record window")
+            return
+        }
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             UIApplication.shared.open(url, options: [:]) { success in
                 if success {

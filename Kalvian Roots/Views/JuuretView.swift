@@ -18,6 +18,7 @@ struct JuuretView: View {
     @State private var showingHiskiResult = false
     @State private var hiskiResult = ""
     @State private var showingFatalError = false
+    @State private var shouldCloseHiskiWindows = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -79,22 +80,40 @@ struct JuuretView: View {
         .alert("Citation", isPresented: $showingCitation) {
             Button("Copy to Clipboard") {
                 copyToClipboard(citationText)
-                juuretApp.closeHiskiWebViews()
+                shouldCloseHiskiWindows = true
             }
-            Button("OK", role: .cancel) { }
+            Button("OK", role: .cancel) {
+                // Don't close windows for regular citations
+            }
         } message: {
             Text(citationText)
         }
-        
+        .onChange(of: showingCitation) { oldValue, newValue in
+            if oldValue == true && newValue == false && shouldCloseHiskiWindows {
+                // Alert dismissed - hide windows immediately (no delay needed)
+                juuretApp.closeHiskiWebViews()
+                shouldCloseHiskiWindows = false
+            }
+        }
+
         // Hiski result alert
         .alert("Hiski Query", isPresented: $showingHiskiResult) {
             Button("Copy URL") {
                 copyToClipboard(hiskiResult)
-                juuretApp.closeHiskiWebViews()
+                shouldCloseHiskiWindows = true
             }
-            Button("OK", role: .cancel) { }
+            Button("OK", role: .cancel) {
+                shouldCloseHiskiWindows = true
+            }
         } message: {
             Text(hiskiResult)
+        }
+        .onChange(of: showingHiskiResult) { oldValue, newValue in
+            if oldValue == true && newValue == false && shouldCloseHiskiWindows {
+                // Alert dismissed - hide windows immediately (no delay needed)
+                juuretApp.closeHiskiWebViews()
+                shouldCloseHiskiWindows = false
+            }
         }
     }
     
