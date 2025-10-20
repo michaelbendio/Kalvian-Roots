@@ -1,15 +1,19 @@
-// ContentView.swift
+//
+//  ContentView.swift - Fixed for iOS/iPad full-width layout
+//
+
 import SwiftUI
 
 struct ContentView: View {
     @Environment(JuuretApp.self) private var app
-    @State private var isSidebarExpanded = false  // Start with sidebar closed
+    @State private var isSidebarExpanded = false
     @State private var hasLoadedStartupFamily = false
     @State private var showingFatalError = false
 
     var body: some View {
         Group {
             #if os(macOS)
+            // macOS: Use NavigationSplitView with sidebar
             NavigationSplitView(columnVisibility: .constant(isSidebarExpanded ? .all : .detailOnly)) {
                 SidebarView()
             } detail: {
@@ -26,12 +30,13 @@ struct ContentView: View {
                 }
             }
             #else
-            NavigationView {
+            // iOS/iPadOS: Use NavigationStack for full-width layout
+            NavigationStack {
                 JuuretView()
+                    .navigationTitle("Kalvian Roots")
+                    .navigationBarTitleDisplayMode(.inline)
             }
             .environment(app)
-            .navigationTitle("Kalvian Roots")
-            .navigationBarTitleDisplayMode(.large)
             #endif
         }
         .task {
@@ -56,128 +61,58 @@ struct ContentView: View {
         
         logInfo(.app, "⏱️ T+0.000s: Starting cache load for \(firstFamilyId)")
         
-        // Check if we're already displaying a family
-        guard app.currentFamily == nil else {
-            logInfo(.app, "📱 Family already loaded, skipping startup load")
+        // Check if we're already displaying this family
+        if app.currentFamily?.familyId == firstFamilyId {
+            logInfo(.app, "✅ Already displaying \(firstFamilyId)")
             return
         }
         
-        let checkTime1 = Date()
-        logInfo(.app, "⏱️ T+\(String(format: "%.3f", checkTime1.timeIntervalSince(startTime)))s: Checks complete, retrieving from cache")
-        
-        // Load from cache directly WITHOUT checking if file is ready
+        // Load from cache
         if let cached = app.familyNetworkCache.getCachedNetwork(familyId: firstFamilyId) {
-            let cacheRetrieveTime = Date()
-            logInfo(.app, "⏱️ T+\(String(format: "%.3f", cacheRetrieveTime.timeIntervalSince(startTime)))s: Cache retrieved")
+            let loadTime = Date().timeIntervalSince(startTime)
+            logInfo(.app, "⏱️ T+\(String(format: "%.3f", loadTime))s: Loaded \(firstFamilyId) from cache instantly")
             
             await MainActor.run {
-                let mainActorStartTime = Date()
-                logInfo(.app, "⏱️ T+\(String(format: "%.3f", mainActorStartTime.timeIntervalSince(startTime)))s: MainActor update starting")
-                
-                // Set the family directly from cache
                 app.currentFamily = cached.network.mainFamily
-                app.enhancedFamily = cached.network.mainFamily
-                
-                let familySetTime = Date()
-                logInfo(.app, "⏱️ T+\(String(format: "%.3f", familySetTime.timeIntervalSince(startTime)))s: Families set")
-                
-                // Create workflow with cached network
-                app.familyNetworkWorkflow = FamilyNetworkWorkflow(
-                    nuclearFamily: cached.network.mainFamily,
-                    familyResolver: app.familyResolver,
-                    resolveCrossReferences: false  // Already resolved in cache
-                )
-                
-                let workflowTime = Date()
-                logInfo(.app, "⏱️ T+\(String(format: "%.3f", workflowTime.timeIntervalSince(startTime)))s: Workflow created")
-                
-                // Activate the cached network
                 app.familyNetworkWorkflow?.activateCachedNetwork(cached.network)
-                
-                let activateTime = Date()
-                logInfo(.app, "⏱️ T+\(String(format: "%.3f", activateTime.timeIntervalSince(startTime)))s: Network activated")
-                
-                // Clear any error state
-                app.errorMessage = nil
-                app.isProcessing = false
-                app.extractionProgress = .idle
-                
-                let completeTime = Date()
-                logInfo(.app, "⏱️ T+\(String(format: "%.3f", completeTime.timeIntervalSince(startTime)))s: ✅ Cache load complete")
-                
-                logInfo(.app, """
-                    📊 Cache Load Performance Breakdown:
-                    - Cache retrieval: \(String(format: "%.3f", cacheRetrieveTime.timeIntervalSince(checkTime1)))s
-                    - MainActor wait: \(String(format: "%.3f", mainActorStartTime.timeIntervalSince(cacheRetrieveTime)))s
-                    - Family assignment: \(String(format: "%.3f", familySetTime.timeIntervalSince(mainActorStartTime)))s
-                    - Workflow creation: \(String(format: "%.3f", workflowTime.timeIntervalSince(familySetTime)))s
-                    - Network activation: \(String(format: "%.3f", activateTime.timeIntervalSince(workflowTime)))s
-                    - Cleanup: \(String(format: "%.3f", completeTime.timeIntervalSince(activateTime)))s
-                    - TOTAL: \(String(format: "%.3f", completeTime.timeIntervalSince(startTime)))s
-                    """)
             }
             
-            // Start background processing for next family once file loads
-            Task {
-                // This runs separately and shouldn't block the UI
-                let fileReady = await app.waitForFileReady()
-                if fileReady {
-                    app.familyNetworkCache.startBackgroundProcessing(
-                        currentFamilyId: firstFamilyId,
-                        fileManager: app.fileManager,
-                        aiService: app.aiParsingService,
-                        familyResolver: app.familyResolver
-                    )
-                }
-            }
+            logInfo(.app, "✅ Startup family loaded: \(firstFamilyId)")
         } else {
-            logError(.app, "❌ Failed to retrieve cached family: \(firstFamilyId)")
+            logWarn(.app, "⚠️ Cache entry exists but couldn't load network for \(firstFamilyId)")
         }
     }
 }
 
-// MARK: - Sidebar
+// MARK: - Sidebar View (macOS only)
 
 struct SidebarView: View {
     @Environment(JuuretApp.self) private var app
-    @State private var fm = RootsFileManager()
     
     var body: some View {
         List {
-            Section("File Status") {
+            Section("App Status") {
                 HStack {
                     Circle()
-                        .fill(fm.isFileLoaded ? .green : .red)
+                        .fill(app.fileManager.isFileLoaded ? .green : .orange)
                         .frame(width: 8, height: 8)
-                    Text(fm.isFileLoaded ? "File Loaded" : "File Missing")
+                    Text(app.fileManager.isFileLoaded ? "File Loaded" : "No File Loaded")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
             
-            // NEW SECTION: Cached Families
-            Section("Cached Families") {
+            Section("Cache") {
                 let cachedIds = app.familyNetworkCache.getAllCachedFamilyIds()
-                
                 if cachedIds.isEmpty {
                     Text("No cached families")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("\(cachedIds.count) families cached")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    
-                    // Show first few cached families
                     ForEach(cachedIds.prefix(5), id: \.self) { familyId in
-                        Button(familyId) {
-                            Task {
-                                await app.extractFamily(familyId: familyId)
-                            }
-                        }
-                        .buttonStyle(.borderless)
-                        .font(.caption)
-                        .foregroundStyle(app.currentFamily?.familyId == familyId ? .primary : .secondary)
+                        Text(familyId)
+                            .font(.caption)
+                            .foregroundStyle(app.currentFamily?.familyId == familyId ? .primary : .secondary)
                     }
                     
                     if cachedIds.count > 5 {
@@ -205,7 +140,6 @@ struct SidebarView: View {
                 }
             }
             
-            // Only AI Settings navigation remains
             Section {
                 NavigationLink("AI Settings") {
                     AISettingsView()
