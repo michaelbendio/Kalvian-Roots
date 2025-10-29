@@ -2,10 +2,10 @@
 //  HiskiService.swift
 //  Kalvian Roots
 //
-//  Queries hiski.genealogia.fi using algorithm from hiski.py
-//  Automatically finds matching records and returns citation URLs
+//  Queries hiski.genealogia.fi using WKWebView for record pages
+//  Extracts citation URLs automatically using JavaScript
 //
-//  Created by Michael Bendio on 10/1/25.
+//  Created by Michael Bendio on 10/20/25.
 //
 
 import Foundation
@@ -24,9 +24,10 @@ enum HiskiServiceError: Error {
     case urlCreationFailed
     case browserOpenFailed
     case noRecordFound
+    case citationExtractionFailed
 }
 
-// MARK: - WebView Window Manager
+// MARK: - WebView Window Manager with JavaScript Citation Extraction
 
 #if os(macOS)
 @MainActor
@@ -34,6 +35,7 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
     static let shared = HiskiWebViewManager()
     
     private var recordWindow: NSWindow?
+    private var citationContinuation: CheckedContinuation<String, Error>?
     
     private let recordWindowX: CGFloat = 1300
     private let recordWindowY: CGFloat = 250
@@ -44,34 +46,39 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
         super.init()
     }
     
-    func openRecordView(url: URL) {
-        // If window exists, reuse it
-        if let existingWebView = recordWindow?.contentView as? WKWebView {
-            existingWebView.load(URLRequest(url: url))
+    /// Load record page and extract citation URL using JavaScript
+    func loadRecordAndExtractCitation(url: URL) async throws -> String {
+        return try await withCheckedThrowingContinuation { continuation in
+            self.citationContinuation = continuation
+            
+            // If window exists, reuse it
+            if let existingWebView = recordWindow?.contentView as? WKWebView {
+                existingWebView.load(URLRequest(url: url))
+                recordWindow?.makeKeyAndOrderFront(nil)
+                logInfo(.app, "🪟 Reused Hiski record window")
+                return
+            }
+            
+            // Create new window with WKWebView
+            let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: recordWindowWidth, height: recordWindowHeight))
+            webView.navigationDelegate = self
+            webView.allowsBackForwardNavigationGestures = true
+            
+            recordWindow = NSWindow(
+                contentRect: NSRect(x: recordWindowX, y: recordWindowY, width: recordWindowWidth, height: recordWindowHeight),
+                styleMask: [.titled, .closable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+            recordWindow?.title = "Hiski Record"
+            recordWindow?.contentView = webView
             recordWindow?.makeKeyAndOrderFront(nil)
-            logInfo(.app, "🪟 Reused Hiski record window")
-            return
+            recordWindow?.level = .floating
+            
+            webView.load(URLRequest(url: url))
+            
+            logInfo(.app, "🪟 Opened Hiski record window")
         }
-        
-        // Create new window
-        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: recordWindowWidth, height: recordWindowHeight))
-        webView.navigationDelegate = self
-        webView.allowsBackForwardNavigationGestures = true
-        
-        recordWindow = NSWindow(
-            contentRect: NSRect(x: recordWindowX, y: recordWindowY, width: recordWindowWidth, height: recordWindowHeight),
-            styleMask: [.titled, .closable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        recordWindow?.title = "Hiski Record"
-        recordWindow?.contentView = webView
-        recordWindow?.makeKeyAndOrderFront(nil)
-        recordWindow?.level = .floating
-        
-        webView.load(URLRequest(url: url))
-        
-        logInfo(.app, "🪟 Opened Hiski record window")
     }
     
     func closeRecordWindow() {
@@ -83,9 +90,56 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
         closeRecordWindow()
     }
     
+    // Called when page finishes loading
     nonisolated func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         Task { @MainActor in
-            logDebug(.app, "WebView finished loading")
+            logInfo(.app, "✅ Hiski record page loaded")
+            
+            // Extract citation URL using JavaScript
+            let script = """
+            (function() {
+                // Find the "Link to this event" link
+                var links = document.getElementsByTagName('a');
+                for (var i = 0; i < links.length; i++) {
+                    var href = links[i].getAttribute('href');
+                    if (href && href.includes('+t')) {
+                        return 'https://hiski.genealogia.fi' + href;
+                    }
+                }
+                return null;
+            })();
+            """
+            
+            webView.evaluateJavaScript(script) { [weak self] result, error in
+                Task { @MainActor in
+                    guard let self = self else { return }
+                    
+                    if let error = error {
+                        logError(.app, "❌ JavaScript error: \(error.localizedDescription)")
+                        self.citationContinuation?.resume(throwing: HiskiServiceError.citationExtractionFailed)
+                        self.citationContinuation = nil
+                        return
+                    }
+                    
+                    if let citationUrl = result as? String, !citationUrl.isEmpty {
+                        logInfo(.app, "📋 Extracted citation URL: \(citationUrl)")
+                        self.citationContinuation?.resume(returning: citationUrl)
+                        self.citationContinuation = nil
+                    } else {
+                        logError(.app, "❌ Could not find citation URL in page")
+                        self.citationContinuation?.resume(throwing: HiskiServiceError.citationExtractionFailed)
+                        self.citationContinuation = nil
+                    }
+                }
+            }
+        }
+    }
+    
+    nonisolated func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        Task { @MainActor in
+            logError(.app, "❌ WebView failed to load: \(error.localizedDescription)")
+            citationContinuation?.resume(throwing: error)
+            citationContinuation = nil
         }
     }
 }
@@ -103,8 +157,8 @@ class HiskiWebViewManager {
         self.presentingViewController = viewController
     }
     
-    func openRecordView(url: URL) {
-        // On iOS, just open in Safari
+    func loadRecordAndExtractCitation(url: URL) async throws -> String {
+        // On iOS, we can't extract from Safari, so just open it and return the URL
         UIApplication.shared.open(url, options: [:]) { success in
             if success {
                 logInfo(.app, "📱 Opened Hiski record in Safari")
@@ -112,6 +166,10 @@ class HiskiWebViewManager {
                 logError(.app, "Failed to open record URL in Safari")
             }
         }
+        
+        // For iOS, we'll need manual extraction
+        // Return a placeholder that indicates manual extraction needed
+        throw HiskiServiceError.citationExtractionFailed
     }
     
     func closeRecordWindow() {
@@ -139,7 +197,7 @@ class HiskiService {
         self.currentFamilyId = familyId
     }
     
-    // MARK: - Query Methods (matching hiski.py algorithm)
+    // MARK: - Query Methods (using WKWebView for record pages)
     
     func queryDeath(name: String, date: String) async throws -> HiskiCitation {
         let swedishName = getSwedishEquivalent(for: name)
@@ -159,34 +217,24 @@ class HiskiService {
             throw HiskiServiceError.sessionFailed
         }
         
-        // Find matching record URL from HTML (matching hiski.py algorithm)
-        guard let recordUrl = findMatchingRecordUrl(from: searchHtml, queryDate: formattedDate) else {
+        // Find matching record URL from HTML
+        guard let recordPath = findMatchingRecordUrl(from: searchHtml, queryDate: formattedDate) else {
             logWarn(.app, "⚠️ No matching record found for date: \(formattedDate)")
             throw HiskiServiceError.noRecordFound
         }
         
-        logInfo(.app, "✅ Found matching record: \(recordUrl)")
+        logInfo(.app, "✅ Found matching record path: \(recordPath)")
         
-        // Fetch the record page
-        guard let url = URL(string: "https://hiski.genealogia.fi" + recordUrl) else {
+        // Load record page in WKWebView and extract citation with JavaScript
+        let recordUrl = "https://hiski.genealogia.fi" + recordPath
+        guard let url = URL(string: recordUrl) else {
             throw HiskiServiceError.urlCreationFailed
         }
         
-        let (recordData, _) = try await URLSession.shared.data(from: url)
-        guard let recordHtml = String(data: recordData, encoding: .isoLatin1) else {
-            throw HiskiServiceError.sessionFailed
-        }
+        logInfo(.app, "🌐 Loading record page in WebView: \(recordUrl)")
+        let citationUrl = try await HiskiWebViewManager.shared.loadRecordAndExtractCitation(url: url)
         
-        // Extract citation URL from record page
-        guard let citationUrl = extractCitationUrl(from: recordHtml) else {
-            logWarn(.app, "⚠️ No citation URL found in record page")
-            throw HiskiServiceError.noRecordFound
-        }
-        
-        logInfo(.app, "📋 Citation URL: \(citationUrl)")
-        
-        // Open record window
-        await openRecordWindow(URL(string: citationUrl)!)
+        logInfo(.app, "✅ Citation extracted: \(citationUrl)")
         
         // Extract record ID from citation URL
         let recordId = citationUrl.components(separatedBy: "+t").last ?? "UNKNOWN"
@@ -230,33 +278,23 @@ class HiskiService {
         }
         
         // Find matching record URL
-        guard let recordUrl = findMatchingRecordUrl(from: searchHtml, queryDate: formattedDate) else {
+        guard let recordPath = findMatchingRecordUrl(from: searchHtml, queryDate: formattedDate) else {
             logWarn(.app, "⚠️ No matching record found for date: \(formattedDate)")
             throw HiskiServiceError.noRecordFound
         }
         
-        logInfo(.app, "✅ Found matching record: \(recordUrl)")
+        logInfo(.app, "✅ Found matching record path: \(recordPath)")
         
-        // Fetch the record page
-        guard let url = URL(string: "https://hiski.genealogia.fi" + recordUrl) else {
+        // Load in WKWebView and extract citation
+        let recordUrl = "https://hiski.genealogia.fi" + recordPath
+        guard let url = URL(string: recordUrl) else {
             throw HiskiServiceError.urlCreationFailed
         }
         
-        let (recordData, _) = try await URLSession.shared.data(from: url)
-        guard let recordHtml = String(data: recordData, encoding: .isoLatin1) else {
-            throw HiskiServiceError.sessionFailed
-        }
+        logInfo(.app, "🌐 Loading record page in WebView: \(recordUrl)")
+        let citationUrl = try await HiskiWebViewManager.shared.loadRecordAndExtractCitation(url: url)
         
-        // Extract citation URL
-        guard let citationUrl = extractCitationUrl(from: recordHtml) else {
-            logWarn(.app, "⚠️ No citation URL found in record page")
-            throw HiskiServiceError.noRecordFound
-        }
-        
-        logInfo(.app, "📋 Citation URL: \(citationUrl)")
-        
-        // Open record window
-        await openRecordWindow(URL(string: citationUrl)!)
+        logInfo(.app, "✅ Citation extracted: \(citationUrl)")
         
         let recordId = citationUrl.components(separatedBy: "+t").last ?? "UNKNOWN"
         
@@ -294,33 +332,23 @@ class HiskiService {
         }
         
         // Find matching record
-        guard let recordUrl = findMatchingRecordUrl(from: searchHtml, queryDate: formattedDate) else {
+        guard let recordPath = findMatchingRecordUrl(from: searchHtml, queryDate: formattedDate) else {
             logWarn(.app, "⚠️ No matching record found for date: \(formattedDate)")
             throw HiskiServiceError.noRecordFound
         }
         
-        logInfo(.app, "✅ Found matching record: \(recordUrl)")
+        logInfo(.app, "✅ Found matching record path: \(recordPath)")
         
-        // Fetch record page
-        guard let url = URL(string: "https://hiski.genealogia.fi" + recordUrl) else {
+        // Load in WKWebView and extract citation
+        let recordUrl = "https://hiski.genealogia.fi" + recordPath
+        guard let url = URL(string: recordUrl) else {
             throw HiskiServiceError.urlCreationFailed
         }
         
-        let (recordData, _) = try await URLSession.shared.data(from: url)
-        guard let recordHtml = String(data: recordData, encoding: .isoLatin1) else {
-            throw HiskiServiceError.sessionFailed
-        }
+        logInfo(.app, "🌐 Loading record page in WebView: \(recordUrl)")
+        let citationUrl = try await HiskiWebViewManager.shared.loadRecordAndExtractCitation(url: url)
         
-        // Extract citation
-        guard let citationUrl = extractCitationUrl(from: recordHtml) else {
-            logWarn(.app, "⚠️ No citation URL found in record page")
-            throw HiskiServiceError.noRecordFound
-        }
-        
-        logInfo(.app, "📋 Citation URL: \(citationUrl)")
-        
-        // Open record window
-        await openRecordWindow(URL(string: citationUrl)!)
+        logInfo(.app, "✅ Citation extracted: \(citationUrl)")
         
         let recordId = citationUrl.components(separatedBy: "+t").last ?? "UNKNOWN"
         
@@ -381,22 +409,6 @@ class HiskiService {
         
         logWarn(.app, "⚠️ No sl.gif link found matching date \(firstDate)")
         return nil
-    }
-    
-    private func extractCitationUrl(from html: String) -> String? {
-        // Extract "Link to this event" URL: /hiski?en+t1234567
-        // Pattern: HREF="(/hiski?en+t\d+)"
-        let pattern = "HREF=\"(/hiski\\?en\\+t\\d+)\""
-        
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
-              let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
-              let urlRange = Range(match.range(at: 1), in: html) else {
-            logWarn(.app, "⚠️ Could not find citation URL in record page")
-            return nil
-        }
-        
-        let citationPath = String(html[urlRange])
-        return "https://hiski.genealogia.fi" + citationPath
     }
     
     // MARK: - URL Building
@@ -497,13 +509,6 @@ class HiskiService {
         }
         
         return url
-    }
-    
-    // MARK: - Window Management
-    
-    @MainActor
-    private func openRecordWindow(_ url: URL) async {
-        HiskiWebViewManager.shared.openRecordView(url: url)
     }
     
     // MARK: - Name Translation
