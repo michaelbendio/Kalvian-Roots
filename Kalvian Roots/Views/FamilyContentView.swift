@@ -144,7 +144,8 @@ struct FamilyContentView: View {
                     let result = await juuretApp.processHiskiQuery(
                         for: family.primaryCouple?.husband ?? family.primaryCouple!.wife,
                         eventType: EventType.marriage,
-                        familyId: family.familyId
+                        familyId: family.familyId,
+                        explicitDate: date
                     )
                     onShowHiski(result)
                 }
