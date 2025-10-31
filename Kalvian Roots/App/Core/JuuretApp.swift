@@ -19,7 +19,6 @@ import UIKit
  *
  * Central hub that owns all services and manages app state.
  * Uses @Observable for SwiftUI integration.
- * NEW ARCHITECTURE: Citations are generated on-demand, no storage
  */
 @Observable
 @MainActor
@@ -269,9 +268,6 @@ class JuuretApp {
         }
         return navigationHistory[historyIndex]
     }
-    
-    // MARK: - Manual Citation Overrides
-    private var manualCitations: [String: String] = [:] // key: familyId|personId
     
     /// Current family network workflow
     var familyNetworkWorkflow: FamilyNetworkWorkflow?
@@ -736,11 +732,10 @@ class JuuretApp {
         await extractFamily(familyId: nextId)
     }
     
-    // MARK: - Citation Generation (On-Demand from Network)
+    // MARK: - Citation Generation
     
     /**
      * Generate citation for any person in the current family
-     * NEW ARCHITECTURE: No citation dictionary - generate fresh from network
      */
     func generateCitation(for person: Person, in family: Family) async -> String {
         logInfo(.citation, "📝 Generating on-demand citation for: \(person.displayName)")
@@ -836,41 +831,6 @@ class JuuretApp {
         
         logInfo(.citation, "  Generated: \(citation)")
         return citation
-    }
-    
-    // MARK: - Manual Citation Management
-    
-    func setManualCitation(for person: Person, in family: Family, citation: String) {
-        let key = "\(family.familyId)|\(person.id)"
-        manualCitations[key] = citation
-        saveManualCitations()
-        logInfo(.app, "💾 Saved manual citation for \(person.displayName) in \(family.familyId)")
-    }
-    
-    func getManualCitation(for person: Person, in family: Family) -> String? {
-        let key = "\(family.familyId)|\(person.id)"
-        return manualCitations[key]
-    }
-    
-    func clearManualCitation(for person: Person, in family: Family) {
-        let key = "\(family.familyId)|\(person.id)"
-        manualCitations.removeValue(forKey: key)
-        saveManualCitations()
-        logInfo(.app, "🗑️ Cleared manual citation for \(person.displayName) in \(family.familyId)")
-    }
-    
-    private func loadManualCitations() {
-        if let data = UserDefaults.standard.data(forKey: "ManualCitations"),
-           let citations = try? JSONDecoder().decode([String: String].self, from: data) {
-            manualCitations = citations
-            logInfo(.app, "📚 Loaded \(citations.count) manual citations")
-        }
-    }
-    
-    private func saveManualCitations() {
-        if let data = try? JSONEncoder().encode(manualCitations) {
-            UserDefaults.standard.set(data, forKey: "ManualCitations")
-        }
     }
     
     // MARK: - Regeneration
