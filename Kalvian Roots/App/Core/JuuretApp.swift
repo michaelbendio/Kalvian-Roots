@@ -27,53 +27,24 @@ class JuuretApp {
     
     // MARK: - Core Services (Owned by App)
     
-    /// AI parsing service for family extraction
     let aiParsingService: AIParsingService
-    
-    /// Family resolver for cross-references
     let familyResolver: FamilyResolver
-    
-    /// Name equivalence manager
     let nameEquivalenceManager: NameEquivalenceManager
-    
-    /// File manager for I/O operations
-    let fileManager: RootsFileManager
-    
-    /// Family network cache for background processing
-    let familyNetworkCache: FamilyNetworkCache
+    let fileManager: RootsFileManager // for I/O operations
+    let familyNetworkCache: FamilyNetworkCache  // for background processing
     
     // MARK: - App State
-    
-    /// Currently extracted family
     var currentFamily: Family?
-    
-    /// Family ID being loaded (shows in nav bar during extraction)
-    var pendingFamilyId: String?
-
-    /// Enhanced family with cross-reference data
-    var enhancedFamily: Family?
-    
-    /// Processing state
+    var pendingFamilyId: String?    // (shows in nav bar during extraction)
+    var enhancedFamily: Family? // with cross-reference data
     var isProcessing = false
-    
-    /// Error state
     var errorMessage: String?
-    
-    /// Extraction progress tracking
     var extractionProgress: ExtractionProgress = .idle
     
     // MARK: - Navigation State
-
-    /// Navigation history stack of family IDs
     var navigationHistory: [String] = []
-
-    /// Current position in navigation history
-    var historyIndex: Int = -1
-
-    /// Home family ID (set when explicitly navigating via address bar or back/forward)
-    var homeFamily: String?
-
-    /// PDF mode toggle state
+    var historyIndex: Int = -1  //Current position in navigation history
+    var homeFamily: String? // (set when explicitly navigating via address bar or back/forward)
     var showPDFMode: Bool = false
 
     // MARK: - Navigation Methods
