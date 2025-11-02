@@ -80,7 +80,6 @@ class FamilyNetworkCache {
 
     struct CachedFamily: Codable, Sendable {
         let network: FamilyNetwork
-        let citations: [String: String]
         let cachedAt: Date
         let extractionTime: TimeInterval
     }
@@ -97,14 +96,14 @@ class FamilyNetworkCache {
     /**
      * Get cached network
      */
-    func getCachedNetwork(familyId: String) -> (network: FamilyNetwork, citations: [String: String])? {
+    func getCachedNetwork(familyId: String) -> FamilyNetwork? {
         let startTime = Date()
         
         // Check memory cache first
         if let cached = cachedNetworks[familyId] {
             let retrieveTime = Date().timeIntervalSince(startTime)
             logInfo(.cache, "⚡ Retrieved from memory cache: \(familyId) in \(String(format: "%.3f", retrieveTime))s")
-            return (cached.network, cached.citations)
+            return cached.network
         }
         
         // Check persistent store
@@ -125,7 +124,7 @@ class FamilyNetworkCache {
             // Add to memory cache for next time
             cachedNetworks[familyId] = persisted
             
-            return (persisted.network, persisted.citations)
+            return persisted.network
         }
         
         let totalTime = Date().timeIntervalSince(startTime)
@@ -159,10 +158,9 @@ class FamilyNetworkCache {
     /**
      * Cache a network
      */
-    func cacheNetwork(_ network: FamilyNetwork, citations: [String: String], extractionTime: TimeInterval) {
+    func cacheNetwork(_ network: FamilyNetwork, extractionTime: TimeInterval) {
         let cached = CachedFamily(
             network: network,
-            citations: citations,
             cachedAt: Date(),
             extractionTime: extractionTime
         )
@@ -486,11 +484,10 @@ class FamilyNetworkCache {
                 throw JuuretApp.ExtractionError.parsingFailed("Failed to build network")
             }
             
-            let citations = workflow.getActiveCitations()
             let extractionTime = Date().timeIntervalSince(startTime)
             
             // Cache the results
-            cacheNetwork(network, citations: citations, extractionTime: extractionTime)
+            cacheNetwork(network, extractionTime: extractionTime)
             
             // INCREMENT the processed counter
             familiesProcessedInSession += 1

@@ -46,11 +46,11 @@ struct AISettingsView: View {
                 
                 VStack(alignment: .leading) {
                     Text(juuretApp.currentServiceName)
-                        .font(.genealogyHeadline)
+                        .font(.headline)
                     
                     HStack {
                         Text(serviceTypeText(for: juuretApp.currentServiceName))
-                            .font(.genealogyCaption)
+                            .font(.caption)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 2)
                             .background(serviceTypeColor(for: juuretApp.currentServiceName).opacity(0.2))
@@ -59,7 +59,7 @@ struct AISettingsView: View {
                         if isServiceConfigured(juuretApp.currentServiceName) {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundColor(.green)
-                                .font(.genealogyCaption)
+                                .font(.caption)
                         }
                     }
                 }
@@ -92,10 +92,10 @@ struct AISettingsView: View {
                 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(serviceName)
-                        .font(.genealogySubheadline)
+                        .font(.subheadline)
                     
                     Text(serviceTypeText(for: serviceName))
-                        .font(.genealogyCaption)
+                        .font(.caption)
                         .foregroundColor(.secondary)
                 }
                 
@@ -108,18 +108,18 @@ struct AISettingsView: View {
                 if isServiceConfigured(serviceName) {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
-                        .font(.genealogyCaption)
+                        .font(.caption)
                 } else if !serviceName.contains("MLX") {
                     // Only show "needs config" for cloud services
                     Image(systemName: "exclamationmark.circle.fill")
                         .foregroundColor(.orange)
-                        .font(.genealogyCaption)
+                        .font(.caption)
                 }
                 
                 // Action buttons
                 if serviceName == juuretApp.currentServiceName {
                     Text("Current")
-                        .font(.genealogyCaption)
+                        .font(.caption)
                         .foregroundColor(.blue)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 2)
@@ -141,7 +141,7 @@ struct AISettingsView: View {
                     configureService(serviceName)
                 }
                 .buttonStyle(.bordered)
-                .font(.genealogyCaption)
+                .font(.caption)
                 .foregroundColor(.orange)
             }
             
@@ -150,7 +150,7 @@ struct AISettingsView: View {
                 switchToService(serviceName)
             }
             .buttonStyle(.borderedProminent)
-            .font(.genealogyCaption)
+            .font(.caption)
         }
     }
     
@@ -160,15 +160,15 @@ struct AISettingsView: View {
         NavigationView {
             VStack(spacing: 20) {
                 Text("Configure \(selectedServiceForConfig)")
-                    .font(.genealogyTitle)
+                    .font(.title2)
                 
                 Text("Enter your API key for this service:")
-                    .font(.genealogyBody)
+                    .font(.body)
                     .foregroundColor(.secondary)
                 
                 SecureField("API Key", text: $tempAPIKey)
                     .textFieldStyle(.roundedBorder)
-                    .font(.genealogyMonospaceSmall)
+                    .font(.system(.footnote, design: .monospaced))
                 
                 Button("Save") {
                     saveAPIKey()
@@ -216,7 +216,7 @@ struct AISettingsView: View {
                         .foregroundColor(.blue)
                     
                     Text("Apple Silicon MLX")
-                        .font(.genealogyHeadline)
+                        .font(.headline)
                     
                     Spacer()
                     
@@ -228,12 +228,12 @@ struct AISettingsView: View {
                             checkMLXStatus()
                         }
                         .buttonStyle(.bordered)
-                        .font(.genealogyCaption)
+                        .font(.caption)
                     }
                 }
                 
                 Text("Local AI processing - no API costs, enhanced privacy")
-                    .font(.genealogyCallout)
+                    .font(.callout)
                     .foregroundColor(.secondary)
                 
                 // MLX Services
@@ -241,18 +241,18 @@ struct AISettingsView: View {
                 if !mlxServices.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Available Models:")
-                            .font(.genealogyCaption)
+                            .font(.caption)
                             .foregroundColor(.secondary)
                         
                         ForEach(mlxServices, id: \.self) { service in
                             HStack {
                                 Text("• \(service)")
-                                    .font(.genealogyCaption)
+                                    .font(.caption)
                                     .foregroundColor(.primary)
                                 
                                 if service == juuretApp.currentServiceName {
                                     Text("Current")
-                                        .font(.genealogyCaption)
+                                        .font(.caption)
                                         .foregroundColor(.blue)
                                 }
                                 
@@ -263,7 +263,7 @@ struct AISettingsView: View {
                     .padding(.top, 8)
                 } else {
                     Text("No MLX models available")
-                        .font(.genealogyCaption)
+                        .font(.caption)
                         .foregroundColor(.secondary)
                 }
             }
@@ -372,3 +372,4 @@ struct AISettingsView: View {
     AISettingsView()
         .environment(JuuretApp())
 }
+

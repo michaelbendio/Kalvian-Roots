@@ -68,13 +68,13 @@ struct ContentView: View {
         }
         
         // Load from cache
-        if let cached = app.familyNetworkCache.getCachedNetwork(familyId: firstFamilyId) {
+        if let cachedNetwork = app.familyNetworkCache.getCachedNetwork(familyId: firstFamilyId) {
             let loadTime = Date().timeIntervalSince(startTime)
             logInfo(.app, "⏱️ T+\(String(format: "%.3f", loadTime))s: Loaded \(firstFamilyId) from cache instantly")
             
             await MainActor.run {
-                app.currentFamily = cached.network.mainFamily
-                app.familyNetworkWorkflow?.activateCachedNetwork(cached.network)
+                app.currentFamily = cachedNetwork.mainFamily
+                app.familyNetworkWorkflow?.activateCachedNetwork(cachedNetwork)
             }
             
             logInfo(.app, "✅ Startup family loaded: \(firstFamilyId)")

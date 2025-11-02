@@ -89,44 +89,6 @@ class JuuretApp {
     }
 
     /**
-     * Navigate to the previous family in history
-     */
-    func navigateBack() {
-        guard historyIndex > 0 else {
-            logWarn(.app, "⚠️ Cannot navigate back - at start of history")
-            return
-        }
-        
-        historyIndex -= 1
-        let familyId = navigationHistory[historyIndex]
-        
-        logInfo(.app, "⬅️ Navigating back to: \(familyId)")
-        
-        Task {
-            await extractFamily(familyId: familyId)
-        }
-    }
-
-    /**
-     * Navigate to the next family in history
-     */
-    func navigateForward() {
-        guard historyIndex < navigationHistory.count - 1 else {
-            logWarn(.app, "⚠️ Cannot navigate forward - at end of history")
-            return
-        }
-        
-        historyIndex += 1
-        let familyId = navigationHistory[historyIndex]
-        
-        logInfo(.app, "➡️ Navigating forward to: \(familyId)")
-        
-        Task {
-            await extractFamily(familyId: familyId)
-        }
-    }
-
-    /**
      * Navigate to the home family
      * 
      * This adds the home family to history (so back/forward work correctly)
@@ -246,29 +208,11 @@ class JuuretApp {
     
     // MARK: - Navigation State Helpers
 
-    /// Check if we can navigate backward
-    var canNavigateBack: Bool {
-        return historyIndex > 0
-    }
-
-    /// Check if we can navigate forward
-    var canNavigateForward: Bool {
-        return historyIndex < navigationHistory.count - 1
-    }
-
     /// Check if we can navigate home
     var canNavigateHome: Bool {
         return homeFamily != nil
     }
 
-    /// Get the current family ID from history (if in history)
-    var currentFamilyIdInHistory: String? {
-        guard historyIndex >= 0 && historyIndex < navigationHistory.count else {
-            return nil
-        }
-        return navigationHistory[historyIndex]
-    }
-    
     /// Current family network workflow
     var familyNetworkWorkflow: FamilyNetworkWorkflow?
     
@@ -383,9 +327,6 @@ class JuuretApp {
         
         logInfo(.app, "🎉 JuuretApp initialization complete")
         logDebug(.app, "Ready state: \(self.isReady)")
-        
-        // Load manual citations
-        loadManualCitations()
     }
     
     // MARK: - File Ready Coordination
@@ -572,18 +513,18 @@ class JuuretApp {
             
             // Use cached network
             await MainActor.run {
-                currentFamily = cached.network.mainFamily
-                enhancedFamily = cached.network.mainFamily
+                currentFamily = cached.mainFamily
+                enhancedFamily = cached.mainFamily
                 
                 // Create workflow with cached network
                 familyNetworkWorkflow = FamilyNetworkWorkflow(
-                    nuclearFamily: cached.network.mainFamily,
+                    nuclearFamily: cached.mainFamily,
                     familyResolver: familyResolver,
                     resolveCrossReferences: false  // Already resolved in cache
                 )
                 
                 // Activate the cached network
-                familyNetworkWorkflow?.activateCachedNetwork(cached.network)
+                familyNetworkWorkflow?.activateCachedNetwork(cached)
                 
                 isProcessing = false
                 extractionProgress = .idle
@@ -664,7 +605,6 @@ class JuuretApp {
                     let extractionTime = Date().timeIntervalSince(startTime)
                     familyNetworkCache.cacheNetwork(
                         network,
-                        citations: [:],  // No citations in new architecture
                         extractionTime: extractionTime
                     )
                     logInfo(.app, "💾 Cached network for future use")
@@ -755,13 +695,6 @@ class JuuretApp {
         }
         
         logInfo(.citation, "  Role: \(isParent ? "parent" : isChild ? "child" : "spouse")")
-        
-        // Check for manual override first
-        let overrideKey = "\(family.familyId)|\(person.id)"
-        if let manualCitation = manualCitations[overrideKey] {
-            logInfo(.citation, "  Using manual override")
-            return manualCitation
-        }
         
         // Generate appropriate citation based on role
         let citation: String
@@ -976,47 +909,6 @@ class JuuretApp {
         return spouse
     }
     
-    // MARK: - Hiski Query Generation
-    
-    // MARK: - Hiski Query with Service
-
-    func queryHiski(for person: Person, eventType: EventType, familyId: String) async -> String? {
-        let hiskiService = HiskiService(nameEquivalenceManager: nameEquivalenceManager)
-        hiskiService.setCurrentFamily(familyId)
-        
-        do {
-            let citation: HiskiCitation
-            
-            switch eventType {
-            case .birth:
-                guard let birthDate = person.birthDate else { return nil }
-                citation = try await hiskiService.queryBirth(name: person.name, date: birthDate)
-                
-            case .death:
-                guard let deathDate = person.deathDate else { return nil }
-                citation = try await hiskiService.queryDeath(name: person.name, date: deathDate)
-                
-            case .marriage:
-                guard let marriageDate = person.bestMarriageDate,
-                      let spouse = person.spouse else { return nil }
-                citation = try await hiskiService.queryMarriage(
-                    husbandName: person.displayName,
-                    wifeName: spouse,
-                    date: marriageDate
-                )
-                
-            default:
-                return nil
-            }
-            
-            return citation.url
-            
-        } catch {
-            logError(.app, "Hiski query failed: \(error)")
-            return nil
-        }
-    }
-    
     // MARK: - Hiski Search URL Generation
     
     private func extractYear(from dateString: String) -> String? {
@@ -1132,3 +1024,4 @@ class JuuretApp {
         }
     }
 }
+

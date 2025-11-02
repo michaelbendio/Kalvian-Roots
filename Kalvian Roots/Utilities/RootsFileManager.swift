@@ -49,7 +49,6 @@ final class RootsFileManager {
     private(set) var isFileLoaded: Bool = false
     #endif
 
-    private(set) var recentFileURLs: [URL] = []
     var errorMessage: String?
 
     /// The ONE canonical file name (normalize at comparison time)
@@ -58,7 +57,6 @@ final class RootsFileManager {
     // MARK: - Init
     
     init() {
-        loadRecentFiles()
         logInfo(.file, "📁 RootsFileManager initialized (iCloud default container)")
     }
 
@@ -148,7 +146,6 @@ final class RootsFileManager {
                 self.errorMessage = nil
             }
             
-            addToRecentFiles(url)
             logInfo(.file, "✅ File loaded successfully")
             return content
             
@@ -460,30 +457,5 @@ final class RootsFileManager {
                 missing: FamilyIDs.validFamilyIds
             )
         }
-    }
-
-    // MARK: - Recent files
-
-    private func addToRecentFiles(_ url: URL) {
-        recentFileURLs.removeAll { $0.standardizedFileURL == url.standardizedFileURL }
-        recentFileURLs.insert(url, at: 0)
-        if recentFileURLs.count > 10 { recentFileURLs = Array(recentFileURLs.prefix(10)) }
-        saveRecentFiles()
-    }
-
-    private func loadRecentFiles() {
-        if let bookmarks = UserDefaults.standard.array(forKey: "RecentFileBookmarks") as? [Data] {
-            recentFileURLs = bookmarks.compactMap { data in
-                var stale = false
-                return try? URL(resolvingBookmarkData: data, bookmarkDataIsStale: &stale)
-            }.filter { $0 != nil }.map { $0! }
-        }
-    }
-
-    private func saveRecentFiles() {
-        let bookmarks = recentFileURLs.compactMap { url in
-            try? url.bookmarkData(options: .suitableForBookmarkFile, includingResourceValuesForKeys: nil, relativeTo: nil)
-        }
-        UserDefaults.standard.set(bookmarks, forKey: "RecentFileBookmarks")
     }
 }

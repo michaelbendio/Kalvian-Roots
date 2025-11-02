@@ -125,17 +125,6 @@ class FamilyNetworkWorkflow {
     }
 }
 
-extension FamilyNetworkWorkflow {
-    /**
-     * Get active citations - returns empty since we generate on-demand now
-     * Kept for backwards compatibility with FamilyNetworkCache
-     */
-    func getActiveCitations() -> [String: String] {
-        // Citations are now generated on-demand, not stored
-        return [:]
-    }
-}
-
 extension Family {
     /// All children from all couples combined
     var allChildren: [Person] {
