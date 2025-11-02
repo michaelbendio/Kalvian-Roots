@@ -314,53 +314,9 @@ class AIParsingService {
         
         return cleaned
     }
-    
-    /// Attempt minimal parsing for broken JSON responses
-    private func tryMinimalParsing(jsonString: String, familyId: String) -> Family? {
-        logWarn(.parsing, "⚠️ Attempting minimal parsing for malformed JSON")
-        
-        // Try to extract at least the family ID
-        let extractedFamilyId = extractJSONValue(from: jsonString, key: "familyId") ?? familyId
-        let fatherName = extractJSONValue(from: jsonString, key: "name") ?? "Unknown Father"
-        
-        // Create minimal couple
-        let husband = Person(name: fatherName, noteMarkers: [])
-        let wife = Person(name: "Unknown Mother", noteMarkers: [])
-        
-        let minimalCouple = Couple(
-            husband: husband,
-            wife: wife,
-            marriageDate: nil,
-            children: [],
-            childrenDiedInfancy: nil,
-            coupleNotes: []
-        )
-        
-        logWarn(.parsing, "⚠️ Created minimal family structure for: \(extractedFamilyId)")
-        
-        // Use the Family initializer with couples array
-        return Family(
-            familyId: extractedFamilyId,
-            pageReferences: ["999"],
-            couples: [minimalCouple],  // Family expects array of Couples
-            notes: ["Minimal parsing used - AI response was malformed"],
-            noteDefinitions: [:]
-        )
-    }
-    
-    private func extractJSONValue(from jsonString: String, key: String) -> String? {
-        let pattern = "\"\(key)\"\\s*:\\s*\"([^\"]*)\""
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: jsonString, range: NSRange(jsonString.startIndex..., in: jsonString)) else {
-            return nil
-        }
-        
-        let matchRange = Range(match.range(at: 1), in: jsonString)!
-        return String(jsonString[matchRange])
-    }
-    
+
     // MARK: - Debug Logging
-    
+
     /// Debug method to log parsed family details
     private func debugLogParsedFamily(_ family: Family) {
         logInfo(.parsing, "🔍 === PARSED FAMILY DEBUG INFO ===")

@@ -23,14 +23,7 @@ class AIServiceFactory {
         
         // Primary service: DeepSeek
         services.append(DeepSeekService())
-        
-        // Check for MLX services (for future local AI)
-        #if os(macOS) && arch(arm64)
-        // When a good local model becomes available, add it here
-        // For now, MLX models aren't accurate enough for genealogical JSON
-        // services.append(contentsOf: createMLXServicesIfAvailable())
-        #endif
-        
+
         logInfo(.ai, "✅ Created \(services.count) AI services")
         logDebug(.ai, "Available services: \(services.map { $0.name }.joined(separator: ", "))")
         
@@ -108,24 +101,4 @@ class AIServiceFactory {
         
         return issues
     }
-    
-    /**
-     * Future: Create MLX services when accurate models become available
-     */
-    #if os(macOS) && arch(arm64)
-    private static func createMLXServicesIfAvailable() -> [AIService] {
-        // Placeholder for future local AI models
-        // When a model that can accurately parse Finnish genealogical data
-        // becomes available, add it here
-        
-        // For now, return empty array
-        logDebug(.ai, "MLX models not yet accurate enough for genealogical JSON")
-        return []
-        
-        // Future code might look like:
-        // if let service = try? MLXService.finnishGenealogyModel() {
-        //     return [service]
-        // }
-    }
-    #endif
 }
