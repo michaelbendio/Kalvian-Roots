@@ -98,31 +98,32 @@ class FamilyNetworkCache {
      */
     func getCachedNetwork(familyId: String) -> FamilyNetwork? {
         let startTime = Date()
+        let normalized = familyId.uppercased().trimmingCharacters(in: .whitespaces)
         
         // Check memory cache first
-        if let cached = cachedNetworks[familyId] {
+        if let cached = cachedNetworks[normalized] {
             let retrieveTime = Date().timeIntervalSince(startTime)
-            logInfo(.cache, "⚡ Retrieved from memory cache: \(familyId) in \(String(format: "%.3f", retrieveTime))s")
+            logInfo(.cache, "⚡ Retrieved from memory cache: \(normalized) in \(String(format: "%.3f", retrieveTime))s")
             return cached.network
         }
         
         // Check persistent store
-        logInfo(.cache, "🔍 Checking persistent store for: \(familyId)")
+        logInfo(.cache, "🔍 Checking persistent store for: \(normalized)")
         let diskStartTime = Date()
         
-        if let persisted = persistenceStore.loadFamily(withId: familyId) {
+        if let persisted = persistenceStore.loadFamily(withId: normalized) {
             let diskLoadTime = Date().timeIntervalSince(diskStartTime)
             let totalTime = Date().timeIntervalSince(startTime)
             
             logInfo(.cache, """
-                💾 Loaded from disk: \(familyId)
+                💾 Loaded from disk: \(normalized)
                 - Disk read time: \(String(format: "%.3f", diskLoadTime))s
                 - Total time: \(String(format: "%.3f", totalTime))s
                 - Network size: \(persisted.network.allFamilies.count) families
                 """)
             
             // Add to memory cache for next time
-            cachedNetworks[familyId] = persisted
+            cachedNetworks[normalized] = persisted
             
             return persisted.network
         }
@@ -137,21 +138,22 @@ class FamilyNetworkCache {
      * This is useful for cross-reference resolution to avoid redundant AI calls
      */
     func getCachedNuclearFamily(familyId: String) -> Family? {
+        let normalized = familyId.uppercased().trimmingCharacters(in: .whitespaces)
         // Check memory cache first
-        if let cached = cachedNetworks[familyId] {
-            logInfo(.cache, "⚡ Cache hit (nuclear) for: \(familyId)")
+        if let cached = cachedNetworks[normalized] {
+            logInfo(.cache, "⚡ Cache hit (nuclear) for: \(normalized)")
             return cached.network.mainFamily
         }
         
         // Check persistent store
-        if let persisted = persistenceStore.loadFamily(withId: familyId) {
-            logInfo(.cache, "💾 Cache hit (nuclear, disk) for: \(familyId)")
+        if let persisted = persistenceStore.loadFamily(withId: normalized) {
+            logInfo(.cache, "💾 Cache hit (nuclear, disk) for: \(normalized)")
             // Add to memory cache for next time
-            cachedNetworks[familyId] = persisted
+            cachedNetworks[normalized] = persisted
             return persisted.network.mainFamily
         }
         
-        logTrace(.cache, "❌ Cache miss (nuclear) for: \(familyId)")
+        logTrace(.cache, "❌ Cache miss (nuclear) for: \(normalized)")
         return nil
     }
     
@@ -159,14 +161,15 @@ class FamilyNetworkCache {
      * Cache a network
      */
     func cacheNetwork(_ network: FamilyNetwork, extractionTime: TimeInterval) {
+        let normalized = network.mainFamily.familyId.uppercased().trimmingCharacters(in: .whitespaces)
         let cached = CachedFamily(
             network: network,
             cachedAt: Date(),
             extractionTime: extractionTime
         )
-        cachedNetworks[network.mainFamily.familyId] = cached
+        cachedNetworks[normalized] = cached  // Use normalized key
         persistenceStore.save(cachedNetworks)
-        logInfo(.cache, "💾 Cached network for: \(network.mainFamily.familyId)")
+        logInfo(.cache, "💾 Cached network for: \(normalized)")
     }
     
     /**
@@ -174,23 +177,24 @@ class FamilyNetworkCache {
      * Useful for regenerating citations after code changes
      */
     func deleteCachedFamily(familyId: String) {
-        guard cachedNetworks[familyId] != nil else {
-            logInfo(.cache, "⚠️ Family \(familyId) not found in cache")
+        let normalized = familyId.uppercased().trimmingCharacters(in: .whitespaces)
+        guard cachedNetworks[normalized] != nil else {
+            logInfo(.cache, "⚠️ Family \(normalized) not found in cache")
             return
         }
         
         // Remove from memory cache
-        cachedNetworks.removeValue(forKey: familyId)
+        cachedNetworks.removeValue(forKey: normalized)
         
         // Update persistence
         persistenceStore.save(cachedNetworks)
         
         // Update ready state if this was the next family
-        if nextFamilyId == familyId {
+        if nextFamilyId == normalized {
             nextFamilyReady = false
         }
         
-        logInfo(.cache, "🗑️ Deleted \(familyId) from cache")
+        logInfo(.cache, "🗑️ Deleted \(normalized) from cache")
     }
 
     /**

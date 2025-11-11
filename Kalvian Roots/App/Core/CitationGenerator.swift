@@ -63,22 +63,13 @@ struct CitationGenerator {
                     } else {
                         isTarget = false
                     }
-                    let prefix = isTarget ? "→ " : ""
                     
-                    if isTarget, let network = network, let target = targetPerson {
-                        // Track enhancements for this child
-                        if let asParentFamily = network.getAsParentFamily(for: target) {
-                            let enhancementInfo = trackEnhancement(
-                                nuclearChild: child,
-                                person: target,
-                                asParentFamily: asParentFamily
-                            )
-                            if let info = enhancementInfo {
-                                enhancementSources.append(info)
-                            }
-                        }
-                        
-                        citation += "\(prefix)\(formatChildWithEnhancement(child, person: target, network: network))"
+                    let shouldEnhance = shouldEnhanceChild(child, isTarget: isTarget, person: targetPerson ?? child, network: network)
+                    let prefix = shouldEnhance ? "→ " : ""
+                    
+                    if shouldEnhance, let target = targetPerson {
+                        // Track enhancements...
+                        citation += "\(prefix)\(formatChildWithEnhancement(child, person: target, network: network!))"
                     } else {
                         citation += "\(prefix)\(formatChild(child))"
                     }
@@ -328,10 +319,11 @@ struct CitationGenerator {
                         targetChildInAsChild = child
                     }
                     
-                    let prefix = isTarget ? "→ " : ""
+                    let shouldEnhance = shouldEnhanceChild(child, isTarget: isTarget, person: person, network: network)
+                    let prefix = shouldEnhance ? "→ " : ""
                     
-                    if isTarget, let network = network {
-                        citation += "\(prefix)\(formatChildWithEnhancement(child, person: person, network: network))"
+                    if shouldEnhance {
+                        citation += "\(prefix)\(formatChildWithEnhancement(child, person: person, network: network!))"
                     } else {
                         citation += "\(prefix)\(formatChild(child))"
                     }
@@ -444,6 +436,7 @@ struct CitationGenerator {
         return citation
     }
     
+    
     /**
      * Generate spouse as_child citation (spouse in their parents' family)
      */
@@ -535,7 +528,7 @@ struct CitationGenerator {
     
     /// Smart century inference based on parent birth year context
     /// Determines which century (1600, 1700, 1800) makes most sense for marriage
-    private static func inferCentury(for twoDigitYear: Int, parentBirthYear: Int? = nil) -> Int {
+    static func inferCentury(for twoDigitYear: Int, parentBirthYear: Int? = nil) -> Int {
         // If we have parent birth year, use it for smart inference
         if let birthYear = parentBirthYear {
             // Marriage typically happens 15-50 years after birth
@@ -800,6 +793,23 @@ struct CitationGenerator {
     }
     
     // MARK: - Helper Methods
+    
+    /// Determine if a child should get an arrow and enhancement
+    private static func shouldEnhanceChild(
+        _ child: Person,
+        isTarget: Bool,
+        person: Person,
+        network: FamilyNetwork?
+    ) -> Bool {
+        guard isTarget,
+              let network = network,
+              let spouse = child.spouse,
+              !spouse.isEmpty else {
+            return false
+        }
+        
+        return network.getAsParentFamily(for: person) != nil
+    }
     
     /// Check if this child matches the target person
     private static func isTargetPerson(

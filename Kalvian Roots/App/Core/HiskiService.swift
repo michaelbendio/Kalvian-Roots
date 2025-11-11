@@ -539,21 +539,26 @@ class HiskiService {
     
     // MARK: - Date Formatting
     
-    private func formatDateForHiski(_ dateString: String) -> String {
+    private func formatDateForHiski(_ dateString: String, parentBirthYear: Int? = nil) -> String {
         var cleaned = dateString.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // Remove any leading zeros from day/month
         if cleaned.contains(".") {
             let components = cleaned.components(separatedBy: ".")
             if components.count == 3 {
                 let day = String(Int(components[0]) ?? 0)
                 let month = String(Int(components[1]) ?? 0)
-                let year = components[2]
+                var year = components[2]
+                
+                // If 2-digit year, expand using CitationGenerator's logic
+                if year.count == 2, let twoDigitYear = Int(year) {
+                    let fullYear = CitationGenerator.inferCentury(for: twoDigitYear, parentBirthYear: parentBirthYear)
+                    year = String(fullYear)
+                }
+                
                 return "\(day).\(month).\(year)"
             }
         }
         
-        // Otherwise return as-is (already just a year)
         return cleaned
     }
 }
