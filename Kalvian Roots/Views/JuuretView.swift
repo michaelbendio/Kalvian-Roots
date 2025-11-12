@@ -1,9 +1,8 @@
 //
-//  JuuretView.swift
+//  JuuretView.swift - UPDATED with AI Ready Indicator
 //  Kalvian Roots
 //
-//  Main family display view with new UI redesign
-//  Phases 1-4 complete: Navigation + Enhanced Display
+//  Main family display view with green dot showing when AI is ready
 //
 
 import SwiftUI
@@ -64,13 +63,29 @@ struct JuuretView: View {
         #if os(macOS)
         .toolbar {
             ToolbarItemGroup(placement: .automatic) {
+                // AI READY INDICATOR - Green dot when AI is ready
+                Circle()
+                    .fill(isAIReady ? Color.green : Color.clear)
+                    .frame(width: 6, height: 6)
+                    .opacity(isAIReady ? 1.0 : 0.0)
+                    .animation(.easeInOut(duration: 0.3), value: isAIReady)
+                
                 CachedFamiliesMenu()
             }
         }
         #elseif os(iOS) || os(visionOS)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                CachedFamiliesMenu()
+                HStack(spacing: 4) {
+                    // AI READY INDICATOR - Green dot when AI is ready
+                    Circle()
+                        .fill(isAIReady ? Color.green : Color.clear)
+                        .frame(width: 6, height: 6)
+                        .opacity(isAIReady ? 1.0 : 0.0)
+                        .animation(.easeInOut(duration: 0.3), value: isAIReady)
+                    
+                    CachedFamiliesMenu()
+                }
             }
         }
         .setupHiskiSafariHost()
@@ -88,89 +103,114 @@ struct JuuretView: View {
         } message: {
             Text(citationText)
         }
-        .onChange(of: showingCitation) { oldValue, newValue in
-            if oldValue == true && newValue == false && shouldCloseHiskiWindows {
-                // Alert dismissed - hide windows immediately (no delay needed)
-                juuretApp.closeHiskiWebViews()
+        .onChange(of: showingCitation) { _, newValue in
+            if !newValue && shouldCloseHiskiWindows {
+                #if os(macOS)
+                closeAllHiskiWindows()
+                #endif
                 shouldCloseHiskiWindows = false
             }
         }
-
+        
         // Hiski result alert
         .alert("Hiski Query", isPresented: $showingHiskiResult) {
-            Button("Copy URL") {
+            Button("Copy to Clipboard") {
                 copyToClipboard(hiskiResult)
-                shouldCloseHiskiWindows = true
             }
-            Button("OK", role: .cancel) {
-                shouldCloseHiskiWindows = true
+            #if os(macOS)
+            Button("Open in Browser") {
+                openHiskiInBrowser(hiskiResult)
             }
+            #endif
+            Button("OK", role: .cancel) {}
         } message: {
             Text(hiskiResult)
         }
-        .onChange(of: showingHiskiResult) { oldValue, newValue in
-            if oldValue == true && newValue == false && shouldCloseHiskiWindows {
-                // Alert dismissed - hide windows immediately (no delay needed)
-                juuretApp.closeHiskiWebViews()
-                shouldCloseHiskiWindows = false
-            }
-        }
     }
     
-    // MARK: - Empty State
+    // MARK: - AI Ready Indicator Logic
+    
+    /// Check if AI is ready to process families
+    private var isAIReady: Bool {
+        // Check if using MLX service
+        let serviceName = juuretApp.aiParsingService.currentServiceName
+        if serviceName.contains("MLX") {
+            // MLX service - check server status
+            return juuretApp.mlxServerManager.serverStatus.isReady
+        }
+        
+        // Cloud service (DeepSeek, etc.) - always ready if configured
+        return juuretApp.aiParsingService.isConfigured
+    }
+    
+    // MARK: - Empty State View
     
     private var emptyStateView: some View {
         VStack(spacing: 20) {
             Image(systemName: "doc.text.magnifyingglass")
-                .font(.system(size: 64))
+                .font(.system(size: 72))
+                .foregroundColor(.gray)
+            
+            Text("No Family Selected")
+                .font(.title)
                 .foregroundColor(.secondary)
             
-            Text("No Family Loaded")
-                .font(.title2)
-                .fontWeight(.semibold)
-            
-            Text("Enter a family ID in the navigation bar above")
-                .font(.callout)
+            Text("Enter a family ID in the navigation bar or select from cached families")
+                .font(.body)
                 .foregroundColor(.secondary)
-            
-            if juuretApp.familyNetworkCache.cachedFamilyCount > 0 {
-                VStack(spacing: 12) {
-                    Text("Or select from \(juuretApp.familyNetworkCache.cachedFamilyCount) cached families")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Button(action: {
-                        juuretApp.familyNetworkCache.clearCache()
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "trash")
-                            Text("Clear Cache")
-                        }
-                        .font(.caption)
-                        .foregroundColor(.red)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.top, 20)
-            }
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(hex: "fefdf8"))
     }
     
-    // MARK: - Helpers
+    // MARK: - Helper Methods
     
     private func copyToClipboard(_ text: String) {
         #if os(macOS)
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
-        #else
+        #elseif os(iOS)
         UIPasteboard.general.string = text
         #endif
-        
-        logInfo(.ui, "📋 Copied to clipboard: \(text.prefix(100))...")
     }
+    
+    #if os(macOS)
+    private func openHiskiInBrowser(_ url: String) {
+        if let url = URL(string: url) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+    
+    private func closeAllHiskiWindows() {
+        // Close all Safari windows with hiski.genealogia.fi
+        let script = """
+        tell application "Safari"
+            set windowList to every window
+            repeat with aWindow in windowList
+                try
+                    set tabList to every tab of aWindow
+                    repeat with aTab in tabList
+                        if URL of aTab contains "hiski.genealogia.fi" then
+                            close aTab
+                        end if
+                    end repeat
+                end try
+            end repeat
+        end tell
+        """
+        
+        if let appleScript = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            appleScript.executeAndReturnError(&error)
+            if let error = error {
+                logWarn(.app, "Failed to close Hiski windows: \(error)")
+            }
+        }
+    }
+    #endif
 }
 
 // MARK: - Preview
