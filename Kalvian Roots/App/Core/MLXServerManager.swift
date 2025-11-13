@@ -91,10 +91,17 @@ class MLXServerManager: ObservableObject {
     }
     
     // MARK: - Initialization
-    
+
     init() {
         logInfo(.ai, "🎛️ MLXServerManager initialized")
-        
+
+        // Check platform compatibility
+        if !isPlatformCompatible() {
+            logError(.ai, "⚠️ MLX is only supported on Apple Silicon Macs (M1/M2/M3/M4)")
+            serverStatus = .error("MLX requires Apple Silicon Mac")
+            return
+        }
+
         // Check if there's a server already running
         Task {
             await checkExistingServer()
@@ -114,16 +121,23 @@ class MLXServerManager: ObservableObject {
      * Auto-starts in background, queues extractions until ready
      */
     func startServer(modelName: String) async throws {
+        // Check platform compatibility first
+        guard isPlatformCompatible() else {
+            let error = MLXError.unsupportedPlatform
+            serverStatus = .error(error.localizedDescription)
+            throw error
+        }
+
         guard let model = MLXModel.model(named: modelName) else {
             throw MLXError.invalidModel(modelName)
         }
-        
+
         logInfo(.ai, "🚀 Starting MLX server with model: \(model.displayName)")
-        
+
         // Update status
         serverStatus = .starting(model: model.displayName)
         currentModel = modelName
-        
+
         // Save as last used model
         UserDefaults.standard.set(modelName, forKey: lastModelKey)
         
@@ -320,8 +334,16 @@ class MLXServerManager: ObservableObject {
     // MARK: - Private Helpers
     
     private func launchMLXServer(modelPath: String, modelName: String) throws {
+        // Verify model path exists
+        let fileManager = FileManager.default
+        if !fileManager.fileExists(atPath: modelPath) {
+            let error = MLXError.modelNotFound(modelPath)
+            logError(.ai, "❌ Model not found at: \(modelPath)")
+            throw error
+        }
+
         let process = Process()
-        
+
         // Use python3 explicitly
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = [
@@ -363,23 +385,37 @@ class MLXServerManager: ObservableObject {
     
     private func waitUntilReady(modelDisplayName: String, timeout: Int = 120) async {
         let delayNanoseconds: UInt64 = 2_000_000_000 // 2 seconds between checks
-        
+
+        // Check if process is still running
+        guard let process = serverProcess, process.isRunning else {
+            serverStatus = .error("Server process failed to start. Check if mlx_lm is installed (pip3 install mlx-lm)")
+            logError(.ai, "❌ MLX server process not running. Is mlx_lm installed?")
+            return
+        }
+
         for attempt in stride(from: 2, through: timeout, by: 2) {
+            // Check if process died
+            if let process = serverProcess, !process.isRunning {
+                serverStatus = .error("Server process terminated unexpectedly. Check if mlx_lm is installed.")
+                logError(.ai, "❌ MLX server process died. Exit code: \(process.terminationStatus)")
+                return
+            }
+
             // Check if server is responding
             if await checkServerHealth() {
                 logInfo(.ai, "✅ Server ready after \(attempt) seconds")
                 return
             }
-            
+
             // Update status with progress
             serverStatus = .starting(model: "\(modelDisplayName) (\(attempt)s)")
-            
+
             // Wait before next check
             try? await Task.sleep(nanoseconds: delayNanoseconds)
         }
-        
+
         // Timeout
-        serverStatus = .error("Server startup timeout after \(timeout) seconds")
+        serverStatus = .error("Server startup timeout after \(timeout) seconds. Check logs for errors.")
         logError(.ai, "❌ MLX server startup timeout after \(timeout) seconds")
     }
     
@@ -397,6 +433,18 @@ class MLXServerManager: ObservableObject {
         return 0
         #endif
     }
+
+    /**
+     * Check if the current platform supports MLX
+     * MLX requires Apple Silicon (ARM64) on macOS
+     */
+    private func isPlatformCompatible() -> Bool {
+        #if os(macOS) && arch(arm64)
+        return true
+        #else
+        return false
+        #endif
+    }
 }
 
 // MARK: - MLX Errors
@@ -405,7 +453,9 @@ enum MLXError: LocalizedError {
     case invalidModel(String)
     case serverNotRunning
     case startupFailed(String)
-    
+    case unsupportedPlatform
+    case modelNotFound(String)
+
     var errorDescription: String? {
         switch self {
         case .invalidModel(let name):
@@ -414,6 +464,10 @@ enum MLXError: LocalizedError {
             return "MLX server is not running"
         case .startupFailed(let reason):
             return "MLX server startup failed: \(reason)"
+        case .unsupportedPlatform:
+            return "MLX is only supported on Apple Silicon Macs (M1/M2/M3/M4). Current platform is not compatible."
+        case .modelNotFound(let path):
+            return "Model not found at path: \(path). Please download models to ~/.kalvian_roots_mlx/models/"
         }
     }
 }
