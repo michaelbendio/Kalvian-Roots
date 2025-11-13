@@ -282,12 +282,18 @@ class JuuretApp {
             familyNetworkCache: localFamilyNetworkCache  // NEW: pass cache!
         )
 
-        // Assign all to self properties at the end
+        // Initialize MLX server manager BEFORE assigning to self
+        let localMLXServerManager = MLXServerManager()
+
+        // Assign all to self properties
         self.nameEquivalenceManager = localNameEquivalenceManager
         self.fileManager = localFileManager
         self.aiParsingService = localAIParsingService
         self.familyResolver = localFamilyResolver
         self.familyNetworkCache = localFamilyNetworkCache
+        self.mlxServerManager = localMLXServerManager  // ADD THIS LINE
+
+        // NOW we can use self properties in logs
         logInfo(.app, "✅ Core services initialized with memory-efficient architecture")
         logInfo(.app, "Current AI service: \(self.currentServiceName)")
         logDebug(.app, "Available services: \(self.availableServices.joined(separator: ", "))")
@@ -325,9 +331,6 @@ class JuuretApp {
                 self.fileLoadContinuation = nil
             }
         }
-        
-        // Initialize MLX server manager
-        self.mlxServerManager = MLXServerManager()
         
         // Auto-start last used MLX model on launch (if on macOS)
         #if os(macOS) && arch(arm64)

@@ -3,7 +3,7 @@
 //  Kalvian Roots
 //
 //  Complete MLX service implementation for local AI family parsing
-//  Updated to support: Phi-3.5-mini, Qwen2.5-14B, Qwen3-30B, Llama-3.1-8B, Mistral-7B
+//  Optimized for: Qwen3-30B, Qwen2.5-14B, Llama-3.1-8B
 //
 
 import Foundation
@@ -11,7 +11,7 @@ import Foundation
 /**
  * MLX service for local AI processing using Apple Silicon
  *
- * Provides family parsing using local models
+ * Provides family parsing using local models optimized for genealogical text
  */
 class MLXService: AIService {
     let name: String
@@ -56,33 +56,9 @@ class MLXService: AIService {
         #endif
     }
     
-    // MARK: - Static Factory Methods for Your Five Models
+    // MARK: - Static Factory Methods for Three Chosen Models
     
-    /// Phi-3.5-mini-instruct (3.8B) - Fast, structured output optimized
-    static func phi3_5_mini() throws -> MLXService {
-        guard isAvailable() else {
-            throw AIServiceError.notConfigured("MLX not available on this platform")
-        }
-        return MLXService(
-            name: "MLX Phi-3.5-mini (Local)",
-            modelName: "phi-3.5-mini",
-            modelPath: "~/.kalvian_roots_mlx/models/Phi-3.5-mini-instruct"
-        )
-    }
-    
-    /// Qwen2.5-14B-Instruct - Excellent balance of speed and accuracy
-    static func qwen2_5_14B() throws -> MLXService {
-        guard isAvailable() else {
-            throw AIServiceError.notConfigured("MLX not available on this platform")
-        }
-        return MLXService(
-            name: "MLX Qwen2.5-14B (Local)",
-            modelName: "qwen2.5-14b",
-            modelPath: "~/.kalvian_roots_mlx/models/Qwen2.5-14B-Instruct"
-        )
-    }
-    
-    /// Qwen3-30B-A3B-4bit - High-performance for complex families
+    /// Qwen3-30B-A3B-4bit - Best accuracy for complex families
     static func qwen3_30B() throws -> MLXService {
         guard isAvailable() else {
             throw AIServiceError.notConfigured("MLX not available on this platform")
@@ -94,7 +70,19 @@ class MLXService: AIService {
         )
     }
     
-    /// Llama-3.1-8B-Instruct - Balanced general-purpose model
+    /// Qwen2.5-14B-Instruct - Balanced speed and accuracy
+    static func qwen2_5_14B() throws -> MLXService {
+        guard isAvailable() else {
+            throw AIServiceError.notConfigured("MLX not available on this platform")
+        }
+        return MLXService(
+            name: "MLX Qwen2.5-14B (Local)",
+            modelName: "qwen2.5-14b",
+            modelPath: "~/.kalvian_roots_mlx/models/Qwen2.5-14B-Instruct"
+        )
+    }
+    
+    /// Llama-3.1-8B-Instruct - Fast processing for simple families
     static func llama3_1_8B() throws -> MLXService {
         guard isAvailable() else {
             throw AIServiceError.notConfigured("MLX not available on this platform")
@@ -106,18 +94,6 @@ class MLXService: AIService {
         )
     }
     
-    /// Mistral-7B-Instruct-4bit - Fast processing for simple families
-    static func mistral_7B() throws -> MLXService {
-        guard isAvailable() else {
-            throw AIServiceError.notConfigured("MLX not available on this platform")
-        }
-        return MLXService(
-            name: "MLX Mistral-7B (Local)",
-            modelName: "mistral-7b",
-            modelPath: "~/.kalvian_roots_mlx/models/Mistral-7B-Instruct-4bit"
-        )
-    }
-    
     /// Get recommended MLX model based on available memory
     static func getRecommendedModel() -> MLXService? {
         guard isAvailable() else { return nil }
@@ -125,18 +101,15 @@ class MLXService: AIService {
         let memory = getSystemMemory() / (1024 * 1024 * 1024) // Convert to GB
         
         do {
-            if memory >= 64 {
-                // 64GB+ RAM: Use Qwen3-30B for best accuracy
+            if memory >= 48 {
+                // 48GB+ RAM: Use Qwen3-30B for best accuracy
                 return try qwen3_30B()
-            } else if memory >= 32 {
-                // 32-64GB RAM: Use Qwen2.5-14B for balance
+            } else if memory >= 24 {
+                // 24-48GB RAM: Use Qwen2.5-14B for balance
                 return try qwen2_5_14B()
-            } else if memory >= 16 {
-                // 16-32GB RAM: Use Llama-3.1-8B
-                return try llama3_1_8B()
             } else {
-                // <16GB RAM: Use Phi-3.5-mini for speed
-                return try phi3_5_mini()
+                // <24GB RAM: Use Llama-3.1-8B for speed
+                return try llama3_1_8B()
             }
         } catch {
             logWarn(.ai, "Failed to create recommended MLX model: \(error)")
@@ -251,58 +224,132 @@ class MLXService: AIService {
                 
                 if let httpResponse = response as? HTTPURLResponse,
                    httpResponse.statusCode < 500 {
-                    logDebug(.ai, "MLX server detected via \(endpoint): HTTP \(httpResponse.statusCode)")
+                    logDebug(.ai, "✅ MLX server responding at \(endpoint)")
                     return true
                 }
             } catch {
-                logTrace(.ai, "Endpoint \(endpoint) not responding: \(error.localizedDescription)")
+                // This endpoint didn't work, try the next one
+                continue
             }
         }
         
-        logDebug(.ai, "MLX server not reachable on any endpoint")
+        logWarn(.ai, "⚠️ MLX server not responding at any endpoint")
         return false
     }
     
     private func createCustomMLXRequest(familyId: String, familyText: String) throws -> URLRequest {
-        let url = URL(string: "\(baseURL)/v1/chat/completions")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Create the prompt for MLX with OpenAI-compatible format
+        let systemPrompt = """
+            You are a Finnish genealogy expert specializing in extracting structured data.
+            Extract the family information and return ONLY valid JSON with no additional text.
+            Use the couples-based structure to handle remarriages properly.
+            PRESERVE all original formatting including 'n' prefixes for approximate dates.
+            """
         
-        let prompt = createFamilyParsingPrompt(familyId: familyId, familyText: familyText)
+        let userPrompt = createPrompt(familyId: familyId, familyText: familyText)
         
         let requestBody: [String: Any] = [
             "model": modelName,
             "messages": [
-                ["role": "user", "content": prompt]
+                ["role": "system", "content": systemPrompt],
+                ["role": "user", "content": userPrompt]
             ],
-            "max_tokens": 2000,
-            "temperature": 0.1
+            "temperature": 0.1,
+            "max_tokens": 4000
         ]
         
-        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+        guard let url = URL(string: "\(baseURL)/v1/chat/completions") else {
+            throw AIServiceError.invalidConfiguration("Invalid MLX server URL")
+        }
         
-        logTrace(.ai, "MLX request created for OpenAI-compatible endpoint")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+        request.timeoutInterval = 120.0 // 2 minutes for complex families
+        
         return request
     }
     
-    private func createFamilyParsingPrompt(familyId: String, familyText: String) -> String {
+    private func createPrompt(familyId: String, familyText: String) -> String {
         return """
-        Parse the following Finnish genealogical family record into JSON format.
-        
-        CRITICAL: Output ONLY valid JSON - no explanation, no markdown, no code blocks.
-        
-        Required JSON structure:
+        Extract family \(familyId) into this EXACT JSON structure.
+        CRITICAL: Return ONLY the JSON object - no markdown, no explanation, no ```json tags.
+
+        JSON SCHEMA TO USE:
         {
-          "familyId": "\(familyId)",
-          "pageReferences": [],
-          "father": { "name": "", "patronymic": "", "birthDate": "", "deathDate": "" },
-          "mother": { "name": "", "patronymic": "", "spouse": "" },
-          "children": [],
-          "notes": []
+          "familyId": "string",
+          "pageReferences": ["array of page numbers as strings"],
+          "couples": [
+            {
+              "husband": {
+                "name": "string (given name only)",
+                "patronymic": "string or null",
+                "birthDate": "string or null", 
+                "deathDate": "string or null (keep 'isoviha' as-is)",
+                "asChild": "string or null (from {family ref})",
+                "familySearchId": "string or null (from <ID>)",
+                "noteMarkers": []
+              },
+              "wife": {
+                "name": "string",
+                "patronymic": "string or null",
+                "birthDate": "string or null",
+                "deathDate": "string or null",
+                "asChild": "string or null",
+                "familySearchId": "string or null",
+                "noteMarkers": []
+              },
+              "marriageDate": "string or null (2-digit year, MAY include 'n' prefix)",
+              "fullMarriageDate": "string or null (dd.mm.yyyy, MAY include 'n' prefix)",
+              "children": [
+                {
+                  "name": "string",
+                  "birthDate": "string or null",
+                  "deathDate": "string or null",
+                  "marriageDate": "string or null",
+                  "spouse": "string or null",
+                  "asParent": "string or null",
+                  "familySearchId": "string or null",
+                  "noteMarkers": []
+                }
+              ],
+              "childrenDiedInfancy": null,
+              "coupleNotes": []
+            }
+          ],
+          "notes": ["array of family notes"],
+          "noteDefinitions": {"*": "note text"}
         }
-        
-        Family text:
+
+        EXTRACTION RULES:
+        1. Parse ONLY family \(familyId) - ignore any other families in the text
+        2. Create a separate couple entry for each marriage
+        3. If a person appears in multiple marriages, they appear in multiple couples
+        4. Extract dates EXACTLY as written, preserving ALL formatting:
+           - Keep historical periods like "isoviha" as-is
+           - **CRITICAL**: Keep "n" prefix for approximate dates (e.g., "n 1730", "n 30")
+           - Do NOT strip or remove the "n " prefix - it indicates an approximate date
+        5. **DEATH DATES - CRITICAL**:
+           - Death dates ONLY appear after the † symbol
+           - Lines ending with codes like "-94 Kokkola" or "-92 Veteli" are NOT death dates
+           - These codes indicate migration/relocation, not death
+           - ONLY extract deathDate if explicitly preceded by † symbol
+        6. Marriage dates: 
+           - Store 2-digit as marriageDate (e.g., "30" or "n 30")
+           - Store full date as fullMarriageDate (e.g., "01.02.1730" or "n 1730")
+           - **PRESERVE** the "n " prefix in BOTH fields if present
+        7. Extract {family references} as asChild or asParent (strip the curly braces)
+        8. Extract <IDs> as familySearchId (strip the angle brackets)
+        9. Note markers (*) go in noteMarkers array, definitions in noteDefinitions
+
+        DETERMINING COUPLES:
+        - Look for "II puoliso" or "III puoliso" to identify additional marriages
+        - The person who survives and remarries appears in multiple couples
+        - Use death dates and marriage dates to determine the correct sequence
+        - Each "Lapset" (Children) section belongs to the couple above it
+
+        Family text to parse:
         \(familyText)
         """
     }

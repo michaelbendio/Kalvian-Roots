@@ -1,11 +1,12 @@
 //
-//  MLXServerManager.swift
+//  MLXServerManager_Fixed.swift
 //  Kalvian Roots
 //
-//  Manages MLX server lifecycle with auto-start, queuing, and model persistence
+//  Fixed version with proper health check and only 3 models
 //
 
 import Foundation
+import Combine
 
 /**
  * MLX Server Manager
@@ -59,7 +60,7 @@ class MLXServerManager: ObservableObject {
     private let modelsBasePath = "~/.kalvian_roots_mlx/models"
     private let lastModelKey = "MLXServerManager_LastModel"
     
-    // MARK: - Model Configuration
+    // MARK: - Model Configuration (ONLY 3 MODELS)
     
     struct MLXModel {
         let name: String
@@ -68,9 +69,9 @@ class MLXServerManager: ObservableObject {
         
         static let allModels: [MLXModel] = [
             MLXModel(
-                name: "phi-3.5-mini",
-                displayName: "Phi-3.5-mini",
-                path: "Phi-3.5-mini-instruct"
+                name: "qwen3-30b",
+                displayName: "Qwen3-30B",
+                path: "Qwen3-30B-A3B-4bit"
             ),
             MLXModel(
                 name: "qwen2.5-14b",
@@ -78,19 +79,9 @@ class MLXServerManager: ObservableObject {
                 path: "Qwen2.5-14B-Instruct"
             ),
             MLXModel(
-                name: "qwen3-30b",
-                displayName: "Qwen3-30B",
-                path: "Qwen3-30B-A3B-4bit"
-            ),
-            MLXModel(
                 name: "llama-3.1-8b",
                 displayName: "Llama-3.1-8B",
                 path: "Llama-3.1-8B-Instruct"
-            ),
-            MLXModel(
-                name: "mistral-7b",
-                displayName: "Mistral-7B",
-                path: "Mistral-7B-Instruct-4bit"
             )
         ]
         
@@ -150,53 +141,40 @@ class MLXServerManager: ObservableObject {
             throw error
         }
         
-        // Wait for server to be ready (non-blocking)
-        await waitUntilReady(modelDisplayName: model.displayName)
+        // Wait for server to be ready (with longer timeout for large models)
+        let timeout = modelName.contains("30b") ? 180 : 120 // 3 minutes for 30B, 2 minutes for others
+        await waitUntilReady(modelDisplayName: model.displayName, timeout: timeout)
         
-        // Update status to ready
-        serverStatus = .ready(model: model.displayName)
-        logInfo(.ai, "✅ MLX server ready: \(model.displayName)")
+        // Check final status
+        if case .error = serverStatus {
+            // Timeout occurred, but check one more time
+            if await checkServerHealth() {
+                serverStatus = .ready(model: model.displayName)
+                logInfo(.ai, "✅ MLX server ready (after timeout)")
+            }
+        } else {
+            serverStatus = .ready(model: model.displayName)
+            logInfo(.ai, "✅ MLX server ready with \(model.displayName)")
+        }
         
-        // Notify that server is ready
-        if let callback = onServerReady {
-            await callback()
+        // Execute any queued operations
+        if let onReady = onServerReady {
+            await onReady()
+            onServerReady = nil
         }
     }
     
     /**
-     * Stop MLX server
+     * Stop the MLX server
      */
     func stopServer() {
         guard let process = serverProcess else { return }
         
         logInfo(.ai, "🛑 Stopping MLX server")
-        
         process.terminate()
-        
-        // Give it a moment to shut down gracefully
-        sleep(1)
-        
-        // Force kill if still running
-        if process.isRunning {
-            process.interrupt()
-        }
-        
         serverProcess = nil
-        serverStatus = .stopped
         currentModel = nil
-        
-        logInfo(.ai, "✅ MLX server stopped")
-    }
-    
-    /**
-     * Restart server with same model
-     */
-    func restartServer() async throws {
-        guard let modelName = currentModel else {
-            throw MLXError.noModelSelected
-        }
-        
-        try await startServer(modelName: modelName)
+        serverStatus = .stopped
     }
     
     // MARK: - Queue Management
@@ -206,7 +184,6 @@ class MLXServerManager: ObservableObject {
      */
     func queueExtraction(_ familyId: String) {
         guard !serverStatus.isReady else {
-            // Server is ready, no need to queue
             return
         }
         
@@ -224,10 +201,26 @@ class MLXServerManager: ObservableObject {
         logInfo(.ai, "🗑️ Extraction queue cleared")
     }
     
-    // MARK: - Model Selection
+    /**
+     * Check if a server is already running
+     */
+    func checkExistingServer() async {
+        if await checkServerHealth() {
+            // Server is already running
+            if let lastModel = UserDefaults.standard.string(forKey: lastModelKey),
+               let model = MLXModel.model(named: lastModel) {
+                currentModel = lastModel
+                serverStatus = .ready(model: model.displayName)
+                logInfo(.ai, "✅ Found existing MLX server running with \(model.displayName)")
+            } else {
+                serverStatus = .ready(model: "Unknown Model")
+                logInfo(.ai, "✅ Found existing MLX server running")
+            }
+        }
+    }
     
     /**
-     * Get last used model or recommended default
+     * Get recommended default model based on system memory
      */
     func getDefaultModel() -> String {
         // Check for saved preference
@@ -237,9 +230,19 @@ class MLXServerManager: ObservableObject {
             return lastModel
         }
         
-        // Default to Phi-3.5-mini for fastest startup
-        logInfo(.ai, "🎯 Using default model: phi-3.5-mini")
-        return "phi-3.5-mini"
+        // Default based on memory
+        let memory = getSystemMemory() / (1024 * 1024 * 1024) // Convert to GB
+        
+        if memory >= 48 {
+            logInfo(.ai, "🎯 Using default model: qwen3-30b (48GB+ RAM)")
+            return "qwen3-30b"
+        } else if memory >= 24 {
+            logInfo(.ai, "🎯 Using default model: qwen2.5-14b (24-48GB RAM)")
+            return "qwen2.5-14b"
+        } else {
+            logInfo(.ai, "🎯 Using default model: llama-3.1-8b (<24GB RAM)")
+            return "llama-3.1-8b"
+        }
     }
     
     /**
@@ -263,31 +266,51 @@ class MLXServerManager: ObservableObject {
     // MARK: - Server Health
     
     /**
-     * Check if server is responding
+     * Check if server is responding (FIXED VERSION)
      */
     func checkServerHealth() async -> Bool {
-        let endpointsToTest = [
-            "/v1/chat/completions",
-            "/generate",
-            "/health"
-        ]
-        
-        for endpoint in endpointsToTest {
+        // Try a simple OPTIONS or HEAD request first
+        do {
+            guard let url = URL(string: "\(baseURL)/") else { return false }
+            
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 5.0
+            request.httpMethod = "HEAD"
+            
+            let (_, response) = try await URLSession.shared.data(for: request)
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                // Any response means server is running
+                logDebug(.ai, "✅ MLX server health check: HTTP \(httpResponse.statusCode)")
+                return httpResponse.statusCode > 0
+            }
+        } catch {
+            // Try a POST request with minimal body
             do {
-                guard let url = URL(string: "\(baseURL)\(endpoint)") else { continue }
+                guard let url = URL(string: "\(baseURL)/v1/chat/completions") else { return false }
                 
                 var request = URLRequest(url: url)
-                request.timeoutInterval = 2.0
-                request.httpMethod = "GET"
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.timeoutInterval = 5.0
+                
+                // Minimal valid request body
+                let body: [String: Any] = [
+                    "model": "test",
+                    "messages": [],
+                    "max_tokens": 1
+                ]
+                request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 
                 let (_, response) = try await URLSession.shared.data(for: request)
                 
-                if let httpResponse = response as? HTTPURLResponse,
-                   httpResponse.statusCode < 500 {
+                if let httpResponse = response as? HTTPURLResponse {
+                    // Even error responses mean server is running
+                    logDebug(.ai, "✅ MLX server responding: HTTP \(httpResponse.statusCode)")
                     return true
                 }
             } catch {
-                continue
+                logTrace(.ai, "❌ MLX server not responding: \(error.localizedDescription)")
             }
         }
         
@@ -338,11 +361,10 @@ class MLXServerManager: ObservableObject {
         logInfo(.ai, "🔧 MLX server process launched (PID: \(process.processIdentifier))")
     }
     
-    private func waitUntilReady(modelDisplayName: String) async {
-        let maxAttempts = 60 // 60 seconds max
-        let delayNanoseconds: UInt64 = 1_000_000_000 // 1 second
+    private func waitUntilReady(modelDisplayName: String, timeout: Int = 120) async {
+        let delayNanoseconds: UInt64 = 2_000_000_000 // 2 seconds between checks
         
-        for attempt in 1...maxAttempts {
+        for attempt in stride(from: 2, through: timeout, by: 2) {
             // Check if server is responding
             if await checkServerHealth() {
                 logInfo(.ai, "✅ Server ready after \(attempt) seconds")
@@ -357,47 +379,41 @@ class MLXServerManager: ObservableObject {
         }
         
         // Timeout
-        serverStatus = .error("Server failed to start within 60 seconds")
-        logError(.ai, "❌ MLX server failed to start within timeout")
-    }
-    
-    private func checkExistingServer() async {
-        if await checkServerHealth() {
-            // Server is already running, try to determine which model
-            serverStatus = .ready(model: "Unknown Model")
-            logInfo(.ai, "ℹ️ Found existing MLX server running")
-            
-            // Notify callback if server was already ready
-            if let callback = onServerReady {
-                await callback()
-            }
-        }
+        serverStatus = .error("Server startup timeout after \(timeout) seconds")
+        logError(.ai, "❌ MLX server startup timeout after \(timeout) seconds")
     }
     
     private func expandPath(_ path: String) -> String {
-        if path.hasPrefix("~") {
-            let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
-            return path.replacingOccurrences(of: "~", with: homeDir)
-        }
-        return path
+        return NSString(string: path).expandingTildeInPath
+    }
+    
+    private func getSystemMemory() -> UInt64 {
+        #if os(macOS)
+        var size = MemoryLayout<UInt64>.size
+        var memSize: UInt64 = 0
+        sysctlbyname("hw.memsize", &memSize, &size, nil, 0)
+        return memSize
+        #else
+        return 0
+        #endif
     }
 }
 
-// MARK: - Errors
+// MARK: - MLX Errors
 
 enum MLXError: LocalizedError {
     case invalidModel(String)
-    case noModelSelected
     case serverNotRunning
+    case startupFailed(String)
     
     var errorDescription: String? {
         switch self {
         case .invalidModel(let name):
-            return "Invalid model: \(name)"
-        case .noModelSelected:
-            return "No model selected"
+            return "Invalid MLX model: \(name)"
         case .serverNotRunning:
             return "MLX server is not running"
+        case .startupFailed(let reason):
+            return "MLX server startup failed: \(reason)"
         }
     }
 }

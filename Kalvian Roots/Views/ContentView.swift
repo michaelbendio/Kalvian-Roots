@@ -6,43 +6,74 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(JuuretApp.self) private var app
-    @State private var isSidebarExpanded = false
+    @State private var showingAISettings = false
     @State private var hasLoadedStartupFamily = false
     @State private var showingFatalError = false
 
     var body: some View {
         Group {
             #if os(macOS)
-            // macOS: Use NavigationSplitView with sidebar
-            NavigationSplitView(columnVisibility: .constant(isSidebarExpanded ? .all : .detailOnly)) {
+            // macOS: Use NavigationSplitView with sidebar (NO custom toolbar button)
+            NavigationSplitView {
                 SidebarView()
             } detail: {
                 JuuretView()
             }
             .environment(app)
             .navigationTitle("Kalvian Roots")
-            .toolbar {
-                ToolbarItem(placement: .navigation) {
-                    Button(action: { isSidebarExpanded.toggle() }) {
-                        Image(systemName: "sidebar.left")
-                            .help("Toggle Sidebar")
-                    }
-                }
-            }
+            // REMOVED: The toolbar with duplicate sidebar button
             #else
-            // iOS/iPadOS: Use NavigationStack for full-width layout
+            // iOS/iPadOS: Use NavigationStack with AI Settings sheet
             NavigationStack {
                 JuuretView()
                     .navigationTitle("Kalvian Roots")
                     .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button(action: {
+                                showingAISettings = true
+                            }) {
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(app.aiParsingService.isConfigured ? Color.green : Color.orange)
+                                        .frame(width: 8, height: 8)
+                                    Text("AI")
+                                        .font(.caption)
+                                }
+                            }
+                        }
+                        
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button(action: {
+                                showingAISettings = true
+                            }) {
+                                Image(systemName: "gearshape")
+                            }
+                        }
+                    }
             }
             .environment(app)
+            .sheet(isPresented: $showingAISettings) {
+                NavigationView {
+                    AISettingsView()
+                        .navigationTitle("AI Settings")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarTrailing) {
+                                Button("Done") {
+                                    showingAISettings = false
+                                }
+                            }
+                        }
+                }
+            }
             #endif
         }
         .task {
             await loadStartupFamily()
         }
     }
+
     
     /// Load the first cached family on startup
     private func loadStartupFamily() async {

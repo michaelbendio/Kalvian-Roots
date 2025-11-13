@@ -28,14 +28,12 @@ class AIServiceFactory {
         #if os(macOS) && arch(arm64)
         if MLXService.isAvailable() {
             do {
-                // Add all five chosen models
-                services.append(try MLXService.phi3_5_mini())
-                services.append(try MLXService.qwen2_5_14B())
+                // Add only the three chosen models
                 services.append(try MLXService.qwen3_30B())
+                services.append(try MLXService.qwen2_5_14B())
                 services.append(try MLXService.llama3_1_8B())
-                services.append(try MLXService.mistral_7B())
                 
-                logInfo(.ai, "✅ Added 5 MLX models to available services")
+                logInfo(.ai, "✅ Added 3 MLX models to available services")
             } catch {
                 logError(.ai, "❌ Failed to create MLX services: \(error)")
             }
@@ -57,15 +55,15 @@ class AIServiceFactory {
         if MLXService.isAvailable() {
             let memory = getSystemMemory() / (1024 * 1024 * 1024)
             
-            if memory >= 64 {
-                logInfo(.ai, "🖥️ Recommending Qwen3-30B (64GB+ RAM)")
+            if memory >= 48 {
+                logInfo(.ai, "🖥️ Recommending Qwen3-30B (48GB+ RAM)")
                 return "MLX Qwen3-30B (Local)"
-            } else if memory >= 32 {
-                logInfo(.ai, "🖥️ Recommending Qwen2.5-14B (32GB+ RAM)")
+            } else if memory >= 24 {
+                logInfo(.ai, "🖥️ Recommending Qwen2.5-14B (24-48GB RAM)")
                 return "MLX Qwen2.5-14B (Local)"
             } else {
-                logInfo(.ai, "🖥️ Recommending Phi-3.5-mini (fastest startup)")
-                return "MLX Phi-3.5-mini (Local)"
+                logInfo(.ai, "🖥️ Recommending Llama-3.1-8B (<24GB RAM)")
+                return "MLX Llama-3.1-8B (Local)"
             }
         }
         #endif
@@ -112,11 +110,9 @@ class AIServiceFactory {
     static func getMLXModelName(from serviceName: String) -> String? {
         // Map service names to MLX model identifiers
         let mapping: [String: String] = [
-            "MLX Phi-3.5-mini (Local)": "phi-3.5-mini",
-            "MLX Qwen2.5-14B (Local)": "qwen2.5-14b",
             "MLX Qwen3-30B (Local)": "qwen3-30b",
-            "MLX Llama-3.1-8B (Local)": "llama-3.1-8b",
-            "MLX Mistral-7B (Local)": "mistral-7b"
+            "MLX Qwen2.5-14B (Local)": "qwen2.5-14b",
+            "MLX Llama-3.1-8B (Local)": "llama-3.1-8b"
         ]
         
         return mapping[serviceName]
@@ -164,10 +160,13 @@ class AIServiceFactory {
             issues.append("No AI services are configured. Please add API keys or enable MLX.")
         }
         
-        // Check DeepSeek specifically
-        if let deepSeek = services.first(where: { $0.name == "DeepSeek" }),
-           !deepSeek.isConfigured {
-            issues.append("DeepSeek not configured - add API key in settings")
+        // Check for specific service issues
+        for service in services {
+            if !service.isConfigured {
+                if let setupInstructions = getSetupInstructions(for: service.name) {
+                    issues.append("\(service.name): \(setupInstructions)")
+                }
+            }
         }
         
         return issues
@@ -175,6 +174,9 @@ class AIServiceFactory {
     
     // MARK: - Private Helpers
     
+    /**
+     * Get system memory in bytes
+     */
     private static func getSystemMemory() -> UInt64 {
         #if os(macOS)
         var size = MemoryLayout<UInt64>.size
