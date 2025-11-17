@@ -51,6 +51,7 @@ struct JuuretView: View {
                             showingHiskiResult = true
                         }
                     )
+                    .id(family.familyId)
                 } else {
                     // NO FAMILY - Show empty state
                     emptyStateView

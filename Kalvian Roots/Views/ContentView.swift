@@ -17,7 +17,25 @@ struct ContentView: View {
             NavigationSplitView {
                 SidebarView()
             } detail: {
-                JuuretView()
+                switch app.detailRoute {
+                case .family(let id):
+                    JuuretView()
+                        .id(id)
+                        .overlay(
+                            Text(app.currentFamily?.familyId ?? "nil")
+                                .font(.caption)
+                                .padding(4)
+                                .background(Color.black.opacity(0.2))
+                                .cornerRadius(4),
+                            alignment: .topTrailing
+                        )
+                case .aiSettings:
+                    AISettingsView()
+                case .empty:
+                    Text("Select a family or open AI Settings")
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
             .environment(app)
             .navigationTitle("Kalvian Roots")
@@ -141,9 +159,30 @@ struct SidebarView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(cachedIds.prefix(5), id: \.self) { familyId in
-                        Text(familyId)
-                            .font(.caption)
-                            .foregroundStyle(app.currentFamily?.familyId == familyId ? .primary : .secondary)
+                        Button {
+                            // Try to load directly from cache for immediate UI switch
+                            if let cached = app.familyNetworkCache.getCachedNetwork(familyId: familyId) {
+                                // Updated: Use new helper and set route
+                                let before = app.currentFamily?.familyId ?? "nil"
+                                let network = cached
+                                app.showFamilyFromCache(network)
+                                let after = app.currentFamily?.familyId ?? "nil"
+                                logInfo(.ui, "🔄 currentFamily changed: \(before) -> \(after)")
+                                logInfo(.ui, "📦 Loaded cached family \(familyId) from Sidebar Cache (workflow activated)")
+                            } else {
+                                // Fallback: if not in cache (stale list), trigger extraction
+                                Task {
+                                    logInfo(.ui, "⚠️ Cache miss for \(familyId) from Sidebar, extracting…")
+                                    await app.extractFamily(familyId: familyId)
+                                }
+                            }
+                        } label: {
+                            Text(familyId)
+                                .font(.caption)
+                                .foregroundStyle(app.currentFamily?.familyId == familyId ? .primary : .secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
                     }
                     
                     if cachedIds.count > 5 {
@@ -172,8 +211,8 @@ struct SidebarView: View {
             }
             
             Section {
-                NavigationLink("AI Settings") {
-                    AISettingsView()
+                Button("AI Settings") {
+                    app.detailRoute = .aiSettings
                 }
             }
         }
@@ -185,3 +224,4 @@ struct SidebarView: View {
 #Preview {
     ContentView()
 }
+

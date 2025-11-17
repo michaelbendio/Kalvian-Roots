@@ -967,29 +967,27 @@ class JuuretApp {
      * Switch to a different AI service
      */
     func switchAIService(to serviceName: String) async throws {
-        func switchAIService(to serviceName: String) async throws {
-            logInfo(.app, "🔄 Switching AI service to: \(serviceName)")
-            
-            // If switching to an MLX service, ensure server is started with correct model
-            if AIServiceFactory.isMLXService(serviceName) {
-                guard let modelName = AIServiceFactory.getMLXModelName(from: serviceName) else {
-                    throw JuuretApp.ExtractionError.parsingFailed("Invalid MLX model name")
-                }
-                
-                // Check if we need to switch models
-                if mlxServerManager.currentModel != modelName {
-                    logInfo(.app, "🔄 Switching MLX model to: \(modelName)")
-                    try await mlxServerManager.switchModel(to: modelName)
-                }
+        logInfo(.app, "🔄 Switching AI service to: \(serviceName)")
+        
+        // If switching to an MLX service, ensure server is started with correct model
+        if AIServiceFactory.isMLXService(serviceName) {
+            guard let modelName = AIServiceFactory.getMLXModelName(from: serviceName) else {
+                throw JuuretApp.ExtractionError.parsingFailed("Invalid MLX model name")
             }
             
-            // Switch the AI service
-            try await aiParsingService.switchService(to: serviceName)
-            
-            logInfo(.app, "✅ Switched to AI service: \(serviceName)")
+            // Check if we need to switch models
+            if mlxServerManager.currentModel != modelName {
+                logInfo(.app, "🔄 Switching MLX model to: \(modelName)")
+                try await mlxServerManager.switchModel(to: modelName)
+            }
         }
+        
+        // Switch the AI service
+        try await aiParsingService.switchService(to: serviceName)
+        
+        logInfo(.app, "✅ Switched to AI service: \(serviceName)")
     }
-    
+
     /**
      * Configure the current AI service
      */

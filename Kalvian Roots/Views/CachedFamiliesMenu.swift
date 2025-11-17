@@ -159,8 +159,16 @@ struct CachedFamiliesMenu: View {
                                         isCurrentFamily: app.currentFamily?.familyId == familyId,
                                         onLoad: {
                                             showingPopover = false
-                                            Task {
-                                                await app.extractFamily(familyId: familyId)
+                                            // Try to load directly from cache for immediate UI switch
+                                            if let cached = app.familyNetworkCache.getCachedNetwork(familyId: familyId) {
+                                                app.currentFamily = cached.mainFamily
+                                                logInfo(.ui, "📦 Loaded cached family \(familyId) from AI Settings")
+                                            } else {
+                                                // Fallback: if not in cache (stale list), trigger extraction
+                                                Task {
+                                                    logInfo(.ui, "⚠️ Cache miss for \(familyId), extracting…")
+                                                    await app.extractFamily(familyId: familyId)
+                                                }
                                             }
                                         },
                                         onRegenerate: {
@@ -347,3 +355,4 @@ private struct FamilyRow: View {
         }
     }
 }
+
