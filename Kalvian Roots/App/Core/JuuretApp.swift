@@ -41,6 +41,15 @@ class JuuretApp {
     var errorMessage: String?
     var extractionProgress: ExtractionProgress = .idle
     
+    // MARK: - Detail Routing (macOS NavigationSplitView)
+    enum DetailRoute: Equatable {
+        case family(id: String)
+        case aiSettings
+        case empty
+    }
+
+    /// Current route for the macOS detail pane
+    var detailRoute: DetailRoute = .empty
     // MARK: - Navigation State
     var navigationHistory: [String] = []
     var historyIndex: Int = -1  //Current position in navigation history
@@ -139,6 +148,30 @@ class JuuretApp {
         logInfo(.app, "🏠 Home family set to: \(normalizedId)")
     }
 
+    // MARK: - Detail Routing Helpers
+
+    /// Activate a cached network and drive the detail route
+    func showFamilyFromCache(_ network: FamilyNetwork) {
+        let familyId = network.mainFamily.familyId
+        let before = self.currentFamily?.familyId ?? "nil"
+
+        // Set current family and activate workflow with cached network
+        self.currentFamily = network.mainFamily
+        self.familyNetworkWorkflow = FamilyNetworkWorkflow(
+            nuclearFamily: network.mainFamily,
+            familyResolver: self.familyResolver,
+            resolveCrossReferences: false
+        )
+        self.familyNetworkWorkflow?.activateCachedNetwork(network)
+
+        // Drive the detail route so the right pane updates deterministically
+        self.detailRoute = .family(id: familyId)
+
+        let after = self.currentFamily?.familyId ?? "nil"
+        logInfo(.ui, "🔄 currentFamily changed: \(before) -> \(after)")
+        logInfo(.ui, "📦 Loaded cached family \(familyId) (workflow activated via helper)")
+    }
+    
     // MARK: - Sequential File Navigation (Previous/Next in file order)
 
     /**
@@ -350,6 +383,15 @@ class JuuretApp {
         
         logInfo(.app, "🎉 JuuretApp initialization complete")
         logDebug(.app, "Ready state: \(self.isReady)")
+        
+        // Initialize detail route to the first cached family if available (macOS UI hint)
+        if let firstCached = familyNetworkCache.getFirstCachedFamilyId(),
+           let cached = familyNetworkCache.getCachedNetwork(familyId: firstCached) {
+            // Do not mutate currentFamily here; only set route so ContentView can decide
+            self.detailRoute = .family(id: cached.mainFamily.familyId)
+        } else {
+            self.detailRoute = .empty
+        }
     }
     
     // MARK: - File Ready Coordination
