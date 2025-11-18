@@ -137,10 +137,11 @@ class AIServiceFactory {
             return """
                 MLX requires:
                 1. Apple Silicon Mac
-                2. MLX installed: pip install mlx-lm
-                3. Models downloaded to ~/.kalvian_roots_mlx/models/
-                
-                Server will auto-start when you select a model.
+                2. MLX installed: pip install -U mlx-lm
+                3. MLX-converted models in ~/.kalvian_roots_mlx/models/ (use: mlx_lm.convert)
+                   Examples: Llama-3.1-8B-Instruct-mlx, Qwen2.5-14B-Instruct-mlx, Qwen3-30B-A3B-4bit-mlx
+
+                The server will auto-start when you select a model.
                 """
         }
         
@@ -188,3 +189,4 @@ class AIServiceFactory {
         #endif
     }
 }
+

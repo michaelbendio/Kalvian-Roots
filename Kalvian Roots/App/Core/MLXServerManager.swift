@@ -71,17 +71,17 @@ class MLXServerManager: ObservableObject {
             MLXModel(
                 name: "qwen3-30b",
                 displayName: "Qwen3-30B",
-                path: "Qwen3-30B-A3B-4bit"
+                path: "Qwen3-30B-A3B-4bit-mlx"
             ),
             MLXModel(
                 name: "qwen2.5-14b",
                 displayName: "Qwen2.5-14B",
-                path: "Qwen2.5-14B-Instruct"
+                path: "Qwen2.5-14B-Instruct-mlx"
             ),
             MLXModel(
                 name: "llama-3.1-8b",
                 displayName: "Llama-3.1-8B",
-                path: "Llama-3.1-8B-Instruct"
+                path: "Llama-3.1-8B-Instruct-mlx"
             )
         ]
         
@@ -132,6 +132,23 @@ class MLXServerManager: ObservableObject {
         
         // Build full model path
         let modelPath = expandPath("\(modelsBasePath)/\(model.path)")
+        
+        // Validate local model directory exists and is non-empty
+        let fm = FileManager.default
+        var isDir: ObjCBool = false
+        let exists = fm.fileExists(atPath: modelPath, isDirectory: &isDir)
+        if !exists || !isDir.boolValue {
+            serverStatus = .error("Local model directory not found: \(modelPath)")
+            logError(.ai, "❌ Local MLX model directory not found: \(modelPath)")
+            throw MLXError.startupFailed("Local model directory not found: \(modelPath)")
+        }
+        if let contents = try? fm.contentsOfDirectory(atPath: modelPath), contents.isEmpty {
+            serverStatus = .error("Local model directory is empty: \(modelPath)")
+            logError(.ai, "❌ Local MLX model directory is empty: \(modelPath)")
+            throw MLXError.startupFailed("Local model directory is empty: \(modelPath)")
+        }
+        
+        logInfo(.ai, "📂 Using local MLX model path: \(modelPath)")
         
         // Launch server process
         do {
