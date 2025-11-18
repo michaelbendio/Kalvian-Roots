@@ -14,6 +14,34 @@ import Foundation
  * Provides family parsing using local models optimized for genealogical text
  */
 class MLXService: AIService {
+    #if DEBUG
+    /// Enable to write request/response payloads to temporary files for inspection
+    static var debugLoggingEnabled: Bool = false
+    #endif
+
+    #if DEBUG
+    /// Writes data to a temporary file and logs the path; returns the URL if successful
+    @discardableResult
+    private static func writeTempFile(named name: String, data: Data) -> URL? {
+        let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(name)
+        do {
+            try data.write(to: url)
+            print("[MLXService] Wrote temp file:", url.path)
+            return url
+        } catch {
+            print("[MLXService] Failed to write temp file \(name):", error.localizedDescription)
+            return nil
+        }
+    }
+
+    /// Writes string to a temporary file using UTF-8 encoding
+    @discardableResult
+    private static func writeTempFile(named name: String, text: String) -> URL? {
+        guard let data = text.data(using: .utf8) else { return nil }
+        return writeTempFile(named: name, data: data)
+    }
+    #endif
+
     let name: String
     private let modelName: String
     private let modelPath: String
@@ -207,33 +235,62 @@ class MLXService: AIService {
     // MARK: - MLX Server Communication
     
     private func isMLXServerRunning() async -> Bool {
-        let endpointsToTest = [
-            "/v1/chat/completions",
-            "/generate",
-            "/health"
-        ]
+        // First try a quick HEAD on root
+        do {
+            if let url = URL(string: "\(baseURL)/") {
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 5.0
+                request.httpMethod = "HEAD"
+                let (_, response) = try await URLSession.shared.data(for: request)
+                if let http = response as? HTTPURLResponse {
+                    logDebug(.ai, "✅ MLX server HEAD / responded: HTTP \(http.statusCode)")
+                    return http.statusCode > 0
+                }
+            }
+        } catch {
+            // ignore and try next probe
+        }
         
-        for endpoint in endpointsToTest {
-            do {
-                let url = URL(string: "\(baseURL)\(endpoint)")!
+        // Try GET /health (commonly exposed by mlx_lm.server)
+        do {
+            if let url = URL(string: "\(baseURL)/health") {
                 var request = URLRequest(url: url)
                 request.timeoutInterval = 5.0
                 request.httpMethod = "GET"
-                
                 let (_, response) = try await URLSession.shared.data(for: request)
-                
-                if let httpResponse = response as? HTTPURLResponse,
-                   httpResponse.statusCode < 500 {
-                    logDebug(.ai, "✅ MLX server responding at \(endpoint)")
-                    return true
+                if let http = response as? HTTPURLResponse {
+                    logDebug(.ai, "✅ MLX server GET /health responded: HTTP \(http.statusCode)")
+                    return http.statusCode > 0
                 }
-            } catch {
-                // This endpoint didn't work, try the next one
-                continue
             }
+        } catch {
+            // ignore and try next probe
         }
         
-        logWarn(.ai, "⚠️ MLX server not responding at any endpoint")
+        // Final fallback: POST a minimal body to /v1/chat/completions and
+        // consider any HTTP response as proof that the server is reachable
+        do {
+            if let url = URL(string: "\(baseURL)/v1/chat/completions") {
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.timeoutInterval = 5.0
+                let minimalBody: [String: Any] = [
+                    "model": NSString(string: modelPath).expandingTildeInPath,
+                    "messages": [],
+                    "max_tokens": 1
+                ]
+                request.httpBody = try JSONSerialization.data(withJSONObject: minimalBody)
+                let (_, response) = try await URLSession.shared.data(for: request)
+                if let http = response as? HTTPURLResponse {
+                    logDebug(.ai, "✅ MLX server POST /v1/chat/completions responded: HTTP \(http.statusCode)")
+                    return true
+                }
+            }
+        } catch {
+            logTrace(.ai, "❌ MLX server not responding to probes: \(error.localizedDescription)")
+        }
+        
         return false
     }
     
@@ -249,7 +306,7 @@ class MLXService: AIService {
         let userPrompt = createPrompt(familyId: familyId, familyText: familyText)
         
         let requestBody: [String: Any] = [
-            "model": modelName,
+            "model": NSString(string: modelPath).expandingTildeInPath,
             "messages": [
                 ["role": "system", "content": systemPrompt],
                 ["role": "user", "content": userPrompt]
@@ -267,7 +324,25 @@ class MLXService: AIService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
         request.timeoutInterval = 120.0 // 2 minutes for complex families
-        
+
+        #if DEBUG
+        if MLXService.debugLoggingEnabled {
+            if let body = request.httpBody {
+                _ = MLXService.writeTempFile(named: "mlx_request_body.json", data: body)
+            }
+            let headers = request.allHTTPHeaderFields ?? [:]
+            let meta = [
+                "url": request.url?.absoluteString ?? "<nil>",
+                "method": request.httpMethod ?? "<nil>",
+                "timeout": String(request.timeoutInterval),
+                "headers": headers
+            ] as [String : Any]
+            if let metaData = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted]) {
+                _ = MLXService.writeTempFile(named: "mlx_request_meta.json", data: metaData)
+            }
+        }
+        #endif
+
         return request
     }
     
@@ -356,6 +431,26 @@ class MLXService: AIService {
     
     private func sendMLXRequest(_ request: URLRequest) async throws -> Data {
         let (data, response) = try await URLSession.shared.data(for: request)
+
+        #if DEBUG
+        if MLXService.debugLoggingEnabled {
+            if let http = response as? HTTPURLResponse {
+                let headers = http.allHeaderFields
+                let meta: [String: Any] = [
+                    "statusCode": http.statusCode,
+                    "url": http.url?.absoluteString ?? "<nil>",
+                    "headers": headers
+                ]
+                if let metaData = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted]) {
+                    _ = MLXService.writeTempFile(named: "mlx_response_meta.json", data: metaData)
+                }
+            }
+            _ = MLXService.writeTempFile(named: "mlx_response_raw.bin", data: data)
+            if let asText = String(data: data, encoding: .utf8) {
+                _ = MLXService.writeTempFile(named: "mlx_response_raw.txt", text: asText)
+            }
+        }
+        #endif
         
         guard let httpResponse = response as? HTTPURLResponse else {
             throw AIServiceError.networkError(NSError(domain: "MLXService", code: -1))
@@ -371,6 +466,12 @@ class MLXService: AIService {
     }
     
     private func validateCustomMLXResponse(_ data: Data) throws -> String {
+        #if DEBUG
+        if MLXService.debugLoggingEnabled {
+            _ = MLXService.writeTempFile(named: "mlx_envelope_raw.json", data: data)
+        }
+        #endif
+
         // Parse OpenAI-compatible response
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = json["choices"] as? [[String: Any]],
@@ -391,8 +492,15 @@ class MLXService: AIService {
               let _ = try? JSONSerialization.jsonObject(with: jsonData) else {
             throw AIServiceError.invalidResponse("Response is not valid JSON")
         }
+
+        #if DEBUG
+        if MLXService.debugLoggingEnabled {
+            _ = MLXService.writeTempFile(named: "mlx_cleaned.json", text: cleaned)
+        }
+        #endif
         
         logTrace(.ai, "✅ Validated JSON response from MLX")
         return cleaned
     }
 }
+
