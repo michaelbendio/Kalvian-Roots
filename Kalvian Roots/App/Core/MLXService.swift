@@ -389,11 +389,11 @@ class MLXService: AIService {
                   "noteMarkers": []
                 }
               ],
-              "childrenDiedInfancy": null,
+              "childrenDiedInInfancy": "number or null",
               "coupleNotes": []
             }
           ],
-          "notes": ["array of family notes"],
+          "notes": ["array of family notes"],/
           "noteDefinitions": {"*": "note text"}
         }
 
