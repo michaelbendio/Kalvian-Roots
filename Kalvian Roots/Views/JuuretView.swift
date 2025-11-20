@@ -6,9 +6,6 @@
 //
 
 import SwiftUI
-#if os(iOS)
-import UniformTypeIdentifiers
-#endif
 
 struct JuuretView: View {
     @Environment(JuuretApp.self) private var juuretApp
@@ -74,22 +71,6 @@ struct JuuretView: View {
                 CachedFamiliesMenu()
             }
         }
-        #elseif os(iOS) || os(visionOS)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                HStack(spacing: 4) {
-                    // AI READY INDICATOR - Green dot when AI is ready
-                    Circle()
-                        .fill(isAIReady ? Color.green : Color.clear)
-                        .frame(width: 6, height: 6)
-                        .opacity(isAIReady ? 1.0 : 0.0)
-                        .animation(.easeInOut(duration: 0.3), value: isAIReady)
-                    
-                    CachedFamiliesMenu()
-                }
-            }
-        }
-        .setupHiskiSafariHost()
         #endif
         
         // Citation alert
@@ -169,13 +150,9 @@ struct JuuretView: View {
     // MARK: - Helper Methods
     
     private func copyToClipboard(_ text: String) {
-        #if os(macOS)
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
-        #elseif os(iOS)
-        UIPasteboard.general.string = text
-        #endif
     }
     
     #if os(macOS)

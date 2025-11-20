@@ -8,9 +8,6 @@
 //
 
 import Foundation
-#if os(iOS)
-import UIKit
-#endif
 
 /**
  * Manager for platform-specific AI service recommendations
@@ -67,14 +64,9 @@ class PlatformAwareServiceManager {
             #else
             return "Intel Mac (Cloud only)"
             #endif
-        #elseif os(iOS)
-            if UIDevice.current.userInterfaceIdiom == .pad {
-                return "iPad (Cloud only)"
-            } else {
-                return "iPhone (Cloud only)"
-            }
         #else
         return "Unknown Platform"
         #endif
     }
 }
+

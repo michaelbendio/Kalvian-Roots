@@ -10,8 +10,6 @@ import SwiftUI
 
 #if os(macOS)
 import AppKit
-#elseif os(iOS)
-import UIKit
 #endif
 
 /**
@@ -289,17 +287,11 @@ class JuuretApp {
         let localAIParsingService: AIParsingService
 
         // FIXED: Proper platform detection for all Apple devices
-        #if os(macOS) && arch(arm64)
-            // Apple Silicon Mac - use enhanced service with MLX support
-            logInfo(.ai, "🧠 Initializing AI services with MLX support (Apple Silicon Mac)")
+        #if os(macOS)
+            // macOS - use enhanced service with MLX support
+            logInfo(.ai, "🧠 Initializing AI services with MLX support (macOS)")
             localAIParsingService = AIParsingService()
             logInfo(.ai, "✅ Enhanced AI parsing service initialized with MLX support")
-        #else
-            // iOS/iPadOS/Intel Mac - use cloud services only
-            let platform = Self.detectPlatform()
-            logInfo(.ai, "🧠 Initializing AI services for \(platform)")
-            localAIParsingService = AIParsingService()
-            logInfo(.ai, "✅ AI parsing service initialized (cloud services only)")
         #endif
 
         logDebug(.ai, "Available services: \(localAIParsingService.availableServiceNames.joined(separator: ", "))")
@@ -366,7 +358,7 @@ class JuuretApp {
         }
         
         // Auto-start last used MLX model on launch (if on macOS)
-        #if os(macOS) && arch(arm64)
+        #if os(macOS)
         if MLXService.isAvailable() {
             Task {
                 let defaultModel = mlxServerManager.getDefaultModel()
@@ -416,38 +408,7 @@ class JuuretApp {
         }
     }
     
-    // MARK: - Platform Detection Helper
-    
-    private static func detectPlatform() -> String {
-#if os(iOS)
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            // Check if it's an Apple Silicon iPad
-            var systemInfo = utsname()
-            uname(&systemInfo)
-            let machineMirror = Mirror(reflecting: systemInfo.machine)
-            let identifier = machineMirror.children.reduce("") { identifier, element in
-                guard let value = element.value as? Int8, value != 0 else { return identifier }
-                return identifier + String(UnicodeScalar(UInt8(value)))
-            }
-            
-            // iPad models with M-series chips
-            let mSeriesIPads = ["iPad14,", "iPad15,", "iPad16,"]
-            let hasAppleSilicon = mSeriesIPads.contains { identifier.hasPrefix($0) }
-            
-            return hasAppleSilicon ? "iPadOS (Apple Silicon)" : "iPadOS"
-        } else {
-            return "iOS"
-        }
-#elseif os(macOS)
-#if arch(x86_64)
-        return "macOS (Intel)"
-#else
-        return "macOS (Apple Silicon)"
-#endif
-#else
-        return "Unknown Platform"
-#endif
-    }
+    // Removed detectPlatform() function as per instructions
     
     func closeHiskiWebViews() {
         #if os(macOS)

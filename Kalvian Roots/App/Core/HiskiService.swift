@@ -9,8 +9,6 @@
 //
 
 import Foundation
-import SwiftUI
-import Combine
 #if os(macOS)
 import AppKit
 import WebKit
@@ -141,43 +139,6 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
             citationContinuation?.resume(throwing: error)
             citationContinuation = nil
         }
-    }
-}
-#elseif os(iOS)
-import SafariServices
-
-@MainActor
-class HiskiWebViewManager {
-    static let shared = HiskiWebViewManager()
-    private var presentingViewController: UIViewController?
-    
-    private init() {}
-    
-    func setPresentingViewController(_ viewController: UIViewController) {
-        self.presentingViewController = viewController
-    }
-    
-    func loadRecordAndExtractCitation(url: URL) async throws -> String {
-        // On iOS, we can't extract from Safari, so just open it and return the URL
-        UIApplication.shared.open(url, options: [:]) { success in
-            if success {
-                logInfo(.app, "📱 Opened Hiski record in Safari")
-            } else {
-                logError(.app, "Failed to open record URL in Safari")
-            }
-        }
-        
-        // For iOS, we'll need manual extraction
-        // Return a placeholder that indicates manual extraction needed
-        throw HiskiServiceError.citationExtractionFailed
-    }
-    
-    func closeRecordWindow() {
-        // Safari manages its own tabs - nothing to do
-    }
-    
-    func closeAllWindows() {
-        // Safari manages its own tabs - nothing to do
     }
 }
 #endif
@@ -562,3 +523,4 @@ class HiskiService {
         return cleaned
     }
 }
+

@@ -1,3 +1,4 @@
+#if false // iOS UI tests disabled
 //
 //  Kalvian_RootsUITestsLaunchTests.swift
 //  Kalvian RootsUITests
@@ -31,3 +32,4 @@ final class Kalvian_RootsUITestsLaunchTests: XCTestCase {
         add(attachment)
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if false // iOS UI tests disabled
 //
 //  Kalvian_RootsUITests.swift
 //  Kalvian RootsUITests
@@ -39,3 +40,4 @@ final class Kalvian_RootsUITests: XCTestCase {
         }
     }
 }
+#endif

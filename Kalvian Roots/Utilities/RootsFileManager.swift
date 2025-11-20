@@ -6,10 +6,9 @@
 //
 
 import Foundation
-import SwiftUI
-import UniformTypeIdentifiers
 
 #if os(macOS)
+import UniformTypeIdentifiers
 import AppKit
 #endif
 
@@ -38,16 +37,10 @@ enum RootsFileManagerError: LocalizedError {
 @Observable
 final class RootsFileManager {
 
-    // MARK: - Public state (iOS UI can set these)
-    #if os(iOS)
-    var currentFileURL: URL?
-    var currentFileContent: String?
-    var isFileLoaded: Bool = false
-    #else
+    // MARK: - Public state (macOS only)
     private(set) var currentFileURL: URL?
     private(set) var currentFileContent: String?
     private(set) var isFileLoaded: Bool = false
-    #endif
 
     var errorMessage: String?
 
@@ -199,67 +192,6 @@ final class RootsFileManager {
         
         if response == .OK, let url = panel.url {
             _ = try await loadFile(from: url)
-        }
-    }
-    #endif
-
-    // MARK: - iOS File Loading
-    
-    #if os(iOS)
-    /// iOS-specific file loading (called from DocumentPicker)
-    func loadFileFromPicker(_ url: URL) async throws -> String {
-        logInfo(.file, "📱 iOS: Loading file from picker")
-        
-        guard let canonicalURL = getCanonicalFileURL() else {
-            throw RootsFileManagerError.iCloudNotAvailable
-        }
-        
-        // On iOS, the picker might give us a security-scoped URL
-        // We need to access it and validate it's the right file
-        let selectedPath = url.standardizedFileURL.path
-        let canonicalPath = canonicalURL.standardizedFileURL.path
-        
-        // Check if paths match (they might not due to security scoping)
-        if selectedPath != canonicalPath {
-            logWarn(.file, """
-                ⚠️ Path mismatch (may be OK on iOS):
-                Selected: \(selectedPath)
-                Canonical: \(canonicalPath)
-                """)
-        }
-        
-        // Validate filename at least
-        guard url.lastPathComponent == defaultFileName else {
-            throw RootsFileManagerError.wrongFile("""
-                Expected: \(canonicalURL.path)
-                Selected: \(url.path)
-                
-                Please use the file from the Kalvian Roots folder in iCloud Drive.
-                """)
-        }
-        
-        do {
-            let content = try String(contentsOf: url, encoding: .utf8)
-            
-            // Validate canonical marker
-            guard validateCanonicalMarker(in: content) else {
-                throw RootsFileManagerError.loadFailed("""
-                    FATAL: Missing canonical marker.
-                    The first line must be "canonical"
-                    """)
-            }
-            
-            await MainActor.run {
-                self.currentFileURL = url
-                self.currentFileContent = content
-                self.isFileLoaded = true
-                self.errorMessage = nil
-            }
-            addToRecentFiles(url)
-            logInfo(.file, "✅ File loaded via iOS picker")
-            return content
-        } catch {
-            throw RootsFileManagerError.loadFailed("Failed to read file: \(error.localizedDescription)")
         }
     }
     #endif
@@ -459,3 +391,4 @@ final class RootsFileManager {
         }
     }
 }
+

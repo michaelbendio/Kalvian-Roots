@@ -1,3 +1,4 @@
+#if false // iOS support removed
 //
 //  SafariViewHost.swift
 //  Kalvian Roots
@@ -53,4 +54,5 @@ extension View {
         self.modifier(SafariHostModifier())
     }
 }
+#endif
 #endif
