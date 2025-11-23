@@ -1,15 +1,17 @@
 import Vapor
 
-struct RequestIDMiddleware: Middleware {
-    private let key = "X-Request-Id"
+struct RequestIDMiddleware: AsyncMiddleware {
+    private let headerName = "X-Request-Id"
 
-    func respond(to req: Request, chainingTo next: Responder) async throws -> Response {
-        let id = req.headers.first(name: key) ?? UUID().uuidString
-        req.headers.replaceOrAdd(name: key, value: id)
-        req.logger[metadataKey: "request_id"] = .string(id)
+    func respond(to request: Request, chainingTo next: AsyncResponder) async throws -> Response {
+        // Generate or reuse a request ID
+        let id = request.headers.first(name: headerName) ?? UUID().uuidString
+        request.headers.replaceOrAdd(name: headerName, value: id)
+        request.logger[metadataKey: "request_id"] = .string(id)
 
-        let res = try await next.respond(to: req)
-        res.headers.replaceOrAdd(name: key, value: id)
-        return res
+        // Call the next responder in the chain
+        let response = try await next.respond(to: request)
+        response.headers.replaceOrAdd(name: headerName, value: id)
+        return response
     }
 }

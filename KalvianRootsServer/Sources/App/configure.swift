@@ -1,4 +1,5 @@
 import Vapor
+import Foundation
 
 public func configure(_ app: Application) throws {
     // Localhost binding
@@ -16,6 +17,15 @@ public func configure(_ app: Application) throws {
     // Shared in-memory stores
     app.storage[InMemoryJobStore.Key.self] = InMemoryJobStore()
     app.storage[InMemoryLockStore.Key.self] = InMemoryLockStore()
+
+    // ROOTS_FILE wiring
+    if let rootsPath = Environment.get("ROOTS_FILE"), !rootsPath.isEmpty {
+        app.logger.info("ROOTS_FILE set to: \(rootsPath)")
+        app.roots = RootsEnvironment(rootsPath: rootsPath)
+    } else {
+        app.logger.warning("ROOTS_FILE is not set; server will run without roots data.")
+        app.roots = nil
+    }
 
     try routes(app, apiGroup: api)
 }

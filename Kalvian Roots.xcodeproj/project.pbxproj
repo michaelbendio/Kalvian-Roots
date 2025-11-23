@@ -6,12 +6,6 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		09CB18602E2170CD0083983B /* FoundationModels.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09CB185F2E2170CD0083983B /* FoundationModels.framework */; };
-		09CB18612E21791B0083983B /* FoundationModels.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09CB185F2E2170CD0083983B /* FoundationModels.framework */; };
-		09CB18622E2179350083983B /* FoundationModels.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09CB185F2E2170CD0083983B /* FoundationModels.framework */; };
-/* End PBXBuildFile section */
-
 /* Begin PBXContainerItemProxy section */
 		09CB183C2E216DB20083983B /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -93,7 +87,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				09CB18602E2170CD0083983B /* FoundationModels.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -101,7 +94,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				09CB18622E2179350083983B /* FoundationModels.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -109,7 +101,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				09CB18612E21791B0083983B /* FoundationModels.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -473,14 +464,13 @@
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTED_PLATFORMS = macosx;
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
 				XROS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Debug;
@@ -520,14 +510,13 @@
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTED_PLATFORMS = macosx;
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
 				XROS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Release;

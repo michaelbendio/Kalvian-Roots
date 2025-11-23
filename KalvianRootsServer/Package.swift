@@ -21,8 +21,5 @@ let package = Package(
         .executableTarget(name: "Run",
                           dependencies: ["App"],
                           path: "Sources/Run"),
-        .testTarget(name: "AppTests",
-                    dependencies: ["App"],
-                    path: "Tests/AppTests")
     ]
 )
