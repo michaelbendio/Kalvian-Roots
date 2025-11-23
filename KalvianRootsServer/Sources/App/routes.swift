@@ -124,6 +124,18 @@ public func routes(_ app: Application, apiGroup: RoutesBuilder) throws {
             familyCount: nil // Will fill in later when Roots parser is integrated
         )
     }
+
+    // MARK: - Families
+
+    let families = apiGroup.grouped("families")
+    families.get(":id") { req async throws -> RootsFamilyLookupService.FamilyResponse in
+        guard let familyID = req.parameters.get("id") else {
+            throw Abort(.badRequest, reason: "Family ID is required.")
+        }
+
+        let service = RootsFamilyLookupService(app: req.application)
+        return try await service.findFamily(id: familyID)
+    }
 }
 
 // MARK: - Response Models
