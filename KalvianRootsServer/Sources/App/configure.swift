@@ -2,11 +2,15 @@ import Vapor
 import Foundation
 
 public func configure(_ app: Application) throws {
+    // Setup logging first
+    app.logger.logLevel = .debug
+
     // Localhost binding
     app.http.server.configuration.hostname = "127.0.0.1"
     app.http.server.configuration.port = 8081
 
-    // Middlewares
+    // Middleware
+    app.middleware.use(FileMiddleware(publicDirectory: app.directory.publicDirectory))
     app.middleware.use(RequestIDMiddleware())
     app.middleware.use(ErrorEnvelopeMiddleware())
 
@@ -26,6 +30,9 @@ public func configure(_ app: Application) throws {
         app.logger.warning("ROOTS_FILE is not set; server will run without roots data.")
         app.roots = nil
     }
+
+    app.logger.logLevel = .debug
+    app.logger.info("KalvianRootsServer starting on port \(app.http.server.configuration.port)")
 
     try routes(app, apiGroup: api)
 }
