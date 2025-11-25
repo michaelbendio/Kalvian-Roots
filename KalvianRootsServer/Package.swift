@@ -1,4 +1,4 @@
-// swift-tools-version:5.10
+// swift-tools-version: 5.10
 import PackageDescription
 
 let package = Package(
@@ -10,16 +10,22 @@ let package = Package(
         .executable(name: "Run", targets: ["Run"])
     ],
     dependencies: [
-        .package(url: "https://github.com/vapor/vapor.git", from: "4.90.0")
+        .package(url: "https://github.com/vapor/vapor.git", from: "4.90.0"),
+        .package(path: "../KalvianRootsCore")
     ],
     targets: [
-        .target(name: "App",
-                dependencies: [
-                    .product(name: "Vapor", package: "vapor")
-                ],
-                path: "Sources/App"),
-        .executableTarget(name: "Run",
-                          dependencies: ["App"],
-                          path: "Sources/Run"),
+        .target(
+            name: "KalvianRootsServer",
+            dependencies: [
+                .product(name: "KalvianRootsCore", package: "KalvianRootsCore"),
+                .product(name: "Vapor", package: "vapor")
+            ],
+            path: "Sources/App"
+        ),
+        .executableTarget(
+            name: "Run",
+            dependencies: ["KalvianRootsServer"],
+            path: "Sources/Run"
+        )
     ]
 )

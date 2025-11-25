@@ -1,5 +1,6 @@
 import Foundation
 import Vapor
+import KalvianRootsCore
 
 struct RootsFamilyLookupService {
     let app: Application

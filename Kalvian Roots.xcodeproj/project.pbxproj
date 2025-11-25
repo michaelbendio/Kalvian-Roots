@@ -24,6 +24,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0915DB0C2ED5256C0091FA38 /* Kalvian Roots.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = "Kalvian Roots.xcodeproj"; sourceTree = "<group>"; };
+		0915DB0F2ED526ED0091FA38 /* KalvianRootsServer */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = KalvianRootsServer; sourceTree = "<group>"; };
+		0915DB102ED527310091FA38 /* KalvianRootsCore */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = KalvianRootsCore; sourceTree = "<group>"; };
 		09CB182E2E216DB10083983B /* Kalvian Roots.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Kalvian Roots.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		09CB183B2E216DB20083983B /* Kalvian RootsTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Kalvian RootsTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		09CB18452E216DB20083983B /* Kalvian RootsUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Kalvian RootsUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -107,9 +110,17 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		0915DB0D2ED5256C0091FA38 /* Products */ = {
+			isa = PBXGroup;
+			name = Products;
+			sourceTree = "<group>";
+		};
 		09CB18252E216DB10083983B = {
 			isa = PBXGroup;
 			children = (
+				0915DB102ED527310091FA38 /* KalvianRootsCore */,
+				0915DB0F2ED526ED0091FA38 /* KalvianRootsServer */,
+				0915DB0C2ED5256C0091FA38 /* Kalvian Roots.xcodeproj */,
 				09CB18302E216DB10083983B /* Kalvian Roots */,
 				09CB183E2E216DB20083983B /* Kalvian RootsTests */,
 				09CB18482E216DB20083983B /* Kalvian RootsUITests */,
@@ -242,6 +253,12 @@
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 09CB182F2E216DB10083983B /* Products */;
 			projectDirPath = "";
+			projectReferences = (
+				{
+					ProductGroup = 0915DB0D2ED5256C0091FA38 /* Products */;
+					ProjectRef = 0915DB0C2ED5256C0091FA38 /* Kalvian Roots.xcodeproj */;
+				},
+			);
 			projectRoot = "";
 			targets = (
 				09CB182D2E216DB10083983B /* Kalvian Roots */,
