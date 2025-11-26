@@ -13,6 +13,8 @@ public func configure(_ app: Application) throws {
     app.middleware.use(FileMiddleware(publicDirectory: app.directory.publicDirectory))
     app.middleware.use(RequestIDMiddleware())
     app.middleware.use(ErrorEnvelopeMiddleware())
+    
+    app.logger.info("PUBLIC DIRECTORY = \(app.directory.publicDirectory)")
 
     // Token for /api/* routes
     let token = Environment.get("KALVIAN_API_TOKEN") ?? ""

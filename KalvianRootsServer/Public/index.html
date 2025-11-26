@@ -89,50 +89,8 @@
     </div>
     <div class="status" id="status"></div>
     <pre id="result">Enter a Family ID and click "Find Family" to see the record.</pre>
+    <div class="citation" id="citation"></div>
   </div>
-
-  <script>
-    const familyInput = document.getElementById('familyId');
-    const lookupBtn   = document.getElementById('lookupBtn');
-    const statusEl    = document.getElementById('status');
-    const resultEl    = document.getElementById('result');
-
-    async function fetchFamily() {
-      const id = familyInput.value.trim();
-      if (!id) {
-        statusEl.textContent = 'Please enter a Family ID.';
-        return;
-      }
-
-      lookupBtn.disabled = true;
-      statusEl.textContent = 'Searching…';
-      resultEl.textContent = '';
-
-      try {
-        const resp = await fetch(`/api/families/${encodeURIComponent(id)}`, {
-          headers: { 'Authorization': 'Bearer dev' }
-        });
-        const payload = await resp.json();
-
-        if (!resp.ok) {
-          const message = payload.error?.message || 'Request failed';
-          throw new Error(message);
-        }
-
-        statusEl.textContent = `Showing family "${id}"`;
-        resultEl.textContent = payload.text;
-      } catch (err) {
-        statusEl.textContent = err.message;
-        resultEl.textContent  = '';
-      } finally {
-        lookupBtn.disabled = false;
-      }
-    }
-
-    lookupBtn.addEventListener('click', fetchFamily);
-    familyInput.addEventListener('keyup', event => {
-      if (event.key === 'Enter') fetchFamily();
-    });
-  </script>
+  <script src="/main.js"></script>
 </body>
 </html>

@@ -136,6 +136,25 @@ public func routes(_ app: Application, apiGroup: RoutesBuilder) throws {
         let service = RootsFamilyLookupService(app: req.application)
         return try await service.findFamily(id: familyID)
     }
+
+    // MARK: - Citations
+
+    let citations = apiGroup.grouped("citation")
+    citations.get(":familyID", ":personName") { req async throws -> CitationResponse in
+        guard let familyID = req.parameters.get("familyID") else {
+            throw Abort(.badRequest, reason: "Family ID is required.")
+        }
+
+        guard let personName = req.parameters.get("personName") else {
+            throw Abort(.badRequest, reason: "Person name is required.")
+        }
+
+        return CitationResponse(
+            person: personName,
+            family: familyID,
+            citation: "Placeholder until AI integration."
+        )
+    }
 }
 
 // MARK: - Response Models
@@ -154,4 +173,10 @@ struct RootsInfoResponse: Content {
     let fileSizeBytes: Int64?
     let lastModified: Date?
     let familyCount: Int?
+}
+
+struct CitationResponse: Content {
+    let person: String
+    let family: String
+    let citation: String
 }
