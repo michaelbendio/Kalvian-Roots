@@ -24,6 +24,12 @@ public func configure(_ app: Application) throws {
     app.storage[InMemoryJobStore.Key.self] = InMemoryJobStore()
     app.storage[InMemoryLockStore.Key.self] = InMemoryLockStore()
 
+    // Core state (cache + settings)
+    let settingsURL = URL(fileURLWithPath: app.directory.workingDirectory)
+        .appendingPathComponent("Config")
+        .appendingPathComponent("settings.json")
+    app.coreState = CoreState(settingsURL: settingsURL, logger: app.logger)
+
     // ROOTS_FILE wiring
     if let rootsPath = Environment.get("ROOTS_FILE"), !rootsPath.isEmpty {
         app.logger.info("ROOTS_FILE set to: \(rootsPath)")

@@ -134,26 +134,66 @@ public func routes(_ app: Application, apiGroup: RoutesBuilder) throws {
         }
 
         let service = RootsFamilyLookupService(app: req.application)
-        return try await service.findFamily(id: familyID)
+        let response = try await service.findFamily(id: familyID)
+
+        // Track displayed family and kick off processing
+        await req.application.coreState.displayFamily(id: familyID, rawText: response.text)
+
+        return response
     }
 
     // MARK: - Citations
 
     let citations = apiGroup.grouped("citation")
-    citations.get(":familyID", ":personName") { req async throws -> CitationResponse in
-        guard let familyID = req.parameters.get("familyID") else {
-            throw Abort(.badRequest, reason: "Family ID is required.")
-        }
+    citations.post { req async throws -> CitationPayload in
+        struct CitationRequest: Content { let name: String; let birth: String }
+        let body = try req.content.decode(CitationRequest.self)
 
-        guard let personName = req.parameters.get("personName") else {
-            throw Abort(.badRequest, reason: "Person name is required.")
-        }
+        return try await req.application.coreState.generateCitation(name: body.name, birth: body.birth)
+    }
 
-        return CitationResponse(
-            person: personName,
-            family: familyID,
-            citation: "Placeholder until AI integration."
-        )
+    // MARK: - Cache and processing state
+
+    let cacheGroup = apiGroup.grouped("cache")
+
+    cacheGroup.get("status") { req async throws -> CacheStatusResponse in
+        await req.application.coreState.statusForCurrentFamily()
+    }
+
+    cacheGroup.get("list") { req async throws -> [String: [String]] in
+        await req.application.coreState.groupedCacheList()
+    }
+
+    cacheGroup.post("remove") { req async throws -> HTTPStatus in
+        struct RemoveRequest: Content { let id: String }
+        let body = try req.content.decode(RemoveRequest.self)
+        await req.application.coreState.removeFamily(id: body.id)
+        return .ok
+    }
+
+    cacheGroup.post("clear-all") { req async throws -> HTTPStatus in
+        let allowedHosts = ["127.0.0.1", "::1", "localhost"]
+        let remoteHost = req.remoteAddress?.ipAddress ?? req.remoteAddress?.hostname ?? ""
+        guard allowedHosts.contains(remoteHost) else {
+            throw Abort(.forbidden, reason: "Cache clear is only available on localhost.")
+        }
+        await req.application.coreState.clearAllFamilies()
+        return .ok
+    }
+
+    // MARK: - AI model selection
+
+    let aiGroup = apiGroup.grouped("ai")
+
+    aiGroup.get("model") { req async throws -> AIModelResponse in
+        AIModelResponse(model: await req.application.coreState.getSelectedModel())
+    }
+
+    aiGroup.post("model") { req async throws -> AIModelResponse in
+        struct ModelRequest: Content { let model: String }
+        let body = try req.content.decode(ModelRequest.self)
+        await req.application.coreState.updateModel(body.model)
+        return AIModelResponse(model: await req.application.coreState.getSelectedModel())
     }
 }
 
@@ -175,8 +215,4 @@ struct RootsInfoResponse: Content {
     let familyCount: Int?
 }
 
-struct CitationResponse: Content {
-    let person: String
-    let family: String
-    let citation: String
-}
+struct AIModelResponse: Content { let model: String }
