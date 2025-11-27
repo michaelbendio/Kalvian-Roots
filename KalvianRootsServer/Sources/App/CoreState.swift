@@ -1,4 +1,5 @@
 import Foundation
+import KalvianRootsCore
 import Vapor
 
 struct CachedFamily: Codable {
@@ -131,24 +132,40 @@ actor CoreState {
 
     // MARK: - Citation
 
-    func generateCitation(name: String, birth: String) throws -> CitationPayload {
-        guard let current = currentFamilyID else {
-            throw Abort(.badRequest, reason: "No family is currently displayed.")
+    func generateCitation(name: String, birth: String) throws -> String {
+
+        // 1. Must have an active family
+        guard let family = currentFamily() else {
+            throw NSError(domain: "CoreState", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "No active family selected"
+            ])
         }
 
-        guard let entry = cache[current], entry.networkReady else {
-            throw Abort(.conflict, reason: "Family network is still processing.")
+        // 2. Network must be ready (AI finished)
+        guard family.networkReady else {
+            throw NSError(domain: "CoreState", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "Family network still processing"
+            ])
         }
 
-        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanName.isEmpty else {
-            throw Abort(.badRequest, reason: "Person name is required.")
+        // 3. Look up cached JSON if present
+        let cached = family.cachedJSON[name]
+
+        // 4. Generate a safe placeholder citation
+        var citation = ""
+        citation += "Person: \(name)\n"
+        citation += "Birth: \(birth)\n"
+        citation += "Family: \(family.id)\n\n"
+
+        if let cached {
+            citation += "Cached AI JSON:\n\(cached)\n"
+        } else {
+            citation += "Cached AI JSON:\n<not yet generated for this person>\n"
         }
 
-        let birthDisplay = birth.trimmingCharacters(in: .whitespacesAndNewlines)
-        let citationText = "Citation for \(cleanName) (birth: \(birthDisplay.isEmpty ? "unknown" : birthDisplay)) in family \(current). Source: Juuret Kälviällä."
+        citation += "\nSource: Juuret Kälviällä"
 
-        return CitationPayload(personName: cleanName, birth: birthDisplay, citation: citationText)
+        return citation
     }
 
     // MARK: - Cache listing
