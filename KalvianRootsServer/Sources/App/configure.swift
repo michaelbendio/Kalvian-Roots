@@ -6,7 +6,7 @@ public func configure(_ app: Application) throws {
     app.logger.logLevel = .debug
 
     // Localhost binding
-    app.http.server.configuration.hostname = "127.0.0.1"
+    app.http.server.configuration.hostname = "0.0.0.0"
     app.http.server.configuration.port = 8081
 
     // Middleware

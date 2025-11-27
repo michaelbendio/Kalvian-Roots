@@ -26,14 +26,13 @@ public func routes(_ app: Application, apiGroup: RoutesBuilder) throws {
         let store = req.application.storage[InMemoryJobStore.Key.self]!
         let job = await store.create(type: "extraction")
 
-        // Kick off background work
         Task.detached { [app = req.application] in
-            // Mark as running
-            await store.update(id: job.id) { state in
-                state.status = .running
-                state.progress = 0.0
-                state.message = "Starting extraction"
+            await store.update(id: job.id) {
+                $0.status = .running
+                $0.progress = 0.0
+                $0.message = "Starting extraction"
             }
+
             app.logger.info("🚀 Extraction task started for job \(job.id)")
 
             do {
@@ -45,20 +44,22 @@ public func routes(_ app: Application, apiGroup: RoutesBuilder) throws {
                 let data = try encoder.encode(result)
                 let jsonString = String(data: data, encoding: .utf8)
 
-                await store.update(id: job.id) { state in
-                    state.status = .completed
-                    state.progress = 1.0
-                    state.message = "Extraction completed"
-                    state.resultJSON = jsonString
+                await store.update(id: job.id) {
+                    $0.status = .completed
+                    $0.progress = 1.0
+                    $0.message = "Extraction completed"
+                    $0.resultJSON = jsonString
                 }
+
                 app.logger.info("✅ Extraction task completed for job \(job.id)")
             } catch {
-                await store.update(id: job.id) { state in
-                    state.status = .failed
-                    state.progress = 1.0
-                    state.message = "Extraction failed"
-                    state.errorMessage = String(describing: error)
+                await store.update(id: job.id) {
+                    $0.status = .failed
+                    $0.progress = 1.0
+                    $0.message = "Extraction failed"
+                    $0.errorMessage = String(describing: error)
                 }
+
                 app.logger.error("❌ Extraction task failed for job \(job.id): \(error)")
             }
         }
@@ -66,9 +67,9 @@ public func routes(_ app: Application, apiGroup: RoutesBuilder) throws {
         return job
     }
 
-
     jobs.get(":id") { req async throws -> JobState in
         let store = req.application.storage[InMemoryJobStore.Key.self]!
+
         guard
             let idString = req.parameters.get("id"),
             let uuid = UUID(uuidString: idString),
@@ -76,6 +77,7 @@ public func routes(_ app: Application, apiGroup: RoutesBuilder) throws {
         else {
             throw Abort(.notFound, reason: "Job not found")
         }
+
         return job
     }
 
@@ -106,12 +108,8 @@ public func routes(_ app: Application, apiGroup: RoutesBuilder) throws {
 
         if exists {
             if let attrs = try? fm.attributesOfItem(atPath: path) {
-                if let n = attrs[.size] as? NSNumber {
-                    size = n.int64Value
-                }
-                if let d = attrs[.modificationDate] as? Date {
-                    modified = d
-                }
+                if let n = attrs[.size] as? NSNumber { size = n.int64Value }
+                if let d = attrs[.modificationDate] as? Date { modified = d }
             }
         }
 
@@ -121,13 +119,14 @@ public func routes(_ app: Application, apiGroup: RoutesBuilder) throws {
             isDirectory: isDirObj.boolValue,
             fileSizeBytes: size,
             lastModified: modified,
-            familyCount: nil // Will fill in later when Roots parser is integrated
+            familyCount: nil
         )
     }
 
     // MARK: - Families
 
     let families = apiGroup.grouped("families")
+
     families.get(":id") { req async throws -> RootsFamilyLookupService.FamilyResponse in
         guard let familyID = req.parameters.get("id") else {
             throw Abort(.badRequest, reason: "Family ID is required.")
@@ -136,23 +135,41 @@ public func routes(_ app: Application, apiGroup: RoutesBuilder) throws {
         let service = RootsFamilyLookupService(app: req.application)
         let response = try await service.findFamily(id: familyID)
 
-        // Track displayed family and kick off processing
-        await req.application.coreState.displayFamily(id: familyID, rawText: response.text)
+        await req.application.coreState.displayFamily(
+            id: familyID,
+            rawText: response.text
+        )
 
         return response
     }
 
-    // MARK: - Citations
+    // MARK: - Citations ✅ FIXED
 
     let citations = apiGroup.grouped("citation")
-    citations.post { req async throws -> CitationPayload in
-        struct CitationRequest: Content { let name: String; let birth: String }
-        let body = try req.content.decode(CitationRequest.self)
 
-        return try await req.application.coreState.generateCitation(name: body.name, birth: body.birth)
+    citations.post { req async throws -> CitationPayload in
+
+        struct CitationRequest: Content {
+            let name: String
+            let birth: String
+        }
+
+        let body = try req.content.decode(CitationRequest.self)
+        let core = req.application.coreState
+
+        let citationText = try await core.generateCitation(
+            name: body.name,
+            birth: body.birth
+        )
+
+        return CitationPayload(
+            personName: body.name,
+            birth: body.birth,
+            citation: citationText
+        )
     }
 
-    // MARK: - Cache and processing state
+    // MARK: - Cache and Processing State ✅ FIXED ORDER
 
     let cacheGroup = apiGroup.grouped("cache")
 
@@ -160,7 +177,7 @@ public func routes(_ app: Application, apiGroup: RoutesBuilder) throws {
         await req.application.coreState.statusForCurrentFamily()
     }
 
-    cacheGroup.get("list") { req async throws -> [String: [String]] in
+    cacheGroup.get("list") { req async throws -> [String : [String]] in
         await req.application.coreState.groupedCacheList()
     }
 
@@ -174,14 +191,16 @@ public func routes(_ app: Application, apiGroup: RoutesBuilder) throws {
     cacheGroup.post("clear-all") { req async throws -> HTTPStatus in
         let allowedHosts = ["127.0.0.1", "::1", "localhost"]
         let remoteHost = req.remoteAddress?.ipAddress ?? req.remoteAddress?.hostname ?? ""
+
         guard allowedHosts.contains(remoteHost) else {
             throw Abort(.forbidden, reason: "Cache clear is only available on localhost.")
         }
+
         await req.application.coreState.clearAllFamilies()
         return .ok
     }
 
-    // MARK: - AI model selection
+    // MARK: - AI Model Selection
 
     let aiGroup = apiGroup.grouped("ai")
 
@@ -215,4 +234,6 @@ struct RootsInfoResponse: Content {
     let familyCount: Int?
 }
 
-struct AIModelResponse: Content { let model: String }
+struct AIModelResponse: Content {
+    let model: String
+}
