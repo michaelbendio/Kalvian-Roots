@@ -15,7 +15,7 @@ const clearCacheBtn = document.getElementById('clearCache');
 const modelNameEl = document.getElementById('modelName');
 
 const API_HEADERS = { Authorization: 'Bearer dev', 'Content-Type': 'application/json' };
-const namePattern = /(\p{L}+(?:\s+\p{L}+)*)((?:\s*<[^>]+>)?)/gu;
+const namePattern = /\b([\p{Lu}][\p{Ll}]+(?:\s+[\p{Lu}][\p{Ll}]+)+)(?![^<]*>)/gu;
 
 let statusPoller = null;
 let currentFamilyId = null;
@@ -72,9 +72,16 @@ function buildFamilyDom(text) {
       const rawBefore = line.slice(lastIndex, start);
       if (rawBefore) pre.append(document.createTextNode(rawBefore));
 
+      const candidateName = match[1].trim();
+      if (!candidateName || candidateName.length < 3) {
+        lastIndex = end;
+        pre.append(document.createTextNode(match[0]));
+        continue;
+      }
+
       const span = document.createElement('span');
       span.className = 'clickable-name disabled';
-      span.dataset.name = match[1].trim();
+      span.dataset.name = candidateName;
       span.dataset.birth = birthForLine;
       span.textContent = match[0];
       pre.append(span);
@@ -283,7 +290,7 @@ async function fetchCitation(personName, birth) {
       throw new Error(message);
     }
 
-    citationEl.textContent = `Person: ${payload.personName}\nBirth: ${payload.birth || 'unknown'}\nCitation: ${payload.citation}`;
+    citationEl.textContent = payload.citation;
   } catch (err) {
     citationEl.textContent = err.message;
   }
