@@ -158,13 +158,11 @@ public func routes(_ app: Application, apiGroup: RoutesBuilder) throws {
         let core = req.application.coreState
 
         let citationText = try await core.generateCitation(
-            name: body.name,
+            personName: body.name,
             birth: body.birth
         )
 
         return CitationPayload(
-            personName: body.name,
-            birth: body.birth,
             citation: citationText
         )
     }

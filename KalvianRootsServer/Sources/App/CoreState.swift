@@ -10,6 +10,40 @@ struct CachedFamily: Codable {
     var cachedJSON: [String: String]
 }
 
+enum CoreStateError: Error, LocalizedError {
+    case noActiveFamily
+    case networkProcessing
+    case personNotFound
+    case ambiguousMatch
+
+    var errorDescription: String? {
+        switch self {
+        case .noActiveFamily:
+            return "No active family selected"
+        case .networkProcessing:
+            return "Family network still processing"
+        case .personNotFound:
+            return "Person not found in the current family"
+        case .ambiguousMatch:
+            return "Multiple matching people found; provide birth information"
+        }
+    }
+}
+
+struct ParsedPerson: Equatable {
+    enum Role { case parent, child }
+
+    let name: String
+    let birth: String
+    let role: Role
+    let line: String
+}
+
+struct ParsedFamily {
+    let id: String
+    let persons: [ParsedPerson]
+}
+
 struct CoreSettings: Codable {
     var selectedModel: String
     var lastDisplayedFamilyID: String?
@@ -132,39 +166,75 @@ actor CoreState {
 
     // MARK: - Citation
 
-    func generateCitation(name: String, birth: String) throws -> String {
+    private func parseFamily(_ family: CachedFamily) -> ParsedFamily {
+        let lines = family.rawText.split(separator: "\n", omittingEmptySubsequences: false)
+        var persons: [ParsedPerson] = []
 
-        // 1. Must have an active family
-        guard let family = currentFamily() else {
-            throw NSError(domain: "CoreState", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "No active family selected"
-            ])
+        let nameRegex = try! NSRegularExpression(
+            pattern: "\\b[\\p{Lu}][\\p{Ll}]+(?:\\s+[\\p{Lu}][\\p{Ll}]+)+",
+            options: [.caseInsensitive]
+        )
+
+        for (index, line) in lines.enumerated() {
+            let nsLine = line as NSString
+            let range = NSRange(location: 0, length: nsLine.length)
+            let matches = nameRegex.matches(in: String(line), range: range)
+            guard let match = matches.first else { continue }
+
+            let name = nsLine.substring(with: match.range).trimmingCharacters(in: .whitespaces)
+            let birth = extractBirth(from: String(line))
+            let role: ParsedPerson.Role = index <= 2 ? .parent : .child
+            persons.append(ParsedPerson(name: name, birth: birth, role: role, line: String(line)))
         }
 
-        // 2. Network must be ready (AI finished)
-        guard family.networkReady else {
-            throw NSError(domain: "CoreState", code: 2, userInfo: [
-                NSLocalizedDescriptionKey: "Family network still processing"
-            ])
+        return ParsedFamily(id: family.id, persons: persons)
+    }
+
+    private func extractBirth(from line: String) -> String {
+        if let starRange = line.range(of: "★\\s*([^\\s]+)", options: .regularExpression) {
+            return String(line[starRange]).replacingOccurrences(of: "★", with: "").trimmingCharacters(in: .whitespaces)
         }
 
-        // 3. Look up cached JSON if present
-        let cached = family.cachedJSON[name]
-
-        // 4. Generate a safe placeholder citation
-        var citation = ""
-        citation += "Person: \(name)\n"
-        citation += "Birth: \(birth)\n"
-        citation += "Family: \(family.id)\n\n"
-
-        if let cached {
-            citation += "Cached AI JSON:\n\(cached)\n"
-        } else {
-            citation += "Cached AI JSON:\n<not yet generated for this person>\n"
+        if let dateRange = line.range(of: "\\b\\d{1,2}\\.\\d{1,2}\\.\\d{2,4}\\b", options: .regularExpression) {
+            return String(line[dateRange])
         }
 
-        citation += "\nSource: Juuret Kälviällä"
+        if let yearRange = line.range(of: "\\b\\d{4}\\b", options: .regularExpression) {
+            return String(line[yearRange])
+        }
 
+        return ""
+    }
+
+    func generateCitation(personName: String, birth: String) async throws -> String {
+        guard let family = currentFamily() else { throw CoreStateError.noActiveFamily }
+        guard family.networkReady else { throw CoreStateError.networkProcessing }
+
+        logger.info("[Core] Generating citation for \(trimmedName) (birth: \(trimmedBirth.isEmpty ? "unknown" : trimmedBirth))")
+
+        let parsed = parseFamily(family)
+        let trimmedName = personName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedBirth = birth.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let matches = parsed.persons.filter { person in
+            person.name.caseInsensitiveCompare(trimmedName) == .orderedSame &&
+            (trimmedBirth.isEmpty || person.birth == trimmedBirth)
+        }
+
+        guard !matches.isEmpty else { throw CoreStateError.personNotFound }
+        guard matches.count == 1 else { throw CoreStateError.ambiguousMatch }
+
+        let match = matches[0]
+
+        let citation: String
+        switch match.role {
+        case .child:
+            citation = CitationGenerator.generateAsChildCitation(for: match, in: parsed)
+        case .parent:
+            citation = CitationGenerator.generateParentCitation(for: match, in: parsed)
+        }
+
+        logger.info("[Core] Citation generated: \(citation)")
         return citation
     }
 
@@ -209,8 +279,6 @@ struct CacheStatusResponse: Content {
 }
 
 struct CitationPayload: Content {
-    let personName: String
-    let birth: String
     let citation: String
 }
 
