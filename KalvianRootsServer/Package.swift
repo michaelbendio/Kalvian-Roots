@@ -17,8 +17,8 @@ let package = Package(
         .target(
             name: "KalvianRootsServer",
             dependencies: [
-                .product(name: "KalvianRootsCore", package: "KalvianRootsCore"),
-                .product(name: "Vapor", package: "vapor")
+                .product(name: "Vapor", package: "vapor"),
+                .product(name: "KalvianRootsCore", package: "KalvianRootsCore")
             ],
             path: "Sources/App"
         ),
@@ -26,6 +26,6 @@ let package = Package(
             name: "Run",
             dependencies: ["KalvianRootsServer"],
             path: "Sources/Run"
-        )
+        ),
     ]
 )
