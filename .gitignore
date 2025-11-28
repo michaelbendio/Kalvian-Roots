@@ -18,3 +18,8 @@ Kalvian Roots.xcodeproj/project.pbxproj
 /Kalvian Roots.xcodeproj
 Kalvian Roots.xcodeproj/project.pbxproj
 *.swp
+# Swift / Vapor build artifacts
+.build/
+DerivedData/
+.swiftpm/
+KalvianRootsServer/.build/
