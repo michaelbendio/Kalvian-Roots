@@ -26,3 +26,7 @@ KalvianRootsServer/.build/
 # Runtime Core state
 KalvianRootsServer/Config/settings.json
 
+# Build output
+build/
+build.log
+
