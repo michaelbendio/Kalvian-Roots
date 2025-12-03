@@ -17,7 +17,7 @@ import Foundation
  *
  * Citations are NO LONGER generated here - they're created on-demand when needed
  */
-class FamilyNetworkWorkflow {
+public final class FamilyNetworkWorkflow {
     
     // MARK: - Properties
     
@@ -29,9 +29,9 @@ class FamilyNetworkWorkflow {
     
     // MARK: - Initialization
     
-    init(nuclearFamily: Family,
-         familyResolver: FamilyResolver,
-         resolveCrossReferences: Bool = true) {
+    public init(nuclearFamily: Family,
+                familyResolver: FamilyResolver,
+                resolveCrossReferences: Bool = true) {
         self.nuclearFamily = nuclearFamily
         self.familyResolver = familyResolver
         self.shouldResolveCrossReferences = resolveCrossReferences
@@ -45,7 +45,7 @@ class FamilyNetworkWorkflow {
     /**
      * Process the workflow - builds network only, no citations
      */
-    func process() async throws {
+    public func process() async throws {
         logInfo(.resolver, "🎯 Starting workflow processing for: \(nuclearFamily.familyId)")
         
         if shouldResolveCrossReferences {
@@ -66,14 +66,14 @@ class FamilyNetworkWorkflow {
     /**
      * Get the family network (if resolved)
      */
-    func getFamilyNetwork() -> FamilyNetwork? {
+    public func getFamilyNetwork() -> FamilyNetwork? {
         return familyNetwork
     }
     
     /**
      * Activate cached network (used when loading from cache)
      */
-    func activateCachedNetwork(_ network: FamilyNetwork) {
+    public func activateCachedNetwork(_ network: FamilyNetwork) {
         self.familyNetwork = network
         logInfo(.resolver, "✅ Activated cached network for: \(network.mainFamily.familyId)")
         logDebugNetworkSummary()

@@ -12,91 +12,53 @@ import Foundation
  */
 public struct Person: Hashable, Sendable, Codable, Identifiable {
     // MARK: - Core Genealogical Data
-    
+
     /// Finnish given name like 'Matti', 'Brita'
-    var name: String
+    public var name: String
     
     /// Patronymic like 'Erikinp.' (Erik's son), 'Matint.' (Matti's daughter)
-    var patronymic: String?
+    public var patronymic: String?
     
     /// Birth date in format '22.12.1701'
-    var birthDate: String?
+    public var birthDate: String?
     
     /// Death date in format '22.08.1812'
-    var deathDate: String?
+    public var deathDate: String?
     
     /// Marriage date - often just 2 digits like '73' in nuclear family
-    var marriageDate: String?
+    public var marriageDate: String?
     
     /// Full marriage date from as_parent family like '14.10.1773'
-    var fullMarriageDate: String?
+    public var fullMarriageDate: String?
     
     /// Spouse name with patronymic like 'Brita Matint.'
-    var spouse: String?
+    public var spouse: String?
     
     /// Family reference from {family_id} notation where person is a child
-    var asChild: String?
+    public var asChild: String?
     
     /// Family where person appears as parent
-    var asParent: String?
+    public var asParent: String?
     
     /// FamilySearch ID from <ID> notation
-    var familySearchId: String?
+    public var familySearchId: String?
     
     /// Note markers like '*' or '**'
-    var noteMarkers: [String]
+    public var noteMarkers: [String]
     
     /// Father's name for Hiski disambiguation
-    var fatherName: String?
+    public var fatherName: String?
     
     /// Mother's name for Hiski disambiguation
-    var motherName: String?
+    public var motherName: String?
     
     /// Spouse's birth date from spouse's as_child family
-    var spouseBirthDate: String?
+    public var spouseBirthDate: String?
     
     /// Spouse's parents' family ID
-    var spouseParentsFamilyId: String?
-    
-    // MARK: - Computed Properties
-    
-    /// Full name with patronymic for display
-    var displayName: String {
-        if let patronymic = patronymic {
-            return "\(name) \(patronymic)"
-        }
-        return name
-    }
-    
-    var id: String {
-        let patronymicPart = patronymic ?? ""
-        let birthPart = birthDate ?? ""
-        return "\(name)-\(patronymicPart)-\(birthPart)"
-    }
-    
-    /// Best available marriage date (full date takes priority)
-    var bestMarriageDate: String? {
-        return fullMarriageDate ?? marriageDate
-    }
-    
-    /// Check if person has spouse information
-    var isMarried: Bool {
-        return spouse != nil || marriageDate != nil || fullMarriageDate != nil
-    }
-    
-    /// Check if person needs cross-reference resolution
-    var needsCrossReferenceResolution: Bool {
-        return asChild != nil || asParent != nil || spouse != nil
-    }
-    
-    /// Check if person has parent information for Hiski queries
-    var hasParentInfo: Bool {
-        return fatherName != nil || motherName != nil
-    }
-    
-    // MARK: - Initializer
-    
-    init(
+    public var spouseParentsFamilyId: String?
+
+    public init(
         name: String,
         patronymic: String? = nil,
         birthDate: String? = nil,
@@ -128,6 +90,42 @@ public struct Person: Hashable, Sendable, Codable, Identifiable {
         self.motherName = motherName
         self.spouseBirthDate = spouseBirthDate
         self.spouseParentsFamilyId = spouseParentsFamilyId
+    }
+    
+    // MARK: - Computed Properties
+    
+    /// Full name with patronymic for display
+    public var displayName: String {
+        if let patronymic = patronymic {
+            return "\(name) \(patronymic)"
+        }
+        return name
+    }
+    
+    public var id: String {
+        let patronymicPart = patronymic ?? ""
+        let birthPart = birthDate ?? ""
+        return "\(name)-\(patronymicPart)-\(birthPart)"
+    }
+    
+    /// Best available marriage date (full date takes priority)
+    public var bestMarriageDate: String? {
+        return fullMarriageDate ?? marriageDate
+    }
+    
+    /// Check if person has spouse information
+    public var isMarried: Bool {
+        return spouse != nil || marriageDate != nil || fullMarriageDate != nil
+    }
+    
+    /// Check if person needs cross-reference resolution
+    public var needsCrossReferenceResolution: Bool {
+        return asChild != nil || asParent != nil || spouse != nil
+    }
+    
+    /// Check if person has parent information for Hiski queries
+    var hasParentInfo: Bool {
+        return fatherName != nil || motherName != nil
     }
     
     // MARK: - Helper Methods

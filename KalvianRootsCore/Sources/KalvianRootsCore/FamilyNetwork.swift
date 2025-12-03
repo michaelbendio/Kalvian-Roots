@@ -19,39 +19,39 @@ import Foundation
  * - Spouses get citations from their asChild families (non-recursive)
  * - asChild families do NOT recursively follow their own parent/sibling references
  */
-struct FamilyNetwork: Hashable, Sendable, Codable {
+public struct FamilyNetwork: Hashable, Sendable, Codable {
     /// The main nuclear family that was initially parsed
-    let mainFamily: Family
+    public let mainFamily: Family
     
     /// Resolved families where mainFamily parents came from (parent.displayName -> their asChild family)
     /// These are NON-RECURSIVE - we don't follow references within these families
     /// Updated to use displayName as primary key to avoid name collisions
-    var asChildFamilies: [String: Family] = [:]
+    public var asChildFamilies: [String: Family] = [:]
     
     /// Resolved families where mainFamily children are parents (child.displayName -> their asParent family)
     /// Updated to use displayName as primary key to avoid name collisions
-    var asParentFamilies: [String: Family] = [:]
+    public var asParentFamilies: [String: Family] = [:]
     
     /// Resolved families where spouses came from (spouse.displayName -> their asChild family)
     /// These are NON-RECURSIVE - we don't follow references within these families
     /// Updated to use displayName as primary key to avoid name collisions
-    var spouseAsChildFamilies: [String: Family] = [:]
-    
-    init(mainFamily: Family) {
+    public var spouseAsChildFamilies: [String: Family] = [:]
+
+    public init(mainFamily: Family) {
         self.mainFamily = mainFamily
     }
     
     // MARK: - Computed Properties for Citation Support
     
     /// Total count of all resolved families for debugging
-    var totalResolvedFamilies: Int {
+    public var totalResolvedFamilies: Int {
         return 1 + asChildFamilies.count + asParentFamilies.count + spouseAsChildFamilies.count
     }
     
     // MARK: - Citation Helper Methods
     
     /// Get the asParent family for a specific child (where child became a parent)
-    func getAsParentFamily(for person: Person) -> Family? {
+    public func getAsParentFamily(for person: Person) -> Family? {
         // PRIMARY: Try displayName first (most specific)
         if let family = asParentFamilies[person.displayName] {
             logDebug(.citation, "✅ Found asParent family for '\(person.displayName)' using displayName")
@@ -113,7 +113,7 @@ struct FamilyNetwork: Hashable, Sendable, Codable {
         return nil
     }
     
-    func getAsChildFamily(for person: Person) -> Family? {
+    public func getAsChildFamily(for person: Person) -> Family? {
         // PRIMARY: Try displayName first (most specific)
         if let family = asChildFamilies[person.displayName] {
             logDebug(.citation, "✅ Found asChild family for '\(person.displayName)' using displayName")
@@ -156,7 +156,7 @@ struct FamilyNetwork: Hashable, Sendable, Codable {
     
     /// Get the asChild family for a specific spouse (where spouse came from)
     /// Updated to accept Person object for consistent displayName handling
-    func getSpouseAsChildFamily(for spouse: Person) -> Family? {
+    public func getSpouseAsChildFamily(for spouse: Person) -> Family? {
         // PRIMARY: Try displayName first (most specific)
         if let family = spouseAsChildFamilies[spouse.displayName] {
             logDebug(.citation, "✅ Found spouse asChild family for '\(spouse.displayName)' using displayName")
@@ -210,14 +210,14 @@ struct FamilyNetwork: Hashable, Sendable, Codable {
     }
     
     /// Overloaded method for backwards compatibility with string parameter
-    func getSpouseAsChildFamily(for spouseName: String) -> Family? {
+    public func getSpouseAsChildFamily(for spouseName: String) -> Family? {
         // Create a temporary Person object with the spouse name
         let tempSpouse = Person(name: spouseName, noteMarkers: [])
         return getSpouseAsChildFamily(for: tempSpouse)
     }
     
     /// Get all families in the network (for comprehensive citation generation)
-    var allFamilies: [Family] {
+    public var allFamilies: [Family] {
         var families = [mainFamily]
         families.append(contentsOf: asChildFamilies.values)
         families.append(contentsOf: asParentFamilies.values)
@@ -227,7 +227,7 @@ struct FamilyNetwork: Hashable, Sendable, Codable {
     
     // MARK: - Debug Information
     
-    var debugSummary: String {
+    public var debugSummary: String {
         return """
         FamilyNetwork Summary:
         - Main Family: \(mainFamily.familyId)

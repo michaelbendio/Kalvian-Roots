@@ -377,8 +377,6 @@ public struct CitationGenerator {
         // Additional Information section for enhanced data
         if targetPersonFound, let targetChildInAsChild = targetChildInAsChild, let network = network {
             if let asParentFamily = network.getAsParentFamily(for: person) {
-                var additionalInfo: [String] = []
-                
                 if let asParent = findPersonInAsParentFamily(person, in: asParentFamily) {
                     // Track death date enhancement
                     var hasEnhancedDeath = false
@@ -505,7 +503,7 @@ public struct CitationGenerator {
             }
             
             // Check if it's a 4-digit year: "n 1730" -> "abt 1730"
-            if let fourDigit = Int(yearPart), yearPart.count == 4 {
+            if Int(yearPart) != nil && yearPart.count == 4 {
                 return "abt \(yearPart)"
             }
             
