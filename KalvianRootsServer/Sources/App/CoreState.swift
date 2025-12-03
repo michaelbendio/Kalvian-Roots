@@ -206,38 +206,58 @@ actor CoreState {
         return ""
     }
 
-    func generateCitation(personName: String, birth: String) async throws -> String {
-        guard let family = currentFamily() else { throw CoreStateError.noActiveFamily }
-        guard family.networkReady else { throw CoreStateError.networkProcessing }
+    func generateCitation(name: String, birth: String) throws -> String {
 
-        logger.info("[Core] Generating citation for \(trimmedName) (birth: \(trimmedBirth.isEmpty ? "unknown" : trimmedBirth))")
+        guard let family = currentFamily else {
+            throw CoreStateError.noActiveFamily
+        }
 
-        let parsed = parseFamily(family)
-        let trimmedName = personName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let network = cachedFamilyNetwork else {
+            throw CoreStateError.networkNotReady
+        }
+
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedBirth = birth.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        let matches = parsed.persons.filter { person in
-            person.name.caseInsensitiveCompare(trimmedName) == .orderedSame &&
-            (trimmedBirth.isEmpty || person.birth == trimmedBirth)
+        // 1. Find the target person in the CURRENT nuclear family
+        guard let targetPerson = family.findPerson(
+            name: trimmedName,
+            birthDate: trimmedBirth
+        ) else {
+            throw CoreStateError.personNotFound
         }
 
-        guard !matches.isEmpty else { throw CoreStateError.personNotFound }
-        guard matches.count == 1 else { throw CoreStateError.ambiguousMatch }
+        // 2. CHILD CASE → as-child citation
+        if let asChildFamilyID = targetPerson.asChild,
+           let asChildFamily = network.families[asChildFamilyID] {
 
-        let match = matches[0]
-
-        let citation: String
-        switch match.role {
-        case .child:
-            citation = CitationGenerator.generateAsChildCitation(for: match, in: parsed)
-        case .parent:
-            citation = CitationGenerator.generateParentCitation(for: match, in: parsed)
+            return CitationGenerator.generateAsChildCitation(
+                for: targetPerson,
+                in: asChildFamily,
+                network: network,
+                nameEquivalenceManager: nameEquivalenceManager
+            )
         }
 
-        logger.info("[Core] Citation generated: \(citation)")
-        return citation
+        // 3. SPOUSE CASE → spouse as-child citation
+        if let spouseFamilyID = network.getSpouseAsChildFamilyID(for: targetPerson),
+           let spouseFamily = network.families[spouseFamilyID] {
+
+            return CitationGenerator.generateSpouseAsChildCitation(
+                for: targetPerson,
+                in: spouseFamily,
+                network: network
+            )
+        }
+
+        // 4. PARENT / MAIN FAMILY CASE
+        return CitationGenerator.generateMainFamilyCitation(
+            family: family,
+            targetPerson: targetPerson,
+            network: network,
+            nameEquivalenceManager: nameEquivalenceManager
+        )
     }
-
     // MARK: - Cache listing
 
     func groupedCacheList() -> [String: [String]] {

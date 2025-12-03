@@ -10,7 +10,7 @@ import Foundation
 /**
  * Individual person with Finnish naming conventions and genealogical data.
  */
-struct Person: Hashable, Sendable, Codable, Identifiable {
+public struct Person: Hashable, Sendable, Codable, Identifiable {
     // MARK: - Core Genealogical Data
     
     /// Finnish given name like 'Matti', 'Brita'

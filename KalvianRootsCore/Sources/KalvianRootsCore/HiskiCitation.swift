@@ -14,7 +14,7 @@ import Foundation
  *
  * Contains the URL and metadata for a specific church record from hiski.genealogia.fi
  */
-struct HiskiCitation {
+public struct HiskiCitation {
     let recordType: EventType
     let personName: String
     let date: String

@@ -50,7 +50,7 @@ struct Couple: Hashable, Sendable, Codable {
  * Complete family unit from Juuret Kälviällä genealogical text.
  * A family consists of one or more couples and their respective children.
  */
-struct Family: Hashable, Sendable, Codable {
+public struct Family: Hashable, Sendable, Codable {
     // MARK: - Core Family Data
     
     /// Family ID like 'PIENI-PORKOLA 5' or 'KORPI 6'

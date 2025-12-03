@@ -12,7 +12,7 @@ import Foundation
 /**
  * Event types for genealogical records and church record queries
  */
-enum EventType: String, CaseIterable {
+public enum EventType: String, CaseIterable {
     case birth = "birth"
     case death = "death"
     case marriage = "marriage"

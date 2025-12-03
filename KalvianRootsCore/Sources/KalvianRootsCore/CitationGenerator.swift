@@ -20,7 +20,7 @@ import Foundation
  * - Smart century inference for 2-digit years using parent birth dates
  * - Full 8-digit dates preferred over 2-digit dates
  */
-struct CitationGenerator {
+public struct CitationGenerator {
     
     // MARK: - Main Family Citation
     
@@ -28,7 +28,7 @@ struct CitationGenerator {
      * Generate main family citation (nuclear family)
      * Tracks and reports where enhanced data comes from
      */
-    static func generateMainFamilyCitation(
+    public static func generateMainFamilyCitation(
         family: Family,
         targetPerson: Person? = nil,
         network: FamilyNetwork? = nil,
@@ -282,7 +282,7 @@ struct CitationGenerator {
      * Generate as_child citation (person in their parents' family)
      * Can be enhanced with asParent information when network is provided
      */
-    static func generateAsChildCitation(
+    public static func generateAsChildCitation(
         for person: Person,
         in asChildFamily: Family,
         network: FamilyNetwork? = nil,
@@ -440,7 +440,7 @@ struct CitationGenerator {
     /**
      * Generate spouse as_child citation (spouse in their parents' family)
      */
-    static func generateSpouseAsChildCitation(
+    public static func generateSpouseAsChildCitation(
         spouseName: String,
         in spouseAsChildFamily: Family
     ) -> String {
@@ -528,7 +528,7 @@ struct CitationGenerator {
     
     /// Smart century inference based on parent birth year context
     /// Determines which century (1600, 1700, 1800) makes most sense for marriage
-    static func inferCentury(for twoDigitYear: Int, parentBirthYear: Int? = nil) -> Int {
+    public static func inferCentury(for twoDigitYear: Int, parentBirthYear: Int? = nil) -> Int {
         // If we have parent birth year, use it for smart inference
         if let birthYear = parentBirthYear {
             // Marriage typically happens 15-50 years after birth
@@ -879,7 +879,7 @@ extension CitationGenerator {
     /**
      * Generate as_child citation using enhanced birth date matching
      */
-    static func generateEnhancedAsChildCitation(
+    public static func generateEnhancedAsChildCitation(
         for person: Person,
         in asChildFamily: Family,
         network: FamilyNetwork,
