@@ -2,19 +2,20 @@ import Foundation
 import KalvianRootsCore
 import Vapor
 
-struct CachedFamily: Codable {
+struct CachedFamilyEntry {
     var id: String
     var rawText: String
+    var family: Family?
+    var network: FamilyNetwork?
     var networkReady: Bool
     var processing: Bool
-    var cachedJSON: [String: String]
 }
 
 enum CoreStateError: Error, LocalizedError {
     case noActiveFamily
     case networkProcessing
+    case networkNotReady
     case personNotFound
-    case ambiguousMatch
 
     var errorDescription: String? {
         switch self {
@@ -22,26 +23,12 @@ enum CoreStateError: Error, LocalizedError {
             return "No active family selected"
         case .networkProcessing:
             return "Family network still processing"
+        case .networkNotReady:
+            return "Family network is not ready"
         case .personNotFound:
             return "Person not found in the current family"
-        case .ambiguousMatch:
-            return "Multiple matching people found; provide birth information"
         }
     }
-}
-
-struct ParsedPerson: Equatable {
-    enum Role { case parent, child }
-
-    let name: String
-    let birth: String
-    let role: Role
-    let line: String
-}
-
-struct ParsedFamily {
-    let id: String
-    let persons: [ParsedPerson]
 }
 
 struct CoreSettings: Codable {
@@ -49,16 +36,31 @@ struct CoreSettings: Codable {
     var lastDisplayedFamilyID: String?
 }
 
+@MainActor
 actor CoreState {
-    private var cache: [String: CachedFamily] = [:]
+    private var cache: [String: CachedFamilyEntry] = [:]
     private var selectedModel: String
     private var currentFamilyID: String?
     private let settingsURL: URL
     private let logger: Logger
 
-    init(settingsURL: URL, logger: Logger) {
+    private let parser: FamilyParsingService
+    private let fileManager: FamilyFileManaging
+    private let networkCache: FamilyNetworkCache
+    private let nameEquivalenceManager = NameEquivalenceManager()
+
+    init(
+        settingsURL: URL,
+        logger: Logger,
+        parser: FamilyParsingService,
+        fileManager: FamilyFileManaging,
+        networkCache: FamilyNetworkCache = FamilyNetworkCache()
+    ) {
         self.settingsURL = settingsURL
         self.logger = logger
+        self.parser = parser
+        self.fileManager = fileManager
+        self.networkCache = networkCache
 
         let (model, lastFamily) = CoreState.loadSettings(from: settingsURL) ?? ("DeepSeek", nil)
         self.selectedModel = model
@@ -89,9 +91,7 @@ actor CoreState {
 
     // MARK: - Model selection
 
-    func getSelectedModel() -> String {
-        selectedModel
-    }
+    func getSelectedModel() -> String { selectedModel }
 
     func updateModel(_ model: String) {
         guard !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
@@ -110,7 +110,7 @@ actor CoreState {
 
     func displayFamily(id: String, rawText: String) {
         let trimmedID = id.trimmingCharacters(in: .whitespacesAndNewlines)
-        var entry = cache[trimmedID] ?? CachedFamily(id: trimmedID, rawText: rawText, networkReady: false, processing: false, cachedJSON: [:])
+        var entry = cache[trimmedID] ?? CachedFamilyEntry(id: trimmedID, rawText: rawText, family: nil, network: nil, networkReady: false, processing: false)
         entry.rawText = rawText
         cache[trimmedID] = entry
         currentFamilyID = trimmedID
@@ -118,7 +118,7 @@ actor CoreState {
         startProcessingIfNeeded(familyId: trimmedID)
     }
 
-    func startProcessingIfNeeded(familyId: String) {
+    private func startProcessingIfNeeded(familyId: String) {
         guard var entry = cache[familyId] else { return }
         guard !entry.networkReady else { return }
         guard !entry.processing else { return }
@@ -127,18 +127,44 @@ actor CoreState {
         cache[familyId] = entry
 
         Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 600_000_000)
-            await self?.completeProcessing(for: familyId)
+            await self?.processFamilyNetwork(familyId: familyId)
         }
     }
 
-    private func completeProcessing(for familyId: String) {
+    private func processFamilyNetwork(familyId: String) async {
         guard var entry = cache[familyId] else { return }
-        entry.cachedJSON = ["familyId": familyId, "summary": "Cached network for \(familyId)"]
-        entry.networkReady = true
-        entry.processing = false
-        cache[familyId] = entry
-        logger.info("[Core] Network ready for family \(familyId)")
+        let startTime = Date()
+
+        do {
+            let family = try await parser.parseFamily(familyId: familyId, familyText: entry.rawText)
+            let resolver = FamilyResolver(
+                aiParsingService: parser,
+                nameEquivalenceManager: nameEquivalenceManager,
+                fileManager: fileManager,
+                familyNetworkCache: networkCache
+            )
+            let workflow = FamilyNetworkWorkflow(
+                nuclearFamily: family,
+                familyResolver: resolver,
+                resolveCrossReferences: true
+            )
+
+            try await workflow.process()
+            let network = workflow.getFamilyNetwork() ?? FamilyNetwork(mainFamily: family)
+            let extractionTime = Date().timeIntervalSince(startTime)
+            networkCache.cacheNetwork(network, extractionTime: extractionTime)
+
+            entry.family = family
+            entry.network = network
+            entry.networkReady = true
+            entry.processing = false
+            cache[familyId] = entry
+            logger.info("[Core] Network ready for family \(familyId)")
+        } catch {
+            logger.error("[Core] Failed to process family \(familyId): \(error.localizedDescription)")
+            entry.processing = false
+            cache[familyId] = entry
+        }
     }
 
     // MARK: - Status helpers
@@ -152,85 +178,37 @@ actor CoreState {
             return CacheStatusResponse(familyId: current, processing: false, ready: true, status: "ready")
         }
 
-        return CacheStatusResponse(familyId: current, processing: true, ready: false, status: "processing")
+        if entry.processing {
+            return CacheStatusResponse(familyId: current, processing: true, ready: false, status: "processing")
+        }
+
+        return CacheStatusResponse(familyId: current, processing: false, ready: false, status: "pending")
     }
 
-    func cachedFamily(id: String) -> CachedFamily? {
-        cache[id]
-    }
-
-    func currentFamily() -> CachedFamily? {
+    func currentFamily() -> CachedFamilyEntry? {
         guard let id = currentFamilyID else { return nil }
         return cache[id]
     }
 
     // MARK: - Citation
 
-    private func parseFamily(_ family: CachedFamily) -> ParsedFamily {
-        let lines = family.rawText.split(separator: "\n", omittingEmptySubsequences: false)
-        var persons: [ParsedPerson] = []
-
-        let nameRegex = try! NSRegularExpression(
-            pattern: "\\b[\\p{Lu}][\\p{Ll}]+(?:\\s+[\\p{Lu}][\\p{Ll}]+)+",
-            options: [.caseInsensitive]
-        )
-
-        for (index, line) in lines.enumerated() {
-            let nsLine = line as NSString
-            let range = NSRange(location: 0, length: nsLine.length)
-            let matches = nameRegex.matches(in: String(line), range: range)
-            guard let match = matches.first else { continue }
-
-            let name = nsLine.substring(with: match.range).trimmingCharacters(in: .whitespaces)
-            let birth = extractBirth(from: String(line))
-            let role: ParsedPerson.Role = index <= 2 ? .parent : .child
-            persons.append(ParsedPerson(name: name, birth: birth, role: role, line: String(line)))
-        }
-
-        return ParsedFamily(id: family.id, persons: persons)
-    }
-
-    private func extractBirth(from line: String) -> String {
-        if let starRange = line.range(of: "★\\s*([^\\s]+)", options: .regularExpression) {
-            return String(line[starRange]).replacingOccurrences(of: "★", with: "").trimmingCharacters(in: .whitespaces)
-        }
-
-        if let dateRange = line.range(of: "\\b\\d{1,2}\\.\\d{1,2}\\.\\d{2,4}\\b", options: .regularExpression) {
-            return String(line[dateRange])
-        }
-
-        if let yearRange = line.range(of: "\\b\\d{4}\\b", options: .regularExpression) {
-            return String(line[yearRange])
-        }
-
-        return ""
-    }
-
     func generateCitation(name: String, birth: String) throws -> String {
-
-        guard let family = currentFamily else {
+        guard let entry = currentFamily(), let family = entry.family else {
             throw CoreStateError.noActiveFamily
         }
 
-        guard let network = cachedFamilyNetwork else {
-            throw CoreStateError.networkNotReady
+        guard let network = entry.network else {
+            throw entry.processing ? CoreStateError.networkProcessing : CoreStateError.networkNotReady
         }
 
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedBirth = birth.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // 1. Find the target person in the CURRENT nuclear family
-        guard let targetPerson = family.findPerson(
-            name: trimmedName,
-            birthDate: trimmedBirth
-        ) else {
+        guard let targetPerson = findPerson(in: family, name: trimmedName, birth: trimmedBirth) else {
             throw CoreStateError.personNotFound
         }
 
-        // 2. CHILD CASE → as-child citation
-        if let asChildFamilyID = targetPerson.asChild,
-           let asChildFamily = network.families[asChildFamilyID] {
-
+        if let asChildFamily = network.getAsChildFamily(for: targetPerson) {
             return CitationGenerator.generateAsChildCitation(
                 for: targetPerson,
                 in: asChildFamily,
@@ -239,18 +217,13 @@ actor CoreState {
             )
         }
 
-        // 3. SPOUSE CASE → spouse as-child citation
-        if let spouseFamilyID = network.getSpouseAsChildFamilyID(for: targetPerson),
-           let spouseFamily = network.families[spouseFamilyID] {
-
+        if let spouseAsChildFamily = network.getSpouseAsChildFamily(for: targetPerson) {
             return CitationGenerator.generateSpouseAsChildCitation(
-                for: targetPerson,
-                in: spouseFamily,
-                network: network
+                spouseName: targetPerson.displayName,
+                in: spouseAsChildFamily
             )
         }
 
-        // 4. PARENT / MAIN FAMILY CASE
         return CitationGenerator.generateMainFamilyCitation(
             family: family,
             targetPerson: targetPerson,
@@ -258,6 +231,33 @@ actor CoreState {
             nameEquivalenceManager: nameEquivalenceManager
         )
     }
+
+    private func findPerson(in family: Family, name: String, birth: String) -> Person? {
+        let children = family.couples.flatMap { $0.children }
+        let candidates = family.allParents + children
+
+        let normalizedSearchName = name.lowercased()
+        let birthToken = birth.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Prefer matches that include birth information when provided
+        if !birthToken.isEmpty {
+            if let match = candidates.first(where: { person in
+                guard let personBirth = person.birthDate?.trimmingCharacters(in: .whitespacesAndNewlines), !personBirth.isEmpty else { return false }
+                let birthMatches = personBirth.contains(birthToken)
+                let nameMatches = nameEquivalenceManager.areNamesEquivalent(person.name, normalizedSearchName) || person.displayName.lowercased().contains(normalizedSearchName)
+                return birthMatches && nameMatches
+            }) {
+                return match
+            }
+        }
+
+        // Fallback: name-only match
+        return candidates.first(where: { person in
+            nameEquivalenceManager.areNamesEquivalent(person.name, normalizedSearchName) ||
+            person.displayName.lowercased().contains(normalizedSearchName)
+        })
+    }
+
     // MARK: - Cache listing
 
     func groupedCacheList() -> [String: [String]] {
@@ -278,6 +278,7 @@ actor CoreState {
 
     func removeFamily(id: String) {
         cache.removeValue(forKey: id)
+        networkCache.deleteCachedFamily(familyId: id)
         if currentFamilyID == id {
             currentFamilyID = nil
         }
@@ -287,6 +288,7 @@ actor CoreState {
     func clearAllFamilies() {
         cache.removeAll()
         currentFamilyID = nil
+        networkCache.clearCache()
         persistSettings()
     }
 }

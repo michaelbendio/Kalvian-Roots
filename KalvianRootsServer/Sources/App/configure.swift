@@ -1,5 +1,6 @@
 import Vapor
 import Foundation
+import KalvianRootsCore
 
 public func configure(_ app: Application) throws {
     // Setup logging first
@@ -13,7 +14,7 @@ public func configure(_ app: Application) throws {
     app.middleware.use(FileMiddleware(publicDirectory: app.directory.publicDirectory))
     app.middleware.use(RequestIDMiddleware())
     app.middleware.use(ErrorEnvelopeMiddleware())
-    
+
     app.logger.info("PUBLIC DIRECTORY = \(app.directory.publicDirectory)")
 
     // Token for /api/* routes
@@ -28,16 +29,28 @@ public func configure(_ app: Application) throws {
     let settingsURL = URL(fileURLWithPath: app.directory.workingDirectory)
         .appendingPathComponent("Config")
         .appendingPathComponent("settings.json")
-    app.coreState = CoreState(settingsURL: settingsURL, logger: app.logger)
 
-    // ROOTS_FILE wiring
+    let parser = SimpleFamilyParser(logger: app.logger)
+    let fileManager: FamilyFileManaging
+
     if let rootsPath = Environment.get("ROOTS_FILE"), !rootsPath.isEmpty {
         app.logger.info("ROOTS_FILE set to: \(rootsPath)")
         app.roots = RootsEnvironment(rootsPath: rootsPath)
+        fileManager = RootsFileManager(rootsPath: rootsPath, logger: app.logger)
     } else {
         app.logger.warning("ROOTS_FILE is not set; server will run without roots data.")
         app.roots = nil
+        fileManager = NullRootsFileManager()
     }
+
+    let networkCache = FamilyNetworkCache()
+    app.coreState = CoreState(
+        settingsURL: settingsURL,
+        logger: app.logger,
+        parser: parser,
+        fileManager: fileManager,
+        networkCache: networkCache
+    )
 
     app.logger.logLevel = .debug
     app.logger.info("KalvianRootsServer starting on port \(app.http.server.configuration.port)")
