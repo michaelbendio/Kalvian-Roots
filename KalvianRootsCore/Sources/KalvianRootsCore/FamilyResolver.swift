@@ -22,24 +22,24 @@ import Foundation
  * 4. Marriage date validation
  */
 @MainActor
-class FamilyResolver {
+public final class FamilyResolver {
     
     // MARK: - Properties
     
-    private let fileManager: RootsFileManager
+    private let fileManager: FamilyFileManaging
     private let nameEquivalenceManager: NameEquivalenceManager
-    private let aiParsingService: AIParsingService
-    private weak var familyNetworkCache: FamilyNetworkCache?
+    private let aiParsingService: FamilyParsingService
+    private let familyNetworkCache: FamilyNetworkCaching?
 
     // Track resolution statistics
     private var resolutionStatistics = ResolutionStatistics()
     
     // MARK: - Initialization
     
-    init(aiParsingService: AIParsingService,
-         nameEquivalenceManager: NameEquivalenceManager,
-         fileManager: RootsFileManager,
-         familyNetworkCache: FamilyNetworkCache? = nil) {
+    public init(aiParsingService: FamilyParsingService,
+                nameEquivalenceManager: NameEquivalenceManager,
+                fileManager: FamilyFileManaging,
+                familyNetworkCache: FamilyNetworkCaching? = nil) {
         self.aiParsingService = aiParsingService
         self.nameEquivalenceManager = nameEquivalenceManager
         self.fileManager = fileManager
@@ -53,7 +53,7 @@ class FamilyResolver {
      * Resolve all cross-references for a nuclear family
      * Returns a FamilyNetwork containing the nuclear family and all resolved references
      */
-    func resolveCrossReferences(for family: Family) async throws -> FamilyNetwork {
+    public func resolveCrossReferences(for family: Family) async throws -> FamilyNetwork {
         logInfo(.resolver, "")
         logInfo(.resolver, String(repeating: "=", count: 70))
         logInfo(.resolver, "🎯 Starting cross-reference resolution for: \(family.familyId)")

@@ -10,32 +10,32 @@ import Foundation
 /**
  * Represents a couple with their children
  */
-struct Couple: Hashable, Sendable, Codable {
+public struct Couple: Hashable, Sendable, Codable {
     /// Husband in the couple
-    var husband: Person
+    public var husband: Person
     
     /// Wife in the couple
-    var wife: Person
+    public var wife: Person
     
     /// Marriage date for this couple
-    var marriageDate: String?
+    public var marriageDate: String?
     
     // Full marriage date from their asParent family
-    var fullMarriageDate: String?
+    public var fullMarriageDate: String?
     
     /// Children from this couple
-    var children: [Person]
+    public var children: [Person]
     
     /// Number of children who died in infancy from this couple
-    var childrenDiedInfancy: Int?
+    public var childrenDiedInfancy: Int?
     
     /// Notes specific to this couple
-    var coupleNotes: [String]
-    
-    init(husband: Person, wife: Person, marriageDate: String? = nil,
-         fullMarriageDate: String? = nil,
-         children: [Person] = [], childrenDiedInfancy: Int? = nil,
-         coupleNotes: [String] = []) {
+    public var coupleNotes: [String]
+
+    public init(husband: Person, wife: Person, marriageDate: String? = nil,
+                fullMarriageDate: String? = nil,
+                children: [Person] = [], childrenDiedInfancy: Int? = nil,
+                coupleNotes: [String] = []) {
         self.husband = husband
         self.wife = wife
         self.marriageDate = marriageDate
@@ -54,32 +54,46 @@ public struct Family: Hashable, Sendable, Codable {
     // MARK: - Core Family Data
     
     /// Family ID like 'PIENI-PORKOLA 5' or 'KORPI 6'
-    var familyId: String
+    public var familyId: String
     
     /// Source page numbers like ['268', '269']
-    var pageReferences: [String]
+    public var pageReferences: [String]
     
     /// All couples in this family unit
     /// Even a simple family has one couple
-    var couples: [Couple]
+    public var couples: [Couple]
     
     /// General family notes
-    var notes: [String]
-    
+    public var notes: [String]
+
     /// Note marker definitions (e.g., "*": "Juho kuoli 26.01.1767, leski Pirkola 8.")
-    var noteDefinitions: [String: String]
+    public var noteDefinitions: [String: String]
+
+    public init(
+        familyId: String,
+        pageReferences: [String],
+        couples: [Couple],
+        notes: [String],
+        noteDefinitions: [String: String]
+    ) {
+        self.familyId = familyId
+        self.pageReferences = pageReferences
+        self.couples = couples
+        self.notes = notes
+        self.noteDefinitions = noteDefinitions
+    }
     
     // MARK: - Convenience Accessors
     
     /// Primary couple (first couple in the family)
-    var primaryCouple: Couple? {
+    public var primaryCouple: Couple? {
         return couples.first
     }
     
     // MARK: - Computed Properties for Cross-Reference Resolution
     
     /// All parents across all couples (for cross-reference resolution)
-    var allParents: [Person] {
+    public var allParents: [Person] {
         var parents: [Person] = []
         for couple in couples {
             parents.append(couple.husband)
@@ -89,7 +103,7 @@ public struct Family: Hashable, Sendable, Codable {
     }
     
     /// All children across all couples who are married (have spouse information)
-    var marriedChildren: [Person] {
+    public var marriedChildren: [Person] {
         var married: [Person] = []
         for couple in couples {
             for child in couple.children {
@@ -102,14 +116,14 @@ public struct Family: Hashable, Sendable, Codable {
     }
     
     /// Total children who died in infancy across all couples
-    var totalChildrenDiedInfancy: Int {
+    public var totalChildrenDiedInfancy: Int {
         return couples.compactMap { $0.childrenDiedInfancy }.reduce(0, +)
     }
     
     // MARK: - Computed Properties
     
     /// Get formatted page reference string
-    var pageReferenceString: String {
+    public var pageReferenceString: String {
         if pageReferences.count == 1 {
             return "page \(pageReferences[0])"
         } else {
@@ -118,14 +132,14 @@ public struct Family: Hashable, Sendable, Codable {
     }
     
     /// Check if family structure is valid
-    var isValid: Bool {
+    public var isValid: Bool {
         return !familyId.isEmpty && !pageReferences.isEmpty && !couples.isEmpty
     }
     
     // MARK: - Helper Methods
     
     /// Find a person across all couples
-    func findPerson(named name: String) -> Person? {
+    public func findPerson(named name: String) -> Person? {
         for couple in couples {
             if couple.husband.name.lowercased() == name.lowercased() {
                 return couple.husband
@@ -141,7 +155,7 @@ public struct Family: Hashable, Sendable, Codable {
     }
     
     /// Get all unique persons in the family
-    var allPersons: [Person] {
+    public var allPersons: [Person] {
         var persons: Set<String> = []
         var result: [Person] = []
         
@@ -224,15 +238,15 @@ public struct Family: Hashable, Sendable, Codable {
     // MARK: - Initializers
     
     /// Simple family with one couple
-    init(familyId: String,
-         pageReferences: [String],
-         husband: Person,
-         wife: Person,
-         marriageDate: String? = nil,
-         children: [Person] = [],
-         childrenDiedInfancy: Int? = nil,
-         notes: [String] = [],
-         noteDefinitions: [String: String] = [:]) {
+    public init(familyId: String,
+                pageReferences: [String],
+                husband: Person,
+                wife: Person,
+                marriageDate: String? = nil,
+                children: [Person] = [],
+                childrenDiedInfancy: Int? = nil,
+                notes: [String] = [],
+                noteDefinitions: [String: String] = [:]) {
         
         let couple = Couple(
             husband: husband,
@@ -251,18 +265,7 @@ public struct Family: Hashable, Sendable, Codable {
     }
     
     /// Full family with multiple couples
-    init(familyId: String,
-         pageReferences: [String],
-         couples: [Couple],
-         notes: [String] = [],
-         noteDefinitions: [String: String] = [:]) {
-        
-        self.familyId = familyId
-        self.pageReferences = pageReferences
-        self.couples = couples
-        self.notes = notes
-        self.noteDefinitions = noteDefinitions
-    }
+    // Use the public memberwise initializer for more control
 }
 
 // MARK: - Sample Data Extensions

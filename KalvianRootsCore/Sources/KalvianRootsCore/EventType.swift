@@ -19,7 +19,7 @@ public enum EventType: String, CaseIterable {
     case baptism = "baptism"
     case burial = "burial"
     
-    var displayName: String {
+    public var displayName: String {
         switch self {
         case .birth:
             return "Birth"
@@ -34,7 +34,7 @@ public enum EventType: String, CaseIterable {
         }
     }
     
-    var symbol: String {
+    public var symbol: String {
         switch self {
         case .birth:
             return "★"

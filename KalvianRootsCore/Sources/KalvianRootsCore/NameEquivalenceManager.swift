@@ -14,8 +14,7 @@ import Foundation
  * Examples: Liisa ↔ Elisabet, Johan ↔ Juho, Matti ↔ Matias
  */
 
-@Observable
-class NameEquivalenceManager {
+public final class NameEquivalenceManager {
     
     // MARK: - Properties
     
@@ -27,11 +26,11 @@ class NameEquivalenceManager {
     
     // MARK: - Computed Properties
     
-    var totalEquivalences: Int {
+    public var totalEquivalences: Int {
         return equivalences.values.reduce(0) { $0 + $1.count }
     }
     
-    var equivalenceGroups: [[String]] {
+    public var equivalenceGroups: [[String]] {
         var processed: Set<String> = []
         var groups: [[String]] = []
         
@@ -53,7 +52,7 @@ class NameEquivalenceManager {
     
     // MARK: - Initialization
     
-    init() {
+    public init() {
         logInfo(.nameEquivalence, "🔤 NameEquivalenceManager initialization started")
         
         loadEquivalences()
@@ -67,7 +66,7 @@ class NameEquivalenceManager {
     /**
      * Check if two names are equivalent
      */
-    func areNamesEquivalent(_ name1: String, _ name2: String) -> Bool {
+    public func areNamesEquivalent(_ name1: String, _ name2: String) -> Bool {
         let normalized1 = normalizeName(name1)
         let normalized2 = normalizeName(name2)
         
@@ -87,7 +86,7 @@ class NameEquivalenceManager {
     /**
      * Get all equivalent names for a given name
      */
-    func getEquivalentNames(for name: String) -> Set<String> {
+    public func getEquivalentNames(for name: String) -> Set<String> {
         let normalized = normalizeName(name)
         
         var allEquivalents: Set<String> = [normalized]
@@ -109,7 +108,7 @@ class NameEquivalenceManager {
     /**
      * Add name equivalence (bidirectional)
      */
-    func addEquivalence(between name1: String, and name2: String) {
+    public func addEquivalence(between name1: String, and name2: String) {
         let normalized1 = normalizeName(name1)
         let normalized2 = normalizeName(name2)
         
@@ -131,7 +130,7 @@ class NameEquivalenceManager {
     /**
      * Remove name equivalence
      */
-    func removeEquivalence(between name1: String, and name2: String) {
+    public func removeEquivalence(between name1: String, and name2: String) {
         let normalized1 = normalizeName(name1)
         let normalized2 = normalizeName(name2)
         
@@ -157,7 +156,7 @@ class NameEquivalenceManager {
     /**
      * Check if user has been asked about this name pair before
      */
-    func hasBeenAskedAbout(_ name1: String, _ name2: String) -> Bool {
+    public func hasBeenAskedAbout(_ name1: String, _ name2: String) -> Bool {
         // This could track which name pairs have been presented to the user
         // For now, return false to always ask
         return false
@@ -280,14 +279,14 @@ class NameEquivalenceManager {
     /**
      * Generate user-friendly question for name equivalence
      */
-    func generateEquivalenceQuestion(for name1: String, and name2: String) -> String {
+    public func generateEquivalenceQuestion(for name1: String, and name2: String) -> String {
         return "Are '\(name1)' and '\(name2)' the same person? (Common Finnish name variations)"
     }
     
     /**
      * Get suggestion confidence for name similarity
      */
-    func getSimilarityConfidence(between name1: String, and name2: String) -> Double {
+    public func getSimilarityConfidence(between name1: String, and name2: String) -> Double {
         let normalized1 = normalizeName(name1)
         let normalized2 = normalizeName(name2)
         
@@ -368,7 +367,7 @@ class NameEquivalenceManager {
     
     // MARK: - Debugging and Statistics
     
-    func getEquivalenceStatistics() -> EquivalenceStatistics {
+    public func getEquivalenceStatistics() -> EquivalenceStatistics {
         return EquivalenceStatistics(
             totalGroups: equivalenceGroups.count,
             totalNames: totalEquivalences,
@@ -377,7 +376,7 @@ class NameEquivalenceManager {
         )
     }
     
-    func clearAllEquivalences() {
+    public func clearAllEquivalences() {
         logWarn(.nameEquivalence, "🗑️ Clearing all name equivalences")
         
         equivalences.removeAll()
@@ -389,7 +388,7 @@ class NameEquivalenceManager {
 
 // MARK: - Supporting Structures
 
-struct EquivalenceStatistics {
+public struct EquivalenceStatistics {
     let totalGroups: Int
     let totalNames: Int
     let averageGroupSize: Double
