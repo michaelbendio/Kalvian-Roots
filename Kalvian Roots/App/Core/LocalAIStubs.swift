@@ -24,37 +24,6 @@ class MLXService: AIService {
     static func getRecommendedModel() -> MLXService? { nil }
 }
 
-// Minimal stub for MLX server coordination
-class MLXServerManager {
-    struct ServerStatus {
-        var isReady: Bool
-    }
-
-    var serverStatus = ServerStatus(isReady: true)
-    var currentModel: String?
-    var queuedExtractions: [String] = []
-
-    func getDefaultModel() -> String { currentModel ?? "" }
-
-    func startServer(modelName: String) async throws {
-        currentModel = modelName
-        serverStatus.isReady = true
-    }
-
-    func switchModel(to modelName: String) async throws {
-        currentModel = modelName
-        serverStatus.isReady = true
-    }
-
-    func queueExtraction(_ familyId: String) {
-        queuedExtractions.append(familyId)
-    }
-
-    func clearQueue() {
-        queuedExtractions.removeAll()
-    }
-}
-
 // Minimal stub for mock AI service
 class MockAIService: AIService {
     let name = "Mock AI"
