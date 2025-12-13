@@ -135,10 +135,6 @@ struct JuuretView: View {
     private var isAIReady: Bool {
         // Check if using MLX service
         let serviceName = juuretApp.aiParsingService.currentServiceName
-        if serviceName.contains("MLX") {
-            // MLX service - check server status
-            return juuretApp.mlxServerManager.serverStatus.isReady
-        }
         
         // Cloud service (DeepSeek, etc.) - always ready if configured
         return juuretApp.aiParsingService.isConfigured

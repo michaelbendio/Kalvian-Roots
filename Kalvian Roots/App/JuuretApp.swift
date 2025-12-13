@@ -31,7 +31,6 @@ class JuuretApp {
     let nameEquivalenceManager: NameEquivalenceManager
     let fileManager: RootsFileManager // for I/O operations
     let familyNetworkCache: FamilyNetworkCache  // for background processing
-    let mlxServerManager: MLXServerManager
     
     // MARK: - App State
     var currentFamily: Family?
@@ -315,16 +314,12 @@ class JuuretApp {
             familyNetworkCache: localFamilyNetworkCache  // NEW: pass cache!
         )
 
-        // Initialize MLX server manager BEFORE assigning to self
-        let localMLXServerManager = MLXServerManager()
-
         // Assign all to self properties
         self.nameEquivalenceManager = localNameEquivalenceManager
         self.fileManager = localFileManager
         self.aiParsingService = localAIParsingService
         self.familyResolver = localFamilyResolver
         self.familyNetworkCache = localFamilyNetworkCache
-        self.mlxServerManager = localMLXServerManager  // ADD THIS LINE
 
         // NOW we can use self properties in logs
         logInfo(.app, "✅ Core services initialized with memory-efficient architecture")
@@ -364,22 +359,6 @@ class JuuretApp {
                 self.fileLoadContinuation = nil
             }
         }
-        
-        // Auto-start last used MLX model on launch (if on macOS)
-        #if os(macOS) && arch(arm64)
-        if MLXService.isAvailable() {
-            Task {
-                let defaultModel = mlxServerManager.getDefaultModel()
-                logInfo(.app, "🚀 Auto-starting MLX server with last model: \(defaultModel)")
-                
-                do {
-                    try await mlxServerManager.startServer(modelName: defaultModel)
-                } catch {
-                    logError(.app, "❌ Failed to auto-start MLX server: \(error)")
-                }
-            }
-        }
-        #endif
         
         logInfo(.app, "🎉 JuuretApp initialization complete")
         logDebug(.app, "Ready state: \(self.isReady)")
@@ -610,22 +589,6 @@ class JuuretApp {
                 familyResolver: familyResolver
             )
             
-            return
-        }
-        
-        // NEW: Check if using MLX and server is not ready
-        let serviceName = aiParsingService.currentServiceName
-        if serviceName.contains("MLX") && !mlxServerManager.serverStatus.isReady {
-            // Queue this extraction
-            mlxServerManager.queueExtraction(normalizedId)
-            
-            await MainActor.run {
-                errorMessage = "Queued: \(normalizedId) (MLX server starting...)"
-                isProcessing = false
-                pendingFamilyId = nil
-            }
-            
-            logInfo(.app, "📋 Queued extraction while MLX server starts: \(normalizedId)")
             return
         }
         
@@ -1016,12 +979,6 @@ class JuuretApp {
             guard let modelName = AIServiceFactory.getMLXModelName(from: serviceName) else {
                 throw JuuretApp.ExtractionError.parsingFailed("Invalid MLX model name")
             }
-            
-            // Check if we need to switch models
-            if mlxServerManager.currentModel != modelName {
-                logInfo(.app, "🔄 Switching MLX model to: \(modelName)")
-                try await mlxServerManager.switchModel(to: modelName)
-            }
         }
         
         // Switch the AI service
@@ -1075,19 +1032,6 @@ class JuuretApp {
         return person1.name.lowercased() == person2.name.lowercased()
     }
     
-    func processQueuedExtractions() async {
-        let queued = mlxServerManager.queuedExtractions
-        guard !queued.isEmpty else { return }
-        
-        logInfo(.app, "📤 Processing \(queued.count) queued extractions")
-        
-        // Process first queued family
-        if let firstFamily = queued.first {
-            mlxServerManager.clearQueue()
-            await extractFamily(familyId: firstFamily)
-        }
-    }
-
     // MARK: - Extraction Progress States
     
     enum ExtractionProgress {
