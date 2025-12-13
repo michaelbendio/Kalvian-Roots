@@ -54,7 +54,7 @@
 		096483202E98372000B1F026 /* Exceptions for "Kalvian Roots" folder in "Kalvian RootsTests" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				App/Core/FamilyNetwork.swift,
+				App/FamilyNetwork.swift,
 				Models/Family.swift,
 				Models/Person.swift,
 				Views/NavigationBarView.swift,
