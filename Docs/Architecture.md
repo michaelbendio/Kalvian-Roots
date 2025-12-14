@@ -5,7 +5,6 @@
 - **UI**: SwiftUI views (`ContentView`, `JuuretView`, `AISettingsView`, etc.) using `@Environment(JuuretApp.self)`
 - **Models**: `Family`, `Person`, `EventType`
 - **Core services**: `AIParsingService`, `FamilyResolver`, `NameEquivalenceManager`
-- **AI providers**: Implement `AIService` (OpenAI, Claude, DeepSeek, Ollama, MLX local, Mock)
 - **Utilities**: `FileManager` (canonical file I/O), `DebugLogger`, `FamilyIDs`, font helpers
 
 ### Data flow
@@ -25,15 +24,6 @@
 - JSON schema (top-level keys):
   - `familyId`, `pageReferences`, `father`, `mother`, `additionalSpouses`, `children`, `notes`, `childrenDiedInfancy`
   - `Person` fields include: `name`, `patronymic?`, `birthDate?`, `deathDate?`, `marriageDate?`, `spouse?`, `asChildReference?`, `asParentReference?`, `familySearchId?`, `noteMarkers` and enhancement fields
-
-### Local MLX (Apple Silicon)
-- Class: `MLXService` (local provider implementing `AIService`)
-- Server base URL: `http://127.0.0.1:8080`
-- Expected response JSON contains a `response` field with generated text; code extracts the JSON object
-- Example start command (adjust model path to your environment):
-  ```shell
-python -m mlx_lm.server --model ~/.kalvian_roots_mlx/models/Qwen3-30B-A3B-4bit --port 8080
-  ```
 
 ### File I/O
 - Canonical file: `JuuretKälviällä.roots` in the app’s Documents (user-accessible via iCloud Drive symlink)

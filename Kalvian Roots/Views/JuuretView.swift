@@ -131,13 +131,8 @@ struct JuuretView: View {
     
     // MARK: - AI Ready Indicator Logic
     
-    /// Check if AI is ready to process families
     private var isAIReady: Bool {
-        // Check if using MLX service
-        let serviceName = juuretApp.aiParsingService.currentServiceName
-        
-        // Cloud service (DeepSeek, etc.) - always ready if configured
-        return juuretApp.aiParsingService.isConfigured
+        juuretApp.aiParsingService.isConfigured
     }
     
     // MARK: - Empty State View

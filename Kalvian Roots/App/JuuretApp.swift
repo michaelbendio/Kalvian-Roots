@@ -266,16 +266,6 @@ class JuuretApp {
         familyNetworkCache.hasCachedFamilies
     }
     
-    /// Available AI services for switching
-    var availableServices: [String] {
-        aiParsingService.availableServiceNames
-    }
-    
-    /// Current AI service name for display
-    var currentServiceName: String {
-        return aiParsingService.currentServiceName
-    }
-    
     // MARK: - Initialization
     
     init() {
@@ -301,7 +291,6 @@ class JuuretApp {
             logInfo(.ai, "✅ AI parsing service initialized (cloud services only)")
         #endif
 
-        logDebug(.ai, "Available services: \(localAIParsingService.availableServiceNames.joined(separator: ", "))")
 
         // CREATE CACHE FIRST (before resolver)
         let localFamilyNetworkCache = FamilyNetworkCache(rootsFileManager: localFileManager)
@@ -321,11 +310,6 @@ class JuuretApp {
         self.familyResolver = localFamilyResolver
         self.familyNetworkCache = localFamilyNetworkCache
 
-        // NOW we can use self properties in logs
-        logInfo(.app, "✅ Core services initialized with memory-efficient architecture")
-        logInfo(.app, "Current AI service: \(self.currentServiceName)")
-        logDebug(.app, "Available services: \(self.availableServices.joined(separator: ", "))")
-        
         // Auto-load default file
         Task { @MainActor in
             logDebug(.file, "Attempting auto-load of default file")
@@ -966,40 +950,14 @@ class JuuretApp {
         return nil
     }
     
-    // MARK: - AI Service Management
-    
     /**
-     * Switch to a different AI service
-     */
-    func switchAIService(to serviceName: String) async throws {
-        logInfo(.app, "🔄 Switching AI service to: \(serviceName)")
-        
-        // If switching to an MLX service, ensure server is started with correct model
-        if AIServiceFactory.isMLXService(serviceName) {
-            guard let modelName = AIServiceFactory.getMLXModelName(from: serviceName) else {
-                throw JuuretApp.ExtractionError.parsingFailed("Invalid MLX model name")
-            }
-        }
-        
-        // Switch the AI service
-        try await aiParsingService.switchService(to: serviceName)
-        
-        logInfo(.app, "✅ Switched to AI service: \(serviceName)")
-    }
-
-    /**
-     * Configure the current AI service
+     * Configure the AI service (DeepSeek)
      */
     func configureAIService(apiKey: String) async throws {
-        try aiParsingService.configureService(apiKey: apiKey)
-        
-        // Save the API key for the current service
-        let currentService = aiParsingService.currentServiceName
-        UserDefaults.standard.set(apiKey, forKey: "AIService_\(currentService)_APIKey")
-        
-        logInfo(.app, "✅ Configured AI service: \(currentService)")
+        try aiParsingService.configure(apiKey: apiKey)
+        logInfo(.app, "✅ AI service configured")
     }
-    
+
     // MARK: - Utility Methods
     
     /**

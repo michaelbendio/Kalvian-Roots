@@ -11,74 +11,33 @@ class AIParsingService {
     
     // MARK: - Properties
     
-    /// Currently selected AI service
-    private var currentService: AIService
-    
-    /// Available AI services
-    private let services: [String: AIService]
+    /// The single hosted AI service used for parsing
+    private let service: AIService
+
     
     // MARK: - Computed Properties
     
     /// Check if current service is configured
     var isConfigured: Bool {
-        currentService.isConfigured
-    }
-    
-    /// Get current service name
-    var currentServiceName: String {
-        currentService.name
-    }
-    
-    /// Get all available service names
-    var availableServiceNames: [String] {
-        Array(services.keys).sorted()
+        service.isConfigured
     }
     
     // MARK: - Initialization
     
     init() {
         logInfo(.ai, "🤖 Initializing AI Parsing Service")
-        
-        // Get available services for platform
-        let platformServices = PlatformAwareServiceManager.getRecommendedServices()
-        
-        // Build services dictionary
-        var servicesDict: [String: AIService] = [:]
-        for service in platformServices {
-            servicesDict[service.name] = service
-        }
-        self.services = servicesDict
-        
-        let defaultService = PlatformAwareServiceManager.getDefaultService()
-        self.currentService = defaultService
-        logInfo(.ai, "✅ Selected default AI service: \(defaultService.name)")
-        
-        logDebug(.ai, "Available AI services: \(availableServiceNames.joined(separator: ", "))")
+
+        let service = DeepSeekService()
+        self.service = service
+
+        logInfo(.ai, "✅ Using hosted AI service: \(service.name)")
     }
     
-    // MARK: - Service Management
-    
-    /**
-     * Switch to a different AI service
-     */
-    func switchService(to serviceName: String) throws {
-        guard let service = services[serviceName] else {
-            logError(.ai, "❌ Unknown AI service: \(serviceName)")
-            throw AIServiceError.invalidResponse("Unknown service: \(serviceName)")
-        }
-        
-        currentService = service
-        logInfo(.ai, "✅ Switched to AI service: \(serviceName)")
+    func configure(apiKey: String) throws {
+        try service.configure(apiKey: apiKey)
     }
-    
-    /**
-     * Configure the current AI service with API key
-     */
-    func configureService(apiKey: String) throws {
-        try currentService.configure(apiKey: apiKey)
-        logInfo(.ai, "✅ Configured AI service: \(currentServiceName)")
-    }
-    
+
+
     // MARK: - Family Parsing
     
     /**
@@ -86,20 +45,20 @@ class AIParsingService {
      */
     func parseFamily(familyId: String, familyText: String) async throws -> Family {
         logInfo(.parsing, "🎯 Starting family parsing for: \(familyId)")
-        logDebug(.parsing, "Using AI service: \(currentServiceName)")
+        logDebug(.parsing, "Using AI service: \(service.name)")
         logTrace(.parsing, "Family text length: \(familyText.count) characters")
         
         DebugLogger.shared.startTimer("ai_parsing")
         
         guard isConfigured else {
-            logError(.ai, "❌ AI service not configured: \(currentServiceName)")
-            throw AIServiceError.notConfigured(currentServiceName)
+            logError(.ai, "❌ AI service not configured: \(service.name)")
+            throw AIServiceError.notConfigured(service.name)
         }
         
         do {
             // Get JSON response from AI service
             logDebug(.parsing, "📤 Sending request to AI service...")
-            let jsonResponse: String = try await currentService.parseFamily(
+            let jsonResponse: String = try await service.parseFamily(
                 familyId: familyId,
                 familyText: familyText
             )

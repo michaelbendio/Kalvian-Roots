@@ -193,23 +193,6 @@ struct SidebarView: View {
                 }
             }
             
-            Section("AI Service") {
-                HStack {
-                    Circle()
-                        .fill(app.aiParsingService.isConfigured ? .green : .orange)
-                        .frame(width: 8, height: 8)
-                    Text(app.currentServiceName)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                
-                if !app.aiParsingService.isConfigured {
-                    Text("Add API key in settings")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            
             Section {
                 Button("AI Settings") {
                     app.detailRoute = .aiSettings
