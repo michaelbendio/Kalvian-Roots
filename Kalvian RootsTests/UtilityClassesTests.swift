@@ -14,14 +14,14 @@ final class NameEquivalenceManagerTests: XCTestCase {
     
     var manager: NameEquivalenceManager!
     
-    override func setUp() throws {
-        try super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
         manager = NameEquivalenceManager()
     }
-    
-    override func tearDown() throws {
+
+    override func tearDownWithError() throws {
         manager = nil
-        try super.tearDown()
+        try super.tearDownWithError()
     }
     
     func testManagerInitialization() {
@@ -61,7 +61,7 @@ final class NameEquivalenceManagerTests: XCTestCase {
     
     func testAddCustomEquivalence() {
         // When: Adding custom equivalence
-        manager.addEquivalence("TestName1", "TestName2")
+        manager.addEquivalence(between: "TestName1", and: "TestName2")
         
         // Then: Should recognize equivalence
         XCTAssertTrue(manager.areNamesEquivalent("TestName1", "TestName2"))
@@ -69,11 +69,11 @@ final class NameEquivalenceManagerTests: XCTestCase {
     
     func testRemoveEquivalence() {
         // Given: Custom equivalence
-        manager.addEquivalence("TestName1", "TestName2")
+        manager.addEquivalence(between: "TestName1", and: "TestName2")
         XCTAssertTrue(manager.areNamesEquivalent("TestName1", "TestName2"))
-        
+
         // When: Removing equivalence
-        manager.removeEquivalence("TestName1", "TestName2")
+        manager.removeEquivalence(between: "TestName1", and: "TestName2")
         
         // Then: Should no longer be equivalent
         XCTAssertFalse(manager.areNamesEquivalent("TestName1", "TestName2"))
@@ -100,16 +100,16 @@ final class HiskiServiceTests: XCTestCase {
     var service: HiskiService!
     var nameEquivalenceManager: NameEquivalenceManager!
     
-    override func setUp() throws {
-        try super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
         nameEquivalenceManager = NameEquivalenceManager()
         service = HiskiService(nameEquivalenceManager: nameEquivalenceManager)
     }
-    
-    override func tearDown() throws {
+
+    override func tearDownWithError() throws {
         service = nil
         nameEquivalenceManager = nil
-        try super.tearDown()
+        try super.tearDownWithError()
     }
     
     func testServiceInitialization() {
