@@ -8,7 +8,7 @@ import Foundation
 
 // MARK: - LogLevel and LogCategory
 
-enum LogLevel: Int, CaseIterable {
+public enum LogLevel: Int, CaseIterable {
     case error = 0
     case warn = 1
     case info = 2
@@ -36,7 +36,7 @@ enum LogLevel: Int, CaseIterable {
     }
 }
 
-enum LogCategory: String, CaseIterable {
+public enum LogCategory: String, CaseIterable {
     case app = "APP"
     case ai = "AI"
     case parsing = "PARSE"
@@ -70,7 +70,7 @@ enum LogCategory: String, CaseIterable {
 
 // MARK: - DebugLogger Class
 
-class DebugLogger {
+public class DebugLogger {
     static let shared = DebugLogger()
     
     private var currentLevel: LogLevel = .debug
@@ -244,22 +244,22 @@ class DebugLogger {
 
 // MARK: - Global Convenience Functions
 
-func logError(_ category: LogCategory, _ message: String, file: String = #file, line: Int = #line) {
+public func logError(_ category: LogCategory, _ message: String, file: String = #file, line: Int = #line) {
     DebugLogger.shared.error(category, message, file: file, line: line)
 }
 
-func logWarn(_ category: LogCategory, _ message: String, file: String = #file, line: Int = #line) {
+public func logWarn(_ category: LogCategory, _ message: String, file: String = #file, line: Int = #line) {
     DebugLogger.shared.warn(category, message, file: file, line: line)
 }
 
-func logInfo(_ category: LogCategory, _ message: String, file: String = #file, line: Int = #line) {
+public func logInfo(_ category: LogCategory, _ message: String, file: String = #file, line: Int = #line) {
     DebugLogger.shared.info(category, message, file: file, line: line)
 }
 
-func logDebug(_ category: LogCategory, _ message: String, file: String = #file, line: Int = #line) {
+public func logDebug(_ category: LogCategory, _ message: String, file: String = #file, line: Int = #line) {
     DebugLogger.shared.debug(category, message, file: file, line: line)
 }
 
-func logTrace(_ category: LogCategory, _ message: String, file: String = #file, line: Int = #line) {
+public func logTrace(_ category: LogCategory, _ message: String, file: String = #file, line: Int = #line) {
     DebugLogger.shared.trace(category, message, file: file, line: line)
 }
