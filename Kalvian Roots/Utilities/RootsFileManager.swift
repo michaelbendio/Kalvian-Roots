@@ -255,7 +255,6 @@ final class RootsFileManager {
                 self.isFileLoaded = true
                 self.errorMessage = nil
             }
-            addToRecentFiles(url)
             logInfo(.file, "✅ File loaded via iOS picker")
             return content
         } catch {
