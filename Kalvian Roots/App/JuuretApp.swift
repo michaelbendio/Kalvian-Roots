@@ -50,23 +50,13 @@ class JuuretApp {
     /// Current route for the macOS detail pane
     var detailRoute: DetailRoute = .empty
     // MARK: - Navigation State
-    var navigationHistory: [String] = []
-    var historyIndex: Int = -1  //Current position in navigation history
-    var homeFamily: String? // (set when explicitly navigating via address bar or back/forward)
     var showPDFMode: Bool = false
 
     // MARK: - Navigation Methods
 
-    /**
-     * Navigate to a family, optionally adding to history
-     *
-     * - Parameters:
-     *   - familyId: The family ID to navigate to
-     *   - updateHistory: If true, adds this navigation to history and sets as home
-     */
-    func navigateToFamily(_ familyId: String, updateHistory: Bool) {
+    func navigateToFamily(_ familyId: String, updateHistory _: Bool) {
         let normalizedId = familyId.uppercased().trimmingCharacters(in: .whitespaces)
-        
+
         // Validate family ID
         guard FamilyIDs.isValid(familyId: normalizedId) else {
             logWarn(.app, "⚠️ Invalid family ID: \(familyId)")
@@ -74,77 +64,10 @@ class JuuretApp {
             return
         }
         
-        // If updating history, manage the history stack
-        if updateHistory {
-            // Remove any forward history if we're not at the end
-            if historyIndex < navigationHistory.count - 1 {
-                navigationHistory.removeSubrange((historyIndex + 1)...)
-            }
-            
-            // Add to history
-            navigationHistory.append(normalizedId)
-            historyIndex = navigationHistory.count - 1
-            
-            // Set as home family
-            homeFamily = normalizedId
-            
-            logInfo(.app, "📍 Set home family: \(normalizedId)")
-        }
-        
         // Extract the family
         Task {
             await extractFamily(familyId: normalizedId)
         }
-    }
-
-    /**
-     * Navigate to the home family
-     * 
-     * This adds the home family to history (so back/forward work correctly)
-     * but does NOT change which family is considered "home"
-     */
-    func navigateHome() {
-        guard let home = homeFamily else {
-            logWarn(.app, "⚠️ No home family set")
-            errorMessage = "No home family set"
-            return
-        }
-        
-        logInfo(.app, "🏠 Navigating to home: \(home)")
-        
-        // Add to history but don't change home
-        let normalizedId = home.uppercased().trimmingCharacters(in: .whitespaces)
-        
-        // Remove any forward history if we're not at the end
-        if historyIndex < navigationHistory.count - 1 {
-            navigationHistory.removeSubrange((historyIndex + 1)...)
-        }
-        
-        // Add to history
-        navigationHistory.append(normalizedId)
-        historyIndex = navigationHistory.count - 1
-        
-        // DON'T change homeFamily - it stays the same
-        // This allows you to navigate around and always come back to the same home
-        
-        Task {
-            await extractFamily(familyId: normalizedId)
-        }
-    }
-
-    /**
-     * Set the current family as home
-     */
-    func setHomeFamily(_ familyId: String) {
-        let normalizedId = familyId.uppercased().trimmingCharacters(in: .whitespaces)
-        
-        guard FamilyIDs.isValid(familyId: normalizedId) else {
-            logWarn(.app, "⚠️ Invalid family ID for home: \(familyId)")
-            return
-        }
-        
-        homeFamily = normalizedId
-        logInfo(.app, "🏠 Home family set to: \(normalizedId)")
     }
 
     // MARK: - Detail Routing Helpers
@@ -194,7 +117,6 @@ class JuuretApp {
         
         logInfo(.app, "⬅️ Navigating to previous family in file: \(previousId)")
         
-        // Navigate without updating history
         navigateToFamily(previousId, updateHistory: false)
     }
 
@@ -218,9 +140,23 @@ class JuuretApp {
         }
         
         logInfo(.app, "➡️ Navigating to next family in file: \(nextId)")
-        
-        // Navigate without updating history
+
         navigateToFamily(nextId, updateHistory: false)
+    }
+
+    // MARK: - Navigation State Helpers
+
+    func navigateHome() {
+        logWarn(.app, "⚠️ Home navigation is no longer supported")
+        errorMessage = "Home navigation is no longer supported"
+    }
+
+    func setHomeFamily(_ familyId: String) {
+        logWarn(.app, "⚠️ Ignoring setHomeFamily for \(familyId); navigation history is disabled")
+    }
+
+    var canNavigateHome: Bool {
+        false
     }
 
     // MARK: - Navigation State Helpers for Sequential Navigation
@@ -239,13 +175,6 @@ class JuuretApp {
         return !FamilyIDs.isLast(referenceId)
     }
     
-    // MARK: - Navigation State Helpers
-
-    /// Check if we can navigate home
-    var canNavigateHome: Bool {
-        return homeFamily != nil
-    }
-
     /// Current family network workflow
     var familyNetworkWorkflow: FamilyNetworkWorkflow?
     
