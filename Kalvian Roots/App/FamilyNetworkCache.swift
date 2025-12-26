@@ -52,7 +52,7 @@ class FamilyNetworkCache {
     
     /// Track how many families processed in this session
     private var familiesProcessedInSession = 0
-    private let maxFamiliesToProcess = 0
+    private let maxFamiliesToProcess = 10
 
     // MARK: - Initialization
 
@@ -195,6 +195,27 @@ class FamilyNetworkCache {
         }
         
         logInfo(.cache, "🗑️ Deleted \(normalized) from cache")
+    }
+    
+    /**
+     * Clear all cached families
+     * Useful when cache format changes or for debugging
+     */
+    func clearAllCache() {
+        let count = cachedNetworks.count
+        
+        // Clear memory cache
+        cachedNetworks.removeAll()
+        
+        // Clear persistent store
+        persistenceStore.clear()
+        
+        // Reset state
+        nextFamilyReady = false
+        nextFamilyId = nil
+        statusMessage = nil
+        
+        logInfo(.cache, "🧹 Cleared all \(count) cached families")
     }
 
     /**

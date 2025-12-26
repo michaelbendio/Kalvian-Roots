@@ -43,14 +43,11 @@ class JuuretApp {
     // MARK: - Detail Routing (macOS NavigationSplitView)
     enum DetailRoute: Equatable {
         case family(id: String)
-        case aiSettings
         case empty
     }
 
     /// Current route for the macOS detail pane
     var detailRoute: DetailRoute = .empty
-    // MARK: - Navigation State
-    var showPDFMode: Bool = false
 
     // MARK: - Navigation Methods
 
@@ -657,16 +654,29 @@ class JuuretApp {
         let citation: String
         if isParent {
             // For parents, try to find their asChild family
-            if let network = network,
-               let asChildFamily = network.getAsChildFamily(for: person) {
-                citation = CitationGenerator.generateAsChildCitation(
-                    for: person,
-                    in: asChildFamily,
-                    network: network,
-                    nameEquivalenceManager: nameEquivalenceManager
-                )
+            if let network = network {
+                logInfo(.citation, "  Network available, checking for asChild family...")
+                logInfo(.citation, "  Person asChild reference: \(person.asChild ?? "nil")")
+                logInfo(.citation, "  AsChildFamilies keys: \(Array(network.asChildFamilies.keys))")
+                
+                if let asChildFamily = network.getAsChildFamily(for: person) {
+                    logInfo(.citation, "  ✅ Found asChild family: \(asChildFamily.familyId)")
+                    citation = CitationGenerator.generateAsChildCitation(
+                        for: person,
+                        in: asChildFamily,
+                        network: network,
+                        nameEquivalenceManager: nameEquivalenceManager
+                    )
+                } else {
+                    logInfo(.citation, "  ⚠️ No asChild family found, using main family citation")
+                    citation = CitationGenerator.generateMainFamilyCitation(
+                        family: family,
+                        targetPerson: person,
+                        network: network
+                    )
+                }
             } else {
-                // No asChild family, use main citation
+                logInfo(.citation, "  ⚠️ No network available, using main family citation")
                 citation = CitationGenerator.generateMainFamilyCitation(
                     family: family,
                     targetPerson: person,

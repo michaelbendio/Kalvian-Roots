@@ -22,7 +22,7 @@ final class PersistentFamilyNetworkStore {
     private let decoder: JSONDecoder
     private let schemaVersion: Int
 
-    init(cacheFileURL: URL, fileManager: FileManager = .default, schemaVersion: Int = 1) {
+    init(cacheFileURL: URL, fileManager: FileManager = .default, schemaVersion: Int = 2) {
         self.fileManager = fileManager
         self.cacheFileURL = cacheFileURL
         self.cacheDirectoryURL = cacheFileURL.deletingLastPathComponent()
@@ -38,7 +38,7 @@ final class PersistentFamilyNetworkStore {
         self.decoder = decoder
     }
 
-    convenience init(rootsFileManager: RootsFileManager, fileManager: FileManager = .default, schemaVersion: Int = 1) {
+    convenience init(rootsFileManager: RootsFileManager, fileManager: FileManager = .default, schemaVersion: Int = 2) {
         if let canonicalURL = rootsFileManager.getCanonicalFileURL() {
             let documentsURL = canonicalURL.deletingLastPathComponent()
             let cacheDirectory = documentsURL.appendingPathComponent("Cache", isDirectory: true)

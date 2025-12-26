@@ -6,85 +6,21 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(JuuretApp.self) private var app
-    @State private var showingAISettings = false
     @State private var hasLoadedStartupFamily = false
-    @State private var showingFatalError = false
 
     var body: some View {
         Group {
             #if os(macOS)
-            // macOS: Use NavigationSplitView with sidebar (NO custom toolbar button)
             NavigationSplitView {
                 SidebarView()
             } detail: {
-                switch app.detailRoute {
-                case .family(let id):
-                    JuuretView()
-                        .id(id)
-                        .overlay(
-                            Text(app.currentFamily?.familyId ?? "nil")
-                                .font(.caption)
-                                .padding(4)
-                                .background(Color.black.opacity(0.2))
-                                .cornerRadius(4),
-                            alignment: .topTrailing
-                        )
-                case .aiSettings:
-                    AISettingsView()
-                case .empty:
-                    Text("Select a family or open AI Settings")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
+                JuuretView()
             }
             .environment(app)
             .navigationTitle("Kalvian Roots")
-            // REMOVED: The toolbar with duplicate sidebar button
             #else
-            // iOS/iPadOS: Use NavigationStack with AI Settings sheet
-            NavigationStack {
-                JuuretView()
-                    .navigationTitle("Kalvian Roots")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarLeading) {
-                            Button(action: {
-                                showingAISettings = true
-                            }) {
-                                HStack(spacing: 4) {
-                                    Circle()
-                                        .fill(app.aiParsingService.isConfigured ? Color.green : Color.orange)
-                                        .frame(width: 8, height: 8)
-                                    Text("AI")
-                                        .font(.caption)
-                                }
-                            }
-                        }
-                        
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Button(action: {
-                                showingAISettings = true
-                            }) {
-                                Image(systemName: "gearshape")
-                            }
-                        }
-                    }
-            }
-            .environment(app)
-            .sheet(isPresented: $showingAISettings) {
-                NavigationView {
-                    AISettingsView()
-                        .navigationTitle("AI Settings")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .navigationBarTrailing) {
-                                Button("Done") {
-                                    showingAISettings = false
-                                }
-                            }
-                        }
-                }
-            }
+            JuuretView()
+                .environment(app)
             #endif
         }
         .task {
@@ -92,7 +28,6 @@ struct ContentView: View {
         }
     }
 
-    
     /// Load the first cached family on startup
     private func loadStartupFamily() async {
         let startTime = Date()
@@ -122,8 +57,7 @@ struct ContentView: View {
             logInfo(.app, "⏱️ T+\(String(format: "%.3f", loadTime))s: Loaded \(firstFamilyId) from cache instantly")
             
             await MainActor.run {
-                app.currentFamily = cachedNetwork.mainFamily
-                app.familyNetworkWorkflow?.activateCachedNetwork(cachedNetwork)
+                app.showFamilyFromCache(cachedNetwork)
             }
             
             logInfo(.app, "✅ Startup family loaded: \(firstFamilyId)")
@@ -186,19 +120,24 @@ struct SidebarView: View {
                     }
                     
                     if cachedIds.count > 5 {
-                        Text("+ \(cachedIds.count - 5) more...")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-            }
-            
-            Section {
-                Button("AI Settings") {
-                    app.detailRoute = .aiSettings
-                }
-            }
-        }
+                                            Text("+ \(cachedIds.count - 5) more...")
+                                                .font(.caption)
+                                                .foregroundStyle(.tertiary)
+                                        }
+                                        
+                                        Divider()
+                                        
+                                        Button(role: .destructive) {
+                                            app.familyNetworkCache.clearAllCache()
+                                        } label: {
+                                            Label("Clear Cache", systemImage: "trash")
+                                                .font(.caption)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .foregroundStyle(.red)
+                                    }
+                                }
+       }
         .navigationTitle("Kalvian Roots")
         .frame(minWidth: 200)
     }

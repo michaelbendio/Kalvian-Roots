@@ -33,21 +33,6 @@ struct NavigationBarView: View {
             }
             .buttonStyle(NavigationButtonStyle())
             .disabled(!juuretApp.canNavigateToNextFamily)  // Changed from canNavigateForward
-            // Home button
-            Button(action: {
-                juuretApp.navigateHome()
-            }) {
-                HStack(spacing: 4) {
-                    Text("🏠")
-                        .font(.system(size: 14))
-                    Text("Home")
-                        .font(.system(size: 14, weight: .medium))
-                }
-            }
-            .buttonStyle(NavigationButtonStyle())
-            .disabled(juuretApp.homeFamily == nil)
-            
-            // ... rest of the file
             
             // Reload/Load button
             Button(action: {
@@ -112,15 +97,6 @@ struct NavigationBarView: View {
                 .buttonStyle(.plain)
             }
             .frame(maxWidth: .infinity)
-            
-            // PDF toggle button
-            Button(action: {
-                juuretApp.showPDFMode.toggle()
-            }) {
-                Text("PDF")
-                    .font(.system(size: 14, weight: juuretApp.showPDFMode ? .semibold : .medium))
-            }
-            .buttonStyle(PDFToggleButtonStyle(isActive: juuretApp.showPDFMode))
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
