@@ -86,6 +86,7 @@ class FamilyResolver {
             // All parents are in couples by definition, so they all need asParent family stored
             network.asParentFamilies[parent.displayName] = family
             if parent.displayName != parent.name {
+                network.asParentFamilies[FamilyNetwork.makePersonKey(for: parent)] = family
                 network.asParentFamilies[parent.name] = family
             }
             logInfo(.resolver, "  ✅ Stored '\(family.familyId)' as asParent for parent '\(parent.displayName)'")
@@ -154,6 +155,7 @@ class FamilyResolver {
                 
                 if let resolvedFamily = try await findAsParentFamily(for: child) {
                     // Store under displayName and simple name
+                    updatedNetwork.asParentFamilies[FamilyNetwork.makePersonKey(for: child)] = resolvedFamily
                     updatedNetwork.asParentFamilies[child.displayName] = resolvedFamily
                     if child.displayName != child.name {
                         updatedNetwork.asParentFamilies[child.name] = resolvedFamily
@@ -196,6 +198,7 @@ class FamilyResolver {
         // CRITICAL FIX: Also store the asParent family under the SPOUSE's name
         // This allows the spouse's citation to be enhanced with death/marriage dates
         // from the asParent family where they are a parent
+        network.asParentFamilies[FamilyNetwork.makePersonKey(for: spouse)] = asParentFamily
         network.asParentFamilies[spouse.displayName] = asParentFamily
         if spouse.displayName != spouse.name {
             network.asParentFamilies[spouse.name] = asParentFamily

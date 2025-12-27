@@ -498,7 +498,7 @@ class FamilyNetworkCache {
             let workflow = FamilyNetworkWorkflow(
                 nuclearFamily: family,
                 familyResolver: familyResolver,
-                resolveCrossReferences: false
+                resolveCrossReferences: true
             )
             
             // Process the workflow

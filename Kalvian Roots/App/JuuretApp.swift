@@ -745,10 +745,12 @@ class JuuretApp {
         // Delete from cache
         familyNetworkCache.deleteCachedFamily(familyId: familyId)
         
+        // Reload the canonical file to pick up any edits
+        await fileManager.autoLoadDefaultFile()
+        
         // Re-extract
         await extractFamily(familyId: familyId)
     }
-    
     // MARK: - Spouse Citation Generation
     
     /**

@@ -38,7 +38,7 @@ struct NavigationBarView: View {
             Button(action: {
                 if let familyId = juuretApp.currentFamily?.familyId {
                     Task {
-                        await juuretApp.extractFamily(familyId: familyId)
+                        await juuretApp.regenerateCachedFamily(familyId: familyId)
                     }
                 }
             }) {

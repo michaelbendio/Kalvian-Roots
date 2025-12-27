@@ -41,6 +41,22 @@ struct FamilyNetwork: Hashable, Sendable, Codable {
         self.mainFamily = mainFamily
     }
     
+    // MARK: - Key Generation
+
+    /// Create a unique key for a person using birth date when available
+    /// Format: "name|birthDate" or just "name" if no birth date
+    static func makePersonKey(name: String, birthDate: String?) -> String {
+        if let birthDate = birthDate?.trimmingCharacters(in: .whitespaces), !birthDate.isEmpty {
+            return "\(name)|\(birthDate)"
+        }
+        return name
+    }
+
+    /// Create a unique key from a Person object
+    static func makePersonKey(for person: Person) -> String {
+        return makePersonKey(name: person.name, birthDate: person.birthDate)
+    }
+    
     // MARK: - Computed Properties for Citation Support
     
     /// Total count of all resolved families for debugging
@@ -52,6 +68,15 @@ struct FamilyNetwork: Hashable, Sendable, Codable {
     
     /// Get the asParent family for a specific child (where child became a parent)
     func getAsParentFamily(for person: Person) -> Family? {
+        // PRIMARY: Try birth date key first (most unique, avoids name collisions)
+        if let birthDate = person.birthDate?.trimmingCharacters(in: .whitespaces), !birthDate.isEmpty {
+            let birthKey = "\(person.name)|\(birthDate)"
+            if let family = asParentFamilies[birthKey] {
+                logDebug(.citation, "✅ Found asParent family for '\(person.displayName)' using birth date key '\(birthKey)'")
+                return family
+            }
+        }
+        
         // PRIMARY: Try displayName first (most specific)
         if let family = asParentFamilies[person.displayName] {
             logDebug(.citation, "✅ Found asParent family for '\(person.displayName)' using displayName")
