@@ -109,6 +109,7 @@ struct FamilyContentView: View {
                 onDateClick: { date, eventType in
                     generateHiskiFor(person: couple.husband, date: date, eventType: eventType)
                 },
+                onSpouseDateClick: { _, _, _ in },
                 onFamilyIdClick: { familyId in
                     juuretApp.navigateToFamily(familyId, updateHistory: false)
                 }
@@ -124,6 +125,7 @@ struct FamilyContentView: View {
                 onDateClick: { date, eventType in
                     generateHiskiFor(person: couple.wife, date: date, eventType: eventType)
                 },
+                onSpouseDateClick: { _, _, _ in },
                 onFamilyIdClick: { familyId in
                     juuretApp.navigateToFamily(familyId, updateHistory: false)
                 }
@@ -182,6 +184,10 @@ struct FamilyContentView: View {
                     onDateClick: { date, eventType in
                         generateHiskiFor(person: child, date: date, eventType: eventType)
                     },
+                    onSpouseDateClick: { date, eventType, spouseData in
+                        let spousePerson = Person(name: spouseData.fullName, birthDate: spouseData.birthDate, deathDate: spouseData.deathDate, noteMarkers: [])
+                        generateHiskiFor(person: spousePerson, date: date, eventType: eventType)
+                    },
                     onFamilyIdClick: { familyId in
                         juuretApp.navigateToFamily(familyId, updateHistory: false)
                     }
@@ -225,6 +231,7 @@ struct FamilyContentView: View {
                 onDateClick: { date, eventType in
                     generateHiskiFor(person: additionalSpouse, date: date, eventType: eventType)
                 },
+                onSpouseDateClick: { _, _, _ in },
                 onFamilyIdClick: { familyId in
                     juuretApp.navigateToFamily(familyId, updateHistory: false)
                 }

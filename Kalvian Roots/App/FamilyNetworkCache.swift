@@ -60,6 +60,11 @@ class FamilyNetworkCache {
         self.persistenceStore = persistenceStore
         loadPersistedCache()
         
+        // Listen for iCloud updates
+        self.persistenceStore.onCacheUpdatedFromCloud = { [weak self] in
+            self?.reloadFromCloud()
+        }
+        
         // Show the last cached family on startup
         if let lastCached = findLastCachedFamily() {
             statusMessage = "\(lastCached) ready"
@@ -131,6 +136,28 @@ class FamilyNetworkCache {
         let totalTime = Date().timeIntervalSince(startTime)
         logInfo(.cache, "❌ Not found in cache: \(familyId) (checked in \(String(format: "%.3f", totalTime))s)")
         return nil
+    }
+    
+    /// Reload cache from iCloud (called when cloud updates are detected)
+    private func reloadFromCloud() {
+        logInfo(.cache, "☁️ Reloading cache from iCloud sync")
+        let cloudFamilies = persistenceStore.reloadFromCloud()
+        
+        // Merge cloud families with local cache (cloud wins for conflicts)
+        for (familyId, cachedFamily) in cloudFamilies {
+            if let existing = cachedNetworks[familyId] {
+                if cachedFamily.cachedAt > existing.cachedAt {
+                    cachedNetworks[familyId] = cachedFamily
+                    logDebug(.cache, "☁️ Updated \(familyId) from cloud (newer)")
+                }
+            } else {
+                cachedNetworks[familyId] = cachedFamily
+                logDebug(.cache, "☁️ Added \(familyId) from cloud")
+            }
+        }
+        
+        logInfo(.cache, "☁️ Cache now has \(cachedNetworks.count) families after cloud sync")
+        updateReadyStateFromCache()
     }
     
     /**

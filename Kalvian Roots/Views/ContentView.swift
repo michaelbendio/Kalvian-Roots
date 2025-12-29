@@ -10,7 +10,7 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            #if os(macOS)
+#if os(macOS)
             NavigationSplitView {
                 SidebarView()
             } detail: {
@@ -18,10 +18,12 @@ struct ContentView: View {
             }
             .environment(app)
             .navigationTitle("Kalvian Roots")
-            #else
-            JuuretView()
-                .environment(app)
-            #endif
+#else
+            NavigationStack {
+                JuuretView()
+            }
+            .environment(app)
+#endif
         }
         .task {
             await loadStartupFamily()

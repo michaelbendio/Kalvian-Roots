@@ -3,6 +3,7 @@
 //  Kalvian Roots
 //
 //  Handles persistence of cached family networks inside the iCloud container.
+//  Includes proper iCloud sync handling to ensure cache is shared across devices.
 //
 
 import Foundation
@@ -21,6 +22,12 @@ final class PersistentFamilyNetworkStore {
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
     private let schemaVersion: Int
+    
+    /// Callback when iCloud delivers updated cache file
+    var onCacheUpdatedFromCloud: (() -> Void)?
+    
+    /// Metadata query for monitoring iCloud changes
+    private var metadataQuery: NSMetadataQuery?
 
     init(cacheFileURL: URL, fileManager: FileManager = .default, schemaVersion: Int = 2) {
         self.fileManager = fileManager
@@ -36,6 +43,9 @@ final class PersistentFamilyNetworkStore {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         self.decoder = decoder
+        
+        // Start monitoring for iCloud changes
+        startMonitoringICloudChanges()
     }
 
     convenience init(rootsFileManager: RootsFileManager, fileManager: FileManager = .default, schemaVersion: Int = 2) {
@@ -53,12 +63,22 @@ final class PersistentFamilyNetworkStore {
             logWarn(.cache, "⚠️ Using temporary directory for cache persistence; iCloud container unavailable")
         }
     }
+    
+    deinit {
+        metadataQuery?.stop()
+        metadataQuery = nil
+    }
+    
+    // MARK: - Public Methods
 
     func loadAll() -> [String: FamilyNetworkCache.CachedFamily] {
+        // Ensure file is downloaded from iCloud before reading
+        ensureFileDownloaded()
         return loadPayload()?.families ?? [:]
     }
 
     func loadFamily(withId id: String) -> FamilyNetworkCache.CachedFamily? {
+        ensureFileDownloaded()
         return loadPayload()?.families[id]
     }
 
@@ -84,15 +104,198 @@ final class PersistentFamilyNetworkStore {
             logError(.cache, "❌ Failed to clear persisted cache: \(error)")
         }
     }
+    
+    /// Force a reload from iCloud (useful after receiving sync notification)
+    func reloadFromCloud() -> [String: FamilyNetworkCache.CachedFamily] {
+        logInfo(.cache, "☁️ Reloading cache from iCloud")
+        ensureFileDownloaded()
+        return loadPayload()?.families ?? [:]
+    }
+
+    // MARK: - iCloud Sync Handling
+    
+    /// Ensure the cache file is downloaded from iCloud if it exists remotely
+    private func ensureFileDownloaded() {
+        // First, ensure the cache directory exists
+        try? ensureCacheDirectory()
+        
+        // Check if this is an iCloud URL (ubiquity container)
+        guard cacheFileURL.path.contains("Mobile Documents") ||
+              cacheFileURL.path.contains("iCloud") ||
+              isUbiquitousItem(at: cacheFileURL) else {
+            // Not an iCloud URL, skip download check
+            return
+        }
+        
+        do {
+            // Check the download status of the file
+            let resourceValues = try cacheFileURL.resourceValues(forKeys: [
+                .ubiquitousItemDownloadingStatusKey,
+                .ubiquitousItemIsDownloadingKey
+            ])
+            
+            if let status = resourceValues.ubiquitousItemDownloadingStatus {
+                if status == .notDownloaded {
+                    // File exists in iCloud but not downloaded - trigger download
+                    logInfo(.cache, "☁️ Cache file exists in iCloud but not downloaded locally - triggering download")
+                    try fileManager.startDownloadingUbiquitousItem(at: cacheFileURL)
+                    
+                    // Wait briefly for download to start/complete
+                    waitForDownload()
+                } else if status == .current {
+                    // File is downloaded and up to date
+                    logDebug(.cache, "✅ Cache file is downloaded and current")
+                } else if status == .downloaded {
+                    // File is downloaded but might not be the latest
+                    logDebug(.cache, "✅ Cache file is downloaded (may need refresh)")
+                } else {
+                    // Unknown status - log and continue
+                    logDebug(.cache, "📂 iCloud download status: \(status)")
+                }            }
+        } catch {
+            // File might not exist in iCloud yet, which is normal for first device
+            logDebug(.cache, "📂 Cache file not in iCloud yet (normal for first device): \(error.localizedDescription)")
+        }
+    }
+    
+    /// Check if a URL is in an iCloud ubiquity container
+    private func isUbiquitousItem(at url: URL) -> Bool {
+        do {
+            let resourceValues = try url.resourceValues(forKeys: [.isUbiquitousItemKey])
+            return resourceValues.isUbiquitousItem ?? false
+        } catch {
+            return false
+        }
+    }
+    
+    /// Wait briefly for iCloud download to complete
+    private func waitForDownload() {
+        // Give iCloud a moment to download the file
+        // This is a simple approach - for large files you'd want async handling
+        let maxWaitTime: TimeInterval = 5.0
+        let checkInterval: TimeInterval = 0.1
+        var waited: TimeInterval = 0
+        
+        while waited < maxWaitTime {
+            Thread.sleep(forTimeInterval: checkInterval)
+            waited += checkInterval
+            
+            // Check if file is now available
+            if fileManager.fileExists(atPath: cacheFileURL.path) {
+                do {
+                    let resourceValues = try cacheFileURL.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
+                    if let status = resourceValues.ubiquitousItemDownloadingStatus,
+                       status == .current || status == .downloaded {
+                        logInfo(.cache, "☁️ iCloud download complete after \(String(format: "%.1f", waited))s")
+                        return
+                    }
+                } catch {
+                    // Continue waiting
+                }
+            }
+        }
+        
+        logWarn(.cache, "⚠️ iCloud download did not complete within \(maxWaitTime)s - proceeding anyway")
+    }
+    
+    // MARK: - iCloud Change Monitoring
+    
+    /// Start monitoring for iCloud file changes
+    private func startMonitoringICloudChanges() {
+        // Only monitor if we're using iCloud storage
+        guard cacheFileURL.path.contains("Mobile Documents") ||
+              cacheFileURL.path.contains("iCloud") else {
+            logDebug(.cache, "📂 Not using iCloud storage - skipping change monitoring")
+            return
+        }
+        
+        let query = NSMetadataQuery()
+        query.searchScopes = [NSMetadataQueryUbiquitousDocumentsScope]
+        query.predicate = NSPredicate(format: "%K == %@", NSMetadataItemFSNameKey, "families.json")
+        
+        // Listen for updates
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(metadataQueryDidUpdate(_:)),
+            name: .NSMetadataQueryDidUpdate,
+            object: query
+        )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(metadataQueryDidFinishGathering(_:)),
+            name: .NSMetadataQueryDidFinishGathering,
+            object: query
+        )
+        
+        query.start()
+        self.metadataQuery = query
+        
+        logInfo(.cache, "☁️ Started monitoring iCloud for cache updates")
+    }
+    
+    /// Stop monitoring iCloud changes
+    private func stopMonitoringICloudChanges() {
+        metadataQuery?.stop()
+        metadataQuery = nil
+        
+        NotificationCenter.default.removeObserver(self, name: .NSMetadataQueryDidUpdate, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .NSMetadataQueryDidFinishGathering, object: nil)
+    }
+    
+    @objc private func metadataQueryDidFinishGathering(_ notification: Notification) {
+        guard let query = notification.object as? NSMetadataQuery else { return }
+        
+        query.disableUpdates()
+        defer { query.enableUpdates() }
+        
+        if query.resultCount > 0 {
+            logInfo(.cache, "☁️ Found cache file in iCloud during initial scan")
+            // Trigger download if needed
+            ensureFileDownloaded()
+        }
+    }
+    
+    @objc private func metadataQueryDidUpdate(_ notification: Notification) {
+        guard let query = notification.object as? NSMetadataQuery else { return }
+        
+        query.disableUpdates()
+        defer { query.enableUpdates() }
+        
+        // Check if our cache file was updated
+        for i in 0..<query.resultCount {
+            guard let item = query.result(at: i) as? NSMetadataItem,
+                  let itemURL = item.value(forAttribute: NSMetadataItemURLKey) as? URL else {
+                continue
+            }
+            
+            if itemURL.lastPathComponent == "families.json" {
+                logInfo(.cache, "☁️ Cache file updated in iCloud - notifying for reload")
+                
+                // Ensure the updated file is downloaded
+                ensureFileDownloaded()
+                
+                // Notify that cache was updated from cloud
+                Task { @MainActor in
+                    self.onCacheUpdatedFromCloud?()
+                }
+                break
+            }
+        }
+    }
 
     // MARK: - Private Helpers
 
     private func loadPayload() -> CachePayload? {
-        guard fileManager.fileExists(atPath: cacheFileURL.path) else { return nil }
+        guard fileManager.fileExists(atPath: cacheFileURL.path) else {
+            logDebug(.cache, "📂 No cache file exists at \(cacheFileURL.path)")
+            return nil
+        }
 
         do {
             let data = try Data(contentsOf: cacheFileURL)
             if data.isEmpty {
+                logDebug(.cache, "📂 Cache file is empty")
                 return nil
             }
 
@@ -103,6 +306,7 @@ final class PersistentFamilyNetworkStore {
                     try? removeCacheFile()
                     return nil
                 }
+                logDebug(.cache, "✅ Loaded \(payload.families.count) families from cache")
                 return payload
             } catch {
                 if let legacyFamilies = try? decoder.decode([String: FamilyNetworkCache.CachedFamily].self, from: data) {
@@ -125,6 +329,7 @@ final class PersistentFamilyNetworkStore {
     private func ensureCacheDirectory() throws {
         if !fileManager.fileExists(atPath: cacheDirectoryURL.path) {
             try fileManager.createDirectory(at: cacheDirectoryURL, withIntermediateDirectories: true)
+            logDebug(.cache, "📁 Created cache directory at \(cacheDirectoryURL.path)")
         }
     }
 

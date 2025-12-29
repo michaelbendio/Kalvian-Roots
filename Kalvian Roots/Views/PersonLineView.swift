@@ -2,9 +2,6 @@
 //  PersonLineView.swift
 //  Kalvian Roots
 //
-//  Enhanced person display with inline brown-bracketed dates from asParent families
-//  Implements Phase 3: Enhanced Display
-//
 //  Created by Michael Bendio on 10/8/25.
 //
 
@@ -23,6 +20,7 @@ struct PersonLineView: View {
     let network: FamilyNetwork?
     let onNameClick: (Person) -> Void
     let onDateClick: (String, EventType) -> Void
+    let onSpouseDateClick: (String, EventType, SpouseEnhancedData) -> Void
     let onFamilyIdClick: (String) -> Void
     
     @State private var enhancedData: EnhancedPersonData?
@@ -291,7 +289,7 @@ struct PersonLineView: View {
                     .foregroundColor(Color(hex: "8b4513"))
                 
                 Button(action: {
-                    onDateClick(birthDate, .birth)
+                    onSpouseDateClick(birthDate, .birth, spouse)
                 }) {
                     Text(birthDate)
                         .font(.system(size: 16, design: .monospaced))
@@ -304,7 +302,7 @@ struct PersonLineView: View {
                     .foregroundColor(Color(hex: "8b4513"))
                 
                 Button(action: {
-                    onDateClick(deathDate, .death)
+                    onSpouseDateClick(deathDate, .death, spouse)
                 }) {
                     Text(deathDate)
                         .font(.system(size: 16, design: .monospaced))
@@ -322,7 +320,7 @@ struct PersonLineView: View {
                     .foregroundColor(Color(hex: "8b4513"))
                 
                 Button(action: {
-                    onDateClick(birthDate, .birth)
+                    onSpouseDateClick(birthDate, .birth, spouse)
                 }) {
                     Text(birthDate)
                         .font(.system(size: 16, design: .monospaced))
@@ -401,6 +399,7 @@ struct SpouseEnhancedData {
             network: nil,
             onNameClick: { _ in },
             onDateClick: { _, _ in },
+            onSpouseDateClick: { _, _, _ in },
             onFamilyIdClick: { _ in }
         )
         
@@ -414,6 +413,7 @@ struct SpouseEnhancedData {
             network: nil,
             onNameClick: { _ in },
             onDateClick: { _, _ in },
+            onSpouseDateClick: { _, _, _ in },
             onFamilyIdClick: { _ in }
         )
     }
