@@ -39,7 +39,7 @@ struct ClanBrowserView: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text("Family Clans")
+                Text("Family Lines")
                     .font(.headline)
                     .padding()
                 Spacer()
@@ -78,7 +78,7 @@ struct ClanBrowserView: View {
                     }
                 }
             }
-            .navigationTitle("Family Clans")
+            .navigationTitle("Family Lines")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

@@ -90,95 +90,103 @@ class DeepSeekService: AIService {
         // In AIServices.swift - Update the DeepSeekService parseFamily method prompt:
 
         let prompt = """
-        Parse the following family record and return ONLY a valid JSON object.
+                Parse the following family record and return ONLY a valid JSON object.
 
-        CRITICAL: Return ONLY the JSON object - no markdown, no explanation, no ```json tags.
+                CRITICAL: Return ONLY the JSON object - no markdown, no explanation, no ```json tags.
 
-        JSON SCHEMA TO USE:
-        {
-          "familyId": "string",
-          "pageReferences": ["array of page numbers as strings"],
-          "couples": [
-            {
-              "husband": {
-                "name": "string (given name only)",
-                "patronymic": "string or null",
-                "birthDate": "string or null", 
-                "deathDate": "string or null (keep 'isoviha' as-is)",
-                "asChild": "string or null (from {family ref})",
-                "familySearchId": "string or null (from <ID>)",
-                "noteMarkers": []
-              },
-              "wife": {
-                "name": "string",
-                "patronymic": "string or null",
-                "birthDate": "string or null",
-                "deathDate": "string or null",
-                "asChild": "string or null",
-                "familySearchId": "string or null",
-                "noteMarkers": []
-              },
-              "marriageDate": "string or null (2-digit year, MAY include 'n' prefix)",
-              "fullMarriageDate": "string or null (dd.mm.yyyy, MAY include 'n' prefix)",
-              "children": [
+                JSON SCHEMA TO USE:
                 {
-                  "name": "string",
-                  "birthDate": "string or null",
-                  "deathDate": "string or null",
-                  "marriageDate": "string or null",
-                  "spouse": "string or null",
-                  "asParent": "string or null",
-                  "familySearchId": "string or null",
-                  "noteMarkers": []
+                  "familyId": "string",
+                  "pageReferences": ["array of page numbers as strings"],
+                  "couples": [
+                    {
+                      "husband": {
+                        "name": "string (given name only)",
+                        "patronymic": "string or null",
+                        "birthDate": "string or null", 
+                        "deathDate": "string or null (keep 'isoviha' as-is)",
+                        "asChild": "string or null (from {family ref})",
+                        "familySearchId": "string or null (from <ID>)",
+                        "noteMarkers": []
+                      },
+                      "wife": {
+                        "name": "string",
+                        "patronymic": "string or null",
+                        "birthDate": "string or null",
+                        "deathDate": "string or null",
+                        "asChild": "string or null",
+                        "familySearchId": "string or null",
+                        "noteMarkers": []
+                      },
+                      "marriageDate": "string or null (2-digit year, MAY include 'n' prefix)",
+                      "fullMarriageDate": "string or null (dd.mm.yyyy, MAY include 'n' prefix)",
+                      "children": [
+                        {
+                          "name": "string",
+                          "birthDate": "string or null",
+                          "deathDate": "string or null",
+                          "marriageDate": "string or null",
+                          "spouse": "string or null",
+                          "asParent": "string or null",
+                          "familySearchId": "string or null",
+                          "noteMarkers": []
+                        }
+                      ],
+                      "childrenDiedInfancy": null,
+                      "coupleNotes": []
+                    }
+                  ],
+                  "notes": ["array of family notes"],
+                  "noteDefinitions": {"*": "note text"}
                 }
-              ],
-              "childrenDiedInfancy": null,
-              "coupleNotes": []
-            }
-          ],
-          "notes": ["array of family notes"],
-          "noteDefinitions": {"*": "note text"}
-        }
 
-        EXTRACTION RULES:
-        1. Parse ONLY family \(familyId) - ignore any other families in the text
-        2. Create a separate couple entry for each marriage
-        3. If a person appears in multiple marriages, they appear in multiple couples
-        4. Extract dates EXACTLY as written, preserving ALL formatting:
-           - Keep historical periods like "isoviha" as-is
-           - **CRITICAL**: Keep "n" prefix for approximate dates (e.g., "n 1730", "n 30")
-           - Do NOT strip or remove the "n " prefix - it indicates an approximate date
-        5. **DEATH DATES - CRITICAL**:
-           - Death dates ONLY appear after the † symbol
-           - Lines ending with codes like "-94 Kokkola" or "-92 Veteli" are NOT death dates
-           - These codes indicate migration/relocation, not death
-           - ONLY extract deathDate if explicitly preceded by † symbol
-           - Examples:
-             ✓ CORRECT: "Maria † 15.03.1842" → deathDate: "15.03.1842"
-             ✗ WRONG: "Maria -94 Kokkola" → deathDate: null (location code, not death)
-        6. Marriage dates: 
-           - Store 2-digit as marriageDate (e.g., "30" or "n 30")
-           - Store full date as fullMarriageDate (e.g., "01.02.1730" or "n 1730")
-           - **PRESERVE** the "n " prefix in BOTH fields if present
-        7. Extract {family references} as asChild or asParent (strip the curly braces)
-        8. Extract <IDs> as familySearchId (strip the angle brackets)
-        9. Note markers (*) go in noteMarkers array, definitions in noteDefinitions
+                EXTRACTION RULES:
+                1. Parse ONLY family \(familyId) - ignore any other families in the text
+                2. Create a separate couple entry for each marriage
+                3. If a person appears in multiple marriages, they appear in multiple couples
+                4. Extract dates EXACTLY as written, preserving ALL formatting:
+                   - Keep historical periods like "isoviha" as-is
+                   - **CRITICAL**: Keep "n" prefix for approximate dates (e.g., "n 1730", "n 30")
+                   - Do NOT strip or remove the "n " prefix - it indicates an approximate date
+                5. **DEATH DATES - CRITICAL**:
+                   - Death dates ONLY appear after the † symbol
+                   - Lines ending with codes like "-94 Kokkola" or "-92 Veteli" are NOT death dates
+                   - These codes indicate migration/relocation, not death
+                   - ONLY extract deathDate if explicitly preceded by † symbol
+                   - Examples:
+                     ✓ CORRECT: "Maria † 15.03.1842" → deathDate: "15.03.1842"
+                     ✗ WRONG: "Maria -94 Kokkola" → deathDate: null (location code, not death)
+                6. Marriage dates: 
+                   - Store 2-digit as marriageDate (e.g., "30" or "n 30")
+                   - Store full date as fullMarriageDate (e.g., "01.02.1730" or "n 1730")
+                   - **PRESERVE** the "n " prefix in BOTH fields if present
+                7. Extract {family references} as asChild or asParent (strip the curly braces)
+                8. Extract <IDs> as familySearchId (strip the angle brackets)
+                9. Note markers (*) go in noteMarkers array, definitions in noteDefinitions
+                10. **SPOUSE NAMES - STRIP MARRIAGE NUMBER PREFIXES**:
+                   - Spouse names may have a marriage sequence prefix like "1. ", "2. ", "3. "
+                   - These indicate which marriage number for the child (1st spouse, 2nd spouse)
+                   - ALWAYS strip these numeric prefixes from the spouse field
+                   - Examples:
+                     ✓ CORRECT: "∞ 06 1. Israel Vuolle" → spouse: "Israel Vuolle"
+                     ✓ CORRECT: "∞ 32 2. Anna Marttila" → spouse: "Anna Marttila"
+                     ✗ WRONG: spouse: "1. Israel Vuolle" (prefix not stripped)
 
-        DATE FORMAT EXAMPLES:
-        - "n 1730" → marriageDate: null, fullMarriageDate: "n 1730" (approximate full year)
-        - "n 30" → marriageDate: "n 30", fullMarriageDate: null (approximate 2-digit)
-        - "30" → marriageDate: "30", fullMarriageDate: null (exact 2-digit)
-        - "01.02.1730" → marriageDate: null, fullMarriageDate: "01.02.1730" (exact full date)
+                DATE FORMAT EXAMPLES:
+                - "n 1730" → marriageDate: null, fullMarriageDate: "n 1730" (approximate full year)
+                - "n 30" → marriageDate: "n 30", fullMarriageDate: null (approximate 2-digit)
+                - "30" → marriageDate: "30", fullMarriageDate: null (exact 2-digit)
+                - "01.02.1730" → marriageDate: null, fullMarriageDate: "01.02.1730" (exact full date)
 
-        DETERMINING COUPLES:
-        - Look for "II puoliso" or "III puoliso" to identify additional marriages
-        - The person who survives and remarries appears in multiple couples
-        - Use death dates and marriage dates to determine the correct sequence
-        - Each "Lapset" (Children) section belongs to the couple above it
+                DETERMINING COUPLES:
+                - Look for "II puoliso" or "III puoliso" to identify additional marriages
+                - The person who survives and remarries appears in multiple couples
+                - Use death dates and marriage dates to determine the correct sequence
+                - Each "Lapset" (Children) section belongs to the couple above it
 
-        Family text to parse:
-        \(familyText)
-        """
+                Family text to parse:
+                \(familyText)
+                """
         let requestBody: [String: Any] = [
             "model": "deepseek-chat",
             "messages": [
