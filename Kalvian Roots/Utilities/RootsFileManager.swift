@@ -57,16 +57,22 @@ final class RootsFileManager {
     // MARK: - Init
     
     init() {
-        logInfo(.file, "📁 RootsFileManager initialized (iCloud default container)")
-    }
+        logInfo(.file, "📁 RootsFileManager initialized (main iCloud Drive Documents)")    }
 
     // MARK: - Canonical iCloud Locations
 
-    /// The app's iCloud container root. (This *is* the "Kalvian Roots" folder in iCloud Drive.)
+    // Point to main iCloud Drive
     private func containerURL() -> URL? {
-        Foundation.FileManager.default.url(forUbiquityContainerIdentifier: nil)
+        // Start with any ubiquity container to get the Mobile Documents path
+        guard let anyContainer = FileManager.default.url(forUbiquityContainerIdentifier: nil) else {
+            return nil
+        }
+        // Get the Mobile Documents directory
+        let mobileDocsURL = anyContainer.deletingLastPathComponent()
+        // Return the main iCloud Drive container
+        return mobileDocsURL.appendingPathComponent("com~apple~CloudDocs", isDirectory: true)
     }
-
+    
     /// The canonical folder where the file lives: <container>/Documents
     private func documentsURL() -> URL? {
         guard let root = containerURL() else { return nil }
@@ -85,49 +91,82 @@ final class RootsFileManager {
     func autoLoadDefaultFile() async {
         logInfo(.file, "🔍 Auto-loading from canonical location")
         
-        guard let canonicalURL = getCanonicalFileURL() else {
+#if os(macOS)
+// macOS: Direct access to com~apple~CloudDocs
+guard let canonicalURL = getCanonicalFileURL() else {
+    await MainActor.run {
+        self.errorMessage = "iCloud Drive not available"
+    }
+    logError(.file, "❌ iCloud Drive not available")
+    return
+}
+
+logInfo(.file, "📂 Canonical location: \(canonicalURL.path)")
+
+do {
+    _ = try await loadFile(from: canonicalURL)
+    logInfo(.file, "✅ Auto-loaded successfully from canonical location")
+} catch {
+    await MainActor.run {
+        self.errorMessage = error.localizedDescription
+    }
+    logError(.file, "❌ Auto-load failed: \(error)")
+}
+
+#elseif os(iOS)
+// iOS: Try to load from saved security-scoped bookmark
+if let bookmarkData = UserDefaults.standard.data(forKey: "FileBookmark") {
+    do {
+        var isStale = false
+        let url = try URL(resolvingBookmarkData: bookmarkData,
+                          bookmarkDataIsStale: &isStale)
+        
+        if isStale {
+            logWarn(.file, "⚠️ Bookmark is stale, user needs to reselect file")
             await MainActor.run {
-                self.errorMessage = "iCloud Drive not available"
+                self.errorMessage = "Please select the file from iCloud Drive/Documents"
             }
-            logError(.file, "❌ iCloud container not available")
             return
         }
         
-        logInfo(.file, "📂 Canonical location: \(canonicalURL.path)")
+        // Start accessing security-scoped resource
+        guard url.startAccessingSecurityScopedResource() else {
+            throw RootsFileManagerError.loadFailed("Cannot access bookmarked file")
+        }
         
-        do {
-            _ = try await loadFile(from: canonicalURL)
-            logInfo(.file, "✅ Auto-loaded successfully from canonical location")
-        } catch {
-            await MainActor.run {
-                self.errorMessage = error.localizedDescription
-            }
-            logError(.file, "❌ Auto-load failed: \(error)")
+        defer { url.stopAccessingSecurityScopedResource() }
+        
+        _ = try await loadFile(from: url)
+        logInfo(.file, "✅ Auto-loaded from security-scoped bookmark")
+        
+    } catch {
+        logError(.file, "❌ Failed to load from bookmark: \(error)")
+        await MainActor.run {
+            self.errorMessage = "Please select the file from iCloud Drive/Documents"
         }
     }
-
+} else {
+    // No bookmark saved - user needs to select file
+    logInfo(.file, "📱 No saved bookmark - user needs to select file")
+    await MainActor.run {
+        self.errorMessage = "Please select JuuretKälviällä.roots from iCloud Drive/Documents"
+    }
+}
+#endif
+}
+    
     /// Load from a specific URL (validates it's the canonical file)
     func loadFile(from url: URL) async throws -> String {
         logInfo(.file, "📂 Attempting to load file from: \(url.path)")
         
-        // Ensure it's the canonical file
-        guard let canonicalURL = getCanonicalFileURL() else {
-            throw RootsFileManagerError.iCloudNotAvailable
-        }
-        
-        // Normalize paths for comparison
-        let selectedPath = url.standardizedFileURL.path
-        let canonicalPath = canonicalURL.standardizedFileURL.path
-        
-        guard selectedPath == canonicalPath else {
+        // Just validate the filename, not the full path
+        guard url.lastPathComponent == defaultFileName else {
             throw RootsFileManagerError.wrongFile("""
-                Expected: \(canonicalURL.path)
-                Selected: \(url.path)
-                
-                Please use the file from the Kalvian Roots folder in iCloud Drive.
+                Expected file: \(defaultFileName)
+                Selected: \(url.lastPathComponent)
                 """)
         }
-        
+
         do {
             let content = try String(contentsOf: url, encoding: .utf8)
             
@@ -206,37 +245,23 @@ final class RootsFileManager {
     // MARK: - iOS File Loading
     
     #if os(iOS)
-    /// iOS-specific file loading (called from DocumentPicker)
     func loadFileFromPicker(_ url: URL) async throws -> String {
         logInfo(.file, "📱 iOS: Loading file from picker")
         
-        guard let canonicalURL = getCanonicalFileURL() else {
-            throw RootsFileManagerError.iCloudNotAvailable
-        }
-        
-        // On iOS, the picker might give us a security-scoped URL
-        // We need to access it and validate it's the right file
-        let selectedPath = url.standardizedFileURL.path
-        let canonicalPath = canonicalURL.standardizedFileURL.path
-        
-        // Check if paths match (they might not due to security scoping)
-        if selectedPath != canonicalPath {
-            logWarn(.file, """
-                ⚠️ Path mismatch (may be OK on iOS):
-                Selected: \(selectedPath)
-                Canonical: \(canonicalPath)
-                """)
-        }
-        
-        // Validate filename at least
+        // Validate filename
         guard url.lastPathComponent == defaultFileName else {
             throw RootsFileManagerError.wrongFile("""
-                Expected: \(canonicalURL.path)
-                Selected: \(url.path)
-                
-                Please use the file from the Kalvian Roots folder in iCloud Drive.
+                Please select JuuretKälviällä.roots
+                Selected: \(url.lastPathComponent)
                 """)
         }
+        
+        // Start accessing the security-scoped resource
+        guard url.startAccessingSecurityScopedResource() else {
+            throw RootsFileManagerError.loadFailed("Cannot access selected file")
+        }
+        
+        defer { url.stopAccessingSecurityScopedResource() }
         
         do {
             let content = try String(contentsOf: url, encoding: .utf8)
@@ -249,14 +274,29 @@ final class RootsFileManager {
                     """)
             }
             
+            // Save security-scoped bookmark for future launches
+            do {
+                let bookmarkData = try url.bookmarkData(
+                    options: .minimalBookmark,
+                    includingResourceValuesForKeys: nil,
+                    relativeTo: nil
+                )
+                UserDefaults.standard.set(bookmarkData, forKey: "FileBookmark")
+                logInfo(.file, "💾 Saved security-scoped bookmark")
+            } catch {
+                logWarn(.file, "⚠️ Failed to save bookmark: \(error)")
+            }
+            
             await MainActor.run {
                 self.currentFileURL = url
                 self.currentFileContent = content
                 self.isFileLoaded = true
                 self.errorMessage = nil
             }
+            
             logInfo(.file, "✅ File loaded via iOS picker")
             return content
+            
         } catch {
             throw RootsFileManagerError.loadFailed("Failed to read file: \(error.localizedDescription)")
         }

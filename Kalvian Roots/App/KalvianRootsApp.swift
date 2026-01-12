@@ -27,12 +27,13 @@ struct KalvianRootsApp: App {
                 .task {
                     await juuretApp.fileManager.autoLoadDefaultFile()
                     fileCheckComplete = true
-                    if !juuretApp.fileManager.isFileLoaded {
-                        showingFatalError = true
-                    }
                 }
-            } else if showingFatalError {
-                // Show error screen - no other UI
+            } else if !juuretApp.fileManager.isFileLoaded {
+                #if os(iOS)
+                // iOS: Show document picker if file not loaded
+                DocumentPickerView(fileManager: juuretApp.fileManager)
+                #else
+                // macOS: Show fatal error (shouldn't happen with direct access)
                 VStack {
                     Image(systemName: "exclamationmark.octagon.fill")
                         .font(.system(size: 60))
@@ -40,27 +41,14 @@ struct KalvianRootsApp: App {
                     Text("Fatal Error")
                         .font(.largeTitle)
                         .padding()
+                    Text(juuretApp.fileManager.errorMessage ?? "Cannot load file")
+                        .multilineTextAlignment(.center)
+                        .padding()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .alert("Fatal Error: Canonical File Not Found", isPresented: $showingFatalError) {
-                    Button("Quit", role: .destructive) {
-                        #if os(macOS)
-                        NSApplication.shared.terminate(nil)
-                        #else
-                        exit(0)  // Force quit on iOS
-                        #endif
-                    }
-                } message: {
-                    Text("""
-                        JuuretKälviällä.roots must be in:
-                        ~/Library/Mobile Documents/iCloud~com~michael-bendio~Kalvian-Roots/Documents/
-                        
-                        First line must be: canonical
-                        Second line must be: blank
-                        """)
-                }
+                #endif
             } else {
-                // Normal app only if file loaded successfully
+                // Normal app - file loaded successfully
                 ContentView()
                     .environment(juuretApp)
             }
