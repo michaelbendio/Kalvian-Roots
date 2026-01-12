@@ -49,6 +49,19 @@ final class PersistentFamilyNetworkStore {
     }
 
     convenience init(rootsFileManager: RootsFileManager, fileManager: FileManager = .default, schemaVersion: Int = 2) {
+        #if os(iOS)
+        // iOS: Use the app's own ubiquity container for cache
+        // The app always has access to its own container without security-scoped bookmarks
+        if let appContainer = FileManager.default.url(forUbiquityContainerIdentifier: nil) {
+            let cacheDirectory = appContainer.appendingPathComponent("Documents/Cache", isDirectory: true)
+            let cacheFileURL = cacheDirectory.appendingPathComponent("families.json")
+            self.init(cacheFileURL: cacheFileURL, fileManager: fileManager, schemaVersion: schemaVersion)
+            logDebug(.cache, "📂 iOS: Persistent cache will be stored at \(cacheFileURL.path)")
+            return
+        }
+        #endif
+        
+        // macOS: Use the canonical file location (iCloud Drive/Documents/Cache)
         if let canonicalURL = rootsFileManager.getCanonicalFileURL() {
             let documentsURL = canonicalURL.deletingLastPathComponent()
             let cacheDirectory = documentsURL.appendingPathComponent("Cache", isDirectory: true)
@@ -251,8 +264,6 @@ final class PersistentFamilyNetworkStore {
         
         if query.resultCount > 0 {
             logInfo(.cache, "☁️ Found cache file in iCloud during initial scan")
-            // Trigger download if needed
-            ensureFileDownloaded()
         }
     }
     
@@ -271,9 +282,6 @@ final class PersistentFamilyNetworkStore {
             
             if itemURL.lastPathComponent == "families.json" {
                 logInfo(.cache, "☁️ Cache file updated in iCloud - notifying for reload")
-                
-                // Ensure the updated file is downloaded
-                ensureFileDownloaded()
                 
                 // Notify that cache was updated from cloud
                 Task { @MainActor in

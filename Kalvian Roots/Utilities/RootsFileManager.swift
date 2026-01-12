@@ -60,7 +60,7 @@ final class RootsFileManager {
         logInfo(.file, "📁 RootsFileManager initialized (main iCloud Drive Documents)")    }
 
     // MARK: - Canonical iCloud Locations
-
+    
     // Point to main iCloud Drive
     private func containerURL() -> URL? {
         // Start with any ubiquity container to get the Mobile Documents path
@@ -78,15 +78,49 @@ final class RootsFileManager {
         guard let root = containerURL() else { return nil }
         return root.appendingPathComponent("Documents", isDirectory: true)
     }
-
+    
     /// Canonical file URL (<container>/Documents/JuuretKälviällä.roots)
     func getCanonicalFileURL() -> URL? {
         guard let docsURL = documentsURL() else { return nil }
         return docsURL.appendingPathComponent(defaultFileName)
     }
-
+    
+    
+    /// Get the effective file URL for cache path derivation
+    /// On iOS, prefers the bookmark URL (actual file location) over programmatic canonical URL
+    /// On macOS, returns the canonical URL
+    func getEffectiveFileURL() -> URL? {
+#if os(iOS)
+        // First check if we have a loaded file URL (most accurate)
+        if let loadedURL = currentFileURL {
+            return loadedURL
+        }
+        
+        // Try to resolve bookmark URL without loading the file
+        // This allows cache to find the right location even before file is loaded
+        if let bookmarkData = UserDefaults.standard.data(forKey: "FileBookmark") {
+            do {
+                var isStale = false
+                let url = try URL(resolvingBookmarkData: bookmarkData,
+                                  bookmarkDataIsStale: &isStale)
+                if !isStale {
+                    return url
+                }
+            } catch {
+                logWarn(.file, "⚠️ Failed to resolve bookmark for cache path: \(error)")
+            }
+        }
+        
+        // Fallback to programmatic canonical URL
+        return getCanonicalFileURL()
+#else
+        // macOS: Always use canonical URL
+        return getCanonicalFileURL()
+#endif
+    }
+    
     // MARK: - Loading methods
-
+    
     /// Auto-load the canonical file (should always succeed)
     func autoLoadDefaultFile() async {
         logInfo(.file, "🔍 Auto-loading from canonical location")
