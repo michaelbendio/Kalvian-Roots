@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		09059B352F15CC48006367DA /* NIOCore in Frameworks */ = {isa = PBXBuildFile; productRef = 09059B342F15CC48006367DA /* NIOCore */; };
+		09059B372F15CC48006367DA /* NIOHTTP1 in Frameworks */ = {isa = PBXBuildFile; productRef = 09059B362F15CC48006367DA /* NIOHTTP1 */; };
+		09059B392F15CC48006367DA /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; productRef = 09059B382F15CC48006367DA /* NIOPosix */; };
 		09CB18602E2170CD0083983B /* FoundationModels.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09CB185F2E2170CD0083983B /* FoundationModels.framework */; };
 		09CB18612E21791B0083983B /* FoundationModels.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09CB185F2E2170CD0083983B /* FoundationModels.framework */; };
 		09CB18622E2179350083983B /* FoundationModels.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09CB185F2E2170CD0083983B /* FoundationModels.framework */; };
@@ -93,6 +96,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				09059B372F15CC48006367DA /* NIOHTTP1 in Frameworks */,
+				09059B392F15CC48006367DA /* NIOPosix in Frameworks */,
+				09059B352F15CC48006367DA /* NIOCore in Frameworks */,
 				09CB18602E2170CD0083983B /* FoundationModels.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -165,6 +171,9 @@
 			);
 			name = "Kalvian Roots";
 			packageProductDependencies = (
+				09059B342F15CC48006367DA /* NIOCore */,
+				09059B362F15CC48006367DA /* NIOHTTP1 */,
+				09059B382F15CC48006367DA /* NIOPosix */,
 			);
 			productName = "Kalvian Roots";
 			productReference = 09CB182E2E216DB10083983B /* Kalvian Roots.app */;
@@ -248,6 +257,9 @@
 			);
 			mainGroup = 09CB18252E216DB10083983B;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				09059B332F15CC48006367DA /* XCRemoteSwiftPackageReference "swift-nio" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 09CB182F2E216DB10083983B /* Products */;
 			projectDirPath = "";
@@ -678,6 +690,35 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		09059B332F15CC48006367DA /* XCRemoteSwiftPackageReference "swift-nio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-nio.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.92.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		09059B342F15CC48006367DA /* NIOCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 09059B332F15CC48006367DA /* XCRemoteSwiftPackageReference "swift-nio" */;
+			productName = NIOCore;
+		};
+		09059B362F15CC48006367DA /* NIOHTTP1 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 09059B332F15CC48006367DA /* XCRemoteSwiftPackageReference "swift-nio" */;
+			productName = NIOHTTP1;
+		};
+		09059B382F15CC48006367DA /* NIOPosix */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 09059B332F15CC48006367DA /* XCRemoteSwiftPackageReference "swift-nio" */;
+			productName = NIOPosix;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 09CB18262E216DB10083983B /* Project object */;
 }

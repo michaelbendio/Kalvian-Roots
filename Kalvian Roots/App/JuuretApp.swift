@@ -23,14 +23,19 @@ import UIKit
 @Observable
 @MainActor
 class JuuretApp {
-    
+
     // MARK: - Core Services (Owned by App)
-    
+
     let aiParsingService: AIParsingService
     let familyResolver: FamilyResolver
     let nameEquivalenceManager: NameEquivalenceManager
     let fileManager: RootsFileManager // for I/O operations
     let familyNetworkCache: FamilyNetworkCache  // for background processing
+
+    #if os(macOS)
+    // HTTP Server for browser interface
+    private var httpServer: KalvianRootsServer?
+    #endif
     
     // MARK: - App State
     var currentFamily: Family?
@@ -272,7 +277,7 @@ class JuuretApp {
         
         logInfo(.app, "🎉 JuuretApp initialization complete")
         logDebug(.app, "Ready state: \(self.isReady)")
-        
+
         // Initialize detail route to the first cached family if available (macOS UI hint)
         if let firstCached = familyNetworkCache.getFirstCachedFamilyId(),
            let cached = familyNetworkCache.getCachedNetwork(familyId: firstCached) {
@@ -281,6 +286,11 @@ class JuuretApp {
         } else {
             self.detailRoute = .empty
         }
+
+        #if os(macOS)
+        // Start HTTP server for browser interface
+        startHTTPServer()
+        #endif
     }
     
     // MARK: - File Ready Coordination
@@ -976,6 +986,43 @@ class JuuretApp {
                 return "Cross-reference resolution failed: \(details)"
             }
         }
+    }
+
+    // MARK: - HTTP Server Management
+
+    #if os(macOS)
+    /**
+     * Start the HTTP server for browser interface
+     */
+    private func startHTTPServer() {
+        Task {
+            do {
+                httpServer = KalvianRootsServer(juuretApp: self, port: 8081)
+                try await httpServer?.start()
+                logInfo(.app, "🌐 HTTP server started successfully")
+            } catch {
+                logError(.app, "❌ Failed to start HTTP server: \(error)")
+                errorMessage = "Failed to start HTTP server: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    /**
+     * Stop the HTTP server
+     */
+    func stopHTTPServer() async {
+        await httpServer?.stop()
+        httpServer = nil
+    }
+    #endif
+
+    deinit {
+        #if os(macOS)
+        // Stop HTTP server when app terminates
+        Task {
+            await stopHTTPServer()
+        }
+        #endif
     }
 }
 

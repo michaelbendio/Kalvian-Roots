@@ -27,6 +27,13 @@ enum HiskiServiceError: Error {
     case citationExtractionFailed
 }
 
+// MARK: - Extraction Mode
+
+enum HiskiExtractionMode {
+    case webView     // Use WKWebView for interactive extraction (SwiftUI app)
+    case httpOnly    // Use pure HTTP for headless extraction (server)
+}
+
 // MARK: - WebView Window Manager with JavaScript Citation Extraction
 
 #if os(macOS)
@@ -197,6 +204,189 @@ class HiskiService {
         self.currentFamilyId = familyId
     }
     
+    // MARK: - Query Methods with Result Type (Supporting both extraction modes)
+
+    /**
+     * Query death record and return result abstraction
+     */
+    func queryDeathWithResult(name: String, date: String, mode: HiskiExtractionMode = .webView) async -> HiskiQueryResult {
+        do {
+            let swedishName = getSwedishEquivalent(for: name)
+            let firstName = swedishName.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishName
+            let formattedDate = formatDateForHiski(date)
+
+            logInfo(.app, "🔍 Hiski Death Query (mode: \(mode)):")
+            logInfo(.app, "  Name: \(firstName)")
+            logInfo(.app, "  Date: \(formattedDate)")
+
+            // Build search URL
+            let searchUrl = try buildDeathSearchUrl(name: firstName, date: formattedDate)
+
+            // Fetch search results HTML
+            let (searchData, _) = try await URLSession.shared.data(from: searchUrl)
+            guard let searchHtml = String(data: searchData, encoding: .isoLatin1) else {
+                return .error(message: "Failed to fetch search results")
+            }
+
+            // Find matching record URL from HTML
+            guard let recordPath = findMatchingRecordUrl(from: searchHtml, queryDate: formattedDate) else {
+                logWarn(.app, "⚠️ No matching record found for date: \(formattedDate)")
+                return .notFound
+            }
+
+            logInfo(.app, "✅ Found matching record path: \(recordPath)")
+
+            // Load record page and extract citation
+            let recordUrl = "https://hiski.genealogia.fi" + recordPath
+
+            let citationUrl: String
+            switch mode {
+            case .webView:
+                #if os(macOS)
+                guard let url = URL(string: recordUrl) else {
+                    return .error(message: "Invalid record URL")
+                }
+                citationUrl = try await HiskiWebViewManager.shared.loadRecordAndExtractCitation(url: url)
+                #else
+                return .error(message: "WebView extraction not supported on iOS")
+                #endif
+            case .httpOnly:
+                citationUrl = try await loadRecordAndExtractCitationHTTP(recordUrl: recordUrl)
+            }
+
+            return .found(citationURL: citationUrl)
+
+        } catch {
+            logError(.app, "❌ Hiski query failed: \(error.localizedDescription)")
+            return .error(message: error.localizedDescription)
+        }
+    }
+
+    /**
+     * Query birth record and return result abstraction
+     */
+    func queryBirthWithResult(name: String, date: String, fatherName: String? = nil, mode: HiskiExtractionMode = .webView) async -> HiskiQueryResult {
+        do {
+            let swedishName = getSwedishEquivalent(for: name)
+            let firstName = swedishName.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishName
+
+            var fatherFirstName: String? = nil
+            if let father = fatherName {
+                let swedishFather = getSwedishEquivalent(for: father)
+                fatherFirstName = swedishFather.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+
+            let formattedDate = formatDateForHiski(date)
+
+            logInfo(.app, "🔍 Hiski Birth Query (mode: \(mode)):")
+            logInfo(.app, "  Name: \(firstName)")
+            logInfo(.app, "  Father: \(fatherFirstName ?? "unknown")")
+            logInfo(.app, "  Date: \(formattedDate)")
+
+            // Build search URL
+            let searchUrl = try buildBirthSearchUrl(name: firstName, date: formattedDate, fatherName: fatherFirstName)
+
+            // Fetch search results HTML
+            let (searchData, _) = try await URLSession.shared.data(from: searchUrl)
+            guard let searchHtml = String(data: searchData, encoding: .isoLatin1) else {
+                return .error(message: "Failed to fetch search results")
+            }
+
+            // Find matching record URL
+            guard let recordPath = findMatchingRecordUrl(from: searchHtml, queryDate: formattedDate) else {
+                logWarn(.app, "⚠️ No matching record found for date: \(formattedDate)")
+                return .notFound
+            }
+
+            logInfo(.app, "✅ Found matching record path: \(recordPath)")
+
+            // Load record page and extract citation
+            let recordUrl = "https://hiski.genealogia.fi" + recordPath
+
+            let citationUrl: String
+            switch mode {
+            case .webView:
+                #if os(macOS)
+                guard let url = URL(string: recordUrl) else {
+                    return .error(message: "Invalid record URL")
+                }
+                citationUrl = try await HiskiWebViewManager.shared.loadRecordAndExtractCitation(url: url)
+                #else
+                return .error(message: "WebView extraction not supported on iOS")
+                #endif
+            case .httpOnly:
+                citationUrl = try await loadRecordAndExtractCitationHTTP(recordUrl: recordUrl)
+            }
+
+            return .found(citationURL: citationUrl)
+
+        } catch {
+            logError(.app, "❌ Hiski query failed: \(error.localizedDescription)")
+            return .error(message: error.localizedDescription)
+        }
+    }
+
+    /**
+     * Query marriage record and return result abstraction
+     */
+    func queryMarriageWithResult(husbandName: String, wifeName: String, date: String, mode: HiskiExtractionMode = .webView) async -> HiskiQueryResult {
+        do {
+            let swedishHusband = getSwedishEquivalent(for: husbandName)
+            let swedishWife = getSwedishEquivalent(for: wifeName)
+
+            let husbandFirst = swedishHusband.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishHusband
+            let wifeFirst = swedishWife.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishWife
+
+            let formattedDate = formatDateForHiski(date)
+
+            logInfo(.app, "🔍 Hiski Marriage Query (mode: \(mode)):")
+            logInfo(.app, "  Husband: \(husbandFirst)")
+            logInfo(.app, "  Wife: \(wifeFirst)")
+            logInfo(.app, "  Date: \(formattedDate)")
+
+            // Build search URL
+            let searchUrl = try buildMarriageSearchUrl(husbandName: husbandFirst, wifeName: wifeFirst, date: formattedDate)
+
+            // Fetch search results
+            let (searchData, _) = try await URLSession.shared.data(from: searchUrl)
+            guard let searchHtml = String(data: searchData, encoding: .isoLatin1) else {
+                return .error(message: "Failed to fetch search results")
+            }
+
+            // Find matching record
+            guard let recordPath = findMatchingRecordUrl(from: searchHtml, queryDate: formattedDate) else {
+                logWarn(.app, "⚠️ No matching record found for date: \(formattedDate)")
+                return .notFound
+            }
+
+            logInfo(.app, "✅ Found matching record path: \(recordPath)")
+
+            // Load record page and extract citation
+            let recordUrl = "https://hiski.genealogia.fi" + recordPath
+
+            let citationUrl: String
+            switch mode {
+            case .webView:
+                #if os(macOS)
+                guard let url = URL(string: recordUrl) else {
+                    return .error(message: "Invalid record URL")
+                }
+                citationUrl = try await HiskiWebViewManager.shared.loadRecordAndExtractCitation(url: url)
+                #else
+                return .error(message: "WebView extraction not supported on iOS")
+                #endif
+            case .httpOnly:
+                citationUrl = try await loadRecordAndExtractCitationHTTP(recordUrl: recordUrl)
+            }
+
+            return .found(citationURL: citationUrl)
+
+        } catch {
+            logError(.app, "❌ Hiski query failed: \(error.localizedDescription)")
+            return .error(message: error.localizedDescription)
+        }
+    }
+
     // MARK: - Query Methods (using WKWebView for record pages)
     
     func queryDeath(name: String, date: String) async throws -> HiskiCitation {
@@ -411,8 +601,55 @@ class HiskiService {
         return nil
     }
     
+    // MARK: - Pure HTTP Citation Extraction
+
+    /**
+     * Extract citation URL from record page HTML using regex (pure HTTP mode)
+     * This replicates the logic from the Python script hiski.py
+     */
+    private func extractCitationUrlFromHtml(_ html: String) -> String? {
+        // Pattern to find citation links with +t in the href
+        // Example: HREF="/hiski?en+t4086417"
+        let pattern = "HREF=\"(/hiski\\?en\\+t\\d+)\""
+
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+              let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+              let hrefRange = Range(match.range(at: 1), in: html) else {
+            logWarn(.app, "⚠️ Could not find citation link in record page HTML")
+            return nil
+        }
+
+        let citationPath = String(html[hrefRange])
+        let citationUrl = "https://hiski.genealogia.fi" + citationPath
+        logInfo(.app, "📋 Extracted citation URL from HTML: \(citationUrl)")
+
+        return citationUrl
+    }
+
+    /**
+     * Load record page and extract citation URL using pure HTTP
+     */
+    private func loadRecordAndExtractCitationHTTP(recordUrl: String) async throws -> String {
+        guard let url = URL(string: recordUrl) else {
+            throw HiskiServiceError.urlCreationFailed
+        }
+
+        // Fetch the record page HTML
+        let (recordData, _) = try await URLSession.shared.data(from: url)
+        guard let recordHtml = String(data: recordData, encoding: .isoLatin1) else {
+            throw HiskiServiceError.sessionFailed
+        }
+
+        // Extract citation URL from HTML
+        guard let citationUrl = extractCitationUrlFromHtml(recordHtml) else {
+            throw HiskiServiceError.citationExtractionFailed
+        }
+
+        return citationUrl
+    }
+
     // MARK: - URL Building
-    
+
     private func buildBirthSearchUrl(name: String, date: String, fatherName: String? = nil) throws -> URL {
         var params = [
             "komento": "haku",
