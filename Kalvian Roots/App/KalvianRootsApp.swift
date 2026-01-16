@@ -12,11 +12,12 @@ struct KalvianRootsApp: App {
     @State private var juuretApp = JuuretApp()
     @State private var showingFatalError = false
     @State private var fileCheckComplete = false
-    
+
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some Scene {
         WindowGroup {
             if !fileCheckComplete {
-                // Show loading while checking for file
                 VStack {
                     ProgressView()
                     Text("Checking for canonical file...")
@@ -30,10 +31,8 @@ struct KalvianRootsApp: App {
                 }
             } else if !juuretApp.fileManager.isFileLoaded {
                 #if os(iOS)
-                // iOS: Show document picker if file not loaded
                 DocumentPickerView(fileManager: juuretApp.fileManager)
                 #else
-                // macOS: Show fatal error (shouldn't happen with direct access)
                 VStack {
                     Image(systemName: "exclamationmark.octagon.fill")
                         .font(.system(size: 60))
@@ -48,10 +47,18 @@ struct KalvianRootsApp: App {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 #endif
             } else {
-                // Normal app - file loaded successfully
                 ContentView()
                     .environment(juuretApp)
             }
         }
+#if os(macOS)
+.onChange(of: scenePhase) { oldPhase, newPhase in
+    if oldPhase != .background && newPhase == .background {
+        Task { @MainActor in
+            await juuretApp.stopHTTPServer()
+        }
+    }
+}
+#endif
     }
 }

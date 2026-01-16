@@ -82,6 +82,8 @@ class KalvianRootsServer {
 
 // MARK: - HTTP Request Handler
 
+import Logging
+
 final class HTTPHandler: ChannelInboundHandler {
 
     // MARK: - NIO Types
@@ -89,7 +91,7 @@ final class HTTPHandler: ChannelInboundHandler {
     typealias InboundIn = HTTPServerRequestPart
     typealias OutboundOut = HTTPServerResponsePart
 
-    // MARK: - Response Model (transport-level)
+    // MARK: - Transport Response Model
 
     private enum HTTPResponse {
         case html(String, status: HTTPResponseStatus = .ok)
@@ -106,6 +108,9 @@ final class HTTPHandler: ChannelInboundHandler {
     private var requestMethod: HTTPMethod?
     private var requestBody: String?
     private var isKeepAlive = false
+    private var requestID: UUID?
+
+    private let logger = Logger(label: "KalvianRoots.HTTP")
 
     // MARK: - Init
 
@@ -121,11 +126,21 @@ final class HTTPHandler: ChannelInboundHandler {
         switch part {
 
         case .head(let request):
+            requestID = UUID()
             requestURI = request.uri
             requestMethod = request.method
             isKeepAlive = request.isKeepAlive
             buffer.clear()
             requestBody = nil
+
+            logger.info(
+                "[\(requestID!)] ⇢ Request",
+                metadata: [
+                    "method": "\(request.method)",
+                    "uri": "\(request.uri)",
+                    "keepAlive": "\(request.isKeepAlive)"
+                ]
+            )
 
         case .body(var body):
             buffer.writeBuffer(&body)
@@ -154,9 +169,17 @@ final class HTTPHandler: ChannelInboundHandler {
         let path = urlComponents?.path ?? "/"
         let queryItems = urlComponents?.queryItems ?? []
 
-        let eventLoop = context.eventLoop
+        logger.debug(
+            "[\(requestID!)] Routing",
+            metadata: [
+                "method": "\(method)",
+                "path": "\(path)"
+            ]
+        )
 
-        // Hop to MainActor ONLY to touch app state
+        let eventLoop = context.eventLoop
+        let channel = context.channel
+
         Task { @MainActor in
             let response: HTTPResponse
 
@@ -167,15 +190,18 @@ final class HTTPHandler: ChannelInboundHandler {
                     queryItems: queryItems
                 )
             } catch {
-                response = .error(
-                    .internalServerError,
-                    "Server error: \(error)"
-                )
+                response = .error(.internalServerError, "Server error: \(error)")
             }
 
-            // Hop back to NIO EventLoop for socket writes
             eventLoop.execute {
-                self.send(response, on: context)
+                // Reconstitute a context-safe write via the channel pipeline
+                channel.pipeline.context(handler: self).whenSuccess { ctx in
+                    self.logger.info(
+                        "[\(self.requestID!)] ⇠ Responding",
+                        metadata: ["keepAlive": "\(self.isKeepAlive)"]
+                    )
+                    self.send(response, on: ctx)
+                }
             }
         }
     }
@@ -200,10 +226,7 @@ final class HTTPHandler: ChannelInboundHandler {
             return handleLandingPagePost()
 
         case (.GET, let p) where p.starts(with: "/family/"):
-            return try await handleFamilyRoute(
-                path: p,
-                queryItems: queryItems
-            )
+            return try await handleFamilyRoute(path: p)
 
         default:
             return .error(.notFound, "Not Found")
@@ -219,27 +242,36 @@ final class HTTPHandler: ChannelInboundHandler {
             return .redirect("/?error=invalid")
         }
 
-        let normalizedId = familyId
-            .uppercased()
-            .trimmingCharacters(in: .whitespaces)
+        let canonical =
+            familyId
+                .trimmingCharacters(in: .whitespaces)
+                .uppercased()
 
-        if FamilyIDs.isValid(familyId: normalizedId) {
-            let encoded =
-                normalizedId.addingPercentEncoding(
-                    withAllowedCharacters: .urlPathAllowed
-                ) ?? normalizedId
-            return .redirect("/family/\(encoded)")
-        } else {
+        let isValid = FamilyIDs.isValid(familyId: canonical)
+
+        logger.info(
+            "[\(requestID!)] Family ID from POST",
+            metadata: [
+                "raw": "\(familyId)",
+                "canonical": "\(canonical)",
+                "isValid": "\(isValid)"
+            ]
+        )
+
+        guard isValid else {
             return .redirect("/?error=invalid")
         }
+
+        let encoded =
+            canonical.addingPercentEncoding(
+                withAllowedCharacters: .urlPathAllowed
+            ) ?? canonical
+
+        return .redirect("/family/\(encoded)")
     }
 
     @MainActor
-    private func handleFamilyRoute(
-        path: String,
-        queryItems: [URLQueryItem]
-    ) async throws -> HTTPResponse {
-
+    private func handleFamilyRoute(path: String) async throws -> HTTPResponse {
         guard let juuretApp = juuretApp else {
             return .error(.internalServerError, "App not available")
         }
@@ -249,16 +281,31 @@ final class HTTPHandler: ChannelInboundHandler {
             return .error(.notFound, "Not Found")
         }
 
-        let familyId = components[1]
+        let rawID = components[1]
+        let decodedID = rawID.removingPercentEncoding ?? rawID
+        let canonicalID =
+            decodedID
+                .trimmingCharacters(in: .whitespaces)
+                .uppercased()
 
-        guard FamilyIDs.isValid(familyId: familyId) else {
+        let isValid = FamilyIDs.isValid(familyId: canonicalID)
+
+        logger.info(
+            "[\(requestID!)] Family ID from path",
+            metadata: [
+                "raw": "\(rawID)",
+                "decoded": "\(decodedID)",
+                "canonical": "\(canonicalID)",
+                "isValid": "\(isValid)"
+            ]
+        )
+
+        guard isValid else {
             return .redirect("/?error=invalid")
         }
 
-        if juuretApp.currentFamily?.familyId != familyId {
-            await juuretApp.extractFamily(familyId: familyId)
-            try await Task.sleep(nanoseconds: 500_000_000)
-        }
+        // Deterministic await — no Task.sleep
+        try await juuretApp.extractFamilyAndWait(familyId: canonicalID)
 
         guard let family = juuretApp.currentFamily,
               let network =
@@ -271,6 +318,7 @@ final class HTTPHandler: ChannelInboundHandler {
                 family: family,
                 network: network
             )
+
         return .html(html)
     }
 
@@ -320,14 +368,14 @@ final class HTTPHandler: ChannelInboundHandler {
 
         context.write(wrapOutboundOut(.head(head)), promise: nil)
 
-        var bodyBuffer =
+        var body =
             context.channel.allocator.buffer(
                 capacity: html.utf8.count
             )
-        bodyBuffer.writeString(html)
+        body.writeString(html)
 
         context.write(
-            wrapOutboundOut(.body(.byteBuffer(bodyBuffer))),
+            wrapOutboundOut(.body(.byteBuffer(body))),
             promise: nil
         )
 
@@ -375,54 +423,32 @@ final class HTTPHandler: ChannelInboundHandler {
         let html = """
         <!DOCTYPE html>
         <html>
-        <head>
-            <title>Error</title>
-            <style>
-                body {
-                    font-family: system-ui, -apple-system, sans-serif;
-                    padding: 20px;
-                }
-                .error {
-                    color: #dc3545;
-                    margin-top: 20px;
-                }
-            </style>
-        </head>
         <body>
             <h1>Error \(status.code)</h1>
-            <div class="error">\(message)</div>
+            <p>\(message)</p>
         </body>
         </html>
         """
         sendHTML(context: context, html: html, status: status)
     }
 
-    // MARK: - Utilities (pure)
+    // MARK: - Utilities
 
     private func parseFormData(_ data: String) -> [String: String] {
-        var result: [String: String] = [:]
-        let pairs = data.split(separator: "&")
+        // HTML form encoding: '+' represents space
+        let normalized = data.replacingOccurrences(of: "+", with: " ")
 
-        for pair in pairs {
-            let components = pair.split(
-                separator: "=",
-                maxSplits: 1
-            )
-            if components.count == 2 {
-                let key =
-                    String(components[0])
-                        .removingPercentEncoding
-                    ?? String(components[0])
-                let value =
-                    String(components[1])
-                        .removingPercentEncoding
-                    ?? String(components[1])
-                result[key] = value
-            }
+        var components = URLComponents()
+        components.query = normalized
+
+        var result: [String: String] = [:]
+        for item in components.queryItems ?? [] {
+            result[item.name] = item.value ?? ""
         }
         return result
     }
 }
+
 
 
 // MARK: - FamilyNetwork Extension

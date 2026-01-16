@@ -10,6 +10,7 @@ import SwiftUI
 
 #if os(macOS)
 import AppKit
+import Logging
 #elseif os(iOS)
 import UIKit
 #endif
@@ -210,6 +211,10 @@ class JuuretApp {
 
         // FIXED: Proper platform detection for all Apple devices
         #if os(macOS) && arch(arm64)
+            LoggingSystem.bootstrap { label in                // logging for HTTP server
+                StreamLogHandler.standardOutput(label: label)
+            }
+        
             // Apple Silicon Mac - use enhanced service with MLX support
             logInfo(.ai, "🧠 Initializing AI services with MLX support (Apple Silicon Mac)")
             localAIParsingService = AIParsingService()
@@ -628,6 +633,15 @@ class JuuretApp {
         }
     }
     
+    @MainActor
+    func extractFamilyAndWait(familyId: String) async throws {
+        await extractFamily(familyId: familyId)
+
+        while currentFamily?.familyId != familyId {
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+    }
+
     /**
      * Load the next family from cache
      */
@@ -1017,12 +1031,6 @@ class JuuretApp {
     #endif
 
     deinit {
-        #if os(macOS)
-        // Stop HTTP server when app terminates
-        Task {
-            await stopHTTPServer()
-        }
-        #endif
     }
 }
 

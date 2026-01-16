@@ -10,6 +10,8 @@
 		09059B352F15CC48006367DA /* NIOCore in Frameworks */ = {isa = PBXBuildFile; productRef = 09059B342F15CC48006367DA /* NIOCore */; };
 		09059B372F15CC48006367DA /* NIOHTTP1 in Frameworks */ = {isa = PBXBuildFile; productRef = 09059B362F15CC48006367DA /* NIOHTTP1 */; };
 		09059B392F15CC48006367DA /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; productRef = 09059B382F15CC48006367DA /* NIOPosix */; };
+		09059B402F1879E8006367DA /* InMemoryLogging in Frameworks */ = {isa = PBXBuildFile; productRef = 09059B3F2F1879E8006367DA /* InMemoryLogging */; };
+		09059B422F1879E8006367DA /* Logging in Frameworks */ = {isa = PBXBuildFile; productRef = 09059B412F1879E8006367DA /* Logging */; };
 		09CB18602E2170CD0083983B /* FoundationModels.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09CB185F2E2170CD0083983B /* FoundationModels.framework */; };
 		09CB18612E21791B0083983B /* FoundationModels.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09CB185F2E2170CD0083983B /* FoundationModels.framework */; };
 		09CB18622E2179350083983B /* FoundationModels.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09CB185F2E2170CD0083983B /* FoundationModels.framework */; };
@@ -96,7 +98,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				09059B422F1879E8006367DA /* Logging in Frameworks */,
 				09059B372F15CC48006367DA /* NIOHTTP1 in Frameworks */,
+				09059B402F1879E8006367DA /* InMemoryLogging in Frameworks */,
 				09059B392F15CC48006367DA /* NIOPosix in Frameworks */,
 				09059B352F15CC48006367DA /* NIOCore in Frameworks */,
 				09CB18602E2170CD0083983B /* FoundationModels.framework in Frameworks */,
@@ -174,6 +178,8 @@
 				09059B342F15CC48006367DA /* NIOCore */,
 				09059B362F15CC48006367DA /* NIOHTTP1 */,
 				09059B382F15CC48006367DA /* NIOPosix */,
+				09059B3F2F1879E8006367DA /* InMemoryLogging */,
+				09059B412F1879E8006367DA /* Logging */,
 			);
 			productName = "Kalvian Roots";
 			productReference = 09CB182E2E216DB10083983B /* Kalvian Roots.app */;
@@ -259,6 +265,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				09059B332F15CC48006367DA /* XCRemoteSwiftPackageReference "swift-nio" */,
+				09059B3E2F1879E8006367DA /* XCRemoteSwiftPackageReference "swift-log" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 09CB182F2E216DB10083983B /* Products */;
@@ -700,6 +707,14 @@
 				minimumVersion = 2.92.2;
 			};
 		};
+		09059B3E2F1879E8006367DA /* XCRemoteSwiftPackageReference "swift-log" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-log.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.9.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -717,6 +732,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 09059B332F15CC48006367DA /* XCRemoteSwiftPackageReference "swift-nio" */;
 			productName = NIOPosix;
+		};
+		09059B3F2F1879E8006367DA /* InMemoryLogging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 09059B3E2F1879E8006367DA /* XCRemoteSwiftPackageReference "swift-log" */;
+			productName = InMemoryLogging;
+		};
+		09059B412F1879E8006367DA /* Logging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 09059B3E2F1879E8006367DA /* XCRemoteSwiftPackageReference "swift-log" */;
+			productName = Logging;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
