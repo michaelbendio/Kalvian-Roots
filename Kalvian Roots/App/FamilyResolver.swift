@@ -176,6 +176,13 @@ class FamilyResolver {
         
         logInfo(.resolver, "✅ Resolved \(Set(updatedNetwork.asParentFamilies.values).count) unique as-parent families")
         logInfo(.resolver, "✅ Resolved \(Set(updatedNetwork.spouseAsChildFamilies.values).count) unique spouse families")
+        
+        // Fallback: Try to find spouse asChild families via marriage date search
+        // for married children without valid asParent family IDs
+        await resolveSpouseAsChildByMarriageDateSearch(for: family, network: &updatedNetwork)
+             logInfo(.resolver, "✅ Resolved \(Set(updatedNetwork.asParentFamilies.values).count) unique as-parent families")
+             logInfo(.resolver, "✅ Resolved \(Set(updatedNetwork.spouseAsChildFamilies.values).count) unique spouse families")
+
         return updatedNetwork
     }
     
@@ -478,5 +485,158 @@ extension Family {
     private func areNamesEqual(_ name1: String, _ name2: String) -> Bool {
         return name1.lowercased().trimmingCharacters(in: .whitespaces) ==
                name2.lowercased().trimmingCharacters(in: .whitespaces)
+    }
+}
+
+extension FamilyResolver {
+    
+    /**
+     * Fallback: Search for spouse's asChild family by marriage date
+     *
+     * When a married child has:
+     * - A 6-digit marriage date (contains ".")
+     * - No valid asParent family ID (missing or fails FamilyIDs.isValid())
+     *
+     * Search the canonical file for that marriage date to find the spouse's
+     * parent family, where the spouse appears as a child.
+     */
+    private func resolveSpouseAsChildByMarriageDateSearch(
+        for family: Family,
+        network: inout FamilyNetwork
+    ) async {
+        logInfo(.resolver, "🔍 Checking for spouse asChild resolution via marriage date search...")
+        
+        for child in family.marriedChildren {
+            // Skip if child already has a valid asParent family ID
+            if let asParentRef = child.asParent, FamilyIDs.isValid(familyId: asParentRef) {
+                continue
+            }
+            
+            // Must have a 6-digit marriage date
+            guard let marriageDate = child.fullMarriageDate ?? child.marriageDate,
+                  marriageDate.contains(".") else {
+                continue
+            }
+            
+            // Must have a spouse name
+            guard let spouseName = child.spouse, !spouseName.isEmpty else {
+                continue
+            }
+            
+            // Check if we already have spouse's asChild family
+            let spousePerson = Person(name: spouseName, noteMarkers: [])
+            if network.getSpouseAsChildFamily(for: spousePerson) != nil {
+                continue
+            }
+            
+            logInfo(.resolver, "🔍 Searching for spouse asChild family via marriage date:")
+            logInfo(.resolver, "   Child: \(child.displayName)")
+            logInfo(.resolver, "   Spouse: \(spouseName)")
+            logInfo(.resolver, "   Marriage date: \(marriageDate)")
+            
+            // Search for families with this marriage date
+            let matches = fileManager.searchFamiliesByMarriageDate(marriageDate)
+            
+            for match in matches {
+                // Skip the nuclear family itself
+                if match.familyId == family.familyId {
+                    continue
+                }
+                
+                // Verify bidirectional name match
+                if verifyBidirectionalNameMatch(
+                    nuclearChildName: child.name,
+                    nuclearSpouseName: spouseName,
+                    candidateFamilyText: match.familyText
+                ) {
+                    logInfo(.resolver, "✅ Found spouse's parent family via marriage date: \(match.familyId)")
+                    
+                    // Extract and parse the candidate family
+                    if let spouseParentFamily = try? await extractAndParseFamily(familyId: match.familyId) {
+                        // Store as spouse's asChild family
+                        network.spouseAsChildFamilies[FamilyNetwork.makePersonKey(for: spousePerson)] = spouseParentFamily
+                        network.spouseAsChildFamilies[spousePerson.displayName] = spouseParentFamily
+                        network.spouseAsChildFamilies[spousePerson.name] = spouseParentFamily
+                        
+                        // Also try first name only
+                        let spouseFirstName = spouseName.components(separatedBy: " ").first ?? spouseName
+                        network.spouseAsChildFamilies[spouseFirstName] = spouseParentFamily
+                        
+                        logInfo(.resolver, "✅ Stored '\(match.familyId)' as spouseAsChild for '\(spouseName)'")
+                    }
+                    
+                    break // Found match, stop searching
+                }
+            }
+        }
+    }
+    
+    /**
+     * Verify bidirectional name match between nuclear family and candidate family
+     *
+     * For a match:
+     * - Nuclear child name should match candidate spouse name
+     * - Nuclear spouse name should match candidate child name
+     */
+    private func verifyBidirectionalNameMatch(
+        nuclearChildName: String,
+        nuclearSpouseName: String,
+        candidateFamilyText: String
+    ) -> Bool {
+        // Extract first names for flexible matching
+        let nuclearChildFirst = nuclearChildName.components(separatedBy: " ").first?.lowercased() ?? ""
+        let nuclearSpouseFirst = nuclearSpouseName.components(separatedBy: " ").first?.lowercased() ?? ""
+        
+        // Look for patterns in the candidate family text
+        // Pattern: "★ [date] [Name]" for children
+        // Pattern: "∞ [date] [Name]" for spouse in marriage
+        
+        let lines = candidateFamilyText.components(separatedBy: .newlines)
+        
+        var foundSpouseAsChild = false
+        var foundChildAsSpouse = false
+        
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            
+            // Check if this line is a child line (starts with ★)
+            if trimmed.hasPrefix("★") {
+                // Check if the nuclear spouse appears as a child here
+                let lineLower = trimmed.lowercased()
+                if lineLower.contains(nuclearSpouseFirst) {
+                    foundSpouseAsChild = true
+                    logDebug(.resolver, "  Found spouse '\(nuclearSpouseFirst)' as child in candidate")
+                }
+            }
+            
+            // Check if line contains marriage with nuclear child name
+            if trimmed.contains("∞") {
+                let lineLower = trimmed.lowercased()
+                if lineLower.contains(nuclearChildFirst) {
+                    foundChildAsSpouse = true
+                    logDebug(.resolver, "  Found child '\(nuclearChildFirst)' as spouse in candidate")
+                }
+            }
+        }
+        
+        let isMatch = foundSpouseAsChild && foundChildAsSpouse
+        if isMatch {
+            logInfo(.resolver, "✅ Bidirectional match confirmed")
+        } else {
+            logDebug(.resolver, "  No bidirectional match (spouseAsChild=\(foundSpouseAsChild), childAsSpouse=\(foundChildAsSpouse))")
+        }
+        
+        return isMatch
+    }
+    
+    /**
+     * Helper to extract and parse a family
+     */
+    private func extractAndParseFamily(familyId: String) async throws -> Family? {
+        guard let familyText = fileManager.extractFamilyText(familyId: familyId) else {
+            return nil
+        }
+        
+        return try await aiParsingService.parseFamily(familyId: familyId, familyText: familyText)
     }
 }

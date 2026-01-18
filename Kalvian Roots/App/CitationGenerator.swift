@@ -169,7 +169,7 @@ struct CitationGenerator {
     ) -> String {
         let person = targetPerson ?? child
         let shouldEnhance = shouldEnhanceChild(child, isTarget: isTarget, person: person, network: network)
-        let prefix = shouldEnhance ? "→ " : ""
+        let prefix = isTarget ? "→ " : ""
         
         if shouldEnhance, let network = network {
             // Track enhancement source
@@ -402,14 +402,13 @@ struct CitationGenerator {
         
         line += ", m. \(spouse)"
         if let marriageDate = enhancedMarriageDate {
+            let birthYear = extractBirthYear(from: nuclearChild)
             if marriageDate.contains(".") {
-                line += " \(formatDate(marriageDate))"
+                line += " \(formatDate(marriageDate, parentBirthYear: birthYear))"
             } else {
-                let birthYear = extractBirthYear(from: nuclearChild)
                 line += " \(extractMarriageYear(marriageDate, parentBirthYear: birthYear))"
             }
         }
-        
         line += "\n"
         return line
     }
@@ -616,7 +615,7 @@ struct CitationGenerator {
     
     // MARK: - Date Formatting
     
-    private static func formatDate(_ date: String) -> String {
+    private static func formatDate(_ date: String, parentBirthYear: Int? = nil) -> String {
         let trimmed = date.trimmingCharacters(in: .whitespacesAndNewlines)
         
         // Handle approximate dates (n 1666 -> abt 1666)
@@ -633,20 +632,27 @@ struct CitationGenerator {
             }
         }
         
-        // Check for DD.MM.YYYY format
         let components = trimmed.components(separatedBy: ".")
-        
         if components.count == 3,
            let day = Int(components[0]),
-           let month = Int(components[1]),
-           components[2].count == 4 {
+           let month = Int(components[1]) {
             let monthNames = ["January", "February", "March", "April", "May", "June",
                             "July", "August", "September", "October", "November", "December"]
+            
             if month >= 1 && month <= 12 {
-                return "\(day) \(monthNames[month - 1]) \(components[2])"
+                let year: String
+                if components[2].count == 4 {
+                    // Full 4-digit year
+                    year = components[2]
+                } else if components[2].count == 2, let twoDigitYear = Int(components[2]) {
+                    // 2-digit year - infer century
+                    year = String(inferCentury(for: twoDigitYear, parentBirthYear: parentBirthYear))
+                } else {
+                    return trimmed
+                }
+                return "\(day) \(monthNames[month - 1]) \(year)"
             }
         }
-        
         return trimmed
     }
     

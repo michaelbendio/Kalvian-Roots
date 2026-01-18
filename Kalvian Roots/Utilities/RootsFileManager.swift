@@ -532,3 +532,108 @@ if let bookmarkData = UserDefaults.standard.data(forKey: "FileBookmark") {
         }
     }
 }
+
+extension RootsFileManager {
+    
+    /**
+     * Search for families containing a specific 6-digit marriage date
+     * Returns array of (familyId, familyText) tuples for matches
+     *
+     * Used as fallback when a married child has no valid asParent family ID
+     * but has a 6-digit marriage date that can be searched.
+     */
+    func searchFamiliesByMarriageDate(_ marriageDate: String) -> [(familyId: String, familyText: String)] {
+        guard let content = currentFileContent else {
+            logWarn(.file, "⚠️ No file content loaded for marriage date search")
+            return []
+        }
+        
+        // Ensure we have a 6-digit date (DD.MM.YY format)
+        guard marriageDate.contains(".") else {
+            logDebug(.file, "Marriage date '\(marriageDate)' is not 6-digit format, skipping search")
+            return []
+        }
+        
+        logInfo(.file, "🔍 Searching for families with marriage date: \(marriageDate)")
+        
+        let lines = content.components(separatedBy: .newlines)
+        var results: [(familyId: String, familyText: String)] = []
+        var currentFamilyId: String? = nil
+        var currentFamilyLines: [String] = []
+        var inFamily = false
+        
+        let contentLines = Array(lines.dropFirst(2)) // Skip canonical marker and blank line
+        
+        for line in contentLines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            
+            // Skip bookmarks
+            if trimmed == "#" {
+                continue
+            }
+            
+            // Check if this line starts a new family
+            if let firstChar = trimmed.first, firstChar.isUppercase {
+                // Check if it's a valid family ID
+                let potentialId = extractPotentialFamilyId(from: trimmed)
+                if let familyId = potentialId, FamilyIDs.isValid(familyId: familyId) {
+                    // Save previous family if it contained the marriage date
+                    if let prevId = currentFamilyId, !currentFamilyLines.isEmpty {
+                        let familyText = currentFamilyLines.joined(separator: "\n")
+                        if familyText.contains("∞ \(marriageDate)") || familyText.contains("∞\(marriageDate)") {
+                            results.append((familyId: prevId, familyText: familyText))
+                            logDebug(.file, "  Found match in: \(prevId)")
+                        }
+                    }
+                    
+                    // Start new family
+                    currentFamilyId = familyId
+                    currentFamilyLines = [line]
+                    inFamily = true
+                    continue
+                }
+            }
+            
+            // Add line to current family
+            if inFamily {
+                currentFamilyLines.append(line)
+            }
+        }
+        
+        // Check last family
+        if let lastId = currentFamilyId, !currentFamilyLines.isEmpty {
+            let familyText = currentFamilyLines.joined(separator: "\n")
+            if familyText.contains("∞ \(marriageDate)") || familyText.contains("∞\(marriageDate)") {
+                results.append((familyId: lastId, familyText: familyText))
+                logDebug(.file, "  Found match in: \(lastId)")
+            }
+        }
+        
+        logInfo(.file, "🔍 Found \(results.count) families with marriage date \(marriageDate)")
+        return results
+    }
+    
+    /**
+     * Extract potential family ID from a line
+     * Returns nil if not a valid family ID pattern
+     */
+    private func extractPotentialFamilyId(from line: String) -> String? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        
+        // Family IDs typically end with a number or roman numeral + number
+        // Examples: "KORPI 6", "KYKYRI II 9", "HYYPPÄ 6"
+        
+        // Try to match against known family IDs
+        for familyId in FamilyIDs.validFamilyIds {
+            if trimmed.hasPrefix(familyId) {
+                // Make sure it's actually starting the line (not in middle of text)
+                let afterId = trimmed.dropFirst(familyId.count)
+                if afterId.isEmpty || afterId.first == "," || afterId.first == " " {
+                    return familyId
+                }
+            }
+        }
+        
+        return nil
+    }
+}
