@@ -9,6 +9,13 @@
 
 import Foundation
 
+@MainActor
+protocol FamilyNetworkCaching: AnyObject {
+    func fetchNetwork(familyId: String) -> FamilyNetwork?
+    func storeNetwork(_ network: FamilyNetwork)
+    func invalidate(familyId: String)
+}
+
 /**
  * FamilyNetworkCache - Simple in-memory cache for now
  *
@@ -17,7 +24,7 @@ import Foundation
  */
 @Observable
 @MainActor
-class FamilyNetworkCache {
+class FamilyNetworkCache: FamilyNetworkCaching {
 
     // MARK: - Properties
 
@@ -90,6 +97,20 @@ class FamilyNetworkCache {
     }
     
     // MARK: - Public Methods
+
+    func fetchNetwork(familyId: String) -> FamilyNetwork? {
+        getCachedNetwork(familyId: familyId)
+    }
+
+    func storeNetwork(_ network: FamilyNetwork) {
+        let normalized = network.mainFamily.familyId.uppercased().trimmingCharacters(in: .whitespaces)
+        let extractionTime = cachedNetworks[normalized]?.extractionTime ?? 0
+        cacheNetwork(network, extractionTime: extractionTime)
+    }
+
+    func invalidate(familyId: String) {
+        deleteCachedFamily(familyId: familyId)
+    }
     
     /**
      * Check if a family is cached
@@ -620,4 +641,3 @@ class FamilyNetworkCache {
         )
     }
 }
-
