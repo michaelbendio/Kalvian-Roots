@@ -25,6 +25,7 @@ class KalvianRootsServer {
     // MARK: - Properties
 
     private weak var juuretApp: JuuretApp?
+    private let sessionManager: BrowserSessionManager
     private var channel: Channel?
     private let port: Int
     private let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
@@ -34,6 +35,12 @@ class KalvianRootsServer {
     init(juuretApp: JuuretApp, port: Int) {
         self.juuretApp = juuretApp
         self.port = port
+        self.sessionManager = BrowserSessionManager(
+            cache: juuretApp.familyNetworkCache,
+            fileManager: juuretApp.fileManager,
+            aiParsingService: juuretApp.aiParsingService,
+            familyResolver: juuretApp.familyResolver
+        )
     }
 
     // MARK: - Server Lifecycle
@@ -49,7 +56,7 @@ class KalvianRootsServer {
             .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .childChannelInitializer { channel in
                 channel.pipeline.configureHTTPServerPipeline(withErrorHandling: true).flatMap {
-                    channel.pipeline.addHandler(HTTPHandler(juuretApp: juuretApp))
+                    channel.pipeline.addHandler(HTTPHandler(sessionManager: sessionManager))
                 }
             }
             .childChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
@@ -94,19 +101,20 @@ final class HTTPHandler: ChannelInboundHandler {
     // MARK: - Transport Response Model
 
     private enum HTTPResponse {
-        case html(String, status: HTTPResponseStatus = .ok)
-        case redirect(String)
-        case error(HTTPResponseStatus, String)
+        case html(String, status: HTTPResponseStatus = .ok, headers: HTTPHeaders = HTTPHeaders())
+        case redirect(String, headers: HTTPHeaders = HTTPHeaders())
+        case error(HTTPResponseStatus, String, headers: HTTPHeaders = HTTPHeaders())
     }
 
     // MARK: - State
 
-    private weak var juuretApp: JuuretApp?
+    private let sessionManager: BrowserSessionManager
 
     private var buffer = ByteBuffer()
     private var requestURI: String?
     private var requestMethod: HTTPMethod?
     private var requestBody: String?
+    private var requestHeaders: HTTPHeaders?
     private var isKeepAlive = false
     private var requestID: UUID?
 
@@ -114,8 +122,8 @@ final class HTTPHandler: ChannelInboundHandler {
 
     // MARK: - Init
 
-    init(juuretApp: JuuretApp) {
-        self.juuretApp = juuretApp
+    init(sessionManager: BrowserSessionManager) {
+        self.sessionManager = sessionManager
     }
 
     // MARK: - ChannelInboundHandler
@@ -130,6 +138,7 @@ final class HTTPHandler: ChannelInboundHandler {
             requestURI = request.uri
             requestMethod = request.method
             isKeepAlive = request.isKeepAlive
+            requestHeaders = request.headers
             buffer.clear()
             requestBody = nil
 
@@ -272,10 +281,6 @@ final class HTTPHandler: ChannelInboundHandler {
 
     @MainActor
     private func handleFamilyRoute(path: String) async throws -> HTTPResponse {
-        guard let juuretApp = juuretApp else {
-            return .error(.internalServerError, "App not available")
-        }
-
         let components = path.split(separator: "/").map(String.init)
         guard components.count >= 2 else {
             return .error(.notFound, "Not Found")
@@ -304,22 +309,40 @@ final class HTTPHandler: ChannelInboundHandler {
             return .redirect("/?error=invalid")
         }
 
-        // Deterministic await — no Task.sleep
-        try await juuretApp.extractFamilyAndWait(familyId: canonicalID)
+        let headers = requestHeaders ?? HTTPHeaders()
+        let sessionResult = sessionManager.session(for: headers)
+        let setCookieHeader = sessionResult.isNew
+            ? sessionManager.makeSessionCookieHeader(for: sessionResult.sessionId)
+            : nil
 
-        guard let family = juuretApp.currentFamily,
-              let network =
-                juuretApp.familyNetworkWorkflow?.getFamilyNetwork() else {
-            return .error(.notFound, "Family not found")
-        }
+        do {
+            let network = try await sessionResult.session.loadFamily(familyId: canonicalID)
 
-        let html =
-            HTMLRenderer.renderFamily(
-                family: family,
-                network: network
+            let html =
+                HTMLRenderer.renderFamily(
+                    family: network.mainFamily,
+                    network: network
+                )
+
+            var responseHeaders = HTTPHeaders()
+            if let setCookieHeader {
+                responseHeaders.add(name: "Set-Cookie", value: setCookieHeader)
+            }
+
+            return .html(html, headers: responseHeaders)
+        } catch {
+            logger.error(
+                "[\(requestID!)] Failed to load family",
+                metadata: ["error": "\(error)"]
             )
 
-        return .html(html)
+            var responseHeaders = HTTPHeaders()
+            if let setCookieHeader {
+                responseHeaders.add(name: "Set-Cookie", value: setCookieHeader)
+            }
+
+            return .error(.notFound, "Family not found", headers: responseHeaders)
+        }
     }
 
     // MARK: - Response Writer (EventLoop only)
@@ -330,40 +353,41 @@ final class HTTPHandler: ChannelInboundHandler {
     ) {
         switch response {
 
-        case .html(let html, let status):
-            sendHTML(context: context, html: html, status: status)
+        case .html(let html, let status, let headers):
+            sendHTML(context: context, html: html, status: status, headers: headers)
 
-        case .redirect(let location):
-            sendRedirect(context: context, location: location)
+        case .redirect(let location, let headers):
+            sendRedirect(context: context, location: location, headers: headers)
 
-        case .error(let status, let message):
-            sendError(context: context, status: status, message: message)
+        case .error(let status, let message, let headers):
+            sendError(context: context, status: status, message: message, headers: headers)
         }
     }
 
     private func sendHTML(
         context: ChannelHandlerContext,
         html: String,
-        status: HTTPResponseStatus
+        status: HTTPResponseStatus,
+        headers: HTTPHeaders
     ) {
-        var headers = HTTPHeaders()
-        headers.add(
+        var responseHeaders = headers
+        responseHeaders.add(
             name: "Content-Type",
             value: "text/html; charset=utf-8"
         )
-        headers.add(
+        responseHeaders.add(
             name: "Content-Length",
             value: String(html.utf8.count)
         )
 
         if isKeepAlive {
-            headers.add(name: "Connection", value: "keep-alive")
+            responseHeaders.add(name: "Connection", value: "keep-alive")
         }
 
         let head = HTTPResponseHead(
             version: .http1_1,
             status: status,
-            headers: headers
+            headers: responseHeaders
         )
 
         context.write(wrapOutboundOut(.head(head)), promise: nil)
@@ -390,19 +414,20 @@ final class HTTPHandler: ChannelInboundHandler {
 
     private func sendRedirect(
         context: ChannelHandlerContext,
-        location: String
+        location: String,
+        headers: HTTPHeaders
     ) {
-        var headers = HTTPHeaders()
-        headers.add(name: "Location", value: location)
+        var responseHeaders = headers
+        responseHeaders.add(name: "Location", value: location)
 
         if isKeepAlive {
-            headers.add(name: "Connection", value: "keep-alive")
+            responseHeaders.add(name: "Connection", value: "keep-alive")
         }
 
         let head = HTTPResponseHead(
             version: .http1_1,
             status: .found,
-            headers: headers
+            headers: responseHeaders
         )
 
         context.write(wrapOutboundOut(.head(head)), promise: nil)
@@ -418,7 +443,8 @@ final class HTTPHandler: ChannelInboundHandler {
     private func sendError(
         context: ChannelHandlerContext,
         status: HTTPResponseStatus,
-        message: String
+        message: String,
+        headers: HTTPHeaders
     ) {
         let html = """
         <!DOCTYPE html>
@@ -429,7 +455,7 @@ final class HTTPHandler: ChannelInboundHandler {
         </body>
         </html>
         """
-        sendHTML(context: context, html: html, status: status)
+        sendHTML(context: context, html: html, status: status, headers: headers)
     }
 
     // MARK: - Utilities
