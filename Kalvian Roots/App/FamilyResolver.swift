@@ -29,7 +29,7 @@ class FamilyResolver {
     private let fileManager: RootsFileManager
     private let nameEquivalenceManager: NameEquivalenceManager
     private let aiParsingService: AIParsingService
-    private weak var familyNetworkCache: FamilyNetworkCache?
+    private weak var familyNetworkCache: FamilyNetworkCaching?
 
     // Track resolution statistics
     private var resolutionStatistics = ResolutionStatistics()
@@ -39,7 +39,7 @@ class FamilyResolver {
     init(aiParsingService: AIParsingService,
          nameEquivalenceManager: NameEquivalenceManager,
          fileManager: RootsFileManager,
-         familyNetworkCache: FamilyNetworkCache? = nil) {
+         familyNetworkCache: FamilyNetworkCaching? = nil) {
         self.aiParsingService = aiParsingService
         self.nameEquivalenceManager = nameEquivalenceManager
         self.fileManager = fileManager
@@ -344,9 +344,9 @@ class FamilyResolver {
         
         // NEW: Check cache first to avoid redundant AI calls!
         if let cache = familyNetworkCache,
-           let cachedFamily = cache.getCachedNuclearFamily(familyId: cleanedRef) {
+           let cachedNetwork = cache.fetchNetwork(familyId: cleanedRef) {
             logInfo(.resolver, "⚡ Using cached family (avoiding AI call): \(cleanedRef)")
-            return cachedFamily
+            return cachedNetwork.mainFamily
         }
         
         // Cache miss - parse from file with AI
