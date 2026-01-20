@@ -39,7 +39,8 @@ class KalvianRootsServer {
             cache: juuretApp.familyNetworkCache,
             fileManager: juuretApp.fileManager,
             aiParsingService: juuretApp.aiParsingService,
-            familyResolver: juuretApp.familyResolver
+            familyResolver: juuretApp.familyResolver,
+            nameEquivalenceManager: juuretApp.nameEquivalenceManager
         )
     }
 
@@ -183,11 +184,13 @@ final class HTTPHandler: ChannelInboundHandler {
         let path = urlComponents?.path ?? "/"
         let queryItems = urlComponents?.queryItems ?? []
 
-        logger.debug(
-            "[\(requestID!)] Routing",
+        logger.info(
+            "[\(requestID!)] 🛤️ Routing",
             metadata: [
                 "method": "\(method)",
-                "path": "\(path)"
+                "path": "\(path)",
+                "queryItemCount": "\(queryItems.count)",
+                "queryItems": "\(queryItems.map { "\($0.name)=\($0.value ?? "nil")" }.joined(separator: ", "))"
             ]
         )
 
@@ -204,6 +207,10 @@ final class HTTPHandler: ChannelInboundHandler {
                     queryItems: queryItems
                 )
             } catch {
+                logger.error(
+                    "[\(requestID!)] ❌ Route handler error",
+                    metadata: ["error": "\(error)"]
+                )
                 response = .error(.internalServerError, "Server error: \(error)")
             }
 
@@ -229,20 +236,32 @@ final class HTTPHandler: ChannelInboundHandler {
         queryItems: [URLQueryItem]
     ) async throws -> HTTPResponse {
 
+        logger.info(
+            "[\(requestID!)] 📍 handleRoute called",
+            metadata: [
+                "method": "\(method)",
+                "path": "\(path)"
+            ]
+        )
+
         switch (method, path) {
 
         case (.GET, "/"):
+            logger.info("[\(requestID!)] 🏠 Handling landing page")
             let error = queryItems.first(where: { $0.name == "error" })?.value
             let html = HTMLRenderer.renderLandingPage(error: error)
             return .html(html)
 
         case (.POST, "/"):
+            logger.info("[\(requestID!)] 📝 Handling landing page POST")
             return handleLandingPagePost()
 
         case (.GET, let p) where p.starts(with: "/family/"):
-            return try await handleFamilyRoute(path: p)
+            logger.info("[\(requestID!)] 👪 Handling family route: \(p)")
+            return try await handleFamilyRoute(path: p, queryItems: queryItems)
 
         default:
+            logger.warning("[\(requestID!)] ❓ Unknown route: \(method) \(path)")
             return .error(.notFound, "Not Found")
         }
     }
@@ -253,6 +272,7 @@ final class HTTPHandler: ChannelInboundHandler {
     private func handleLandingPagePost() -> HTTPResponse {
         guard let body = requestBody,
               let familyId = parseFormData(body)["family"] else {
+            logger.warning("[\(requestID!)] ⚠️ Invalid POST body")
             return .redirect("/?error=invalid")
         }
 
@@ -285,9 +305,21 @@ final class HTTPHandler: ChannelInboundHandler {
     }
 
     @MainActor
-    private func handleFamilyRoute(path: String) async throws -> HTTPResponse {
+    private func handleFamilyRoute(path: String, queryItems: [URLQueryItem]) async throws -> HTTPResponse {
+        // Parse path components: /family/{familyId} or /family/{familyId}/cite or /family/{familyId}/hiski
         let components = path.split(separator: "/").map(String.init)
+        
+        logger.info(
+            "[\(requestID!)] 🔍 Parsing family route",
+            metadata: [
+                "path": "\(path)",
+                "componentCount": "\(components.count)",
+                "components": "\(components.joined(separator: ", "))"
+            ]
+        )
+        
         guard components.count >= 2 else {
+            logger.warning("[\(requestID!)] ⚠️ Not enough path components")
             return .error(.notFound, "Not Found")
         }
 
@@ -301,7 +333,7 @@ final class HTTPHandler: ChannelInboundHandler {
         let isValid = FamilyIDs.isValid(familyId: canonicalID)
 
         logger.info(
-            "[\(requestID!)] Family ID from path",
+            "[\(requestID!)] 📋 Family ID parsed",
             metadata: [
                 "raw": "\(rawID)",
                 "decoded": "\(decodedID)",
@@ -314,15 +346,81 @@ final class HTTPHandler: ChannelInboundHandler {
             return .redirect("/?error=invalid")
         }
 
+        // Determine sub-route
+        let subRoute = components.count >= 3 ? components[2] : nil
+        
+        logger.info(
+            "[\(requestID!)] 🎯 Sub-route detection",
+            metadata: [
+                "subRoute": "\(subRoute ?? "none")",
+                "hasSubRoute": "\(subRoute != nil)"
+            ]
+        )
+
+        // Get session
         let headers = requestHeaders ?? HTTPHeaders()
         let sessionResult = sessionManager.session(for: headers)
         let setCookieHeader = sessionResult.isNew
             ? sessionManager.makeSessionCookieHeader(for: sessionResult.sessionId)
             : nil
 
-        do {
-            let network = try await sessionResult.session.loadFamily(familyId: canonicalID)
+        logger.info(
+            "[\(requestID!)] 🔐 Session",
+            metadata: [
+                "sessionId": "\(sessionResult.sessionId.prefix(8))...",
+                "isNew": "\(sessionResult.isNew)"
+            ]
+        )
 
+        // Load family network
+        let network: FamilyNetwork
+        do {
+            logger.info("[\(requestID!)] 📥 Loading family network for: \(canonicalID)")
+            network = try await sessionResult.session.loadFamily(familyId: canonicalID)
+            logger.info(
+                "[\(requestID!)] ✅ Family network loaded",
+                metadata: [
+                    "familyId": "\(network.mainFamily.familyId)",
+                    "childCount": "\(network.mainFamily.allChildren.count)"
+                ]
+            )
+        } catch {
+            logger.error(
+                "[\(requestID!)] ❌ Failed to load family",
+                metadata: ["error": "\(error)"]
+            )
+
+            var responseHeaders = HTTPHeaders()
+            if let setCookieHeader {
+                responseHeaders.add(name: "Set-Cookie", value: setCookieHeader)
+            }
+
+            return .error(.notFound, "Family not found: \(error.localizedDescription)", headers: responseHeaders)
+        }
+
+        // Handle sub-routes
+        switch subRoute {
+        case "cite":
+            logger.info("[\(requestID!)] 📝 Handling CITATION request")
+            return await handleCitationRequest(
+                familyId: canonicalID,
+                network: network,
+                queryItems: queryItems,
+                setCookieHeader: setCookieHeader
+            )
+            
+        case "hiski":
+            logger.info("[\(requestID!)] 🔎 Handling HISKI request")
+            return await handleHiskiRequest(
+                familyId: canonicalID,
+                network: network,
+                queryItems: queryItems,
+                setCookieHeader: setCookieHeader,
+                session: sessionResult.session
+            )
+            
+        case nil:
+            logger.info("[\(requestID!)] 🏠 Rendering family display (no sub-route)")
             let html = HTMLRenderer.renderFamily(
                 family: network.mainFamily,
                 network: network
@@ -334,19 +432,405 @@ final class HTTPHandler: ChannelInboundHandler {
             }
 
             return .html(html, headers: responseHeaders)
-        } catch {
-            logger.error(
-                "[\(requestID!)] Failed to load family",
-                metadata: ["error": "\(error)"]
-            )
-
-            var responseHeaders = HTTPHeaders()
-            if let setCookieHeader {
-                responseHeaders.add(name: "Set-Cookie", value: setCookieHeader)
-            }
-
-            return .error(.notFound, "Family not found", headers: responseHeaders)
+            
+        default:
+            logger.warning("[\(requestID!)] ⚠️ Unknown sub-route: \(subRoute ?? "nil")")
+            return .error(.notFound, "Unknown route: \(subRoute ?? "")")
         }
+    }
+    
+    // MARK: - Citation Handler
+    
+    @MainActor
+    private func handleCitationRequest(
+        familyId: String,
+        network: FamilyNetwork,
+        queryItems: [URLQueryItem],
+        setCookieHeader: String?
+    ) async -> HTTPResponse {
+        // Extract query parameters
+        let name = queryItems.first(where: { $0.name == "name" })?.value
+        let birthDate = queryItems.first(where: { $0.name == "birth" })?.value
+        let role = queryItems.first(where: { $0.name == "role" })?.value
+        
+        logger.info(
+            "[\(requestID!)] 📋 Citation request parameters",
+            metadata: [
+                "name": "\(name ?? "nil")",
+                "birthDate": "\(birthDate ?? "nil")",
+                "role": "\(role ?? "nil")"
+            ]
+        )
+        
+        guard let personName = name else {
+            logger.warning("[\(requestID!)] ⚠️ Missing 'name' parameter for citation")
+            return renderFamilyWithError(
+                network: network,
+                error: "Missing person name for citation",
+                setCookieHeader: setCookieHeader
+            )
+        }
+        
+        // Find the person in the family
+        let person = findPerson(
+            name: personName,
+            birthDate: birthDate,
+            in: network.mainFamily
+        )
+        
+        logger.info(
+            "[\(requestID!)] 🔍 Person lookup result",
+            metadata: [
+                "found": "\(person != nil)",
+                "personName": "\(person?.displayName ?? "not found")"
+            ]
+        )
+        
+        guard let person = person else {
+            return renderFamilyWithError(
+                network: network,
+                error: "Person '\(personName)' not found in family",
+                setCookieHeader: setCookieHeader
+            )
+        }
+        
+        // Generate citation based on role
+        let citation = generateCitation(for: person, role: role, network: network)
+        
+        logger.info(
+            "[\(requestID!)] ✅ Citation generated",
+            metadata: [
+                "citationLength": "\(citation.count)",
+                "citationPreview": "\(String(citation.prefix(100)))..."
+            ]
+        )
+        
+        // Render family with citation panel
+        let html = HTMLRenderer.renderFamily(
+            family: network.mainFamily,
+            network: network,
+            citationText: citation
+        )
+        
+        var responseHeaders = HTTPHeaders()
+        if let setCookieHeader {
+            responseHeaders.add(name: "Set-Cookie", value: setCookieHeader)
+        }
+        
+        return .html(html, headers: responseHeaders)
+    }
+    
+    // MARK: - Hiski Handler
+    
+    @MainActor
+    private func handleHiskiRequest(
+        familyId: String,
+        network: FamilyNetwork,
+        queryItems: [URLQueryItem],
+        setCookieHeader: String?,
+        session: BrowserSession
+    ) async -> HTTPResponse {
+        // Extract query parameters
+        let name = queryItems.first(where: { $0.name == "name" })?.value
+        let birthDate = queryItems.first(where: { $0.name == "birth" })?.value
+        let eventType = queryItems.first(where: { $0.name == "event" })?.value
+        let date = queryItems.first(where: { $0.name == "date" })?.value
+        
+        // For marriage, we have two spouses
+        let spouse1 = queryItems.first(where: { $0.name == "spouse1" })?.value
+        let birth1 = queryItems.first(where: { $0.name == "birth1" })?.value
+        let spouse2 = queryItems.first(where: { $0.name == "spouse2" })?.value
+        let birth2 = queryItems.first(where: { $0.name == "birth2" })?.value
+        
+        logger.info(
+            "[\(requestID!)] 🔎 Hiski request parameters",
+            metadata: [
+                "name": "\(name ?? "nil")",
+                "birthDate": "\(birthDate ?? "nil")",
+                "eventType": "\(eventType ?? "nil")",
+                "date": "\(date ?? "nil")",
+                "spouse1": "\(spouse1 ?? "nil")",
+                "spouse2": "\(spouse2 ?? "nil")"
+            ]
+        )
+        
+        // Create HiskiService with httpOnly mode
+        let hiskiService = HiskiService(nameEquivalenceManager: session.nameEquivalenceManager)
+        hiskiService.setCurrentFamily(familyId)
+        
+        // Initialize citationResult - will be set by successful queries
+        var citationResult: String = ""
+        var errorMessage: String?
+        
+        logger.info("[\(requestID!)] 🔍 Using HiskiService with httpOnly mode")
+        
+        switch eventType {
+        case "birth":
+            guard let personName = name, let searchDate = date else {
+                errorMessage = "Missing name or date for birth search"
+                break
+            }
+            
+            logger.info("[\(requestID!)] 🔍 Querying birth record: \(personName), \(searchDate)")
+            let result = await hiskiService.queryBirthWithResult(
+                name: personName,
+                date: searchDate,
+                fatherName: nil,
+                mode: .httpOnly
+            )
+            
+            switch result {
+            case .found(let citationURL):
+                logger.info("[\(requestID!)] ✅ Birth citation found: \(citationURL)")
+                citationResult = citationURL
+            case .notFound:
+                logger.warning("[\(requestID!)] ⚠️ No birth record found")
+                errorMessage = "No birth record found for \(personName) on \(searchDate)"
+            case .multipleResults(let searchURL):
+                logger.info("[\(requestID!)] 📋 Multiple birth results, search URL: \(searchURL)")
+                citationResult = "Multiple results found. Search URL:\n\(searchURL)"
+            case .error(let message):
+                logger.error("[\(requestID!)] ❌ Birth query error: \(message)")
+                errorMessage = "HisKi query failed: \(message)"
+            }
+            
+        case "death":
+            guard let personName = name, let searchDate = date else {
+                errorMessage = "Missing name or date for death search"
+                break
+            }
+            
+            logger.info("[\(requestID!)] 🔍 Querying death record: \(personName), \(searchDate)")
+            let result = await hiskiService.queryDeathWithResult(
+                name: personName,
+                date: searchDate,
+                mode: .httpOnly
+            )
+            
+            switch result {
+            case .found(let citationURL):
+                logger.info("[\(requestID!)] ✅ Death citation found: \(citationURL)")
+                citationResult = citationURL
+            case .notFound:
+                logger.warning("[\(requestID!)] ⚠️ No death record found")
+                errorMessage = "No death record found for \(personName) on \(searchDate)"
+            case .multipleResults(let searchURL):
+                logger.info("[\(requestID!)] 📋 Multiple death results, search URL: \(searchURL)")
+                citationResult = "Multiple results found. Search URL:\n\(searchURL)"
+            case .error(let message):
+                logger.error("[\(requestID!)] ❌ Death query error: \(message)")
+                errorMessage = "HisKi query failed: \(message)"
+            }
+            
+        case "marriage":
+            guard let s1 = spouse1, let s2 = spouse2, let searchDate = date else {
+                errorMessage = "Missing spouse names or date for marriage search"
+                break
+            }
+            
+            logger.info("[\(requestID!)] 🔍 Querying marriage record: \(s1) & \(s2), \(searchDate)")
+            let result = await hiskiService.queryMarriageWithResult(
+                husbandName: s1,
+                wifeName: s2,
+                date: searchDate,
+                mode: .httpOnly
+            )
+            
+            switch result {
+            case .found(let citationURL):
+                logger.info("[\(requestID!)] ✅ Marriage citation found: \(citationURL)")
+                citationResult = citationURL
+            case .notFound:
+                logger.warning("[\(requestID!)] ⚠️ No marriage record found")
+                errorMessage = "No marriage record found for \(s1) & \(s2) on \(searchDate)"
+            case .multipleResults(let searchURL):
+                logger.info("[\(requestID!)] 📋 Multiple marriage results, search URL: \(searchURL)")
+                citationResult = "Multiple results found. Search URL:\n\(searchURL)"
+            case .error(let message):
+                logger.error("[\(requestID!)] ❌ Marriage query error: \(message)")
+                errorMessage = "HisKi query failed: \(message)"
+            }
+            
+        default:
+            errorMessage = "Unknown event type: \(eventType ?? "nil")"
+        }
+        
+        // Render response
+        if let error = errorMessage {
+            return renderFamilyWithError(
+                network: network,
+                error: error,
+                setCookieHeader: setCookieHeader
+            )
+        }
+        
+        // Render family with HisKi citation in citation panel
+        let html = HTMLRenderer.renderFamily(
+            family: network.mainFamily,
+            network: network,
+            citationText: citationResult
+        )
+        
+        var responseHeaders = HTTPHeaders()
+        if let setCookieHeader {
+            responseHeaders.add(name: "Set-Cookie", value: setCookieHeader)
+        }
+        
+        return .html(html, headers: responseHeaders)
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func findPerson(name: String, birthDate: String?, in family: Family) -> Person? {
+        logger.info(
+            "[\(requestID!)] 🔍 Finding person",
+            metadata: [
+                "searchName": "\(name)",
+                "searchBirthDate": "\(birthDate ?? "nil")"
+            ]
+        )
+        
+        // Search parents
+        for parent in family.allParents {
+            logger.debug("[\(requestID!)]   Checking parent: \(parent.name)")
+            if matchesPerson(parent, name: name, birthDate: birthDate) {
+                logger.info("[\(requestID!)] ✅ Found as parent: \(parent.displayName)")
+                return parent
+            }
+        }
+        
+        // Search children
+        for child in family.allChildren {
+            logger.debug("[\(requestID!)]   Checking child: \(child.name)")
+            if matchesPerson(child, name: name, birthDate: birthDate) {
+                logger.info("[\(requestID!)] ✅ Found as child: \(child.displayName)")
+                return child
+            }
+        }
+        
+        // Search spouses of children
+        for couple in family.couples {
+            for child in couple.children {
+                if let spouseName = child.spouse {
+                    logger.debug("[\(requestID!)]   Checking spouse: \(spouseName)")
+                    if spouseName.lowercased().contains(name.lowercased()) ||
+                       name.lowercased().contains(spouseName.lowercased()) {
+                        // Create a Person for the spouse
+                        let spousePerson = Person(name: spouseName, noteMarkers: [])
+                        logger.info("[\(requestID!)] ✅ Found as spouse: \(spouseName)")
+                        return spousePerson
+                    }
+                }
+            }
+        }
+        
+        logger.warning("[\(requestID!)] ⚠️ Person not found: \(name)")
+        return nil
+    }
+    
+    private func matchesPerson(_ person: Person, name: String, birthDate: String?) -> Bool {
+        // Name matching (case-insensitive, partial match)
+        let personNameLower = person.name.lowercased()
+        let searchNameLower = name.lowercased()
+        
+        let nameMatches = personNameLower.contains(searchNameLower) ||
+                         searchNameLower.contains(personNameLower)
+        
+        // If birth date provided, use it for disambiguation
+        if let birthDate = birthDate, let personBirth = person.birthDate {
+            return nameMatches && personBirth.contains(birthDate)
+        }
+        
+        return nameMatches
+    }
+    
+    private func generateCitation(for person: Person, role: String?, network: FamilyNetwork) -> String {
+        logger.info(
+            "[\(requestID!)] 📝 Generating citation",
+            metadata: [
+                "person": "\(person.displayName)",
+                "role": "\(role ?? "auto")"
+            ]
+        )
+        
+        let family = network.mainFamily
+        
+        // Determine role if not specified
+        let isParent = family.allParents.contains { $0.name == person.name }
+        let isChild = family.allChildren.contains { $0.name == person.name }
+        
+        logger.info(
+            "[\(requestID!)] 👤 Person role detection",
+            metadata: [
+                "isParent": "\(isParent)",
+                "isChild": "\(isChild)"
+            ]
+        )
+        
+        // Generate appropriate citation
+        if isParent {
+            // For parents, try to find their asChild family
+            if let asChildFamily = network.getAsChildFamily(for: person) {
+                logger.info("[\(requestID!)] 📄 Using asChild family: \(asChildFamily.familyId)")
+                return CitationGenerator.generateAsChildCitation(
+                    for: person,
+                    in: asChildFamily,
+                    network: network,
+                    nameEquivalenceManager: nil
+                )
+            } else {
+                logger.info("[\(requestID!)] 📄 No asChild family, using main family citation")
+                return CitationGenerator.generateMainFamilyCitation(
+                    family: family,
+                    targetPerson: person,
+                    network: network
+                )
+            }
+        } else if isChild {
+            logger.info("[\(requestID!)] 📄 Using main family citation for child")
+            return CitationGenerator.generateMainFamilyCitation(
+                family: family,
+                targetPerson: person,
+                network: network
+            )
+        } else {
+            // Must be a spouse - try to find their asChild family
+            if let spouseAsChildFamily = network.getSpouseAsChildFamily(for: person) {
+                logger.info("[\(requestID!)] 📄 Using spouse's asChild family: \(spouseAsChildFamily.familyId)")
+                return CitationGenerator.generateAsChildCitation(
+                    for: person,
+                    in: spouseAsChildFamily,
+                    network: network,
+                    nameEquivalenceManager: nil
+                )
+            } else {
+                logger.info("[\(requestID!)] 📄 No spouse asChild family, using main family citation")
+                return CitationGenerator.generateMainFamilyCitation(
+                    family: family,
+                    targetPerson: person,
+                    network: network
+                )
+            }
+        }
+    }
+    
+    private func renderFamilyWithError(
+        network: FamilyNetwork,
+        error: String,
+        setCookieHeader: String?
+    ) -> HTTPResponse {
+        let html = HTMLRenderer.renderFamily(
+            family: network.mainFamily,
+            network: network,
+            errorMessage: error
+        )
+        
+        var responseHeaders = HTTPHeaders()
+        if let setCookieHeader {
+            responseHeaders.add(name: "Set-Cookie", value: setCookieHeader)
+        }
+        
+        return .html(html, headers: responseHeaders)
     }
 
     // MARK: - Response Writer (EventLoop only)
@@ -430,14 +914,12 @@ final class HTTPHandler: ChannelInboundHandler {
 
         let head = HTTPResponseHead(
             version: .http1_1,
-            status: .found,
+            status: .temporaryRedirect,
             headers: responseHeaders
         )
 
         context.write(wrapOutboundOut(.head(head)), promise: nil)
-        context.writeAndFlush(
-            wrapOutboundOut(.end(nil))
-        ).whenComplete { _ in
+        context.writeAndFlush(wrapOutboundOut(.end(nil))).whenComplete { _ in
             if !self.isKeepAlive {
                 context.close(promise: nil)
             }
@@ -453,9 +935,11 @@ final class HTTPHandler: ChannelInboundHandler {
         let html = """
         <!DOCTYPE html>
         <html>
+        <head><title>Error</title></head>
         <body>
             <h1>Error \(status.code)</h1>
             <p>\(message)</p>
+            <a href="/">Back to home</a>
         </body>
         </html>
         """
@@ -464,59 +948,19 @@ final class HTTPHandler: ChannelInboundHandler {
 
     // MARK: - Utilities
 
-    private func parseFormData(_ data: String) -> [String: String] {
-        // HTML form encoding: '+' represents space
-        let normalized = data.replacingOccurrences(of: "+", with: " ")
-
-        var components = URLComponents()
-        components.query = normalized
-
+    private func parseFormData(_ body: String) -> [String: String] {
         var result: [String: String] = [:]
-        for item in components.queryItems ?? [] {
-            result[item.name] = item.value ?? ""
+        let pairs = body.split(separator: "&")
+        for pair in pairs {
+            let parts = pair.split(separator: "=", maxSplits: 1)
+            if parts.count == 2 {
+                let key = String(parts[0]).removingPercentEncoding ?? String(parts[0])
+                let value = String(parts[1]).removingPercentEncoding ?? String(parts[1])
+                result[key] = value
+            }
         }
         return result
     }
 }
 
-
-
-// MARK: - FamilyNetwork Extension
-
-extension FamilyNetwork {
-    func getAllPersons() -> [Person] {
-        var persons: [Person] = []
-
-        // Add persons from main family
-        persons.append(contentsOf: mainFamily.allParents)
-        persons.append(contentsOf: mainFamily.allChildren)
-
-        // Add persons from asChild families
-        for family in asChildFamilies.values {
-            persons.append(contentsOf: family.allParents)
-            persons.append(contentsOf: family.allChildren)
-        }
-
-        // Add persons from asParent families
-        for family in asParentFamilies.values {
-            persons.append(contentsOf: family.allParents)
-            persons.append(contentsOf: family.allChildren)
-        }
-
-        // Remove duplicates based on name and birth date
-        var uniquePersons: [Person] = []
-        var seen: Set<String> = []
-
-        for person in persons {
-            let key = "\(person.name)-\(person.birthDate ?? "")"
-            if !seen.contains(key) {
-                seen.insert(key)
-                uniquePersons.append(person)
-            }
-        }
-
-        return uniquePersons
-    }
-}
-
-#endif // os(macOS)
+#endif
