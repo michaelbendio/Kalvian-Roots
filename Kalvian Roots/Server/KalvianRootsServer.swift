@@ -55,8 +55,13 @@ class KalvianRootsServer {
             .serverChannelOption(ChannelOptions.backlog, value: 256)
             .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .childChannelInitializer { channel in
-                channel.pipeline.configureHTTPServerPipeline(withErrorHandling: true).flatMap {
-                    channel.pipeline.addHandler(HTTPHandler(sessionManager: sessionManager))
+                channel.pipeline
+                    .configureHTTPServerPipeline(withErrorHandling: true)
+                    .flatMap { [self] in
+                    channel.pipeline
+                        .addHandler(
+                            HTTPHandler(sessionManager: self.sessionManager)
+                        )
                 }
             }
             .childChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
@@ -318,11 +323,10 @@ final class HTTPHandler: ChannelInboundHandler {
         do {
             let network = try await sessionResult.session.loadFamily(familyId: canonicalID)
 
-            let html =
-                HTMLRenderer.renderFamily(
-                    family: network.mainFamily,
-                    network: network
-                )
+            let html = HTMLRenderer.renderFamily(
+                family: network.mainFamily,
+                network: network
+            )
 
             var responseHeaders = HTTPHeaders()
             if let setCookieHeader {
