@@ -68,35 +68,41 @@ struct FamilyNetwork: Hashable, Sendable, Codable {
     
     /// Get the asParent family for a specific child (where child became a parent)
     func getAsParentFamily(for person: Person) -> Family? {
-        // PRIMARY: Try birth date key first (most unique, avoids name collisions)
-        if let birthDate = person.birthDate?.trimmingCharacters(in: .whitespaces), !birthDate.isEmpty {
-            let birthKey = "\(person.name)|\(birthDate)"
-            if let family = asParentFamilies[birthKey] {
-                logDebug(.citation, "✅ Found asParent family for '\(person.displayName)' using birth date key '\(birthKey)'")
-                return family
-            }
+        // PRIMARY: Try composite key with birth date first (most specific, avoids collisions)
+        let compositeKey = FamilyNetwork.makePersonKey(for: person)
+        if let family = asParentFamilies[compositeKey] {
+            logDebug(.citation, "✅ Found asParent family for '\(person.displayName)' using composite key '\(compositeKey)'")
+            return family
         }
         
-        // PRIMARY: Try displayName first (most specific)
+        // FALLBACK 1: Try displayName
         if let family = asParentFamilies[person.displayName] {
             logDebug(.citation, "✅ Found asParent family for '\(person.displayName)' using displayName")
             return family
         }
         
-        // FALLBACK 1: Try simple name
+        // FALLBACK 2: Try simple name
         if let family = asParentFamilies[person.name] {
             logDebug(.citation, "✅ Found asParent family for '\(person.displayName)' using simple name")
             return family
         }
         
-        // FALLBACK 2: Try trimmed version
+        // FALLBACK 3: Try trimmed version
         let trimmedName = person.name.trimmingCharacters(in: .whitespaces)
         if let family = asParentFamilies[trimmedName] {
             logDebug(.citation, "✅ Found asParent family for '\(person.displayName)' using trimmed name")
             return family
         }
         
-        // FALLBACK 3: Try case-insensitive match on displayName
+        // FALLBACK 4: Try case-insensitive match on composite key
+        for (key, family) in asParentFamilies {
+            if key.lowercased() == compositeKey.lowercased() {
+                logDebug(.citation, "✅ Found asParent family for '\(person.displayName)' using case-insensitive composite key")
+                return family
+            }
+        }
+        
+        // FALLBACK 5: Try case-insensitive match on displayName
         for (key, family) in asParentFamilies {
             if key.lowercased() == person.displayName.lowercased() {
                 logDebug(.citation, "✅ Found asParent family for '\(person.displayName)' using case-insensitive displayName")
@@ -104,7 +110,7 @@ struct FamilyNetwork: Hashable, Sendable, Codable {
             }
         }
         
-        // FALLBACK 4: Try case-insensitive match on simple name
+        // FALLBACK 6: Try case-insensitive match on simple name
         for (key, family) in asParentFamilies {
             if key.lowercased() == person.name.lowercased() {
                 logDebug(.citation, "✅ Found asParent family for '\(person.displayName)' using case-insensitive simple name")
@@ -112,7 +118,7 @@ struct FamilyNetwork: Hashable, Sendable, Codable {
             }
         }
         
-        // FALLBACK 5: try extracting just the first name if searching for a compound name
+        // FALLBACK 7: Extract first name from compound names like "Matti Jaakonp."
         let searchTermWords = person.displayName.components(separatedBy: " ")
         if searchTermWords.count > 1, let firstName = searchTermWords.first {
             for (key, family) in asParentFamilies {
@@ -134,31 +140,46 @@ struct FamilyNetwork: Hashable, Sendable, Codable {
             }
         }
         
-        logWarn(.citation, "⚠️ No asParent family found for '\(person.displayName)' in keys: \(Array(asParentFamilies.keys))")
+        logWarn(.citation, "⚠️ No asParent family found for '\(person.displayName)' (key: '\(compositeKey)') in keys: \(Array(asParentFamilies.keys))")
         return nil
     }
     
     func getAsChildFamily(for person: Person) -> Family? {
-        // PRIMARY: Try displayName first (most specific)
+        // PRIMARY: Try composite key with birth date first (most specific, avoids collisions)
+        let compositeKey = FamilyNetwork.makePersonKey(for: person)
+        if let family = asChildFamilies[compositeKey] {
+            logDebug(.citation, "✅ Found asChild family for '\(person.displayName)' using composite key '\(compositeKey)'")
+            return family
+        }
+        
+        // FALLBACK 1: Try displayName
         if let family = asChildFamilies[person.displayName] {
             logDebug(.citation, "✅ Found asChild family for '\(person.displayName)' using displayName")
             return family
         }
         
-        // FALLBACK 1: Try simple name
+        // FALLBACK 2: Try simple name
         if let family = asChildFamilies[person.name] {
             logDebug(.citation, "✅ Found asChild family for '\(person.displayName)' using simple name")
             return family
         }
         
-        // FALLBACK 2: Try trimmed version
+        // FALLBACK 3: Try trimmed version
         let trimmedName = person.name.trimmingCharacters(in: .whitespaces)
         if let family = asChildFamilies[trimmedName] {
             logDebug(.citation, "✅ Found asChild family for '\(person.displayName)' using trimmed name")
             return family
         }
         
-        // FALLBACK 3: Try case-insensitive match on displayName
+        // FALLBACK 4: Try case-insensitive match on composite key
+        for (key, family) in asChildFamilies {
+            if key.lowercased() == compositeKey.lowercased() {
+                logDebug(.citation, "✅ Found asChild family for '\(person.displayName)' using case-insensitive composite key")
+                return family
+            }
+        }
+        
+        // FALLBACK 5: Try case-insensitive match on displayName
         for (key, family) in asChildFamilies {
             if key.lowercased() == person.displayName.lowercased() {
                 logDebug(.citation, "✅ Found asChild family for '\(person.displayName)' using case-insensitive displayName")
@@ -166,7 +187,7 @@ struct FamilyNetwork: Hashable, Sendable, Codable {
             }
         }
         
-        // FALLBACK 4: Try case-insensitive match on simple name
+        // FALLBACK 6: Try case-insensitive match on simple name
         for (key, family) in asChildFamilies {
             if key.lowercased() == person.name.lowercased() {
                 logDebug(.citation, "✅ Found asChild family for '\(person.displayName)' using case-insensitive simple name")
@@ -175,33 +196,48 @@ struct FamilyNetwork: Hashable, Sendable, Codable {
         }
         
         // Log failure for debugging
-        logWarn(.citation, "⚠️ No asChild family found for '\(person.displayName)' in keys: \(Array(asChildFamilies.keys))")
+        logWarn(.citation, "⚠️ No asChild family found for '\(person.displayName)' (key: '\(compositeKey)') in keys: \(Array(asChildFamilies.keys))")
         return nil
     }
     
     /// Get the asChild family for a specific spouse (where spouse came from)
     /// Updated to accept Person object for consistent displayName handling
     func getSpouseAsChildFamily(for spouse: Person) -> Family? {
-        // PRIMARY: Try displayName first (most specific)
+        // PRIMARY: Try composite key with birth date first (most specific, avoids collisions)
+        let compositeKey = FamilyNetwork.makePersonKey(for: spouse)
+        if let family = spouseAsChildFamilies[compositeKey] {
+            logDebug(.citation, "✅ Found spouse asChild family for '\(spouse.displayName)' using composite key '\(compositeKey)'")
+            return family
+        }
+        
+        // FALLBACK 1: Try displayName
         if let family = spouseAsChildFamilies[spouse.displayName] {
             logDebug(.citation, "✅ Found spouse asChild family for '\(spouse.displayName)' using displayName")
             return family
         }
         
-        // FALLBACK 1: Try simple name
+        // FALLBACK 2: Try simple name
         if let family = spouseAsChildFamilies[spouse.name] {
             logDebug(.citation, "✅ Found spouse asChild family for '\(spouse.displayName)' using simple name")
             return family
         }
         
-        // FALLBACK 2: Try trimmed version
+        // FALLBACK 3: Try trimmed version
         let trimmedName = spouse.name.trimmingCharacters(in: .whitespaces)
         if let family = spouseAsChildFamilies[trimmedName] {
             logDebug(.citation, "✅ Found spouse asChild family for '\(spouse.displayName)' using trimmed name")
             return family
         }
         
-        // FALLBACK 3: Try case-insensitive match on displayName
+        // FALLBACK 4: Try case-insensitive match on composite key
+        for (key, family) in spouseAsChildFamilies {
+            if key.lowercased() == compositeKey.lowercased() {
+                logDebug(.citation, "✅ Found spouse asChild family for '\(spouse.displayName)' using case-insensitive composite key")
+                return family
+            }
+        }
+        
+        // FALLBACK 5: Try case-insensitive match on displayName
         for (key, family) in spouseAsChildFamilies {
             if key.lowercased() == spouse.displayName.lowercased() {
                 logDebug(.citation, "✅ Found spouse asChild family for '\(spouse.displayName)' using case-insensitive displayName")
@@ -209,7 +245,7 @@ struct FamilyNetwork: Hashable, Sendable, Codable {
             }
         }
         
-        // FALLBACK 4: Try case-insensitive match on simple name
+        // FALLBACK 6: Try case-insensitive match on simple name
         for (key, family) in spouseAsChildFamilies {
             if key.lowercased() == spouse.name.lowercased() {
                 logDebug(.citation, "✅ Found spouse asChild family for '\(spouse.displayName)' using case-insensitive simple name")
@@ -217,7 +253,7 @@ struct FamilyNetwork: Hashable, Sendable, Codable {
             }
         }
         
-        // FALLBACK 5: Extract first name from compound names
+        // FALLBACK 7: Extract first name from compound names
         let searchWords = spouse.name.components(separatedBy: " ")
         if searchWords.count > 1, let firstName = searchWords.first {
             for (key, family) in spouseAsChildFamilies {
@@ -230,7 +266,7 @@ struct FamilyNetwork: Hashable, Sendable, Codable {
         }
         
         // Log failure for debugging
-        logWarn(.citation, "⚠️ No spouse asChild family found for '\(spouse.displayName)' in keys: \(Array(spouseAsChildFamilies.keys))")
+        logWarn(.citation, "⚠️ No spouse asChild family found for '\(spouse.displayName)' (key: '\(compositeKey)') in keys: \(Array(spouseAsChildFamilies.keys))")
         return nil
     }
     

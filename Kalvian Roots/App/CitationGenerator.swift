@@ -93,7 +93,11 @@ struct CitationGenerator {
         
         // Format parents and marriage
         if let primaryCouple = family.primaryCouple {
-            citation += formatParentsSection(couple: primaryCouple)
+            citation += formatParentsSection(
+                couple: primaryCouple,
+                targetPerson: targetPerson,
+                nameEquivalenceManager: nameEquivalenceManager
+            )
         }
         
         // Format children for all couples
@@ -144,11 +148,24 @@ struct CitationGenerator {
     
     // MARK: - Section Formatters
     
-    private static func formatParentsSection(couple: Couple) -> String {
+    private static func formatParentsSection(
+        couple: Couple,
+        targetPerson: Person?,
+        nameEquivalenceManager: NameEquivalenceManager?
+    ) -> String {
         var section = ""
-        section += formatParentCompact(couple.husband) + "\n"
-        section += formatParentCompact(couple.wife) + "\n"
         
+        // Check if husband is target
+        let husbandIsTarget = targetPerson.map { isTargetParent(couple.husband, $0) } ?? false
+        let husbandPrefix = husbandIsTarget ? "→ " : ""
+        section += husbandPrefix + formatParentCompact(couple.husband) + "\n"
+        
+        // Check if wife is target
+        let wifeIsTarget = targetPerson.map { isTargetParent(couple.wife, $0) } ?? false
+        let wifePrefix = wifeIsTarget ? "→ " : ""
+        section += wifePrefix + formatParentCompact(couple.wife) + "\n"
+        
+        // Marriage date formatting...
         if let fullMarriageDate = couple.fullMarriageDate {
             section += "m. \(formatDate(fullMarriageDate))\n"
         } else if let marriageDate = couple.marriageDate {
@@ -158,6 +175,29 @@ struct CitationGenerator {
         }
         
         return section
+    }
+
+    // Similar logic to isTargetPerson but for parents
+    private static func isTargetParent(_ parent: Person, _ target: Person) -> Bool {
+        // If both have birth dates, they must match
+        if let parentBirth = parent.birthDate?.trimmingCharacters(in: .whitespaces),
+           let targetBirth = target.birthDate?.trimmingCharacters(in: .whitespaces),
+           !parentBirth.isEmpty && !targetBirth.isEmpty {
+            if parentBirth == targetBirth {
+                return true
+            }
+            // Year comparison for "1730" vs "dd.mm.1730"
+            let parentYear = extractBirthYear(from: parent)
+            let targetYear = extractBirthYear(from: target)
+            if let py = parentYear, let ty = targetYear {
+                return py == ty
+            }
+            return false
+        }
+        
+        // Fall back to name matching
+        return parent.name.lowercased().trimmingCharacters(in: .whitespaces) ==
+               target.name.lowercased().trimmingCharacters(in: .whitespaces)
     }
     
     private static func formatChildLine(
@@ -534,14 +574,25 @@ struct CitationGenerator {
         _ target: Person,
         nameEquivalenceManager: NameEquivalenceManager?
     ) -> Bool {
-        // PRIORITY 1: Birth date matching (most reliable)
+        // CRITICAL: If BOTH have birth dates, use them for matching
         if let childBirth = child.birthDate?.trimmingCharacters(in: .whitespaces),
            let targetBirth = target.birthDate?.trimmingCharacters(in: .whitespaces),
            !childBirth.isEmpty && !targetBirth.isEmpty {
+            // Exact match
             if childBirth == targetBirth {
                 return true
             }
+            // Year-only comparison (e.g., "1730" vs "27.01.1762")
+            let childYear = extractBirthYear(from: Person(name: "", birthDate: childBirth, noteMarkers: []))
+            let targetYear = extractBirthYear(from: Person(name: "", birthDate: targetBirth, noteMarkers: []))
+            if let cy = childYear, let ty = targetYear, cy == ty {
+                return true
+            }
+            // Both have birth dates but they don't match - NOT the same person
+            return false
         }
+        
+        // Only fall through to name matching if one/both lack birth dates
         
         // PRIORITY 2: Exact name matching
         if child.name.lowercased().trimmingCharacters(in: .whitespaces) ==

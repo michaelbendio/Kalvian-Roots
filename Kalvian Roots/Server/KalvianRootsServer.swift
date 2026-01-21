@@ -690,9 +690,9 @@ final class HTTPHandler: ChannelInboundHandler {
             ]
         )
         
-        // Search parents
+        // Search parents first
         for parent in family.allParents {
-            logger.debug("[\(requestID!)]   Checking parent: \(parent.name)")
+            logger.debug("[\(requestID!)]   Checking parent: '\(parent.name)' birth: '\(parent.birthDate ?? "nil")'")
             if matchesPerson(parent, name: name, birthDate: birthDate) {
                 logger.info("[\(requestID!)] ✅ Found as parent: \(parent.displayName)")
                 return parent
@@ -701,7 +701,7 @@ final class HTTPHandler: ChannelInboundHandler {
         
         // Search children
         for child in family.allChildren {
-            logger.debug("[\(requestID!)]   Checking child: \(child.name)")
+            logger.debug("[\(requestID!)]   Checking child: '\(child.name)' birth: '\(child.birthDate ?? "nil")'")
             if matchesPerson(child, name: name, birthDate: birthDate) {
                 logger.info("[\(requestID!)] ✅ Found as child: \(child.displayName)")
                 return child
@@ -713,9 +713,7 @@ final class HTTPHandler: ChannelInboundHandler {
             for child in couple.children {
                 if let spouseName = child.spouse {
                     logger.debug("[\(requestID!)]   Checking spouse: \(spouseName)")
-                    if spouseName.lowercased().contains(name.lowercased()) ||
-                       name.lowercased().contains(spouseName.lowercased()) {
-                        // Create a Person for the spouse
+                    if spouseName.lowercased() == name.lowercased() {
                         let spousePerson = Person(name: spouseName, noteMarkers: [])
                         logger.info("[\(requestID!)] ✅ Found as spouse: \(spouseName)")
                         return spousePerson
@@ -729,19 +727,42 @@ final class HTTPHandler: ChannelInboundHandler {
     }
     
     private func matchesPerson(_ person: Person, name: String, birthDate: String?) -> Bool {
-        // Name matching (case-insensitive, partial match)
+        // Name matching - exact match preferred
         let personNameLower = person.name.lowercased()
         let searchNameLower = name.lowercased()
         
-        let nameMatches = personNameLower.contains(searchNameLower) ||
-                         searchNameLower.contains(personNameLower)
+        let nameMatches = personNameLower == searchNameLower ||
+                          personNameLower.hasPrefix(searchNameLower) ||
+                          searchNameLower.hasPrefix(personNameLower)
         
-        // If birth date provided, use it for disambiguation
-        if let birthDate = birthDate, let personBirth = person.birthDate {
-            return nameMatches && personBirth.contains(birthDate)
+        guard nameMatches else { return false }
+        
+        // If birth date provided, verify it matches
+        if let searchBirth = birthDate, let personBirth = person.birthDate {
+            // Handle both full dates and year-only
+            if personBirth == searchBirth {
+                return true
+            }
+            // Extract years and compare
+            let personYear = extractYear(from: personBirth)
+            let searchYear = extractYear(from: searchBirth)
+            if let py = personYear, let sy = searchYear {
+                return py == sy
+            }
+            return personBirth.contains(searchBirth) || searchBirth.contains(personBirth)
         }
         
-        return nameMatches
+        return true
+    }
+    
+    private func extractYear(from date: String) -> String? {
+        let pattern = "\\b(1[6-9]\\d{2})\\b"
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: date, range: NSRange(date.startIndex..., in: date)),
+              let range = Range(match.range(at: 1), in: date) else {
+            return nil
+        }
+        return String(date[range])
     }
     
     private func generateCitation(for person: Person, role: String?, network: FamilyNetwork) -> String {
