@@ -37,50 +37,48 @@ enum HiskiExtractionMode {
 // MARK: - WebView Window Manager with JavaScript Citation Extraction
 
 #if os(macOS)
-@MainActor
 class HiskiWebViewManager: NSObject, WKNavigationDelegate {
-    static let shared = HiskiWebViewManager()
+    @MainActor static let shared = HiskiWebViewManager()
     
-    private var recordWindow: NSWindow?
-    private var citationContinuation: CheckedContinuation<String, Error>?
+    @MainActor private var recordWindow: NSWindow?  // ← Back to strong reference, no delegate
+    @MainActor private var citationContinuation: CheckedContinuation<String, Error>?
     
     private let recordWindowX: CGFloat = 1300
     private let recordWindowY: CGFloat = 250
     private let recordWindowWidth: CGFloat = 1200
     private let recordWindowHeight: CGFloat = 450
     
-    private override init() {
+    @MainActor private override init() {
         super.init()
     }
     
     /// Load record page and extract citation URL using JavaScript
-    func loadRecordAndExtractCitation(url: URL) async throws -> String {
+    @MainActor func loadRecordAndExtractCitation(url: URL) async throws -> String {
         return try await withCheckedThrowingContinuation { continuation in
             self.citationContinuation = continuation
             
-            // If window exists, reuse it
-            if let existingWebView = recordWindow?.contentView as? WKWebView {
-                existingWebView.load(URLRequest(url: url))
-                recordWindow?.makeKeyAndOrderFront(nil)
-                logInfo(.app, "🪟 Reused Hiski record window")
-                return
-            }
+            // Always create a new window (old one will be released if it exists)
+            recordWindow?.close()
+            recordWindow = nil
             
             // Create new window with WKWebView
             let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: recordWindowWidth, height: recordWindowHeight))
             webView.navigationDelegate = self
             webView.allowsBackForwardNavigationGestures = true
             
-            recordWindow = NSWindow(
+            let window = NSWindow(
                 contentRect: NSRect(x: recordWindowX, y: recordWindowY, width: recordWindowWidth, height: recordWindowHeight),
                 styleMask: [.titled, .closable, .resizable],
                 backing: .buffered,
                 defer: false
             )
-            recordWindow?.title = "Hiski Record"
-            recordWindow?.contentView = webView
-            recordWindow?.makeKeyAndOrderFront(nil)
-            recordWindow?.level = .floating
+            window.title = "Hiski Record"
+            // DON'T set delegate - this is causing the crash
+            window.contentView = webView
+            window.makeKeyAndOrderFront(nil)
+            window.level = .floating
+            
+            self.recordWindow = window
             
             webView.load(URLRequest(url: url))
             
@@ -88,12 +86,13 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
         }
     }
     
-    func closeRecordWindow() {
-        recordWindow?.orderOut(nil)
-        logInfo(.app, "🪟 Hidden Hiski record window")
+    @MainActor func closeRecordWindow() {
+        recordWindow?.close()
+        recordWindow = nil
+        logInfo(.app, "🪟 Closed Hiski record window")
     }
     
-    func closeAllWindows() {
+    @MainActor func closeAllWindows() {
         closeRecordWindow()
     }
     
@@ -154,7 +153,7 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
 import SafariServices
 
 @MainActor
-class HiskiWebViewManager {
+class HiskiWebViewManager: NSObject, WKNavigationDelegate, NSWindowDelegate {
     static let shared = HiskiWebViewManager()
     private var presentingViewController: UIViewController?
     
