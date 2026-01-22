@@ -115,12 +115,18 @@ struct JuuretView: View {
         
         // Hiski result alert
         .alert("Hiski Query", isPresented: $showingHiskiResult) {
-            Button("Copy to Clipboard") {
-                copyToClipboard(hiskiResult)
+            // Only show Copy button if result is a valid URL
+            if hiskiResult.starts(with: "https://") {
+                Button("Copy to Clipboard") {
+                    copyToClipboard(hiskiResult)
+                }
             }
             #if os(macOS)
-            Button("Open in Browser") {
-                openHiskiInBrowser(hiskiResult)
+            // Only show Open in Browser if result is a valid URL
+            if hiskiResult.starts(with: "https://") {
+                Button("Open in Browser") {
+                    openHiskiInBrowser(hiskiResult)
+                }
             }
             #endif
             Button("OK", role: .cancel) {}

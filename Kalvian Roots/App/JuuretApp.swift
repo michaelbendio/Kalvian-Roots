@@ -374,48 +374,58 @@ class JuuretApp {
         let hiskiService = HiskiService(nameEquivalenceManager: nameEquivalenceManager)
         hiskiService.setCurrentFamily(familyId)
         
-        do {
-            let citation: HiskiCitation
-            
-            switch eventType {
-            case .birth:
-                let birthDate = explicitDate ?? person.birthDate
-                guard let birthDate = birthDate else {
-                    return "No birth date available for \(person.name)"
-                }
-                // Pass father's name to narrow search results
-                citation = try await hiskiService.queryBirth(
-                    name: person.name, 
-                    date: birthDate,
-                    fatherName: person.fatherName
-                )
-                
-            case .death:
-                let deathDate = explicitDate ?? person.deathDate
-                guard let deathDate = deathDate else {
-                    return "No death date available for \(person.name)"
-                }
-                citation = try await hiskiService.queryDeath(name: person.name, date: deathDate)
-                
-            case .marriage:
-                let marriageDate = explicitDate ?? person.fullMarriageDate ?? person.marriageDate
-                guard let marriageDate = marriageDate else {
-                    return "No marriage date available for \(person.name)"
-                }
-                citation = try await hiskiService.queryMarriage(
-                    husbandName: person.name,
-                    wifeName: person.spouse ?? "",
-                    date: marriageDate
-                )
-                
-            case .baptism, .burial:
-                return "Hiski queries for \(eventType.displayName) are not yet supported"
+        let result: HiskiQueryResult
+        
+        switch eventType {
+        case .birth:
+            let birthDate = explicitDate ?? person.birthDate
+            guard let birthDate = birthDate else {
+                return "No birth date available for \(person.name)"
             }
+            result = await hiskiService.queryBirthWithResult(
+                name: person.name,
+                date: birthDate,
+                fatherName: person.fatherName,
+                mode: .webView
+            )
             
-            return citation.url
+        case .death:
+            let deathDate = explicitDate ?? person.deathDate
+            guard let deathDate = deathDate else {
+                return "No death date available for \(person.name)"
+            }
+            result = await hiskiService.queryDeathWithResult(
+                name: person.name,
+                date: deathDate,
+                mode: .webView
+            )
             
-        } catch {
-            return "Hiski query failed: \(error.localizedDescription)"
+        case .marriage:
+            let marriageDate = explicitDate ?? person.fullMarriageDate ?? person.marriageDate
+            guard let marriageDate = marriageDate else {
+                return "No marriage date available for \(person.name)"
+            }
+            result = await hiskiService.queryMarriageWithResult(
+                husbandName: person.name,
+                wifeName: person.spouse ?? "",
+                date: marriageDate,
+                mode: .webView
+            )
+            
+        case .baptism, .burial:
+            return "Hiski queries for \(eventType.displayName) are not yet supported"
+        }
+        
+        // Handle result - same logic as server
+        switch result {
+        case .found(let citationURL):
+            return citationURL
+        case .notFound:
+            return "No HisKi results"
+        case .multipleResults(let searchURL):
+            return "Multiple results found. Search URL:\n\(searchURL)"
+        case .error(let message):
+            return "HisKi query failed: \(message)"
         }
     }
     
