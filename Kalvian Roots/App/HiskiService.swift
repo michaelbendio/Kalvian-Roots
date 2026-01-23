@@ -153,7 +153,7 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
 import SafariServices
 
 @MainActor
-class HiskiWebViewManager: NSObject, WKNavigationDelegate, NSWindowDelegate {
+class HiskiWebViewManager {
     static let shared = HiskiWebViewManager()
     private var presentingViewController: UIViewController?
     
