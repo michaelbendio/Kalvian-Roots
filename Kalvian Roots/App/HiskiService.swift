@@ -253,7 +253,7 @@ class HiskiService {
                 citationUrl = try await loadRecordAndExtractCitationHTTP(recordUrl: recordUrl)
             }
 
-            return .found(citationURL: citationUrl)
+            return .found(citationURL: citationUrl, recordURL: recordUrl)
 
         } catch {
             logError(.app, "❌ Hiski query failed: \(error.localizedDescription)")
@@ -317,7 +317,7 @@ class HiskiService {
                 citationUrl = try await loadRecordAndExtractCitationHTTP(recordUrl: recordUrl)
             }
 
-            return .found(citationURL: citationUrl)
+            return .found(citationURL: citationUrl, recordURL: recordUrl)
 
         } catch {
             logError(.app, "❌ Hiski query failed: \(error.localizedDescription)")
@@ -378,7 +378,7 @@ class HiskiService {
                 citationUrl = try await loadRecordAndExtractCitationHTTP(recordUrl: recordUrl)
             }
 
-            return .found(citationURL: citationUrl)
+            return .found(citationURL: citationUrl, recordURL: recordUrl)
 
         } catch {
             logError(.app, "❌ Hiski query failed: \(error.localizedDescription)")

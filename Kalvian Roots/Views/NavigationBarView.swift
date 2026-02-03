@@ -48,48 +48,44 @@ struct NavigationBarView: View {
             .buttonStyle(NavigationButtonStyle())
             .disabled(juuretApp.currentFamily == nil)
             
-            // Family ID input with dropdown
+            // Family ID input with clear button and dropdown
             HStack(spacing: 4) {
-                TextField("Enter family ID...", text: $familyIdInput)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.primary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.white.opacity(0.9))
-                    .cornerRadius(6)
-                    .onSubmit {
-                        navigateToInputFamily()
-                    }
-                    .frame(minWidth: 150, idealWidth: 250, maxWidth: 400)
-                    // Watch BOTH pendingFamilyId and currentFamily
-                    .onChange(of: juuretApp.pendingFamilyId) { oldValue, newValue in
-                        if let pendingId = newValue {
-                            familyIdInput = pendingId
+                HStack(spacing: 0) {
+                    TextField("Enter family ID...", text: $familyIdInput)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.primary)
+                        .padding(.leading, 12)
+                        .padding(.vertical, 8)
+                        .onSubmit {
+                            navigateToInputFamily()
                         }
-                    }
-                    .onChange(of: juuretApp.currentFamily?.familyId) { oldValue, newValue in
-                        // Only update if there's no pending ID
-                        if juuretApp.pendingFamilyId == nil, let newId = newValue {
-                            familyIdInput = newId
+                    
+                    // Clear button
+                    if !familyIdInput.isEmpty {
+                        Button {
+                            familyIdInput = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                                .imageScale(.medium)
                         }
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 8)
                     }
-                    .onAppear {
-                        // Show pending ID if set, otherwise current family
-                        if let pendingId = juuretApp.pendingFamilyId {
-                            familyIdInput = pendingId
-                        } else if let currentId = juuretApp.currentFamily?.familyId {
-                            familyIdInput = currentId
-                        }
-                    }
+                }
+                .background(Color.white.opacity(0.9))
+                .cornerRadius(6)
+                .frame(minWidth: 150, idealWidth: 250, maxWidth: 400)
+                // Keep all the .onChange and .onAppear modifiers here...
                 
-                // Dropdown button - OPTION 1: Simple visible version
+                // Dropdown button
                 Button(action: {
                     showingClanBrowser.toggle()
                 }) {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.primary)  // Dark color so it's visible
+                        .foregroundColor(.primary)
                         .padding(8)
                         .background(Color.white.opacity(0.9))
                         .cornerRadius(6)

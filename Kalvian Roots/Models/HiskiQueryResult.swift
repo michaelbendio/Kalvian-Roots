@@ -14,7 +14,7 @@ import Foundation
  */
 enum HiskiQueryResult {
     /// Found a single matching record with citation URL
-    case found(citationURL: String)
+    case found(citationURL: String, recordURL: String? = nil)
 
     /// No matching record found
     case notFound
@@ -38,7 +38,17 @@ enum HiskiQueryResult {
     /// Extract citation URL if found
     var citationURL: String? {
         switch self {
-        case .found(let url):
+        case .found(let citationURL, _):
+            return citationURL
+        default:
+            return nil
+        }
+    }
+    
+    /// Extract record URL for browser viewing
+    var recordURL: String? {
+        switch self {
+        case .found(_, let url):
             return url
         default:
             return nil

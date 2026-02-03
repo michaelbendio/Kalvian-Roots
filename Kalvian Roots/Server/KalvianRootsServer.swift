@@ -580,7 +580,7 @@ final class HTTPHandler: ChannelInboundHandler {
             )
             
             switch result {
-            case .found(let citationURL):
+            case .found(let citationURL, _):
                 logger.info("[\(requestID!)] ✅ Birth citation found: \(citationURL)")
                 citationResult = citationURL
             case .notFound:
@@ -608,7 +608,7 @@ final class HTTPHandler: ChannelInboundHandler {
             )
             
             switch result {
-            case .found(let citationURL):
+            case .found(let citationURL, _):
                 logger.info("[\(requestID!)] ✅ Death citation found: \(citationURL)")
                 citationResult = citationURL
             case .notFound:
@@ -637,7 +637,7 @@ final class HTTPHandler: ChannelInboundHandler {
             )
             
             switch result {
-            case .found(let citationURL):
+            case .found(let citationURL, _):
                 logger.info("[\(requestID!)] ✅ Marriage citation found: \(citationURL)")
                 citationResult = citationURL
             case .notFound:

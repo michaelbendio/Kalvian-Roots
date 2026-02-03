@@ -366,13 +366,20 @@ class JuuretApp {
 
     /**
      * Process Hiski query for a person's life event
-     * 
+     *
      * Queries the Hiski database for birth, death, or marriage records
      * and returns a citation URL. Opens browser windows/sheets to display results.
      */
     func processHiskiQuery(for person: Person, eventType: EventType, familyId: String, explicitDate: String? = nil) async -> String {
         let hiskiService = HiskiService(nameEquivalenceManager: nameEquivalenceManager)
         hiskiService.setCurrentFamily(familyId)
+        
+        // Use WebView on macOS (shows record window), HTTP on iOS
+        #if os(macOS)
+        let mode: HiskiExtractionMode = .webView
+        #else
+        let mode: HiskiExtractionMode = .httpOnly
+        #endif
         
         let result: HiskiQueryResult
         
@@ -386,7 +393,7 @@ class JuuretApp {
                 name: person.name,
                 date: birthDate,
                 fatherName: person.fatherName,
-                mode: .webView
+                mode: mode
             )
             
         case .death:
@@ -397,7 +404,7 @@ class JuuretApp {
             result = await hiskiService.queryDeathWithResult(
                 name: person.name,
                 date: deathDate,
-                mode: .webView
+                mode: mode
             )
             
         case .marriage:
@@ -409,17 +416,26 @@ class JuuretApp {
                 husbandName: person.name,
                 wifeName: person.spouse ?? "",
                 date: marriageDate,
-                mode: .webView
+                mode: mode
             )
             
         case .baptism, .burial:
             return "Hiski queries for \(eventType.displayName) are not yet supported"
         }
         
-        // Handle result - same logic as server
+        // Handle result
         switch result {
-        case .found(let citationURL):
+        case .found(let citationURL, let recordURL):
+            // On iOS, open Safari to show the record for verification
+            #if os(iOS)
+            if let recordURL = recordURL, let url = URL(string: recordURL) {
+                await MainActor.run {
+                    UIApplication.shared.open(url)
+                }
+            }
+            #endif
             return citationURL
+            
         case .notFound:
             return "No HisKi results"
         case .multipleResults(let searchURL):
