@@ -13,49 +13,20 @@ import Foundation
 struct Person: Hashable, Sendable, Codable, Identifiable {
     // MARK: - Core Genealogical Data
     
-    /// Finnish given name like 'Matti', 'Brita'
     var name: String
-    
-    /// Patronymic like 'Erikinp.' (Erik's son), 'Matint.' (Matti's daughter)
     var patronymic: String?
-    
-    /// Birth date in format '22.12.1701'
-    var birthDate: String?
-    
-    /// Death date in format '22.08.1812'
+    var birthDate: String? // format '22.12.1701'
     var deathDate: String?
-    
-    /// Marriage date - often just 2 digits like '73' in nuclear family
-    var marriageDate: String?
-    
-    /// Full marriage date from as_parent family like '14.10.1773'
+    var marriageDate: String? // two or six digits (e.g., 04 or 23.05.19)
     var fullMarriageDate: String?
-    
-    /// Spouse name with patronymic like 'Brita Matint.'
     var spouse: String?
-    
-    /// Family reference from {family_id} notation where person is a child
     var asChild: String?
-    
-    /// Family where person appears as parent
     var asParent: String?
-    
-    /// FamilySearch ID from <ID> notation
     var familySearchId: String?
-    
-    /// Note markers like '*' or '**'
-    var noteMarkers: [String]
-    
-    /// Father's name for Hiski disambiguation
-    var fatherName: String?
-    
-    /// Mother's name for Hiski disambiguation
+    var noteMarkers: [String] // Note markers like '*' or '**'
+    var fatherName: String?    // for Hiski disambiguation
     var motherName: String?
-    
-    /// Spouse's birth date from spouse's as_child family
-    var spouseBirthDate: String?
-    
-    /// Spouse's parents' family ID
+    var spouseBirthDate: String? // spouse's as_child family
     var spouseParentsFamilyId: String?
     
     // MARK: - Computed Properties

@@ -5,6 +5,9 @@
 //  Handles persistence of cached family networks inside the iCloud container.
 //  Includes proper iCloud sync handling to ensure cache is shared across devices.
 //
+//  IMPORTANT: Both iOS and macOS use the app's ubiquity container for cache storage.
+//  This ensures the cache is shared across all devices via iCloud sync.
+//
 
 import Foundation
 
@@ -49,32 +52,27 @@ final class PersistentFamilyNetworkStore {
     }
 
     convenience init(rootsFileManager: RootsFileManager, fileManager: FileManager = .default, schemaVersion: Int = 2) {
-        #if os(iOS)
-        // iOS: Use the app's own ubiquity container for cache
-        // The app always has access to its own container without security-scoped bookmarks
+        // UNIFIED: Both iOS and macOS use the app's own ubiquity container for cache.
+        // This ensures the cache is shared across all devices via iCloud sync.
+        // The app always has access to its own container without security-scoped bookmarks.
         if let appContainer = FileManager.default.url(forUbiquityContainerIdentifier: nil) {
             let cacheDirectory = appContainer.appendingPathComponent("Documents/Cache", isDirectory: true)
             let cacheFileURL = cacheDirectory.appendingPathComponent("families.json")
             self.init(cacheFileURL: cacheFileURL, fileManager: fileManager, schemaVersion: schemaVersion)
-            logDebug(.cache, "📂 iOS: Persistent cache will be stored at \(cacheFileURL.path)")
+            #if os(iOS)
+            logDebug(.cache, "📂 iOS: Persistent cache at \(cacheFileURL.path)")
+            #else
+            logDebug(.cache, "📂 macOS: Persistent cache at \(cacheFileURL.path)")
+            #endif
             return
         }
-        #endif
         
-        // macOS: Use the canonical file location (iCloud Drive/Documents/Cache)
-        if let canonicalURL = rootsFileManager.getCanonicalFileURL() {
-            let documentsURL = canonicalURL.deletingLastPathComponent()
-            let cacheDirectory = documentsURL.appendingPathComponent("Cache", isDirectory: true)
-            let cacheFileURL = cacheDirectory.appendingPathComponent("families.json")
-            self.init(cacheFileURL: cacheFileURL, fileManager: fileManager, schemaVersion: schemaVersion)
-            logDebug(.cache, "📂 Persistent cache will be stored at \(cacheFileURL.path)")
-        } else {
-            let fallbackDirectory = fileManager.temporaryDirectory
-                .appendingPathComponent("KalvianRootsCache", isDirectory: true)
-            let fallbackFileURL = fallbackDirectory.appendingPathComponent("families.json")
-            self.init(cacheFileURL: fallbackFileURL, fileManager: fileManager, schemaVersion: schemaVersion)
-            logWarn(.cache, "⚠️ Using temporary directory for cache persistence; iCloud container unavailable")
-        }
+        // Fallback: Use temporary directory if iCloud is unavailable
+        let fallbackDirectory = fileManager.temporaryDirectory
+            .appendingPathComponent("KalvianRootsCache", isDirectory: true)
+        let fallbackFileURL = fallbackDirectory.appendingPathComponent("families.json")
+        self.init(cacheFileURL: fallbackFileURL, fileManager: fileManager, schemaVersion: schemaVersion)
+        logWarn(.cache, "⚠️ Using temporary directory for cache persistence; iCloud container unavailable")
     }
     
     deinit {
@@ -164,7 +162,8 @@ final class PersistentFamilyNetworkStore {
                 } else {
                     // Unknown status - log and continue
                     logDebug(.cache, "📂 iCloud download status: \(status)")
-                }            }
+                }
+            }
         } catch {
             // File might not exist in iCloud yet, which is normal for first device
             logDebug(.cache, "📂 Cache file not in iCloud yet (normal for first device): \(error.localizedDescription)")
