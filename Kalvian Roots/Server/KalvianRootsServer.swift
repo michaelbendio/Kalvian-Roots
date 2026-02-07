@@ -935,7 +935,7 @@ final class HTTPHandler: ChannelInboundHandler {
 
         let head = HTTPResponseHead(
             version: .http1_1,
-            status: .temporaryRedirect,
+            status: .seeOther,
             headers: responseHeaders
         )
 
@@ -976,7 +976,9 @@ final class HTTPHandler: ChannelInboundHandler {
             let parts = pair.split(separator: "=", maxSplits: 1)
             if parts.count == 2 {
                 let key = String(parts[0]).removingPercentEncoding ?? String(parts[0])
-                let value = String(parts[1]).removingPercentEncoding ?? String(parts[1])
+                // Replace + with space to handle application/x-www-form-urlencoded format
+                let rawValue = String(parts[1]).replacingOccurrences(of: "+", with: " ")
+                let value = rawValue.removingPercentEncoding ?? rawValue
                 result[key] = value
             }
         }
