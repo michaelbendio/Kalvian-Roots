@@ -110,6 +110,7 @@ struct HTMLRenderer {
         network: FamilyNetwork?,
         homeId: String? = nil,
         citationText: String? = nil,
+        sourceText: String? = nil,
         errorMessage: String? = nil
     ) -> String {
         let tokenizer = FamilyTokenizer()
@@ -125,6 +126,7 @@ struct HTMLRenderer {
         // Generate family content with home parameter for links
         let familyHTML = renderTokens(tokens, familyId: displayedId, homeId: actualHomeId)
         let citationPanel = renderCitationPanel(citationText: citationText, errorMessage: errorMessage)
+        let sourcePanel = renderSourcePanel(sourceText: sourceText)
 
         return """
         <!DOCTYPE html>
@@ -141,6 +143,7 @@ struct HTMLRenderer {
             <div class="container">
                 \(navBar)
                 \(citationPanel)
+                \(sourcePanel)
                 <div class="family-content">
                     \(familyHTML)
                 </div>
@@ -167,6 +170,7 @@ struct HTMLRenderer {
         let homeURL = "/family/\(urlEncode(homeId))"
         let nextURL = nextId.map { "/family/\(urlEncode($0))" } ?? ""
         let reloadURL = "/family/\(urlEncode(homeId))?reload=1"
+        let sourceURL = "/family/\(urlEncode(displayedId))/source" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
         
         return """
         <div class="nav-bar">
@@ -175,6 +179,7 @@ struct HTMLRenderer {
                 <a href="\(homeURL)" class="nav-btn\(isViewingHome ? " disabled" : "")" \(isViewingHome ? "onclick='return false;'" : "")>⌂</a>
                 <a href="\(nextURL)" class="nav-btn\(canGoNext ? "" : " disabled")" \(canGoNext ? "" : "onclick='return false;'")>→</a>
                 <a href="\(reloadURL)" class="nav-btn">↺</a>
+                <a href="\(sourceURL)" class="nav-btn" title="View source text">📄</a>
             </div>
             <form method="GET" action="/family" class="nav-form" onsubmit="showLoading(event)">
                 <div class="input-wrapper">
@@ -313,6 +318,23 @@ struct HTMLRenderer {
         }
 
         return ""
+    }
+
+    // MARK: - Source Text Panel
+
+    private static func renderSourcePanel(sourceText: String? = nil) -> String {
+        guard let source = sourceText else {
+            return ""
+        }
+
+        return """
+        <div class="source-panel">
+            <div class="source-header">
+                <span class="source-title">📄 Source Text from JuuretKälviällä.roots</span>
+            </div>
+            <pre class="source-text">\(escapeHTML(source))</pre>
+        </div>
+        """
     }
 
     // MARK: - CSS Styles
@@ -549,6 +571,34 @@ struct HTMLRenderer {
         }
         .error-message {
             color: #721c24;
+        }
+        .source-panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .source-header {
+            margin-bottom: 15px;
+        }
+        .source-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+        }
+        .source-text {
+            width: 100%;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+            font-size: 13px;
+            background: #f9f9f9;
+            white-space: pre-wrap;
+            overflow-x: auto;
+            line-height: 1.5;
+            color: #333;
         }
         """
     }

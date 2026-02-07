@@ -520,6 +520,16 @@ final class HTTPHandler: ChannelInboundHandler {
                 session: sessionResult.session
             )
             
+        case "source":
+            logger.info("[\(requestID!)] 📄 Handling SOURCE request")
+            return await handleSourceRequest(
+                familyId: canonicalID,
+                network: network,
+                homeId: homeId,
+                setCookieHeader: setCookieHeader,
+                session: sessionResult.session
+            )
+            
         case nil:
             logger.info("[\(requestID!)] 🏠 Rendering family display (no sub-route)")
             let html = HTMLRenderer.renderFamily(
@@ -778,6 +788,56 @@ final class HTTPHandler: ChannelInboundHandler {
             network: network,
             homeId: homeId,
             citationText: citationResult
+        )
+        
+        var responseHeaders = HTTPHeaders()
+        if let setCookieHeader {
+            responseHeaders.add(name: "Set-Cookie", value: setCookieHeader)
+        }
+        
+        return .html(html, headers: responseHeaders)
+    }
+    
+    
+    // MARK: - Source Handler
+    
+    @MainActor
+    private func handleSourceRequest(
+        familyId: String,
+        network: FamilyNetwork,
+        homeId: String?,
+        setCookieHeader: String?,
+        session: BrowserSession
+    ) async -> HTTPResponse {
+        logger.info("[\(requestID!)] 📄 Extracting source text for: \(familyId)")
+        
+        // Extract raw source text from file via JuuretApp
+        guard let app = juuretApp,
+              let sourceText = app.fileManager.extractFamilyText(familyId: familyId) else {
+            logger.error("[\(requestID!)] ❌ Failed to extract source text for: \(familyId)")
+            return renderFamilyWithError(
+                network: network,
+                homeId: homeId,
+                error: "Failed to extract source text for family \(familyId)",
+                setCookieHeader: setCookieHeader
+            )
+        }
+        
+        logger.info(
+            "[\(requestID!)] ✅ Source text extracted",
+            metadata: [
+                "familyId": "\(familyId)",
+                "length": "\(sourceText.count)",
+                "lines": "\(sourceText.components(separatedBy: CharacterSet.newlines).count)"
+            ]
+        )
+        
+        // Render family with source text panel
+        let html = HTMLRenderer.renderFamily(
+            family: network.mainFamily,
+            network: network,
+            homeId: homeId,
+            sourceText: sourceText
         )
         
         var responseHeaders = HTTPHeaders()
