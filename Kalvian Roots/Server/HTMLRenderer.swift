@@ -146,6 +146,7 @@ struct HTMLRenderer {
                 </div>
             </div>
             \(copyButtonScript)
+            \(navigationScript)
         </body>
         </html>
         """
@@ -175,11 +176,16 @@ struct HTMLRenderer {
                 <a href="\(nextURL)" class="nav-btn\(canGoNext ? "" : " disabled")" \(canGoNext ? "" : "onclick='return false;'")>→</a>
                 <a href="\(reloadURL)" class="nav-btn">↺</a>
             </div>
-            <form method="GET" action="/family" class="nav-form">
-                <input type="text" name="id" value="\(escapeHTML(homeId))" class="family-input" placeholder="Enter family ID..." required>
-                <button type="submit" class="go-button">Go</button>
+            <form method="GET" action="/family" class="nav-form" onsubmit="showLoading(event)">
+                <div class="input-wrapper">
+                    <input type="text" id="familyInput" name="id" value="\(escapeHTML(homeId))" class="family-input" placeholder="Enter family ID..." required autocomplete="off">
+                    <button type="button" class="clear-btn" onclick="clearInput()" style="display: none;">✕</button>
+                </div>
             </form>
-            <span class="viewing-label">Viewing: <strong>\(escapeHTML(displayedId))</strong></span>
+            <div class="loading-indicator" id="loadingIndicator" style="display: none;">
+                <div class="spinner"></div>
+                <span id="loadingText">Loading...</span>
+            </div>
         </div>
         """
     }
@@ -366,12 +372,14 @@ struct HTMLRenderer {
         .nav-form {
             flex: 1;
             max-width: 400px;
-            display: flex;
-            gap: 8px;
+        }
+        .input-wrapper {
+            position: relative;
+            width: 100%;
         }
         .family-input {
-            flex: 1;
-            padding: 8px 12px;
+            width: 100%;
+            padding: 8px 32px 8px 12px;
             border: 2px solid #ddd;
             border-radius: 4px;
             font-size: 14px;
@@ -381,24 +389,47 @@ struct HTMLRenderer {
             outline: none;
             border-color: #0066cc;
         }
-        .go-button {
-            background: #0066cc;
-            color: white;
+        .clear-btn {
+            position: absolute;
+            right: 6px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: #e0e0e0;
             border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            white-space: nowrap;
-        }
-        .go-button:hover {
-            background: #0052a3;
-        }
-        .viewing-label {
-            font-size: 14px;
             color: #666;
-            white-space: nowrap;
+            font-size: 16px;
+            line-height: 1;
+            cursor: pointer;
+            padding: 0;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        .clear-btn:hover {
+            background: #d0d0d0;
+            color: #333;
+        }
+        .loading-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #666;
+            font-size: 14px;
+        }
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #0066cc;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
         .nav-link {
             color: #0066cc;
@@ -541,6 +572,79 @@ struct HTMLRenderer {
                 }, 3000);
             }
         }
+        </script>
+        """
+    }
+    
+    private static var navigationScript: String {
+        return """
+        <script>
+        // Show/hide clear button based on input content
+        const familyInput = document.getElementById('familyInput');
+        const clearBtn = document.querySelector('.clear-btn');
+        
+        if (familyInput && clearBtn) {
+            // Initial state
+            clearBtn.style.display = familyInput.value ? 'flex' : 'none';
+            
+            // Update on input
+            familyInput.addEventListener('input', function() {
+                clearBtn.style.display = this.value ? 'flex' : 'none';
+            });
+        }
+        
+        // Clear input function
+        function clearInput() {
+            const input = document.getElementById('familyInput');
+            if (input) {
+                input.value = '';
+                input.focus();
+                const clearBtn = document.querySelector('.clear-btn');
+                if (clearBtn) {
+                    clearBtn.style.display = 'none';
+                }
+            }
+        }
+        
+        // Show loading indicator
+        function showLoading(event) {
+            const input = document.getElementById('familyInput');
+            const form = document.querySelector('.nav-form');
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            const loadingText = document.getElementById('loadingText');
+            
+            if (input && loadingIndicator && loadingText) {
+                const familyId = input.value.trim().toUpperCase();
+                loadingText.textContent = 'Loading ' + familyId + '...';
+                form.style.display = 'none';
+                loadingIndicator.style.display = 'flex';
+            }
+        }
+        
+        // Show loading when clicking navigation buttons
+        document.querySelectorAll('.nav-btn:not(.disabled)').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                const href = this.getAttribute('href');
+                if (href && href !== '#' && !this.classList.contains('disabled')) {
+                    const form = document.querySelector('.nav-form');
+                    const loadingIndicator = document.getElementById('loadingIndicator');
+                    const loadingText = document.getElementById('loadingText');
+                    
+                    if (loadingIndicator && loadingText) {
+                        // Extract family ID from href
+                        const match = href.match(/\\/family\\/([^?]+)/);
+                        if (match) {
+                            const familyId = decodeURIComponent(match[1]);
+                            loadingText.textContent = 'Loading ' + familyId + '...';
+                        } else {
+                            loadingText.textContent = 'Loading...';
+                        }
+                        if (form) form.style.display = 'none';
+                        loadingIndicator.style.display = 'flex';
+                    }
+                }
+            });
+        });
         </script>
         """
     }
