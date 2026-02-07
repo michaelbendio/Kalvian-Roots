@@ -61,7 +61,10 @@ class KalvianRootsServer {
                     .flatMap { [self] in
                     channel.pipeline
                         .addHandler(
-                            HTTPHandler(sessionManager: self.sessionManager)
+                            HTTPHandler(
+                                sessionManager: self.sessionManager,
+                                juuretApp: juuretApp
+                            )
                         )
                 }
             }
@@ -115,6 +118,7 @@ final class HTTPHandler: ChannelInboundHandler {
     // MARK: - State
 
     private let sessionManager: BrowserSessionManager
+    private weak var juuretApp: JuuretApp?
 
     private var buffer = ByteBuffer()
     private var requestURI: String?
@@ -128,8 +132,9 @@ final class HTTPHandler: ChannelInboundHandler {
 
     // MARK: - Init
 
-    init(sessionManager: BrowserSessionManager) {
+    init(sessionManager: BrowserSessionManager, juuretApp: JuuretApp) {
         self.sessionManager = sessionManager
+        self.juuretApp = juuretApp
     }
 
     // MARK: - ChannelInboundHandler
@@ -256,6 +261,58 @@ final class HTTPHandler: ChannelInboundHandler {
             logger.info("[\(requestID!)] 📝 Handling landing page POST")
             return handleLandingPagePost()
 
+        case (.GET, "/family"):
+            // Handle form submission from navigation bar
+            logger.info("[\(requestID!)] 📝 Handling family form submission")
+            
+            // Log all query items for debugging
+            logger.info(
+                "[\(requestID!)] Query items",
+                metadata: [
+                    "count": "\(queryItems.count)",
+                    "items": "\(queryItems.map { "\($0.name)=\($0.value ?? "nil")" }.joined(separator: ", "))"
+                ]
+            )
+            
+            if let rawFamilyId = queryItems.first(where: { $0.name == "id" })?.value {
+                // Decode + to space (URL form encoding)
+                let familyId = rawFamilyId.replacingOccurrences(of: "+", with: " ")
+                
+                let canonical = familyId
+                    .trimmingCharacters(in: .whitespaces)
+                    .uppercased()
+                
+                logger.info(
+                    "[\(requestID!)] Form family ID",
+                    metadata: [
+                        "raw": "\(rawFamilyId)",
+                        "decoded": "\(familyId)",
+                        "canonical": "\(canonical)",
+                        "length": "\(canonical.count)"
+                    ]
+                )
+                
+                guard FamilyIDs.isValid(familyId: canonical) else {
+                    logger.warning(
+                        "[\(requestID!)] ⚠️ Invalid family ID from form",
+                        metadata: ["familyId": "\(canonical)"]
+                    )
+                    return .redirect("/?error=invalid")
+                }
+                
+                let encoded = canonical.addingPercentEncoding(
+                    withAllowedCharacters: .urlPathAllowed
+                ) ?? canonical
+                
+                logger.info("[\(requestID!)] ✅ Valid family ID, redirecting to: /family/\(encoded)")
+                
+                // Redirect to family page (becomes new home)
+                return .redirect("/family/\(encoded)")
+            } else {
+                logger.warning("[\(requestID!)] ⚠️ No 'id' parameter in form submission")
+                return .redirect("/?error=invalid")
+            }
+
         case (.GET, let p) where p.starts(with: "/family/"):
             logger.info("[\(requestID!)] 👪 Handling family route: \(p)")
             return try await handleFamilyRoute(path: p, queryItems: queryItems)
@@ -346,6 +403,32 @@ final class HTTPHandler: ChannelInboundHandler {
             return .redirect("/?error=invalid")
         }
 
+        // Extract query parameters
+        let homeParam = queryItems.first(where: { $0.name == "home" })?.value
+        let reloadFlag = queryItems.first(where: { $0.name == "reload" })?.value != nil
+        
+        // Determine home ID: use query param if present, otherwise displayed family is home
+        let homeId: String?
+        if let rawHomeParam = homeParam {
+            // Decode + to space (URL form encoding)
+            let decodedHomeParam = rawHomeParam.replacingOccurrences(of: "+", with: " ")
+            let canonicalHome = decodedHomeParam
+                .trimmingCharacters(in: .whitespaces)
+                .uppercased()
+            homeId = FamilyIDs.isValid(familyId: canonicalHome) ? canonicalHome : nil
+        } else {
+            homeId = nil  // nil means displayed family is home
+        }
+        
+        logger.info(
+            "[\(requestID!)] 🏠 Home parameter",
+            metadata: [
+                "homeParamRaw": "\(homeParam ?? "nil")",
+                "homeIdDecoded": "\(homeId ?? "nil (displayed is home)")",
+                "reloadFlag": "\(reloadFlag)"
+            ]
+        )
+
         // Determine sub-route
         let subRoute = components.count >= 3 ? components[2] : nil
         
@@ -371,8 +454,24 @@ final class HTTPHandler: ChannelInboundHandler {
                 "isNew": "\(sessionResult.isNew)"
             ]
         )
+        
+        // Handle reload flag - regenerate home family
+        if reloadFlag, let actualHome = homeId ?? canonicalID as String? {
+            logger.info("[\(requestID!)] ↺ Reload requested for: \(actualHome)")
+            if let app = juuretApp {
+                do {
+                    await app.regenerateCachedFamily(familyId: actualHome)
+                    logger.info("[\(requestID!)] ✅ Family regenerated: \(actualHome)")
+                } catch {
+                    logger.error(
+                        "[\(requestID!)] ❌ Failed to regenerate family",
+                        metadata: ["error": "\(error)"]
+                    )
+                }
+            }
+        }
 
-        // Load family network
+        // Load family network for displayed family
         let network: FamilyNetwork
         do {
             logger.info("[\(requestID!)] 📥 Loading family network for: \(canonicalID)")
@@ -406,6 +505,7 @@ final class HTTPHandler: ChannelInboundHandler {
                 familyId: canonicalID,
                 network: network,
                 queryItems: queryItems,
+                homeId: homeId,
                 setCookieHeader: setCookieHeader
             )
             
@@ -415,6 +515,7 @@ final class HTTPHandler: ChannelInboundHandler {
                 familyId: canonicalID,
                 network: network,
                 queryItems: queryItems,
+                homeId: homeId,
                 setCookieHeader: setCookieHeader,
                 session: sessionResult.session
             )
@@ -423,7 +524,8 @@ final class HTTPHandler: ChannelInboundHandler {
             logger.info("[\(requestID!)] 🏠 Rendering family display (no sub-route)")
             let html = HTMLRenderer.renderFamily(
                 family: network.mainFamily,
-                network: network
+                network: network,
+                homeId: homeId
             )
 
             var responseHeaders = HTTPHeaders()
@@ -446,6 +548,7 @@ final class HTTPHandler: ChannelInboundHandler {
         familyId: String,
         network: FamilyNetwork,
         queryItems: [URLQueryItem],
+        homeId: String?,
         setCookieHeader: String?
     ) async -> HTTPResponse {
         // Extract query parameters
@@ -466,6 +569,7 @@ final class HTTPHandler: ChannelInboundHandler {
             logger.warning("[\(requestID!)] ⚠️ Missing 'name' parameter for citation")
             return renderFamilyWithError(
                 network: network,
+                homeId: homeId,
                 error: "Missing person name for citation",
                 setCookieHeader: setCookieHeader
             )
@@ -489,6 +593,7 @@ final class HTTPHandler: ChannelInboundHandler {
         guard let person = person else {
             return renderFamilyWithError(
                 network: network,
+                homeId: homeId,
                 error: "Person '\(personName)' not found in family",
                 setCookieHeader: setCookieHeader
             )
@@ -509,6 +614,7 @@ final class HTTPHandler: ChannelInboundHandler {
         let html = HTMLRenderer.renderFamily(
             family: network.mainFamily,
             network: network,
+            homeId: homeId,
             citationText: citation
         )
         
@@ -527,6 +633,7 @@ final class HTTPHandler: ChannelInboundHandler {
         familyId: String,
         network: FamilyNetwork,
         queryItems: [URLQueryItem],
+        homeId: String?,
         setCookieHeader: String?,
         session: BrowserSession
     ) async -> HTTPResponse {
@@ -562,16 +669,16 @@ final class HTTPHandler: ChannelInboundHandler {
         var citationResult: String = ""
         var errorMessage: String?
         
-        logger.info("[\(requestID!)] 🔍 Using HiskiService with httpOnly mode")
+        logger.info("[\(requestID!)] 🔍 Event type: \(eventType ?? "nil")")
         
         switch eventType {
         case "birth":
             guard let personName = name, let searchDate = date else {
-                errorMessage = "Missing name or date for birth search"
+                errorMessage = "Missing name or date for birth query"
                 break
             }
+            logger.info("[\(requestID!)] 👶 Processing birth query for: \(personName), date: \(searchDate)")
             
-            logger.info("[\(requestID!)] 🔍 Querying birth record: \(personName), \(searchDate)")
             let result = await hiskiService.queryBirthWithResult(
                 name: personName,
                 date: searchDate,
@@ -596,11 +703,11 @@ final class HTTPHandler: ChannelInboundHandler {
             
         case "death":
             guard let personName = name, let searchDate = date else {
-                errorMessage = "Missing name or date for death search"
+                errorMessage = "Missing name or date for death query"
                 break
             }
+            logger.info("[\(requestID!)] 💀 Processing death query for: \(personName), date: \(searchDate)")
             
-            logger.info("[\(requestID!)] 🔍 Querying death record: \(personName), \(searchDate)")
             let result = await hiskiService.queryDeathWithResult(
                 name: personName,
                 date: searchDate,
@@ -624,11 +731,11 @@ final class HTTPHandler: ChannelInboundHandler {
             
         case "marriage":
             guard let s1 = spouse1, let s2 = spouse2, let searchDate = date else {
-                errorMessage = "Missing spouse names or date for marriage search"
+                errorMessage = "Missing spouse names or date for marriage query"
                 break
             }
+            logger.info("[\(requestID!)] 💒 Processing marriage query: \(s1) + \(s2), date: \(searchDate)")
             
-            logger.info("[\(requestID!)] 🔍 Querying marriage record: \(s1) & \(s2), \(searchDate)")
             let result = await hiskiService.queryMarriageWithResult(
                 husbandName: s1,
                 wifeName: s2,
@@ -659,6 +766,7 @@ final class HTTPHandler: ChannelInboundHandler {
         if let error = errorMessage {
             return renderFamilyWithError(
                 network: network,
+                homeId: homeId,
                 error: error,
                 setCookieHeader: setCookieHeader
             )
@@ -668,6 +776,7 @@ final class HTTPHandler: ChannelInboundHandler {
         let html = HTMLRenderer.renderFamily(
             family: network.mainFamily,
             network: network,
+            homeId: homeId,
             citationText: citationResult
         )
         
@@ -837,12 +946,14 @@ final class HTTPHandler: ChannelInboundHandler {
     
     private func renderFamilyWithError(
         network: FamilyNetwork,
+        homeId: String?,
         error: String,
         setCookieHeader: String?
     ) -> HTTPResponse {
         let html = HTMLRenderer.renderFamily(
             family: network.mainFamily,
             network: network,
+            homeId: homeId,
             errorMessage: error
         )
         

@@ -83,10 +83,10 @@ struct HTMLRenderer {
         <body>
             <div class="landing-container">
                 <h1>Kalvian Roots Browser</h1>
-                <form method="POST" action="/">
+                <form method="GET" action="/family">
                     <div class="form-group">
                         <label for="family">Enter Family ID:</label>
-                        <input type="text" id="family" name="family"
+                        <input type="text" id="family" name="id"
                                placeholder="e.g., KORPI 6"
                                required autofocus>
                         \(error == "invalid" ? """
@@ -105,11 +105,25 @@ struct HTMLRenderer {
 
     // MARK: - Family Display
 
-    static func renderFamily(family: Family, network: FamilyNetwork?, citationText: String? = nil, errorMessage: String? = nil) -> String {
+    static func renderFamily(
+        family: Family,
+        network: FamilyNetwork?,
+        homeId: String? = nil,
+        citationText: String? = nil,
+        errorMessage: String? = nil
+    ) -> String {
         let tokenizer = FamilyTokenizer()
         let tokens = tokenizer.tokenizeFamily(family: family, network: network)
 
-        let familyHTML = renderTokens(tokens, familyId: family.familyId)
+        // Determine home and displayed IDs
+        let displayedId = family.familyId
+        let actualHomeId = homeId ?? displayedId
+        
+        // Generate navigation bar
+        let navBar = renderNavigationBar(homeId: actualHomeId, displayedId: displayedId)
+        
+        // Generate family content with home parameter for links
+        let familyHTML = renderTokens(tokens, familyId: displayedId, homeId: actualHomeId)
         let citationPanel = renderCitationPanel(citationText: citationText, errorMessage: errorMessage)
 
         return """
@@ -118,17 +132,14 @@ struct HTMLRenderer {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>\(escapeHTML(family.familyId)) - Kalvian Roots</title>
+            <title>\(escapeHTML(displayedId)) - Kalvian Roots</title>
             <style>
                 \(cssStyles)
             </style>
         </head>
         <body>
             <div class="container">
-                <div class="nav-bar">
-                    <a href="/" class="nav-link">← Home</a>
-                    <span class="family-id-nav">\(escapeHTML(family.familyId))</span>
-                </div>
+                \(navBar)
                 \(citationPanel)
                 <div class="family-content">
                     \(familyHTML)
@@ -139,10 +150,43 @@ struct HTMLRenderer {
         </html>
         """
     }
+    
+    // MARK: - Navigation Bar
+    
+    private static func renderNavigationBar(homeId: String, displayedId: String) -> String {
+        // Calculate navigation targets based on homeId
+        let previousId = FamilyIDs.previousFamilyBefore(homeId)
+        let nextId = FamilyIDs.nextFamilyAfter(homeId)
+        let canGoPrevious = previousId != nil
+        let canGoNext = nextId != nil
+        let isViewingHome = (homeId == displayedId)
+        
+        // Generate button URLs
+        let previousURL = previousId.map { "/family/\(urlEncode($0))" } ?? ""
+        let homeURL = "/family/\(urlEncode(homeId))"
+        let nextURL = nextId.map { "/family/\(urlEncode($0))" } ?? ""
+        let reloadURL = "/family/\(urlEncode(homeId))?reload=1"
+        
+        return """
+        <div class="nav-bar">
+            <div class="nav-buttons">
+                <a href="\(previousURL)" class="nav-btn\(canGoPrevious ? "" : " disabled")" \(canGoPrevious ? "" : "onclick='return false;'")>←</a>
+                <a href="\(homeURL)" class="nav-btn\(isViewingHome ? " disabled" : "")" \(isViewingHome ? "onclick='return false;'" : "")>⌂</a>
+                <a href="\(nextURL)" class="nav-btn\(canGoNext ? "" : " disabled")" \(canGoNext ? "" : "onclick='return false;'")>→</a>
+                <a href="\(reloadURL)" class="nav-btn">↺</a>
+            </div>
+            <form method="GET" action="/family" class="nav-form">
+                <input type="text" name="id" value="\(escapeHTML(homeId))" class="family-input" placeholder="Enter family ID..." required>
+                <button type="submit" class="go-button">Go</button>
+            </form>
+            <span class="viewing-label">Viewing: <strong>\(escapeHTML(displayedId))</strong></span>
+        </div>
+        """
+    }
 
     // MARK: - Token Rendering
 
-    private static func renderTokens(_ tokens: [FamilyToken], familyId: String) -> String {
+    private static func renderTokens(_ tokens: [FamilyToken], familyId: String, homeId: String) -> String {
         var html = ""
 
         for token in tokens {
@@ -151,16 +195,21 @@ struct HTMLRenderer {
                 html += escapeHTML(str)
 
             case .person(let name, let birthDate):
+                // Preserve home parameter in citation links
+                let homeParam = (familyId == homeId) ? "" : "&home=\(urlEncode(homeId))"
                 let params = buildQueryParams([
                     "name": name,
                     "birth": birthDate
                 ])
                 html += """
-                <a href="/family/\(familyId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? familyId)/cite?\(params)"
+                <a href="/family/\(urlEncode(familyId))/cite?\(params)\(homeParam)"
                    class="person-link">\(escapeHTML(name))</a>
                 """
 
             case .date(let date, let eventType, let person, let spouse1, let spouse2):
+                // Preserve home parameter in HisKi links
+                let homeParam = (familyId == homeId) ? "" : "&home=\(urlEncode(homeId))"
+                
                 if eventType == .marriage, let s1 = spouse1, let s2 = spouse2 {
                     // Marriage date
                     let params = buildQueryParams([
@@ -172,7 +221,7 @@ struct HTMLRenderer {
                         "date": date
                     ])
                     html += """
-                    <a href="/family/\(familyId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? familyId)/hiski?\(params)"
+                    <a href="/family/\(urlEncode(familyId))/hiski?\(params)\(homeParam)"
                        class="date-link">\(escapeHTML(date))</a>
                     """
                 } else if let person = person {
@@ -184,7 +233,7 @@ struct HTMLRenderer {
                         "date": date
                     ])
                     html += """
-                    <a href="/family/\(familyId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? familyId)/hiski?\(params)"
+                    <a href="/family/\(urlEncode(familyId))/hiski?\(params)\(homeParam)"
                        class="date-link">\(escapeHTML(date))</a>
                     """
                 } else {
@@ -194,8 +243,10 @@ struct HTMLRenderer {
 
             case .familyId(let id):
                 if FamilyIDs.isValid(familyId: id) {
+                    // Family reference links preserve home parameter
+                    let homeParam = (id == homeId) ? "" : "?home=\(urlEncode(homeId))"
                     html += """
-                    <a href="/family/\(id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id)"
+                    <a href="/family/\(urlEncode(id))\(homeParam)"
                        class="family-link">\(escapeHTML(id))</a>
                     """
                 } else {
@@ -285,8 +336,69 @@ struct HTMLRenderer {
             margin-bottom: 20px;
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            gap: 15px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .nav-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        .nav-btn {
+            background: #0066cc;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 18px;
+            text-decoration: none;
+            display: inline-block;
+            transition: background 0.2s;
+        }
+        .nav-btn:hover:not(.disabled) {
+            background: #0052a3;
+        }
+        .nav-btn.disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        .nav-form {
+            flex: 1;
+            max-width: 400px;
+            display: flex;
+            gap: 8px;
+        }
+        .family-input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+        }
+        .family-input:focus {
+            outline: none;
+            border-color: #0066cc;
+        }
+        .go-button {
+            background: #0066cc;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .go-button:hover {
+            background: #0052a3;
+        }
+        .viewing-label {
+            font-size: 14px;
+            color: #666;
+            white-space: nowrap;
         }
         .nav-link {
             color: #0066cc;
@@ -442,6 +554,10 @@ struct HTMLRenderer {
             .replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\"", with: "&quot;")
             .replacingOccurrences(of: "'", with: "&#39;")
+    }
+    
+    private static func urlEncode(_ string: String) -> String {
+        return string.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? string
     }
 
     private static func buildQueryParams(_ params: [String: String?]) -> String {
