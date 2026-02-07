@@ -203,7 +203,10 @@ struct HTMLRenderer {
         for token in tokens {
             switch token {
             case .text(let str):
-                html += escapeHTML(str)
+                let renderedText = str
+                    .replacingOccurrences(of: "as_child", with: "a child in")
+                    .replacingOccurrences(of: "as_parent", with: "parents in")
+                html += escapeHTML(renderedText)
 
             case .person(let name, let birthDate):
                 // Preserve home parameter in citation links
