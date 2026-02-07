@@ -9,6 +9,7 @@ import SwiftUI
 
 struct NavigationBarView: View {
     @Environment(JuuretApp.self) private var juuretApp
+    @ObservedObject var prefetchManager: PrefetchManager
     @State private var familyIdInput: String = ""
     @State private var showingClanBrowser: Bool = false
     
@@ -93,6 +94,13 @@ struct NavigationBarView: View {
                 .buttonStyle(.plain)
             }
             .frame(maxWidth: .infinity)
+            
+            if prefetchManager.isPrefetching, let familyId = prefetchManager.currentFamilyId {
+                Text("Loading \(familyId)")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .lineLimit(1)
+            }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
@@ -193,6 +201,7 @@ extension Color {
 // MARK: - Preview
 
 #Preview {
-    NavigationBarView()
-        .environment(JuuretApp())
+    let app = JuuretApp()
+    NavigationBarView(prefetchManager: app.prefetchManager)
+        .environment(app)
 }

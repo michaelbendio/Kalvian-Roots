@@ -120,6 +120,14 @@ class FamilyNetworkCache: FamilyNetworkCaching {
     }
     
     /**
+     * Check if a family already exists in persistent on-disk cache.
+     */
+    func isFamilyCachedOnDisk(familyId: String) -> Bool {
+        let normalized = familyId.uppercased().trimmingCharacters(in: .whitespaces)
+        return persistenceStore.loadFamily(withId: normalized) != nil
+    }
+    
+    /**
      * Get cached network
      */
     func getCachedNetwork(familyId: String) -> FamilyNetwork? {
@@ -309,6 +317,54 @@ class FamilyNetworkCache: FamilyNetworkCaching {
     func getCachedFamilyInfo(familyId: String) -> (cachedAt: Date, extractionTime: TimeInterval)? {
         guard let cached = cachedNetworks[familyId] else { return nil }
         return (cached.cachedAt, cached.extractionTime)
+    }
+    
+    /**
+     * Prefetch one family using the existing extraction -> parse -> workflow -> cache pipeline.
+     * Returns true when new cache content was created, false when skipped as already cached.
+     */
+    func prefetchFamilyIfNeeded(
+        familyId: String,
+        fileManager: RootsFileManager,
+        aiService: AIParsingService,
+        familyResolver: FamilyResolver
+    ) async throws -> Bool {
+        let normalized = familyId.uppercased().trimmingCharacters(in: .whitespaces)
+        
+        if isCached(familyId: normalized) {
+            return false
+        }
+        
+        if let persisted = persistenceStore.loadFamily(withId: normalized) {
+            cachedNetworks[normalized] = persisted
+            return false
+        }
+        
+        guard let familyText = fileManager.extractFamilyText(familyId: normalized) else {
+            throw JuuretApp.ExtractionError.familyNotFound(normalized)
+        }
+        
+        let startTime = Date()
+        let family = try await aiService.parseFamily(
+            familyId: normalized,
+            familyText: familyText
+        )
+        
+        let workflow = FamilyNetworkWorkflow(
+            nuclearFamily: family,
+            familyResolver: familyResolver,
+            resolveCrossReferences: true
+        )
+        
+        try await workflow.process()
+        
+        guard let network = workflow.getFamilyNetwork() else {
+            throw JuuretApp.ExtractionError.parsingFailed("Failed to build network")
+        }
+        
+        let extractionTime = Date().timeIntervalSince(startTime)
+        cacheNetwork(network, extractionTime: extractionTime)
+        return true
     }
     
     /**

@@ -32,6 +32,7 @@ class JuuretApp {
     let nameEquivalenceManager: NameEquivalenceManager
     let fileManager: RootsFileManager // for I/O operations
     let familyNetworkCache: FamilyNetworkCache  // for background processing
+    let prefetchManager: PrefetchManager
 
     #if os(macOS)
     // HTTP Server for browser interface
@@ -238,6 +239,13 @@ class JuuretApp {
             fileManager: localFileManager,
             familyNetworkCache: localFamilyNetworkCache  // NEW: pass cache!
         )
+        
+        let localPrefetchManager = PrefetchManager(
+            fileManager: localFileManager,
+            aiService: localAIParsingService,
+            familyResolver: localFamilyResolver,
+            familyNetworkCache: localFamilyNetworkCache
+        )
 
         // Assign all to self properties
         self.nameEquivalenceManager = localNameEquivalenceManager
@@ -245,6 +253,7 @@ class JuuretApp {
         self.aiParsingService = localAIParsingService
         self.familyResolver = localFamilyResolver
         self.familyNetworkCache = localFamilyNetworkCache
+        self.prefetchManager = localPrefetchManager
 
         // Auto-load default file
         Task { @MainActor in
@@ -265,6 +274,7 @@ class JuuretApp {
                 // File loaded successfully
                 logInfo(.file, "✅ Auto-loaded canonical file")
                 logDebug(.file, "File content length: \(fileContent.count) characters")
+                self.prefetchManager.startPrefetchAll()
                 
                 // Resume any waiting continuation with success
                 self.fileLoadContinuation?.resume(returning: true)
@@ -532,13 +542,7 @@ class JuuretApp {
             
             logInfo(.app, "✨ Family loaded from cache: \(normalizedId)")
             
-            // Start background processing for next family
-            familyNetworkCache.startBackgroundProcessing(
-                currentFamilyId: normalizedId,
-                fileManager: fileManager,
-                aiService: aiParsingService,
-                familyResolver: familyResolver
-            )
+            prefetchManager.startPrefetchAll()
             
             return
         }
@@ -632,13 +636,7 @@ class JuuretApp {
             let totalTime = Date().timeIntervalSince(startTime)
             logInfo(.app, "✅ Family extraction complete in \(String(format: "%.2f", totalTime))s")
             
-            // Start background processing for next family
-            familyNetworkCache.startBackgroundProcessing(
-                currentFamilyId: normalizedId,
-                fileManager: fileManager,
-                aiService: aiParsingService,
-                familyResolver: familyResolver
-            )
+            prefetchManager.startPrefetchAll()
             
         } catch {
             await MainActor.run {
@@ -1059,4 +1057,3 @@ class JuuretApp {
     deinit {
     }
 }
-

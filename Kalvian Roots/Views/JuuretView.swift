@@ -23,7 +23,7 @@ struct JuuretView: View {
         VStack(spacing: 0) {
             if juuretApp.fileManager.isFileLoaded {
                 // Navigation bar at top
-                NavigationBarView()
+                NavigationBarView(prefetchManager: juuretApp.prefetchManager)
                 
                 // Main content area - CHECK FOR PENDING ID FIRST
                 if let pendingId = juuretApp.pendingFamilyId {
