@@ -390,7 +390,7 @@ if let bookmarkData = UserDefaults.standard.data(forKey: "FileBookmark") {
             
             if !found {
                 // Looking for our target family
-                if trimmed.hasPrefix(familyId) || trimmed.hasPrefix(familyId.uppercased()) {
+                if trimmed.lowercased().hasPrefix(familyId.lowercased()) {
                     found = true
                     out.append(line)
                 }

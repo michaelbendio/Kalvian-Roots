@@ -87,7 +87,6 @@ class DeepSeekService: AIService {
         logInfo(.ai, "🤖 DeepSeek parsing family: \(familyId)")
         
         // IMPROVED PROMPT with explicit JSON schema
-        // In AIServices.swift - Update the DeepSeekService parseFamily method prompt:
 
         let prompt = """
                 Parse the following family record and return ONLY a valid JSON object.
@@ -107,7 +106,7 @@ class DeepSeekService: AIService {
                         "deathDate": "string or null (keep 'isoviha' as-is)",
                         "asChild": "string or null (from {family ref})",
                         "familySearchId": "string or null (from <ID>)",
-                        "noteMarkers": []
+                        "noteMarkers": ["array of asterisks: *, **, *** (NO parentheses)"]
                       },
                       "wife": {
                         "name": "string",
@@ -116,7 +115,7 @@ class DeepSeekService: AIService {
                         "deathDate": "string or null",
                         "asChild": "string or null",
                         "familySearchId": "string or null",
-                        "noteMarkers": []
+                        "noteMarkers": ["array of asterisks: *, **, ***"]
                       },
                       "marriageDate": "string or null (2-digit year, MAY include 'n' prefix)",
                       "fullMarriageDate": "string or null (dd.mm.yyyy, MAY include 'n' prefix)",
@@ -129,7 +128,7 @@ class DeepSeekService: AIService {
                           "spouse": "string or null",
                           "asParent": "string or null",
                           "familySearchId": "string or null",
-                          "noteMarkers": []
+                          "noteMarkers": ["array of asterisks: *, **, ***"]
                         }
                       ],
                       "childrenDiedInfancy": null,
@@ -137,33 +136,41 @@ class DeepSeekService: AIService {
                     }
                   ],
                   "notes": ["array of family notes"],
-                  "noteDefinitions": {"*": "note text"}
+                  "noteDefinitions": {"*": "note text", "**": "another note"}
                 }
 
                 EXTRACTION RULES:
                 1. Parse ONLY family \(familyId) - ignore any other families in the text
+                
                 2. Create a separate couple entry for each marriage
+                
                 3. If a person appears in multiple marriages, they appear in multiple couples
+                
                 4. Extract dates EXACTLY as written, preserving ALL formatting:
                    - Keep historical periods like "isoviha" as-is
                    - **CRITICAL**: Keep "n" prefix for approximate dates (e.g., "n 1730", "n 30")
                    - Do NOT strip or remove the "n " prefix - it indicates an approximate date
-                5. **DEATH DATES - CRITICAL**:
-                   - Death dates ONLY appear after the † symbol
-                   - Lines ending with codes like "-94 Kokkola" or "-92 Veteli" are NOT death dates
-                   - These codes indicate migration/relocation, not death
-                   - ONLY extract deathDate if explicitly preceded by † symbol
+                
+                5. Extract family references from {curly braces} as asChild/asParent fields
+                
+                6. **MISSING SPOUSE DATA - CREATE PLACEHOLDER OBJECTS**:
+                   - If only husband data exists (widower family), create a placeholder wife object:
+                     {
+                       "name": "Unknown",
+                       "patronymic": null,
+                       "birthDate": null,
+                       "deathDate": null,
+                       "asChild": null,
+                       "familySearchId": null,
+                       "noteMarkers": []
+                     }
+                   - If only wife data exists (widow family), create a placeholder husband object with same structure
+                   - **NEVER return null for husband or wife** - always create a valid object
                    - Examples:
-                     ✓ CORRECT: "Maria † 15.03.1842" → deathDate: "15.03.1842"
-                     ✗ WRONG: "Maria -94 Kokkola" → deathDate: null (location code, not death)
-                6. Marriage dates: 
-                   - Store 2-digit as marriageDate (e.g., "30" or "n 30")
-                   - Store full date as fullMarriageDate (e.g., "01.02.1730" or "n 1730")
-                   - **PRESERVE** the "n " prefix in BOTH fields if present
-                7. Extract {family references} as asChild or asParent (strip the curly braces)
-                8. Extract <IDs> as familySearchId (strip the angle brackets)
-                9. Note markers (*) go in noteMarkers array, definitions in noteDefinitions
-                10. **SPOUSE NAMES - STRIP MARRIAGE NUMBER PREFIXES**:
+                     ✓ CORRECT: Family with only father listed → husband: {...data...}, wife: {"name": "Unknown", ...nulls...}
+                     ✗ WRONG: wife: null (will cause parsing failure)
+                
+                7. **SPOUSE NAMES - STRIP MARRIAGE NUMBER PREFIXES**:
                    - Spouse names may have a marriage sequence prefix like "1. ", "2. ", "3. "
                    - These indicate which marriage number for the child (1st spouse, 2nd spouse)
                    - ALWAYS strip these numeric prefixes from the spouse field
@@ -171,18 +178,85 @@ class DeepSeekService: AIService {
                      ✓ CORRECT: "∞ 06 1. Israel Vuolle" → spouse: "Israel Vuolle"
                      ✓ CORRECT: "∞ 32 2. Anna Marttila" → spouse: "Anna Marttila"
                      ✗ WRONG: spouse: "1. Israel Vuolle" (prefix not stripped)
+                
+                8. **NOTE MARKERS AND DEFINITIONS**:
+                   - Note markers appear at the end of person lines: "*)", "**)", "***)", etc.
+                   - Note definitions appear AFTER the last child, matching the marker symbol
+                   - **CRITICAL**: Store markers as just asterisks ("*", "**") WITHOUT closing parenthesis
+                   - Extract note text WITHOUT the marker prefix
+                   
+                   **Identifying Note Markers on Person Lines**:
+                   - Look for "*)", "**)", "***)" at the end of a line
+                   - Strip the closing parenthesis ")" when adding to noteMarkers array
+                   - Examples:
+                     ✓ "★ Juho ∞ Anna Matint. *)" → noteMarkers: ["*"]  (stripped ")")
+                     ✓ "★ Liisa **)" → noteMarkers: ["**"]  (stripped ")")
+                     ✓ "★ Matti *) **)" → noteMarkers: ["*", "**"]  (both stripped)
+                     ✗ WRONG: noteMarkers: ["*)"]  (don't include parenthesis!)
+                   
+                   **Extracting Note Definitions**:
+                   - After parsing all children, look for lines starting with "*)", "**)", etc.
+                   - Strip the marker prefix (including parenthesis) from the note text
+                   - Store using just asterisks as the key: {"*": "text", "**": "text"}
+                   - Examples:
+                     ✓ "*) Nurilan isännän veli" → {"*": "Nurilan isännän veli"}  (stripped "*)")
+                     ✓ "**) N:o 60 Flinkfelt." → {"**": "N:o 60 Flinkfelt."}  (stripped "**)")
+                     ✗ WRONG: {"*)": "text"}  (don't include parenthesis in key!)
+                     ✗ WRONG: {"*": "*) text"}  (don't include marker in text!)
+                   
+                   **Complete Example from KLAPURI 4**:
+                   Input text:
+                   ```
+                   ★ 1703  Maria  ∞ 24 Mikko Hotakka  *)  Klapuri 6
+                   ★ 1706  Liisa  ∞ 25 Erik Herronen  **)  Kukkonmäki
+                   *) Nurilan isännän veli, ks. Nurila 4.
+                   **) N:o 60 Flinkfelt.
+                   ```
+                   
+                   Correct output:
+                   ```json
+                   {
+                     "children": [
+                       {
+                         "name": "Maria",
+                         "marriageDate": "24",
+                         "spouse": "Mikko Hotakka",
+                         "asParent": "Klapuri 6",
+                         "noteMarkers": ["*"]
+                       },
+                       {
+                         "name": "Liisa",
+                         "marriageDate": "25",
+                         "spouse": "Erik Herronen",
+                         "asParent": "Kukkonmäki",
+                         "noteMarkers": ["**"]
+                       }
+                     ],
+                     "noteDefinitions": {
+                       "*": "Nurilan isännän veli, ks. Nurila 4.",
+                       "**": "N:o 60 Flinkfelt."
+                     }
+                   }
+                   ```
+                   
+                   **Important**:
+                   - If no note markers on a person, noteMarkers should be empty array: []
+                   - If no note definitions in family, noteDefinitions should be empty object: {}
+                   - Store marker keys as "*", "**", "***" (asterisks only, NO parentheses)
+                   - Note text should NOT include the marker prefix
+                   - Preserve the exact note text after the marker, including dates and punctuation
 
-                DATE FORMAT EXAMPLES:
-                - "n 1730" → marriageDate: null, fullMarriageDate: "n 1730" (approximate full year)
-                - "n 30" → marriageDate: "n 30", fullMarriageDate: null (approximate 2-digit)
-                - "30" → marriageDate: "30", fullMarriageDate: null (exact 2-digit)
-                - "01.02.1730" → marriageDate: null, fullMarriageDate: "01.02.1730" (exact full date)
+                9. **DATE FORMAT EXAMPLES**:
+                   - "n 1730" → marriageDate: null, fullMarriageDate: "n 1730" (approximate full year)
+                   - "n 30" → marriageDate: "n 30", fullMarriageDate: null (approximate 2-digit)
+                   - "30" → marriageDate: "30", fullMarriageDate: null (exact 2-digit)
+                   - "01.02.1730" → marriageDate: null, fullMarriageDate: "01.02.1730" (exact full date)
 
-                DETERMINING COUPLES:
-                - Look for "II puoliso" or "III puoliso" to identify additional marriages
-                - The person who survives and remarries appears in multiple couples
-                - Use death dates and marriage dates to determine the correct sequence
-                - Each "Lapset" (Children) section belongs to the couple above it
+                10. **DETERMINING COUPLES**:
+                   - Look for "II puoliso" or "III puoliso" to identify additional marriages
+                   - The person who survives and remarries appears in multiple couples
+                   - Use death dates and marriage dates to determine the correct sequence
+                   - Each "Lapset" (Children) section belongs to the couple above it
 
                 Family text to parse:
                 \(familyText)
