@@ -71,8 +71,8 @@ struct FamilyContentView: View {
                         .padding(.top, 12)
                 }
                 
-                // 8. Note definitions (*) **) etc.)
-                // Note definitions (*) **)  etc.)
+                // 8. Note definitions (* ** etc.)
+                // Note definitions (* **)  etc.)
                 if !family.noteDefinitions.isEmpty {
                     noteDefinitionsSection()
                         .padding(.top, 4)
@@ -88,7 +88,7 @@ struct FamilyContentView: View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(Array(family.noteDefinitions.keys.sorted()), id: \.self) { key in
                 if let text = family.noteDefinitions[key] {
-                    Text("\(key)) \(text)")
+                    Text("\(key) \(text)")
                         .applyFamilyLineStyle()
                         .foregroundColor(.secondary)
                         .italic()

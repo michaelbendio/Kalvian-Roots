@@ -265,7 +265,7 @@ struct CitationGenerator {
             if section.isEmpty { section += "Note:\n" }
             for key in family.noteDefinitions.keys.sorted() {
                 if let text = family.noteDefinitions[key] {
-                    section += "\(key)) \(text)\n"
+                    section += "\(key) \(text)\n"
                 }
             }
         }
@@ -365,7 +365,7 @@ struct CitationGenerator {
     private static func formatParentCompact(_ person: Person) -> String {
         let name = person.displayName
         
-        let markers = person.noteMarkers.isEmpty ? "" : " \(person.noteMarkers.map { "\($0))" }.joined(separator: " "))"
+        let markers = person.noteMarkers.isEmpty ? "" : " \(person.noteMarkers.joined(separator: " "))"
         
         if let birthDate = person.birthDate, let deathDate = person.deathDate {
             return "\(name), \(formatDate(birthDate)) - \(formatDate(deathDate))\(markers)"
@@ -402,7 +402,7 @@ struct CitationGenerator {
         }
         
         if !child.noteMarkers.isEmpty {
-            line += " \(child.noteMarkers.map { "\($0))" }.joined(separator: " "))"
+            line += " \(child.noteMarkers.joined(separator: " "))"
         }
         
         line += "\n"
