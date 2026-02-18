@@ -289,11 +289,19 @@ class AIParsingService {
             logInfo(.parsing, "👨 HUSBAND: \(couple.husband.displayName)")
             logInfo(.parsing, "  - Birth: \(couple.husband.birthDate ?? "nil")")
             logInfo(.parsing, "  - Death: \(couple.husband.deathDate ?? "nil")")
+            logInfo(.parsing, "  - Death: \(couple.husband.deathDate ?? "nil")")
+            if !couple.husband.noteMarkers.isEmpty {
+                logInfo(.parsing, "  - NoteMarkers: \(couple.husband.noteMarkers)")
+            }
             
             // Log Wife
             logInfo(.parsing, "👩 WIFE: \(couple.wife.displayName)")
             logInfo(.parsing, "  - Birth: \(couple.wife.birthDate ?? "nil")")
             logInfo(.parsing, "  - Death: \(couple.wife.deathDate ?? "nil")")
+            logInfo(.parsing, "  - Death: \(couple.wife.deathDate ?? "nil")")
+            if !couple.wife.noteMarkers.isEmpty {
+                logInfo(.parsing, "  - NoteMarkers: \(couple.wife.noteMarkers)")
+            }
             
             // Log Marriage
             if let marriageDate = couple.marriageDate {
@@ -310,8 +318,11 @@ class AIParsingService {
                 if let spouse = child.spouse {
                     logInfo(.parsing, "      - Spouse: \(spouse)")
                 }
+                if !child.noteMarkers.isEmpty {
+                    logInfo(.parsing, "      - NoteMarkers: \(child.noteMarkers)")
+                }
             }
-            
+
             // Children died in infancy
             if let died = couple.childrenDiedInfancy {
                 logInfo(.parsing, "☠️ Children died in infancy: \(died)")
@@ -324,6 +335,11 @@ class AIParsingService {
             for note in family.notes.prefix(3) {
                 logInfo(.parsing, "  - \(note.prefix(100))...")
             }
+        }
+        
+        logInfo(.parsing, "📝 NOTE DEFINITIONS: \(family.noteDefinitions.count)")
+        for (key, value) in family.noteDefinitions {
+            logInfo(.parsing, "  [\(key)]: \(value)")
         }
         
         logInfo(.parsing, "=== END FAMILY DEBUG INFO ===")

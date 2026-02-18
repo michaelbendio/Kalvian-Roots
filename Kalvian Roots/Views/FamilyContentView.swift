@@ -70,11 +70,31 @@ struct FamilyContentView: View {
                     notesSection()
                         .padding(.top, 12)
                 }
+                
+                // 8. Note definitions (*) **) etc.)
+                // Note definitions (*) **)  etc.)
+                if !family.noteDefinitions.isEmpty {
+                    noteDefinitionsSection()
+                        .padding(.top, 4)
+                }
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color(hex: "fefdf8"))
+    }
+    
+    private func noteDefinitionsSection() -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(family.noteDefinitions.keys.sorted()), id: \.self) { key in
+                if let text = family.noteDefinitions[key] {
+                    Text("\(key)) \(text)")
+                        .applyFamilyLineStyle()
+                        .foregroundColor(.secondary)
+                        .italic()
+                }
+            }
+        }
     }
     
     // MARK: - Family Header

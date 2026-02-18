@@ -260,6 +260,16 @@ struct CitationGenerator {
             }
         }
         
+        // Note definitions (*) **) etc.)
+        if !family.noteDefinitions.isEmpty {
+            if section.isEmpty { section += "Note:\n" }
+            for key in family.noteDefinitions.keys.sorted() {
+                if let text = family.noteDefinitions[key] {
+                    section += "\(key)) \(text)\n"
+                }
+            }
+        }
+
         let totalChildrenDied = family.totalChildrenDiedInfancy
         if totalChildrenDied > 0 {
             if filteredNotes.isEmpty {
@@ -355,15 +365,17 @@ struct CitationGenerator {
     private static func formatParentCompact(_ person: Person) -> String {
         let name = person.displayName
         
+        let markers = person.noteMarkers.isEmpty ? "" : " \(person.noteMarkers.map { "\($0))" }.joined(separator: " "))"
+        
         if let birthDate = person.birthDate, let deathDate = person.deathDate {
-            return "\(name), \(formatDate(birthDate)) - \(formatDate(deathDate))"
+            return "\(name), \(formatDate(birthDate)) - \(formatDate(deathDate))\(markers)"
         } else if let birthDate = person.birthDate {
-            return "\(name), b. \(formatDate(birthDate))"
+            return "\(name), b. \(formatDate(birthDate))\(markers)"
         } else if let deathDate = person.deathDate {
-            return "\(name), d. \(formatDate(deathDate))"
+            return "\(name), d. \(formatDate(deathDate))\(markers)"
         }
         
-        return name
+        return "\(name)\(markers)"
     }
     
     private static func formatChild(_ child: Person) -> String {
@@ -387,6 +399,10 @@ struct CitationGenerator {
         
         if let deathDate = child.deathDate {
             line += ", d. \(formatDate(deathDate))"
+        }
+        
+        if !child.noteMarkers.isEmpty {
+            line += " \(child.noteMarkers.map { "\($0))" }.joined(separator: " "))"
         }
         
         line += "\n"

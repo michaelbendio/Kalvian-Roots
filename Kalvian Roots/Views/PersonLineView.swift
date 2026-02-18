@@ -84,6 +84,13 @@ struct PersonLineView: View {
                 clickableFamilyId(familyId)
             }
             
+            // Note markers (*) **) etc.)
+            if !person.noteMarkers.isEmpty {
+                Text(person.noteMarkers.map { "\($0))" }.joined(separator: " "))
+                    .font(.system(size: 16, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+            
             Spacer()
         }
         .font(.system(size: 16, design: .monospaced))
