@@ -39,7 +39,7 @@ struct FamilyContentView: View {
                     
                     // 3. Marriage date line
                     if let marriageDate = couple.fullMarriageDate ?? couple.marriageDate {
-                        marriageLine(date: marriageDate)
+                        marriageLine(date: marriageDate, couple: couple)
                             .padding(.top, 2)
                     }
                     
@@ -155,19 +155,19 @@ struct FamilyContentView: View {
     
     // MARK: - Marriage Line
     
-    private func marriageLine(date: String) -> some View {
+    private func marriageLine(date: String, couple: Couple) -> some View {
         HStack(spacing: 4) {
             Text("∞")
                 .applyFamilyLineStyle()
             
             Button(action: {
-                // Marriage date click -> Hiski
                 Task {
                     let result = await juuretApp.processHiskiQuery(
-                        for: family.primaryCouple?.husband ?? family.primaryCouple!.wife,
+                        for: couple.husband,
                         eventType: EventType.marriage,
                         familyId: family.familyId,
-                        explicitDate: date
+                        explicitDate: date,
+                        spouseName: couple.wife.name
                     )
                     onShowHiski(result)
                 }
@@ -259,7 +259,7 @@ struct FamilyContentView: View {
             
             // Marriage date for this couple
             if let marriageDate = couple.fullMarriageDate ?? couple.marriageDate {
-                marriageLine(date: marriageDate)
+                marriageLine(date: marriageDate, couple: couple)
                     .padding(.top, 2)
             }
             

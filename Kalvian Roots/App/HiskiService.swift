@@ -41,6 +41,7 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
     @MainActor static let shared = HiskiWebViewManager()
     
     @MainActor private var recordWindow: NSWindow?  // ← Back to strong reference, no delegate
+    @MainActor private var recordWebView: WKWebView?
     @MainActor private var citationContinuation: CheckedContinuation<String, Error>?
     
     private let recordWindowX: CGFloat = 1300
@@ -56,37 +57,36 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
     @MainActor func loadRecordAndExtractCitation(url: URL) async throws -> String {
         return try await withCheckedThrowingContinuation { continuation in
             self.citationContinuation = continuation
-            
-            // Always create a new window (old one will be released if it exists)
-            recordWindow?.close()
-            recordWindow = nil
-            
-            // Create new window with WKWebView
-            let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: recordWindowWidth, height: recordWindowHeight))
-            webView.navigationDelegate = self
-            webView.allowsBackForwardNavigationGestures = true
-            
-            let window = NSWindow(
-                contentRect: NSRect(x: recordWindowX, y: recordWindowY, width: recordWindowWidth, height: recordWindowHeight),
-                styleMask: [.titled, .closable, .resizable],
-                backing: .buffered,
-                defer: false
-            )
-            window.title = "Hiski Record"
-            // DON'T set delegate - this is causing the crash
-            window.contentView = webView
-            window.makeKeyAndOrderFront(nil)
-            window.level = .floating
-            
-            self.recordWindow = window
-            
-            webView.load(URLRequest(url: url))
-            
+
+            // Create webView + window only once; reuse for subsequent queries
+            if recordWebView == nil {
+                let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: recordWindowWidth, height: recordWindowHeight))
+                webView.navigationDelegate = self
+                webView.allowsBackForwardNavigationGestures = true
+                self.recordWebView = webView
+
+                let window = NSWindow(
+                    contentRect: NSRect(x: recordWindowX, y: recordWindowY, width: recordWindowWidth, height: recordWindowHeight),
+                    styleMask: [.titled, .closable, .resizable],
+                    backing: .buffered,
+                    defer: false
+                )
+                window.title = "Hiski Record"
+                window.contentView = webView
+                window.level = .floating
+                self.recordWindow = window
+            }
+
+            // Bring window forward and load new URL into existing webView
+            recordWindow?.makeKeyAndOrderFront(nil)
+            recordWebView?.load(URLRequest(url: url))
             logInfo(.app, "🪟 Opened Hiski record window")
         }
     }
     
     @MainActor func closeRecordWindow() {
+        recordWebView?.navigationDelegate = nil
+        recordWebView = nil
         recordWindow?.close()
         recordWindow = nil
         logInfo(.app, "🪟 Closed Hiski record window")
@@ -554,49 +554,46 @@ class HiskiService {
     // MARK: - HTML Parsing (matching hiski.py algorithm)
     
     private func findMatchingRecordUrl(from html: String, queryDate: String) -> String? {
-        // Step 1: Extract the first date from <LI>Years line
-        // Pattern: <LI>Years dd.mm.yyyy - dd.mm.yyyy
+        // Confirm results exist via <LI>Years line
         let yearsPattern = "<LI>\\s*Years\\s+([0-9.]+)\\s*-\\s*([0-9.]+)"
-        
         guard let yearsRegex = try? NSRegularExpression(pattern: yearsPattern, options: [.caseInsensitive]),
-              let yearsMatch = yearsRegex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
-              let firstDateRange = Range(yearsMatch.range(at: 1), in: html) else {
+              yearsRegex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)) != nil else {
             logWarn(.app, "⚠️ Could not find <LI>Years line in search results")
             return nil
         }
-        
-        let firstDate = String(html[firstDateRange])
-        logInfo(.app, "📅 Looking for record with date: \(firstDate)")
-        
-        // Step 2: Find all sl.gif links with their adjacent dates
-        // Pattern: <a href="..."><img src="/historia/sl.gif"...></a> followed by date
-        let linkPattern = "<a\\s+href=\"([^\"]+)\">\\s*<img[^>]+src=\"/historia/sl\\.gif\"[^>]*>\\s*</a>\\s*([0-9.]+)"
-        
-        guard let linkRegex = try? NSRegularExpression(pattern: linkPattern, options: [.caseInsensitive]) else {
+
+        logInfo(.app, "📅 Looking for record with date: \(queryDate)")
+
+        // Parse row by row — find a <TR> containing both sl.gif and the query date.
+        // Marriage records have sl.gif in Announc. column and date in Married column (separate <TD>s).
+        // Birth/death records have sl.gif and date adjacent in the same cell.
+        // Row-level matching handles both cases.
+        let rowPattern = "<TR[^>]*>(.*?)</TR>"
+        guard let rowRegex = try? NSRegularExpression(pattern: rowPattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else {
             return nil
         }
-        
-        let matches = linkRegex.matches(in: html, range: NSRange(html.startIndex..., in: html))
-        
-        // Step 3: Find the link whose date matches firstDate
-        for match in matches {
-            guard let hrefRange = Range(match.range(at: 1), in: html),
-                  let dateRange = Range(match.range(at: 2), in: html) else {
-                continue
-            }
-            
-            let href = String(html[hrefRange])
-            let dateText = String(html[dateRange]).trimmingCharacters(in: .whitespaces)
-            
-            logDebug(.app, "  Checking: \(href) with date \(dateText)")
-            
-            if dateText == firstDate {
-                logInfo(.app, "✅ Found matching link: \(href)")
-                return href
-            }
+
+        let slGifHrefPattern = "<a\\s+href=\"([^\"]+)\">\\s*<img[^>]+src=\"/historia/sl\\.gif\""
+        guard let slGifRegex = try? NSRegularExpression(pattern: slGifHrefPattern, options: [.caseInsensitive]) else {
+            return nil
         }
-        
-        logWarn(.app, "⚠️ No sl.gif link found matching date \(firstDate)")
+
+        let rows = rowRegex.matches(in: html, range: NSRange(html.startIndex..., in: html))
+        for rowMatch in rows {
+            guard let rowRange = Range(rowMatch.range(at: 1), in: html) else { continue }
+            let rowContent = String(html[rowRange])
+
+            guard rowContent.contains(queryDate) else { continue }
+
+            guard let slMatch = slGifRegex.firstMatch(in: rowContent, range: NSRange(rowContent.startIndex..., in: rowContent)),
+                  let hrefRange = Range(slMatch.range(at: 1), in: rowContent) else { continue }
+
+            let href = String(rowContent[hrefRange])
+            logInfo(.app, "✅ Found matching link in row: \(href)")
+            return href
+        }
+
+        logWarn(.app, "⚠️ No sl.gif link found matching date \(queryDate)")
         return nil
     }
     

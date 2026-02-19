@@ -380,7 +380,7 @@ class JuuretApp {
      * Queries the Hiski database for birth, death, or marriage records
      * and returns a citation URL. Opens browser windows/sheets to display results.
      */
-    func processHiskiQuery(for person: Person, eventType: EventType, familyId: String, explicitDate: String? = nil) async -> String {
+    func processHiskiQuery(for person: Person, eventType: EventType, familyId: String, explicitDate: String? = nil, spouseName: String? = nil) async -> String {
         let hiskiService = HiskiService(nameEquivalenceManager: nameEquivalenceManager)
         hiskiService.setCurrentFamily(familyId)
         
@@ -424,7 +424,7 @@ class JuuretApp {
             }
             result = await hiskiService.queryMarriageWithResult(
                 husbandName: person.name,
-                wifeName: person.spouse ?? "",
+                wifeName: spouseName ?? person.spouse ?? "",
                 date: marriageDate,
                 mode: mode
             )
