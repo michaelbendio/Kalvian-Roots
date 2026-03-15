@@ -1,0 +1,259 @@
+import Foundation
+import XCTest
+@testable import Kalvian_Roots
+
+final class FamilyComparisonResultTests: XCTestCase {
+
+    private let equivalencesKey = "NameEquivalences"
+    private let equivalenceVersionKey = "NameEquivalencesVersion"
+
+    private var nameManager: NameEquivalenceManager!
+    private var savedEquivalencesData: Data?
+    private var savedVersionValue: Any?
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+
+        let defaults = UserDefaults.standard
+        savedEquivalencesData = defaults.data(forKey: equivalencesKey)
+        savedVersionValue = defaults.object(forKey: equivalenceVersionKey)
+
+        defaults.removeObject(forKey: equivalencesKey)
+        defaults.removeObject(forKey: equivalenceVersionKey)
+
+        nameManager = NameEquivalenceManager()
+        nameManager.clearAllEquivalences()
+        nameManager.addEquivalence(between: "Liisa", and: "Elisabeta")
+    }
+
+    override func tearDownWithError() throws {
+        let defaults = UserDefaults.standard
+
+        if let savedEquivalencesData {
+            defaults.set(savedEquivalencesData, forKey: equivalencesKey)
+        } else {
+            defaults.removeObject(forKey: equivalencesKey)
+        }
+
+        if let savedVersionValue {
+            defaults.set(savedVersionValue, forKey: equivalenceVersionKey)
+        } else {
+            defaults.removeObject(forKey: equivalenceVersionKey)
+        }
+
+        nameManager = nil
+        savedEquivalencesData = nil
+        savedVersionValue = nil
+
+        try super.tearDownWithError()
+    }
+
+    func testThreeSourceMatchForLiisaAcrossFamilySearchJuuretAndHiski() throws {
+        let familySearchCandidate = candidate(
+            name: "Liisa",
+            birth: date(1797, 10, 12),
+            source: .familySearch,
+            familySearchId: "LIIISA-FS-1797"
+        )
+        let juuretCandidate = candidate(
+            name: "Liisa",
+            birth: date(1797, 10, 12),
+            source: .juuretKalvialla
+        )
+        let hiskiCandidate = candidate(
+            name: "Elisabeta",
+            birth: date(1797, 10, 12),
+            source: .hiski,
+            hiskiCitation: hiskiCitation("liisa-1797")
+        )
+
+        XCTAssertTrue(nameManager.areNamesEquivalent("Liisa", "Elisabeta"))
+        XCTAssertEqual(familySearchCandidate.identity.canonicalName, hiskiCandidate.identity.canonicalName)
+        XCTAssertEqual(familySearchCandidate.identity.birthDate, hiskiCandidate.identity.birthDate)
+        XCTAssertTrue(familySearchCandidate.identity.matches(hiskiCandidate.identity))
+        XCTAssertTrue(familySearchCandidate.isFromFamilySearch)
+        XCTAssertTrue(juuretCandidate.isFromJuuret)
+        XCTAssertTrue(hiskiCandidate.isFromHiski)
+
+        let result = FamilyComparisonResult(
+            familySearch: [familySearchCandidate],
+            juuretKalvialla: [juuretCandidate],
+            hiski: [hiskiCandidate]
+        )
+
+        XCTAssertEqual(result.matches.count, 1)
+        XCTAssertEqual(result.familySearchOnly.count, 0)
+        XCTAssertEqual(result.juuretOnly.count, 0)
+        XCTAssertEqual(result.hiskiOnly.count, 0)
+
+        let match = try XCTUnwrap(result.matches.first)
+        XCTAssertNotNil(match.familySearch)
+        XCTAssertNotNil(match.juuretKalvialla)
+        XCTAssertNotNil(match.hiski)
+        XCTAssertEqual(match.familySearch?.rawName, "Liisa")
+        XCTAssertEqual(match.juuretKalvialla?.rawName, "Liisa")
+        XCTAssertEqual(match.hiski?.rawName, "Elisabeta")
+    }
+
+    func testFamilySearchAndHiskiMatchWhenJuuretEntryIsMissingForElias() throws {
+        let result = FamilyComparisonResult(
+            familySearch: [
+                candidate(
+                    name: "Elias",
+                    birth: date(1803, 8, 10),
+                    source: .familySearch,
+                    familySearchId: "ELIAS-FS-1803"
+                )
+            ],
+            juuretKalvialla: [],
+            hiski: [
+                candidate(
+                    name: "Elias",
+                    birth: date(1803, 8, 10),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("elias-1803")
+                )
+            ]
+        )
+
+        XCTAssertEqual(result.matches.count, 1)
+        XCTAssertEqual(result.familySearchOnly.count, 0)
+        XCTAssertEqual(result.juuretOnly.count, 0)
+        XCTAssertEqual(result.hiskiOnly.count, 0)
+
+        let match = try XCTUnwrap(result.matches.first)
+        XCTAssertNotNil(match.familySearch)
+        XCTAssertNil(match.juuretKalvialla)
+        XCTAssertNotNil(match.hiski)
+    }
+
+    func testHiskiTwinRecordSplitProducesTwoSeparateMatches() {
+        let result = FamilyComparisonResult(
+            familySearch: [
+                candidate(
+                    name: "Maria",
+                    birth: date(1791, 11, 26),
+                    source: .familySearch,
+                    familySearchId: "MARIA-FS-1791"
+                ),
+                candidate(
+                    name: "Catharina",
+                    birth: date(1791, 11, 26),
+                    source: .familySearch,
+                    familySearchId: "CATHARINA-FS-1791"
+                )
+            ],
+            juuretKalvialla: [],
+            hiski: [
+                candidate(
+                    name: "Maria",
+                    birth: date(1791, 11, 26),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("maria-1791")
+                ),
+                candidate(
+                    name: "Catharina",
+                    birth: date(1791, 11, 26),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("catharina-1791")
+                )
+            ]
+        )
+
+        XCTAssertEqual(result.matches.count, 2)
+        XCTAssertEqual(Set(result.matches.map(\.identity.canonicalName)), ["catharina", "maria"])
+        XCTAssertTrue(result.matches.allSatisfy { $0.familySearch != nil })
+        XCTAssertTrue(result.matches.allSatisfy { $0.hiski != nil })
+        XCTAssertTrue(result.matches.allSatisfy { $0.juuretKalvialla == nil })
+    }
+
+    func testHiskiOnlyChildIsReportedWhenNoFamilySearchOrJuuretEntryExists() {
+        let result = FamilyComparisonResult(
+            familySearch: [],
+            juuretKalvialla: [],
+            hiski: [
+                candidate(
+                    name: "(Son, dodf.)",
+                    birth: date(1806, 11, 22),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("son-dodf-1806")
+                )
+            ]
+        )
+
+        XCTAssertEqual(result.hiskiOnly.count, 1)
+        XCTAssertEqual(result.familySearchOnly.count, 0)
+        XCTAssertEqual(result.juuretOnly.count, 0)
+        XCTAssertEqual(result.hiskiOnly.first?.rawName, "(Son, dodf.)")
+    }
+
+    func testFamilySearchDuplicateLeavesOneUnmatchedDuplicateWhenHiskiHasSingleBaptism() {
+        let result = FamilyComparisonResult(
+            familySearch: [
+                candidate(
+                    name: "Catharina",
+                    birth: date(1791, 11, 26),
+                    source: .familySearch,
+                    familySearchId: "CATHARINA-FS-1791-A"
+                ),
+                candidate(
+                    name: "Catharina",
+                    birth: date(1791, 11, 26),
+                    source: .familySearch,
+                    familySearchId: "CATHARINA-FS-1791-B"
+                )
+            ],
+            juuretKalvialla: [],
+            hiski: [
+                candidate(
+                    name: "Catharina",
+                    birth: date(1791, 11, 26),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("catharina-single-baptism")
+                )
+            ]
+        )
+
+        XCTAssertEqual(result.familySearchOnly.count, 1)
+    }
+
+    private func candidate(
+        name: String,
+        birth: Date,
+        source: PersonCandidate.SourceType,
+        familySearchId: String? = nil,
+        hiskiCitation: URL? = nil
+    ) -> PersonCandidate {
+        PersonCandidate(
+            name: name,
+            birthDate: birth,
+            source: source,
+            nameManager: nameManager,
+            familySearchId: familySearchId,
+            hiskiCitation: hiskiCitation
+        )
+    }
+
+    private func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .gregorian)
+        components.timeZone = TimeZone(secondsFromGMT: 0)
+        components.year = year
+        components.month = month
+        components.day = day
+
+        guard let date = components.date else {
+            preconditionFailure("Invalid date components: \(year)-\(month)-\(day)")
+        }
+
+        return date
+    }
+
+    private func hiskiCitation(_ slug: String) -> URL {
+        guard let url = URL(string: "https://hiski.genealogia.fi/\(slug)") else {
+            preconditionFailure("Invalid HisKi citation slug: \(slug)")
+        }
+
+        return url
+    }
+}
