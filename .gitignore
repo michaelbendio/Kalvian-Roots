@@ -1,21 +1,42 @@
 # macOS
-.DS_Store
+# =========================
+# Xcode
+# =========================
 
-# Xcode user-specific files
-*.xcuserstate
-xcuserdata/
-
-# Xcode breakpoints (user-specific)
-*.xcbkptlist
-
-# Xcode build artifacts
 DerivedData/
+build/
+
+*.xcworkspace/xcuserdata/
+*.xcuserdatad/
+*.xcuserstate
+
+# Swift Package Manager
 .build/
 
-# Vim / editor temp files
+# =========================
+# macOS
+# =========================
+
+.DS_Store
+
+# =========================
+# Python cache files
+# =========================
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# =========================
+# Logs
+# =========================
+
+*.log
+
+# =========================
+# Temporary files
+# =========================
+
+*.tmp
 *.swp
-
-# Local utility scripts (optional)
-estimate-tokens.sh
-tokens
-
