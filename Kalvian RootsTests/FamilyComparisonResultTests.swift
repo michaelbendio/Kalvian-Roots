@@ -722,6 +722,45 @@ final class FamilyComparisonServiceTests: XCTestCase {
         )
     }
 
+    func testRenderJuuretHiskiReportRendersMatchedChildUnderMatchesWhenPresentInBothSources() {
+        let report = service.renderJuuretHiskiReport(
+            service.compare(
+                juuretCandidates: [
+                    candidate(
+                        name: "Matti",
+                        birth: date(1802, 6, 25),
+                        source: .juuretKalvialla
+                    )
+                ],
+                hiskiCandidates: [
+                    candidate(
+                        name: "Matti",
+                        birth: date(1802, 6, 25),
+                        source: .hiski,
+                        hiskiCitation: hiskiCitation("matti-1802")
+                    )
+                ]
+            )
+        )
+
+        XCTAssertEqual(
+            report,
+            """
+            Matches
+            -------
+            Matti — 25 Jun 1802
+
+            Juuret only
+            -----------
+            (none)
+
+            HisKi only
+            ----------
+            (none)
+            """
+        )
+    }
+
     func testRenderJuuretHiskiReportRendersNoneUnderJuuretOnlyWhenAllJuuretChildrenMatch() {
         let report = service.renderJuuretHiskiReport(
             service.compare(
