@@ -366,6 +366,28 @@ final class FamilyComparisonServiceTests: XCTestCase {
         XCTAssertTrue(candidates.isEmpty)
     }
 
+    func testMakeJuuretCandidatesConvertsChildrenToJuuretCandidates() throws {
+        let children = [
+            Person(name: "Liisa", birthDate: "12.10.1797", noteMarkers: []),
+            Person(name: "Maija Liisa", birthDate: "03.08.1806", noteMarkers: [])
+        ]
+
+        let candidates = service.makeJuuretCandidates(from: children)
+
+        XCTAssertEqual(candidates.count, 2)
+        XCTAssertEqual(candidates.map(\.rawName), ["Liisa", "Maija Liisa"])
+        XCTAssertEqual(candidates.map(\.source), [.juuretKalvialla, .juuretKalvialla])
+        XCTAssertEqual(candidates.map(\.birthDate), [date(1797, 10, 12), date(1806, 8, 3)])
+        XCTAssertTrue(candidates.allSatisfy { $0.familySearchId == nil })
+        XCTAssertTrue(candidates.allSatisfy { $0.hiskiCitation == nil })
+    }
+
+    func testMakeJuuretCandidatesReturnsEmptyForEmptyInput() {
+        let candidates = service.makeJuuretCandidates(from: [])
+
+        XCTAssertTrue(candidates.isEmpty)
+    }
+
     func testCompareJuuretAndHiskiCandidatesBuildsExactMatch() throws {
         let result = service.compare(
             juuretCandidates: [

@@ -463,6 +463,79 @@ class JuuretApp {
         comparisonReport = report
         return report
     }
+
+    private func runJuuretHiskiComparisonPipeline(for family: Family) async {
+        guard let couple = family.primaryCouple else {
+            logInfo(.app, "ℹ️ Skipping Juuret + HisKi comparison for \(family.familyId): no primary couple")
+            return
+        }
+
+        guard !couple.husband.name.isEmpty, !couple.wife.name.isEmpty else {
+            logInfo(.app, "ℹ️ Skipping Juuret + HisKi comparison for \(family.familyId): missing first-couple names")
+            return
+        }
+
+        guard let marriageDate = couple.fullMarriageDate ?? couple.marriageDate,
+              let marriageYear = extractYear(from: marriageDate) else {
+            logInfo(.app, "ℹ️ Skipping Juuret + HisKi comparison for \(family.familyId): missing first-couple marriage year")
+            return
+        }
+
+        let comparisonService = FamilyComparisonService(nameManager: nameEquivalenceManager)
+        let juuretCandidates = comparisonService.makeJuuretCandidates(from: couple.children)
+        let hiskiService = HiskiService(nameEquivalenceManager: nameEquivalenceManager)
+        hiskiService.setCurrentFamily(family.familyId)
+
+        do {
+            let searchURL = try hiskiService.buildFamilyBirthSearchUrl(
+                fatherName: couple.husband.name,
+                fatherPatronymic: couple.husband.patronymic,
+                motherName: couple.wife.name,
+                motherPatronymic: couple.wife.patronymic,
+                marriageYear: marriageYear
+            )
+
+            let searchHtml = try await loadHiskiSearchHtml(from: searchURL)
+            let rows = hiskiService.parseFamilyBirthResultsTable(searchHtml)
+            let hiskiEvents = try await hiskiService.fetchCitationsForFamilyBirthRows(rows)
+            let hiskiCandidates = comparisonService.makeHiskiCandidates(from: hiskiEvents)
+            let result = comparisonService.compare(
+                juuretCandidates: juuretCandidates,
+                hiskiCandidates: hiskiCandidates
+            )
+
+            guard currentFamily?.familyId == family.familyId else {
+                return
+            }
+
+            let report = renderJuuretHiskiComparisonReport(result)
+            logInfo(.app, "📋 Juuret + HisKi comparison report for \(family.familyId):\n\(report)")
+        } catch {
+            guard currentFamily?.familyId == family.familyId else {
+                return
+            }
+
+            comparisonReport = ""
+            logWarn(.app, "⚠️ Juuret + HisKi comparison unavailable for \(family.familyId): \(error.localizedDescription)")
+        }
+    }
+
+    private func loadHiskiSearchHtml(from url: URL) async throws -> String {
+        let (data, _) = try await URLSession.shared.data(from: url)
+        guard let html = String(data: data, encoding: .isoLatin1) else {
+            throw HiskiServiceError.sessionFailed
+        }
+
+        return html
+    }
+
+    private func extractYear(from rawDate: String) -> Int? {
+        guard let yearRange = rawDate.range(of: #"\b\d{4}\b"#, options: .regularExpression) else {
+            return nil
+        }
+
+        return Int(rawDate[yearRange])
+    }
     
     // MARK: - Family Extraction
     
@@ -551,6 +624,8 @@ class JuuretApp {
             }
             
             logInfo(.app, "✨ Family loaded from cache: \(normalizedId)")
+
+            await runJuuretHiskiComparisonPipeline(for: cached.mainFamily)
             
             prefetchManager.startPrefetchAll()
             
@@ -642,6 +717,8 @@ class JuuretApp {
                 pendingFamilyId = nil  // Clear pending - we're done
                 errorMessage = nil
             }
+
+            await runJuuretHiskiComparisonPipeline(for: family)
             
             let totalTime = Date().timeIntervalSince(startTime)
             logInfo(.app, "✅ Family extraction complete in \(String(format: "%.2f", totalTime))s")

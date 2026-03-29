@@ -50,6 +50,12 @@ final class FamilyComparisonService {
         }
     }
 
+    func makeJuuretCandidates(from people: [Person]) -> [PersonCandidate] {
+        people.map {
+            makeJuuretCandidate(from: $0)
+        }
+    }
+
     func compare(
         juuretCandidates: [PersonCandidate],
         hiskiCandidates: [PersonCandidate]
