@@ -82,7 +82,7 @@ final class FamilyResolverTests: XCTestCase {
         
         // When/Then: Should handle gracefully
         XCTAssertEqual(isolatedFamily.allParents.count, 2, "Should have parents")
-        XCTAssertEqual(isolatedFamily.allChildren.count, 0, "Should have no children")
+        XCTAssertEqual(isolatedFamily.children.count, 0, "Should have no children")
     }
     
     func testResolveCrossReferencesHandlesInvalidFamilyID() async {
