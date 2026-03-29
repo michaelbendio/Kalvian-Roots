@@ -77,6 +77,16 @@ struct FamilyContentView: View {
                     noteDefinitionsSection()
                         .padding(.top, 4)
                 }
+
+                if !juuretApp.comparisonReport.isEmpty {
+                    GroupBox("Juuret + HisKi Report") {
+                        Text(juuretApp.comparisonReport)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.top, 12)
+                }
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)

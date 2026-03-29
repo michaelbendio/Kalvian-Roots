@@ -46,6 +46,7 @@ class JuuretApp {
     var isProcessing = false
     var errorMessage: String?
     var extractionProgress: ExtractionProgress = .idle
+    var comparisonReport = ""
     
     // MARK: - Detail Routing (macOS NavigationSplitView)
     enum DetailRoute: Equatable {
@@ -83,6 +84,7 @@ class JuuretApp {
 
         // Set current family and activate workflow with cached network
         self.currentFamily = network.mainFamily
+        self.comparisonReport = ""
         self.familyNetworkWorkflow = FamilyNetworkWorkflow(
             nuclearFamily: network.mainFamily,
             familyResolver: self.familyResolver,
@@ -454,6 +456,13 @@ class JuuretApp {
             return "HisKi query failed: \(message)"
         }
     }
+
+    func renderJuuretHiskiComparisonReport(_ result: FamilyComparisonResult) -> String {
+        let report = FamilyComparisonService(nameManager: nameEquivalenceManager)
+            .renderJuuretHiskiReport(result)
+        comparisonReport = report
+        return report
+    }
     
     // MARK: - Family Extraction
     
@@ -508,6 +517,7 @@ class JuuretApp {
             errorMessage = nil
             currentFamily = nil
             enhancedFamily = nil
+            comparisonReport = ""
             extractionProgress = .extractingText
             pendingFamilyId = normalizedId  // Show this in nav bar immediately
         }
@@ -642,6 +652,7 @@ class JuuretApp {
             await MainActor.run {
                 currentFamily = nil
                 enhancedFamily = nil
+                comparisonReport = ""
                 isProcessing = false
                 extractionProgress = .idle
                 pendingFamilyId = nil  // Clear pending on error
