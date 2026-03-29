@@ -2,7 +2,7 @@
 //  RootsFileManager.swift
 //  Kalvian Roots
 //
-//  Canonical location file management - iCloud Drive ONLY, no fallback
+//  Canonical location file management - iCloud preferred, local Documents fallback
 //
 
 import Foundation
@@ -23,7 +23,7 @@ enum RootsFileManagerError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .iCloudNotAvailable:
-            return "iCloud Drive is not available. Please enable iCloud Drive in Settings."
+            return "iCloud Drive is unavailable right now. The app will use a local Documents copy if one exists, or you can import the file again."
         case .fileNotFound(let details):
             return "File not found: \(details)"
         case .wrongFile(let details):
@@ -53,11 +53,13 @@ final class RootsFileManager {
 
     /// The ONE canonical file name (normalize at comparison time)
     private let defaultFileName = "JuuretKälviällä.roots"
+    private let bookmarkKey = "FileBookmark"
 
     // MARK: - Init
     
     init() {
-        logInfo(.file, "📁 RootsFileManager initialized (main iCloud Drive Documents)")    }
+        logInfo(.file, "📁 RootsFileManager initialized (iCloud preferred, local fallback)")
+    }
 
     // MARK: - Canonical iCloud Locations
     
@@ -84,110 +86,142 @@ final class RootsFileManager {
         guard let docsURL = documentsURL() else { return nil }
         return docsURL.appendingPathComponent(defaultFileName)
     }
+
+    /// Local fallback file URL (<app Documents>/JuuretKälviällä.roots)
+    private func getLocalFallbackFileURL() -> URL? {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?
+            .appendingPathComponent(defaultFileName)
+    }
+
+    private func fileExists(at url: URL?) -> Bool {
+        guard let url else { return false }
+        return FileManager.default.fileExists(atPath: url.path)
+    }
+
+#if os(iOS)
+    private func resolveBookmarkedFileURL() -> URL? {
+        guard let bookmarkData = UserDefaults.standard.data(forKey: bookmarkKey) else {
+            return nil
+        }
+
+        do {
+            var isStale = false
+            let url = try URL(
+                resolvingBookmarkData: bookmarkData,
+                bookmarkDataIsStale: &isStale
+            )
+
+            if isStale {
+                logWarn(.file, "⚠️ Saved file bookmark is stale")
+                return nil
+            }
+
+            return url
+        } catch {
+            logWarn(.file, "⚠️ Failed to resolve bookmark: \(error)")
+            return nil
+        }
+    }
+#endif
+
+    /// Resolve the best reachable iCloud source before falling back locally.
+    private func getReachableCanonicalFileLocation() -> (url: URL, requiresSecurityScopedAccess: Bool, sourceDescription: String)? {
+        if let canonicalURL = getCanonicalFileURL(), fileExists(at: canonicalURL) {
+            return (canonicalURL, false, "iCloud canonical file")
+        }
+
+#if os(iOS)
+        if let bookmarkedURL = resolveBookmarkedFileURL(),
+           bookmarkedURL.lastPathComponent == defaultFileName,
+           fileExists(at: bookmarkedURL) {
+            return (bookmarkedURL, true, "saved iCloud bookmark")
+        }
+#endif
+
+        return nil
+    }
+
+    private func getAutoLoadCandidates() -> [(url: URL, requiresSecurityScopedAccess: Bool, sourceDescription: String)] {
+        var candidates: [(url: URL, requiresSecurityScopedAccess: Bool, sourceDescription: String)] = []
+
+        if let canonicalLocation = getReachableCanonicalFileLocation() {
+            candidates.append(canonicalLocation)
+        }
+
+        if let localFallbackURL = getLocalFallbackFileURL(),
+           fileExists(at: localFallbackURL),
+           !candidates.contains(where: { $0.url.standardizedFileURL == localFallbackURL.standardizedFileURL }) {
+            candidates.append((localFallbackURL, false, "local Documents fallback"))
+        }
+
+        return candidates
+    }
+
+    private func getPreferredRootsFileURL() -> URL? {
+        getAutoLoadCandidates().first?.url
+    }
     
     
     /// Get the effective file URL for cache path derivation
-    /// On iOS, prefers the bookmark URL (actual file location) over programmatic canonical URL
-    /// On macOS, returns the canonical URL
+    /// Returns the loaded file URL when available, otherwise the preferred source:
+    /// iCloud canonical first, local Documents fallback second.
     func getEffectiveFileURL() -> URL? {
-#if os(iOS)
-        // First check if we have a loaded file URL (most accurate)
         if let loadedURL = currentFileURL {
             return loadedURL
         }
-        
-        // Try to resolve bookmark URL without loading the file
-        // This allows cache to find the right location even before file is loaded
-        if let bookmarkData = UserDefaults.standard.data(forKey: "FileBookmark") {
-            do {
-                var isStale = false
-                let url = try URL(resolvingBookmarkData: bookmarkData,
-                                  bookmarkDataIsStale: &isStale)
-                if !isStale {
-                    return url
-                }
-            } catch {
-                logWarn(.file, "⚠️ Failed to resolve bookmark for cache path: \(error)")
-            }
-        }
-        
-        // Fallback to programmatic canonical URL
-        return getCanonicalFileURL()
-#else
-        // macOS: Always use canonical URL
-        return getCanonicalFileURL()
-#endif
+
+        return getPreferredRootsFileURL()
     }
     
     // MARK: - Loading methods
     
-    /// Auto-load the canonical file (should always succeed)
+    /// Auto-load the preferred roots file: iCloud first, local fallback second.
     func autoLoadDefaultFile() async {
-        logInfo(.file, "🔍 Auto-loading from canonical location")
-        
-#if os(macOS)
-// macOS: Direct access to com~apple~CloudDocs
-guard let canonicalURL = getCanonicalFileURL() else {
-    await MainActor.run {
-        self.errorMessage = "iCloud Drive not available"
-    }
-    logError(.file, "❌ iCloud Drive not available")
-    return
-}
+        logInfo(.file, "🔍 Auto-loading preferred roots file")
 
-logInfo(.file, "📂 Canonical location: \(canonicalURL.path)")
-
-do {
-    _ = try await loadFile(from: canonicalURL)
-    logInfo(.file, "✅ Auto-loaded successfully from canonical location")
-} catch {
-    await MainActor.run {
-        self.errorMessage = error.localizedDescription
-    }
-    logError(.file, "❌ Auto-load failed: \(error)")
-}
-
-#elseif os(iOS)
-// iOS: Try to load from saved security-scoped bookmark
-if let bookmarkData = UserDefaults.standard.data(forKey: "FileBookmark") {
-    do {
-        var isStale = false
-        let url = try URL(resolvingBookmarkData: bookmarkData,
-                          bookmarkDataIsStale: &isStale)
-        
-        if isStale {
-            logWarn(.file, "⚠️ Bookmark is stale, user needs to reselect file")
-            await MainActor.run {
-                self.errorMessage = "Please select the file from iCloud Drive/Documents"
-            }
+        let candidates = getAutoLoadCandidates()
+        guard !candidates.isEmpty else {
+            let message = """
+                JuuretKälviällä.roots was not found in iCloud Drive or local Documents.
+                Import or select the file to continue.
+                """
+            await setLoadFailure(message)
+            logWarn(.file, "⚠️ \(message)")
             return
         }
-        
-        // Start accessing security-scoped resource
-        guard url.startAccessingSecurityScopedResource() else {
-            throw RootsFileManagerError.loadFailed("Cannot access bookmarked file")
-        }
-        
-        defer { url.stopAccessingSecurityScopedResource() }
-        
-        _ = try await loadFile(from: url)
-        logInfo(.file, "✅ Auto-loaded from security-scoped bookmark")
-        
-    } catch {
-        logError(.file, "❌ Failed to load from bookmark: \(error)")
-        await MainActor.run {
-            self.errorMessage = "Please select the file from iCloud Drive/Documents"
-        }
-    }
-} else {
-    // No bookmark saved - user needs to select file
-    logInfo(.file, "📱 No saved bookmark - user needs to select file")
-    await MainActor.run {
-        self.errorMessage = "Please select JuuretKälviällä.roots from iCloud Drive/Documents"
-    }
-}
+
+        var lastError: Error?
+
+        for candidate in candidates {
+            logInfo(.file, "📂 Trying \(candidate.sourceDescription): \(candidate.url.path)")
+
+            do {
+#if os(iOS)
+                if candidate.requiresSecurityScopedAccess {
+                    guard candidate.url.startAccessingSecurityScopedResource() else {
+                        throw RootsFileManagerError.loadFailed(
+                            "Cannot access the saved iCloud file. The local Documents copy will be used if available."
+                        )
+                    }
+
+                    defer { candidate.url.stopAccessingSecurityScopedResource() }
+                }
 #endif
-}
+
+                _ = try await loadFile(from: candidate.url)
+                logInfo(.file, "✅ Auto-loaded successfully from \(candidate.sourceDescription)")
+                return
+            } catch {
+                lastError = error
+                logWarn(.file, "⚠️ Auto-load failed from \(candidate.sourceDescription): \(error.localizedDescription)")
+            }
+        }
+
+        let message = lastError?.localizedDescription
+            ?? "Unable to load JuuretKälviällä.roots from iCloud Drive or local Documents."
+        await setLoadFailure(message)
+        logError(.file, "❌ Auto-load failed: \(message)")
+    }
     
     /// Load from a specific URL (validates it's the canonical file)
     func loadFile(from url: URL) async throws -> String {
@@ -207,27 +241,66 @@ if let bookmarkData = UserDefaults.standard.data(forKey: "FileBookmark") {
             // Validate canonical marker
             guard validateCanonicalMarker(in: content) else {
                 throw RootsFileManagerError.loadFailed("""
-                    FATAL: Missing canonical marker.
+                    Missing canonical marker.
                     The first line must be "canonical"
                     """)
             }
-            
-            await MainActor.run {
-                self.currentFileURL = url
-                self.currentFileContent = content
-                self.isFileLoaded = true
-                self.errorMessage = nil
-            }
+
+            await finishLoadingFile(content: content, from: url)
             
             logInfo(.file, "✅ File loaded successfully")
             return content
-            
+
+        } catch let error as RootsFileManagerError {
+            await setLoadFailure(error.localizedDescription)
+            throw error
         } catch {
-            await MainActor.run {
-                self.errorMessage = error.localizedDescription
-                self.isFileLoaded = false
-            }
+            await setLoadFailure(error.localizedDescription)
             throw RootsFileManagerError.loadFailed(error.localizedDescription)
+        }
+    }
+
+    private func finishLoadingFile(content: String, from url: URL) async {
+        refreshLocalFallbackCopy(with: content, sourceURL: url)
+
+        await MainActor.run {
+            self.currentFileURL = url
+            self.currentFileContent = content
+            self.isFileLoaded = true
+            self.errorMessage = nil
+        }
+    }
+
+    private func refreshLocalFallbackCopy(with content: String, sourceURL: URL) {
+        guard let localFallbackURL = getLocalFallbackFileURL() else {
+            logWarn(.file, "⚠️ Could not resolve local Documents fallback path")
+            return
+        }
+
+        guard sourceURL.standardizedFileURL != localFallbackURL.standardizedFileURL else {
+            logDebug(.file, "📄 Loaded local Documents fallback copy")
+            return
+        }
+
+        do {
+            try FileManager.default.createDirectory(
+                at: localFallbackURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true,
+                attributes: nil
+            )
+            try content.write(to: localFallbackURL, atomically: true, encoding: .utf8)
+            logInfo(.file, "💾 Refreshed local Documents fallback copy")
+        } catch {
+            logWarn(.file, "⚠️ Failed to refresh local Documents fallback copy: \(error.localizedDescription)")
+        }
+    }
+
+    private func setLoadFailure(_ message: String) async {
+        await MainActor.run {
+            self.currentFileURL = nil
+            self.currentFileContent = nil
+            self.isFileLoaded = false
+            self.errorMessage = message
         }
     }
 
@@ -251,12 +324,12 @@ if let bookmarkData = UserDefaults.standard.data(forKey: "FileBookmark") {
     // MARK: - macOS File Picker
     
     #if os(macOS)
-    /// Show file picker on macOS (validates canonical location)
+    /// Show file picker on macOS (validates canonical filename and marker)
     @MainActor
     func showFilePicker() async throws {
         let panel = NSOpenPanel()
-        panel.title = "Select JuuretKälviällä.roots from iCloud Drive"
-        panel.message = "Please select the file from the Kalvian Roots folder in iCloud Drive"
+        panel.title = "Select JuuretKälviällä.roots"
+        panel.message = "Select the canonical roots file"
         panel.prompt = "Select"
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
@@ -303,7 +376,7 @@ if let bookmarkData = UserDefaults.standard.data(forKey: "FileBookmark") {
             // Validate canonical marker
             guard validateCanonicalMarker(in: content) else {
                 throw RootsFileManagerError.loadFailed("""
-                    FATAL: Missing canonical marker.
+                    Missing canonical marker.
                     The first line must be "canonical"
                     """)
             }
@@ -315,23 +388,22 @@ if let bookmarkData = UserDefaults.standard.data(forKey: "FileBookmark") {
                     includingResourceValuesForKeys: nil,
                     relativeTo: nil
                 )
-                UserDefaults.standard.set(bookmarkData, forKey: "FileBookmark")
+                UserDefaults.standard.set(bookmarkData, forKey: bookmarkKey)
                 logInfo(.file, "💾 Saved security-scoped bookmark")
             } catch {
                 logWarn(.file, "⚠️ Failed to save bookmark: \(error)")
             }
-            
-            await MainActor.run {
-                self.currentFileURL = url
-                self.currentFileContent = content
-                self.isFileLoaded = true
-                self.errorMessage = nil
-            }
+
+            await finishLoadingFile(content: content, from: url)
             
             logInfo(.file, "✅ File loaded via iOS picker")
             return content
-            
+
+        } catch let error as RootsFileManagerError {
+            await setLoadFailure(error.localizedDescription)
+            throw error
         } catch {
+            await setLoadFailure(error.localizedDescription)
             throw RootsFileManagerError.loadFailed("Failed to read file: \(error.localizedDescription)")
         }
     }
