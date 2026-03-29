@@ -257,3 +257,96 @@ final class FamilyComparisonResultTests: XCTestCase {
         return url
     }
 }
+
+final class FamilyComparisonServiceTests: XCTestCase {
+
+    private var service: FamilyComparisonService!
+    private var nameManager: NameEquivalenceManager!
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        nameManager = NameEquivalenceManager()
+        service = FamilyComparisonService(nameManager: nameManager)
+    }
+
+    override func tearDownWithError() throws {
+        service = nil
+        nameManager = nil
+        try super.tearDownWithError()
+    }
+
+    func testMakeHiskiCandidatesConvertsOneEventToOneCandidate() throws {
+        let event = HiskiService.HiskiFamilyBirthEvent(
+            birthDate: "25.6.1802",
+            childName: "Matti",
+            fatherName: "Elias Matinp.",
+            motherName: "Maria Antint.",
+            recordURL: "https://hiski.genealogia.fi/hiski?en+4092193",
+            citationURL: "https://hiski.genealogia.fi/hiski?en+t4092193"
+        )
+
+        let candidates = service.makeHiskiCandidates(from: [event])
+
+        XCTAssertEqual(candidates.count, 1)
+
+        let candidate = try XCTUnwrap(candidates.first)
+        XCTAssertEqual(candidate.rawName, "Matti")
+        XCTAssertEqual(candidate.source, .hiski)
+        XCTAssertNil(candidate.familySearchId)
+        XCTAssertEqual(candidate.hiskiCitation, URL(string: "https://hiski.genealogia.fi/hiski?en+t4092193"))
+        XCTAssertEqual(candidate.birthDate, date(1802, 6, 25))
+    }
+
+    func testMakeHiskiCandidatesPreservesInputOrdering() {
+        let events = [
+            HiskiService.HiskiFamilyBirthEvent(
+                birthDate: "25.6.1802",
+                childName: "Matti",
+                fatherName: "Elias Matinp.",
+                motherName: "Maria Antint.",
+                recordURL: "https://hiski.genealogia.fi/hiski?en+4092193",
+                citationURL: "https://hiski.genealogia.fi/hiski?en+t4092193"
+            ),
+            HiskiService.HiskiFamilyBirthEvent(
+                birthDate: "1.3.1804",
+                childName: "Liisa",
+                fatherName: "Elias Matinp.",
+                motherName: "Maria Antint.",
+                recordURL: "https://hiski.genealogia.fi/hiski?en+4092194",
+                citationURL: "https://hiski.genealogia.fi/hiski?en+t4092194"
+            )
+        ]
+
+        let candidates = service.makeHiskiCandidates(from: events)
+
+        XCTAssertEqual(candidates.map(\.rawName), ["Matti", "Liisa"])
+        XCTAssertEqual(
+            candidates.map(\.hiskiCitation),
+            [
+                URL(string: "https://hiski.genealogia.fi/hiski?en+t4092193"),
+                URL(string: "https://hiski.genealogia.fi/hiski?en+t4092194")
+            ]
+        )
+    }
+
+    func testMakeHiskiCandidatesReturnsEmptyForEmptyInput() {
+        let candidates = service.makeHiskiCandidates(from: [])
+
+        XCTAssertTrue(candidates.isEmpty)
+    }
+
+    private func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .gregorian)
+        components.timeZone = TimeZone(secondsFromGMT: 0)
+        components.year = year
+        components.month = month
+        components.day = day
+
+        guard let date = components.date else {
+            preconditionFailure("Invalid date components: \(year)-\(month)-\(day)")
+        }
+
+        return date
+    }
+}

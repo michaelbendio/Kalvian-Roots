@@ -35,6 +35,12 @@ final class FamilyComparisonService {
             hiski: hiskiCandidates
         )
     }
+
+    func makeHiskiCandidates(from events: [HiskiService.HiskiFamilyBirthEvent]) -> [PersonCandidate] {
+        events.map {
+            makeHiskiCandidate(from: $0)
+        }
+    }
 }
 
 private extension FamilyComparisonService {
@@ -69,6 +75,17 @@ private extension FamilyComparisonService {
             nameManager: nameManager,
             familySearchId: nil,
             hiskiCitation: URL(string: citation.url)
+        )
+    }
+
+    func makeHiskiCandidate(from event: HiskiService.HiskiFamilyBirthEvent) -> PersonCandidate {
+        PersonCandidate(
+            name: event.childName,
+            birthDate: parseGenealogyDate(event.birthDate),
+            source: .hiski,
+            nameManager: nameManager,
+            familySearchId: nil,
+            hiskiCitation: URL(string: event.citationURL)
         )
     }
 
