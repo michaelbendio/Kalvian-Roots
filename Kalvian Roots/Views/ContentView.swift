@@ -73,7 +73,8 @@ struct ContentView: View {
 
 struct SidebarView: View {
     @Environment(JuuretApp.self) private var app
-    
+    @State private var showingAIConfiguration = false
+
     var body: some View {
         List {
             Section("App Status") {
@@ -86,7 +87,7 @@ struct SidebarView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            
+
             Section("Cache") {
                 let cachedIds = app.familyNetworkCache.getAllCachedFamilyIds()
                 if cachedIds.isEmpty {
@@ -96,9 +97,7 @@ struct SidebarView: View {
                 } else {
                     ForEach(cachedIds.prefix(5), id: \.self) { familyId in
                         Button {
-                            // Try to load directly from cache for immediate UI switch
                             if let cached = app.familyNetworkCache.getCachedNetwork(familyId: familyId) {
-                                // Updated: Use new helper and set route
                                 let before = app.currentFamily?.familyId ?? "nil"
                                 let network = cached
                                 app.showFamilyFromCache(network)
@@ -106,7 +105,6 @@ struct SidebarView: View {
                                 logInfo(.ui, "🔄 currentFamily changed: \(before) -> \(after)")
                                 logInfo(.ui, "📦 Loaded cached family \(familyId) from Sidebar Cache (workflow activated)")
                             } else {
-                                // Fallback: if not in cache (stale list), trigger extraction
                                 Task {
                                     logInfo(.ui, "⚠️ Cache miss for \(familyId) from Sidebar, extracting…")
                                     await app.extractFamily(familyId: familyId)
@@ -120,32 +118,152 @@ struct SidebarView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    
+
                     if cachedIds.count > 5 {
-                                            Text("+ \(cachedIds.count - 5) more...")
-                                                .font(.caption)
-                                                .foregroundStyle(.tertiary)
-                                        }
-                                        
-                                        Divider()
-                                        
-                                        Button(role: .destructive) {
-                                            app.familyNetworkCache.clearAllCache()
-                                        } label: {
-                                            Label("Clear Cache", systemImage: "trash")
-                                                .font(.caption)
-                                        }
-                                        .buttonStyle(.plain)
-                                        .foregroundStyle(.red)
-                                    }
-                                }
-       }
+                        Text("+ \(cachedIds.count - 5) more...")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+
+                    Divider()
+
+                    Button(role: .destructive) {
+                        app.familyNetworkCache.clearAllCache()
+                    } label: {
+                        Label("Clear Cache", systemImage: "trash")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.red)
+                }
+            }
+
+            Section("AI Parsing") {
+                HStack {
+                    Circle()
+                        .fill(app.aiParsingService.isConfigured ? .green : .orange)
+                        .frame(width: 8, height: 8)
+                    Text(app.aiParsingService.isConfigured ? "Configured" : "Not Configured")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack {
+                    Text("Provider")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(app.aiParsingService.currentServiceName)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Button {
+                    showingAIConfiguration = true
+                } label: {
+                    Label("Configure AI", systemImage: "gearshape")
+                        .font(.caption)
+                }
+            }
+        }
         .navigationTitle("Kalvian Roots")
         .frame(minWidth: 200)
+        .sheet(isPresented: $showingAIConfiguration) {
+            AIParsingConfigurationView()
+                .environment(app)
+        }
+    }
+}
+
+private struct AIParsingConfigurationView: View {
+    @Environment(JuuretApp.self) private var app
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var apiKey = ""
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("AI Parsing")
+                .font(.title3.weight(.semibold))
+
+            HStack {
+                Circle()
+                    .fill(app.aiParsingService.isConfigured ? .green : .orange)
+                    .frame(width: 8, height: 8)
+                Text(app.aiParsingService.isConfigured ? "Configured" : "Not Configured")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Text("Provider")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(app.aiParsingService.currentServiceName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("API Key")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                SecureField("Enter \(app.aiParsingService.currentServiceName) API key", text: $apiKey)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
+            HStack {
+                Spacer()
+
+                Button("Cancel") {
+                    dismiss()
+                }
+
+                Button(isSaving ? "Saving..." : "Save") {
+                    saveConfiguration()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 360)
+    }
+
+    private func saveConfiguration() {
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else { return }
+
+        isSaving = true
+        errorMessage = nil
+
+        Task {
+            do {
+                try await app.configureAIService(apiKey: trimmedKey)
+                await MainActor.run {
+                    isSaving = false
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    isSaving = false
+                    errorMessage = error.localizedDescription
+                }
+            }
+        }
     }
 }
 
 #Preview {
     ContentView()
 }
-

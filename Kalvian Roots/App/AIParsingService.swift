@@ -21,6 +21,10 @@ class AIParsingService {
     var isConfigured: Bool {
         service.isConfigured
     }
+
+    var currentServiceName: String {
+        service.name
+    }
     
     // MARK: - Initialization
     
