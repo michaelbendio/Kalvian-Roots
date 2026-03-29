@@ -41,6 +41,17 @@ final class FamilyComparisonService {
             makeHiskiCandidate(from: $0)
         }
     }
+
+    func compare(
+        juuretCandidates: [PersonCandidate],
+        hiskiCandidates: [PersonCandidate]
+    ) -> FamilyComparisonResult {
+        FamilyComparisonResult(
+            familySearch: [],
+            juuretKalvialla: juuretCandidates,
+            hiski: hiskiCandidates
+        )
+    }
 }
 
 private extension FamilyComparisonService {

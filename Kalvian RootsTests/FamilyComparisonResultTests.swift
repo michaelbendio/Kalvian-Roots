@@ -260,18 +260,49 @@ final class FamilyComparisonResultTests: XCTestCase {
 
 final class FamilyComparisonServiceTests: XCTestCase {
 
+    private let equivalencesKey = "NameEquivalences"
+    private let equivalenceVersionKey = "NameEquivalencesVersion"
+
     private var service: FamilyComparisonService!
     private var nameManager: NameEquivalenceManager!
+    private var savedEquivalencesData: Data?
+    private var savedVersionValue: Any?
 
     override func setUpWithError() throws {
         try super.setUpWithError()
+
+        let defaults = UserDefaults.standard
+        savedEquivalencesData = defaults.data(forKey: equivalencesKey)
+        savedVersionValue = defaults.object(forKey: equivalenceVersionKey)
+
+        defaults.removeObject(forKey: equivalencesKey)
+        defaults.removeObject(forKey: equivalenceVersionKey)
+
         nameManager = NameEquivalenceManager()
+        nameManager.clearAllEquivalences()
+        nameManager.addEquivalence(between: "Liisa", and: "Elisabeta")
         service = FamilyComparisonService(nameManager: nameManager)
     }
 
     override func tearDownWithError() throws {
+        let defaults = UserDefaults.standard
+
+        if let savedEquivalencesData {
+            defaults.set(savedEquivalencesData, forKey: equivalencesKey)
+        } else {
+            defaults.removeObject(forKey: equivalencesKey)
+        }
+
+        if let savedVersionValue {
+            defaults.set(savedVersionValue, forKey: equivalenceVersionKey)
+        } else {
+            defaults.removeObject(forKey: equivalenceVersionKey)
+        }
+
         service = nil
         nameManager = nil
+        savedEquivalencesData = nil
+        savedVersionValue = nil
         try super.tearDownWithError()
     }
 
@@ -333,6 +364,157 @@ final class FamilyComparisonServiceTests: XCTestCase {
         let candidates = service.makeHiskiCandidates(from: [])
 
         XCTAssertTrue(candidates.isEmpty)
+    }
+
+    func testCompareJuuretAndHiskiCandidatesBuildsExactMatch() throws {
+        let result = service.compare(
+            juuretCandidates: [
+                candidate(
+                    name: "Matti",
+                    birth: date(1802, 6, 25),
+                    source: .juuretKalvialla
+                )
+            ],
+            hiskiCandidates: [
+                candidate(
+                    name: "Matti",
+                    birth: date(1802, 6, 25),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("matti-1802")
+                )
+            ]
+        )
+
+        XCTAssertEqual(result.matches.count, 1)
+        XCTAssertEqual(result.juuretOnly.count, 0)
+        XCTAssertEqual(result.hiskiOnly.count, 0)
+
+        let match = try XCTUnwrap(result.matches.first)
+        XCTAssertEqual(match.juuretKalvialla?.rawName, "Matti")
+        XCTAssertEqual(match.hiski?.rawName, "Matti")
+        XCTAssertNil(match.familySearch)
+    }
+
+    func testCompareJuuretAndHiskiCandidatesBuildsEquivalentNameMatch() throws {
+        let result = service.compare(
+            juuretCandidates: [
+                candidate(
+                    name: "Liisa",
+                    birth: date(1797, 10, 12),
+                    source: .juuretKalvialla
+                )
+            ],
+            hiskiCandidates: [
+                candidate(
+                    name: "Elisabeta",
+                    birth: date(1797, 10, 12),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("liisa-1797")
+                )
+            ]
+        )
+
+        XCTAssertEqual(result.matches.count, 1)
+        XCTAssertEqual(result.juuretOnly.count, 0)
+        XCTAssertEqual(result.hiskiOnly.count, 0)
+        XCTAssertEqual(result.matches.first?.juuretKalvialla?.rawName, "Liisa")
+        XCTAssertEqual(result.matches.first?.hiski?.rawName, "Elisabeta")
+    }
+
+    func testCompareJuuretAndHiskiCandidatesReportsSourceOnlyChildren() {
+        let result = service.compare(
+            juuretCandidates: [
+                candidate(
+                    name: "Maija Liisa",
+                    birth: date(1806, 8, 3),
+                    source: .juuretKalvialla
+                )
+            ],
+            hiskiCandidates: [
+                candidate(
+                    name: "Anders",
+                    birth: date(1806, 11, 22),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("anders-1806")
+                )
+            ]
+        )
+
+        XCTAssertEqual(result.matches.count, 0)
+        XCTAssertEqual(result.juuretOnly.count, 1)
+        XCTAssertEqual(result.hiskiOnly.count, 1)
+        XCTAssertEqual(result.juuretOnly.first?.rawName, "Maija Liisa")
+        XCTAssertEqual(result.hiskiOnly.first?.rawName, "Anders")
+    }
+
+    func testCompareJuuretAndHiskiCandidatesKeepsMatchesOrderedByBirthDate() {
+        let result = service.compare(
+            juuretCandidates: [
+                candidate(
+                    name: "Matti",
+                    birth: date(1802, 6, 25),
+                    source: .juuretKalvialla
+                ),
+                candidate(
+                    name: "Liisa",
+                    birth: date(1797, 10, 12),
+                    source: .juuretKalvialla
+                )
+            ],
+            hiskiCandidates: [
+                candidate(
+                    name: "Matti",
+                    birth: date(1802, 6, 25),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("matti-1802")
+                ),
+                candidate(
+                    name: "Elisabeta",
+                    birth: date(1797, 10, 12),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("liisa-1797")
+                )
+            ]
+        )
+
+        XCTAssertEqual(
+            result.matches.compactMap(\.identity.birthDate),
+            [date(1797, 10, 12), date(1802, 6, 25)]
+        )
+        XCTAssertEqual(result.matches.map { $0.juuretKalvialla?.rawName }, ["Liisa", "Matti"])
+    }
+
+    func testCompareJuuretAndHiskiCandidatesReturnsEmptyResultForEmptyInputs() {
+        let result = service.compare(juuretCandidates: [], hiskiCandidates: [])
+
+        XCTAssertTrue(result.matches.isEmpty)
+        XCTAssertTrue(result.juuretOnly.isEmpty)
+        XCTAssertTrue(result.hiskiOnly.isEmpty)
+        XCTAssertTrue(result.familySearchOnly.isEmpty)
+    }
+
+    private func candidate(
+        name: String,
+        birth: Date,
+        source: PersonCandidate.SourceType,
+        hiskiCitation: URL? = nil
+    ) -> PersonCandidate {
+        PersonCandidate(
+            name: name,
+            birthDate: birth,
+            source: source,
+            nameManager: nameManager,
+            familySearchId: nil,
+            hiskiCitation: hiskiCitation
+        )
+    }
+
+    private func hiskiCitation(_ slug: String) -> URL {
+        guard let url = URL(string: "https://hiski.genealogia.fi/\(slug)") else {
+            preconditionFailure("Invalid HisKi citation slug: \(slug)")
+        }
+
+        return url
     }
 
     private func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
