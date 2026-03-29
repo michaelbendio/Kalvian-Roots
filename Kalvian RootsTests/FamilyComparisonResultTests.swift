@@ -515,6 +515,41 @@ final class FamilyComparisonServiceTests: XCTestCase {
         XCTAssertTrue(result.familySearchOnly.isEmpty)
     }
 
+    func testCompareJuuretAndHiskiCandidatesKeepsJuuretOnlyEmptyWhenAllJuuretChildrenMatch() {
+        let result = service.compare(
+            juuretCandidates: [
+                candidate(
+                    name: "Liisa",
+                    birth: date(1797, 10, 12),
+                    source: .juuretKalvialla
+                ),
+                candidate(
+                    name: "Matti",
+                    birth: date(1802, 6, 25),
+                    source: .juuretKalvialla
+                )
+            ],
+            hiskiCandidates: [
+                candidate(
+                    name: "Elisabeta",
+                    birth: date(1797, 10, 12),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("liisa-1797")
+                ),
+                candidate(
+                    name: "Matti",
+                    birth: date(1802, 6, 25),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("matti-1802")
+                )
+            ]
+        )
+
+        XCTAssertEqual(result.matches.count, 2)
+        XCTAssertTrue(result.juuretOnly.isEmpty)
+        XCTAssertTrue(result.hiskiOnly.isEmpty)
+    }
+
     func testRenderJuuretHiskiReportIncludesAllSectionsInOrder() {
         let result = service.compare(
             juuretCandidates: [
@@ -594,9 +629,22 @@ final class FamilyComparisonServiceTests: XCTestCase {
 
         let report = service.renderJuuretHiskiReport(result)
 
-        XCTAssertTrue(report.contains("Liisa / Elisabeta — 12 Oct 1797"))
-        XCTAssertTrue(report.contains("Maija Liisa — 03 Aug 1806"))
-        XCTAssertTrue(report.contains("Anders — 22 Nov 1806"))
+        XCTAssertEqual(
+            report,
+            """
+            Matches
+            -------
+            Liisa / Elisabeta — 12 Oct 1797
+
+            Juuret only
+            -----------
+            Maija Liisa — 03 Aug 1806
+
+            HisKi only
+            ----------
+            Anders — 22 Nov 1806
+            """
+        )
     }
 
     func testRenderJuuretHiskiReportKeepsItemOrderingByBirthDate() {
@@ -662,6 +710,57 @@ final class FamilyComparisonServiceTests: XCTestCase {
             Matches
             -------
             (none)
+
+            Juuret only
+            -----------
+            (none)
+
+            HisKi only
+            ----------
+            (none)
+            """
+        )
+    }
+
+    func testRenderJuuretHiskiReportRendersNoneUnderJuuretOnlyWhenAllJuuretChildrenMatch() {
+        let report = service.renderJuuretHiskiReport(
+            service.compare(
+                juuretCandidates: [
+                    candidate(
+                        name: "Liisa",
+                        birth: date(1797, 10, 12),
+                        source: .juuretKalvialla
+                    ),
+                    candidate(
+                        name: "Matti",
+                        birth: date(1802, 6, 25),
+                        source: .juuretKalvialla
+                    )
+                ],
+                hiskiCandidates: [
+                    candidate(
+                        name: "Elisabeta",
+                        birth: date(1797, 10, 12),
+                        source: .hiski,
+                        hiskiCitation: hiskiCitation("liisa-1797")
+                    ),
+                    candidate(
+                        name: "Matti",
+                        birth: date(1802, 6, 25),
+                        source: .hiski,
+                        hiskiCitation: hiskiCitation("matti-1802")
+                    )
+                ]
+            )
+        )
+
+        XCTAssertEqual(
+            report,
+            """
+            Matches
+            -------
+            Liisa / Elisabeta — 12 Oct 1797
+            Matti — 25 Jun 1802
 
             Juuret only
             -----------

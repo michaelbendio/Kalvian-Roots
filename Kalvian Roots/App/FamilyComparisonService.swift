@@ -68,8 +68,12 @@ final class FamilyComparisonService {
     }
 
     func renderJuuretHiskiReport(_ result: FamilyComparisonResult) -> String {
+        let juuretHiskiMatches = result.matches.filter {
+            $0.juuretKalvialla != nil && $0.hiski != nil
+        }
+
         [
-            renderReportSection(title: "Matches", items: result.matches.map(renderMatchLine)),
+            renderReportSection(title: "Matches", items: juuretHiskiMatches.map(renderMatchLine)),
             renderReportSection(title: "Juuret only", items: result.juuretOnly.map(renderCandidateLine)),
             renderReportSection(title: "HisKi only", items: result.hiskiOnly.map(renderCandidateLine))
         ].joined(separator: "\n\n")
