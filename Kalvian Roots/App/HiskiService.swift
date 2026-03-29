@@ -191,6 +191,10 @@ class HiskiWebViewManager {
 // MARK: - Hiski Service
 
 class HiskiService {
+    static let yearsBeforeMarriage = 1
+    static let childbearingWindowYears = 35
+    static let maxHiskiResults = 50
+
     private let nameEquivalenceManager: NameEquivalenceManager
     private let parishes = "0053,0093,0165,0183,0218,0172,0265,0295,0301,0386,0555,0581,0614"
     private var currentFamilyId: String?
@@ -656,7 +660,7 @@ class HiskiService {
             "alkuvuosi": date,
             "loppuvuosi": date,
             "ikyla": "",
-            "maxkpl": "15",
+            "maxkpl": String(Self.maxHiskiResults),
             "ietunimi": "",
             "aetunimi": "",
             "ipatronyymi": "",
@@ -677,6 +681,43 @@ class HiskiService {
         
         return try buildSearchUrl(params: params)
     }
+
+    func buildFamilyBirthSearchUrl(
+        fatherName: String,
+        fatherPatronymic: String?,
+        motherName: String,
+        motherPatronymic: String?,
+        marriageYear: Int
+    ) throws -> URL {
+        let startYear = marriageYear - Self.yearsBeforeMarriage
+        let endYear = marriageYear + Self.childbearingWindowYears
+
+        let params = [
+            "komento": "haku",
+            "srk": parishes,
+            "kirja": "kastetut",
+            "kieli": "en",
+            "etunimi": "",
+            "alkuvuosi": String(startYear),
+            "loppuvuosi": String(endYear),
+            "ikyla": "",
+            "maxkpl": String(Self.maxHiskiResults),
+            "ietunimi": fatherName,
+            "aetunimi": motherName,
+            "ipatronyymi": fatherPatronymic ?? "",
+            "apatronyymi": motherPatronymic ?? "",
+            "isukunimi": "",
+            "asukunimi": "",
+            "iammatti": "",
+            "aammatti": "",
+            "ketunimi": "",
+            "kpatronyymi": "",
+            "ksukunimi": "",
+            "kammatti": ""
+        ]
+
+        return try buildSearchUrl(params: params)
+    }
     
     private func buildDeathSearchUrl(name: String, date: String) throws -> URL {
         let params = [
@@ -686,7 +727,7 @@ class HiskiService {
             "kieli": "en",
             "alkuvuosi": date,
             "loppuvuosi": date,
-            "maxkpl": "15",
+            "maxkpl": String(Self.maxHiskiResults),
             "ietunimi": name,
             "aetunimi": "",
             "ipatronyymi": "",
@@ -714,7 +755,7 @@ class HiskiService {
             "kieli": "en",
             "alkuvuosi": date,
             "loppuvuosi": date,
-            "maxkpl": "15",
+            "maxkpl": String(Self.maxHiskiResults),
             "ietunimi": husbandName,
             "aetunimi": wifeName,
             "ipatronyymi": "",

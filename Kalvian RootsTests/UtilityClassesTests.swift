@@ -123,6 +123,29 @@ final class HiskiServiceTests: XCTestCase {
         // Then: Should be set
         XCTAssertTrue(true, "Should set current family")
     }
+
+    func testBuildFamilyBirthSearchUrlUsesBoundedFamilyQueryParameters() throws {
+        let url = try service.buildFamilyBirthSearchUrl(
+            fatherName: "Elias",
+            fatherPatronymic: "Matinp.",
+            motherName: "Maria",
+            motherPatronymic: "Antint.",
+            marriageYear: 1800
+        )
+
+        let queryItems = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+        let values = Dictionary(uniqueKeysWithValues: queryItems.map { ($0.name, $0.value ?? "") })
+
+        XCTAssertEqual(values["etunimi"], "")
+        XCTAssertEqual(values["alkuvuosi"], "1799")
+        XCTAssertEqual(values["loppuvuosi"], "1835")
+        XCTAssertEqual(values["ietunimi"], "Elias")
+        XCTAssertEqual(values["ipatronyymi"], "Matinp.")
+        XCTAssertEqual(values["aetunimi"], "Maria")
+        XCTAssertEqual(values["apatronyymi"], "Antint.")
+        XCTAssertEqual(values["maxkpl"], "50")
+        XCTAssertEqual(values["srk"], "0053,0093,0165,0183,0218,0172,0265,0295,0301,0386,0555,0581,0614")
+    }
     
     func testQueryBirthGeneratesURL() async throws {
         // Integration test - would require actual query
