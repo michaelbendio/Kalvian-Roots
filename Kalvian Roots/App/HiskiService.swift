@@ -195,6 +195,14 @@ class HiskiService {
     static let childbearingWindowYears = 35
     static let maxHiskiResults = 50
 
+    struct HiskiFamilyBirthRow: Equatable {
+        let birthDate: String
+        let childName: String
+        let fatherName: String
+        let motherName: String
+        let recordPath: String
+    }
+
     private let nameEquivalenceManager: NameEquivalenceManager
     private let parishes = "0053,0093,0165,0183,0218,0172,0265,0295,0301,0386,0555,0581,0614"
     private var currentFamilyId: String?
@@ -577,11 +585,6 @@ class HiskiService {
             return nil
         }
 
-        let slGifHrefPattern = "<a\\s+href=\"([^\"]+)\">\\s*<img[^>]+src=\"/historia/sl\\.gif\""
-        guard let slGifRegex = try? NSRegularExpression(pattern: slGifHrefPattern, options: [.caseInsensitive]) else {
-            return nil
-        }
-
         let rows = rowRegex.matches(in: html, range: NSRange(html.startIndex..., in: html))
         for rowMatch in rows {
             guard let rowRange = Range(rowMatch.range(at: 1), in: html) else { continue }
@@ -589,16 +592,18 @@ class HiskiService {
 
             guard rowContent.contains(queryDate) else { continue }
 
-            guard let slMatch = slGifRegex.firstMatch(in: rowContent, range: NSRange(rowContent.startIndex..., in: rowContent)),
-                  let hrefRange = Range(slMatch.range(at: 1), in: rowContent) else { continue }
-
-            let href = String(rowContent[hrefRange])
-            logInfo(.app, "✅ Found matching link in row: \(href)")
-            return href
+            if let href = extractSlGifHref(from: rowContent) {
+                logInfo(.app, "✅ Found matching link in row: \(href)")
+                return href
+            }
         }
 
         logWarn(.app, "⚠️ No sl.gif link found matching date \(queryDate)")
         return nil
+    }
+
+    func parseFamilyBirthResultsTable(_ html: String) -> [HiskiFamilyBirthRow] {
+        extractTableRows(from: html).compactMap(parseFamilyBirthRow)
     }
     
     // MARK: - Pure HTTP Citation Extraction
@@ -646,6 +651,114 @@ class HiskiService {
         }
 
         return citationUrl
+    }
+
+    private func parseFamilyBirthRow(from rowHtml: String) -> HiskiFamilyBirthRow? {
+        guard let recordPath = extractSlGifHref(from: rowHtml) else {
+            return nil
+        }
+
+        let cleanedCellTexts = extractTableCellContents(from: rowHtml).map(cleanHiskiCellText)
+        guard !cleanedCellTexts.isEmpty else {
+            return nil
+        }
+
+        let dateCandidates = Array(cleanedCellTexts.prefix(2))
+        guard let birthDate = dateCandidates.compactMap(extractBirthDate).first else {
+            return nil
+        }
+
+        let trailingValues = cleanedCellTexts.filter { !$0.isEmpty }.suffix(3)
+        guard trailingValues.count == 3 else {
+            return nil
+        }
+
+        let names = Array(trailingValues)
+        let fatherName = names[0]
+        let motherName = names[1]
+        let childName = names[2]
+
+        guard !fatherName.isEmpty, !motherName.isEmpty, !childName.isEmpty else {
+            return nil
+        }
+
+        return HiskiFamilyBirthRow(
+            birthDate: birthDate,
+            childName: childName,
+            fatherName: fatherName,
+            motherName: motherName,
+            recordPath: recordPath
+        )
+    }
+
+    private func extractTableRows(from html: String) -> [String] {
+        let rowPattern = "<TR[^>]*>(.*?)</TR>"
+        guard let rowRegex = try? NSRegularExpression(pattern: rowPattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else {
+            return []
+        }
+
+        return rowRegex.matches(in: html, range: NSRange(html.startIndex..., in: html)).compactMap { match in
+            guard let rowRange = Range(match.range(at: 1), in: html) else {
+                return nil
+            }
+
+            return String(html[rowRange])
+        }
+    }
+
+    private func extractSlGifHref(from html: String) -> String? {
+        let pattern = "<a\\s+href=\"([^\"]+)\">\\s*<img[^>]+src=\"/historia/sl\\.gif\""
+
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+              let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+              let hrefRange = Range(match.range(at: 1), in: html) else {
+            return nil
+        }
+
+        return String(html[hrefRange])
+    }
+
+    private func extractTableCellContents(from html: String) -> [String] {
+        let cellPattern = "<TD[^>]*>(.*?)</TD>"
+        guard let cellRegex = try? NSRegularExpression(pattern: cellPattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else {
+            return []
+        }
+
+        return cellRegex.matches(in: html, range: NSRange(html.startIndex..., in: html)).compactMap { match in
+            guard let cellRange = Range(match.range(at: 1), in: html) else {
+                return nil
+            }
+
+            return String(html[cellRange])
+        }
+    }
+
+    private func cleanHiskiCellText(_ html: String) -> String {
+        let textWithoutTags = html.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+
+        let decodedText = textWithoutTags
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&#160;", with: " ")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+
+        let normalizedWhitespace = decodedText.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        return normalizedWhitespace.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func extractBirthDate(from text: String) -> String? {
+        let pattern = "\\b\\d{1,2}\\.\\d{1,2}\\.\\d{2,4}\\b|\\b\\d{4}\\b"
+
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let dateRange = Range(match.range, in: text) else {
+            return nil
+        }
+
+        return String(text[dateRange])
     }
 
     // MARK: - URL Building
