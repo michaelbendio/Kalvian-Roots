@@ -493,6 +493,165 @@ final class FamilyComparisonServiceTests: XCTestCase {
         XCTAssertTrue(result.familySearchOnly.isEmpty)
     }
 
+    func testRenderJuuretHiskiReportIncludesAllSectionsInOrder() {
+        let result = service.compare(
+            juuretCandidates: [
+                candidate(
+                    name: "Liisa",
+                    birth: date(1797, 10, 12),
+                    source: .juuretKalvialla
+                ),
+                candidate(
+                    name: "Maija Liisa",
+                    birth: date(1806, 8, 3),
+                    source: .juuretKalvialla
+                )
+            ],
+            hiskiCandidates: [
+                candidate(
+                    name: "Elisabeta",
+                    birth: date(1797, 10, 12),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("liisa-1797")
+                ),
+                candidate(
+                    name: "Anders",
+                    birth: date(1806, 11, 22),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("anders-1806")
+                )
+            ]
+        )
+
+        let report = service.renderJuuretHiskiReport(result)
+
+        XCTAssertTrue(report.contains("Matches\n-------"))
+        XCTAssertTrue(report.contains("Juuret only\n-----------"))
+        XCTAssertTrue(report.contains("HisKi only\n----------"))
+
+        let matchesRange = report.range(of: "Matches\n-------")
+        let juuretOnlyRange = report.range(of: "Juuret only\n-----------")
+        let hiskiOnlyRange = report.range(of: "HisKi only\n----------")
+
+        XCTAssertNotNil(matchesRange)
+        XCTAssertNotNil(juuretOnlyRange)
+        XCTAssertNotNil(hiskiOnlyRange)
+        XCTAssertLessThan(matchesRange!.lowerBound, juuretOnlyRange!.lowerBound)
+        XCTAssertLessThan(juuretOnlyRange!.lowerBound, hiskiOnlyRange!.lowerBound)
+    }
+
+    func testRenderJuuretHiskiReportPlacesItemsUnderExpectedSections() {
+        let result = service.compare(
+            juuretCandidates: [
+                candidate(
+                    name: "Liisa",
+                    birth: date(1797, 10, 12),
+                    source: .juuretKalvialla
+                ),
+                candidate(
+                    name: "Maija Liisa",
+                    birth: date(1806, 8, 3),
+                    source: .juuretKalvialla
+                )
+            ],
+            hiskiCandidates: [
+                candidate(
+                    name: "Elisabeta",
+                    birth: date(1797, 10, 12),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("liisa-1797")
+                ),
+                candidate(
+                    name: "Anders",
+                    birth: date(1806, 11, 22),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("anders-1806")
+                )
+            ]
+        )
+
+        let report = service.renderJuuretHiskiReport(result)
+
+        XCTAssertTrue(report.contains("Liisa / Elisabeta — 12 Oct 1797"))
+        XCTAssertTrue(report.contains("Maija Liisa — 03 Aug 1806"))
+        XCTAssertTrue(report.contains("Anders — 22 Nov 1806"))
+    }
+
+    func testRenderJuuretHiskiReportKeepsItemOrderingByBirthDate() {
+        let result = service.compare(
+            juuretCandidates: [
+                candidate(
+                    name: "Matti",
+                    birth: date(1802, 6, 25),
+                    source: .juuretKalvialla
+                ),
+                candidate(
+                    name: "Liisa",
+                    birth: date(1797, 10, 12),
+                    source: .juuretKalvialla
+                ),
+                candidate(
+                    name: "Maija Liisa",
+                    birth: date(1806, 8, 3),
+                    source: .juuretKalvialla
+                )
+            ],
+            hiskiCandidates: [
+                candidate(
+                    name: "Matti",
+                    birth: date(1802, 6, 25),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("matti-1802")
+                ),
+                candidate(
+                    name: "Elisabeta",
+                    birth: date(1797, 10, 12),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("liisa-1797")
+                ),
+                candidate(
+                    name: "Anders",
+                    birth: date(1806, 11, 22),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("anders-1806")
+                )
+            ]
+        )
+
+        let report = service.renderJuuretHiskiReport(result)
+
+        let liisaIndex = report.range(of: "Liisa / Elisabeta — 12 Oct 1797")!.lowerBound
+        let mattiIndex = report.range(of: "Matti — 25 Jun 1802")!.lowerBound
+        let maijaIndex = report.range(of: "Maija Liisa — 03 Aug 1806")!.lowerBound
+        let andersIndex = report.range(of: "Anders — 22 Nov 1806")!.lowerBound
+
+        XCTAssertLessThan(liisaIndex, mattiIndex)
+        XCTAssertLessThan(maijaIndex, andersIndex)
+    }
+
+    func testRenderJuuretHiskiReportRendersEmptyResultStructure() {
+        let report = service.renderJuuretHiskiReport(
+            service.compare(juuretCandidates: [], hiskiCandidates: [])
+        )
+
+        XCTAssertEqual(
+            report,
+            """
+            Matches
+            -------
+            (none)
+
+            Juuret only
+            -----------
+            (none)
+
+            HisKi only
+            ----------
+            (none)
+            """
+        )
+    }
+
     private func candidate(
         name: String,
         birth: Date,

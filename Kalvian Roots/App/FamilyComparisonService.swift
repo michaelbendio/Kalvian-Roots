@@ -4,6 +4,14 @@ final class FamilyComparisonService {
 
     private let nameManager: NameEquivalenceManager
     private let genealogyCalendar = Calendar(identifier: .gregorian)
+    private let reportDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "dd MMM yyyy"
+        return formatter
+    }()
 
     init(nameManager: NameEquivalenceManager) {
         self.nameManager = nameManager
@@ -51,6 +59,14 @@ final class FamilyComparisonService {
             juuretKalvialla: juuretCandidates,
             hiski: hiskiCandidates
         )
+    }
+
+    func renderJuuretHiskiReport(_ result: FamilyComparisonResult) -> String {
+        [
+            renderReportSection(title: "Matches", items: result.matches.map(renderMatchLine)),
+            renderReportSection(title: "Juuret only", items: result.juuretOnly.map(renderCandidateLine)),
+            renderReportSection(title: "HisKi only", items: result.hiskiOnly.map(renderCandidateLine))
+        ].joined(separator: "\n\n")
     }
 }
 
@@ -126,5 +142,41 @@ private extension FamilyComparisonService {
         }
 
         return nil
+    }
+
+    func renderReportSection(title: String, items: [String]) -> String {
+        let body = items.isEmpty ? ["(none)"] : items
+        return ([title, String(repeating: "-", count: title.count)] + body).joined(separator: "\n")
+    }
+
+    func renderMatchLine(_ match: FamilyComparisonResult.Match) -> String {
+        let juuretName = match.juuretKalvialla?.rawName
+        let hiskiName = match.hiski?.rawName
+
+        let displayName: String
+        switch (juuretName, hiskiName) {
+        case let (juuret?, hiski?) where juuret != hiski:
+            displayName = "\(juuret) / \(hiski)"
+        case let (juuret?, _):
+            displayName = juuret
+        case let (_, hiski?):
+            displayName = hiski
+        default:
+            displayName = "(unknown)"
+        }
+
+        return "\(displayName) — \(formatReportDate(match.identity.birthDate))"
+    }
+
+    func renderCandidateLine(_ candidate: PersonCandidate) -> String {
+        "\(candidate.rawName) — \(formatReportDate(candidate.birthDate))"
+    }
+
+    func formatReportDate(_ date: Date?) -> String {
+        guard let date else {
+            return "unknown birth"
+        }
+
+        return reportDateFormatter.string(from: date)
     }
 }
