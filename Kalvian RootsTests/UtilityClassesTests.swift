@@ -213,6 +213,71 @@ final class HiskiServiceTests: XCTestCase {
 
         XCTAssertTrue(rows.isEmpty)
     }
+
+    func testFetchCitationsForFamilyBirthRowsBuildsOrderedEvents() async throws {
+        let rows = [
+            HiskiService.HiskiFamilyBirthRow(
+                birthDate: "24.6.1801",
+                childName: "Anna",
+                fatherName: "Elias Matinp.",
+                motherName: "Maria Antint.",
+                recordPath: "/hiski?en+abc123"
+            ),
+            HiskiService.HiskiFamilyBirthRow(
+                birthDate: "1.3.1804",
+                childName: "Matts",
+                fatherName: "Elias Matinp.",
+                motherName: "Maria Antint.",
+                recordPath: "/hiski?en+abc124"
+            )
+        ]
+
+        var requestedRecordURLs: [String] = []
+
+        let events = try await service.fetchCitationsForFamilyBirthRows(rows) { recordURL in
+            requestedRecordURLs.append(recordURL)
+
+            switch recordURL {
+            case "https://hiski.genealogia.fi/hiski?en+abc123":
+                return "https://hiski.genealogia.fi/hiski?en+t111"
+            case "https://hiski.genealogia.fi/hiski?en+abc124":
+                return "https://hiski.genealogia.fi/hiski?en+t222"
+            default:
+                XCTFail("Unexpected record URL: \(recordURL)")
+                return ""
+            }
+        }
+
+        XCTAssertEqual(
+            requestedRecordURLs,
+            [
+                "https://hiski.genealogia.fi/hiski?en+abc123",
+                "https://hiski.genealogia.fi/hiski?en+abc124"
+            ]
+        )
+        XCTAssertEqual(events.count, 2)
+        XCTAssertEqual(events[0].recordURL, "https://hiski.genealogia.fi/hiski?en+abc123")
+        XCTAssertEqual(events[0].citationURL, "https://hiski.genealogia.fi/hiski?en+t111")
+        XCTAssertEqual(events[0].birthDate, "24.6.1801")
+        XCTAssertEqual(events[0].childName, "Anna")
+        XCTAssertEqual(events[0].fatherName, "Elias Matinp.")
+        XCTAssertEqual(events[0].motherName, "Maria Antint.")
+        XCTAssertEqual(events[1].recordURL, "https://hiski.genealogia.fi/hiski?en+abc124")
+        XCTAssertEqual(events[1].citationURL, "https://hiski.genealogia.fi/hiski?en+t222")
+        XCTAssertEqual(events[1].birthDate, "1.3.1804")
+        XCTAssertEqual(events[1].childName, "Matts")
+        XCTAssertEqual(events[1].fatherName, "Elias Matinp.")
+        XCTAssertEqual(events[1].motherName, "Maria Antint.")
+    }
+
+    func testFetchCitationsForFamilyBirthRowsReturnsEmptyForEmptyInput() async throws {
+        let events = try await service.fetchCitationsForFamilyBirthRows([]) { _ in
+            XCTFail("Citation loader should not be called for empty input")
+            return ""
+        }
+
+        XCTAssertTrue(events.isEmpty)
+    }
     
     func testQueryBirthGeneratesURL() async throws {
         // Integration test - would require actual query

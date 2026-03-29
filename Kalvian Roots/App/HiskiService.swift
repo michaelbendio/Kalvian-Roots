@@ -203,6 +203,15 @@ class HiskiService {
         let recordPath: String
     }
 
+    struct HiskiFamilyBirthEvent: Equatable {
+        let birthDate: String
+        let childName: String
+        let fatherName: String
+        let motherName: String
+        let recordURL: String
+        let citationURL: String
+    }
+
     private let nameEquivalenceManager: NameEquivalenceManager
     private let parishes = "0053,0093,0165,0183,0218,0172,0265,0295,0301,0386,0555,0581,0614"
     private var currentFamilyId: String?
@@ -604,6 +613,42 @@ class HiskiService {
 
     func parseFamilyBirthResultsTable(_ html: String) -> [HiskiFamilyBirthRow] {
         extractTableRows(from: html).compactMap(parseFamilyBirthRow)
+    }
+
+    func fetchCitationsForFamilyBirthRows(_ rows: [HiskiFamilyBirthRow]) async throws -> [HiskiFamilyBirthEvent] {
+        try await fetchCitationsForFamilyBirthRows(rows) { recordUrl in
+            try await self.loadRecordAndExtractCitationHTTP(recordUrl: recordUrl)
+        }
+    }
+
+    func fetchCitationsForFamilyBirthRows(
+        _ rows: [HiskiFamilyBirthRow],
+        using citationLoader: (String) async throws -> String
+    ) async throws -> [HiskiFamilyBirthEvent] {
+        guard !rows.isEmpty else {
+            return []
+        }
+
+        var events: [HiskiFamilyBirthEvent] = []
+        events.reserveCapacity(rows.count)
+
+        for row in rows {
+            let recordURL = "https://hiski.genealogia.fi" + row.recordPath
+            let citationURL = try await citationLoader(recordURL)
+
+            events.append(
+                HiskiFamilyBirthEvent(
+                    birthDate: row.birthDate,
+                    childName: row.childName,
+                    fatherName: row.fatherName,
+                    motherName: row.motherName,
+                    recordURL: recordURL,
+                    citationURL: citationURL
+                )
+            )
+        }
+
+        return events
     }
     
     // MARK: - Pure HTTP Citation Extraction
