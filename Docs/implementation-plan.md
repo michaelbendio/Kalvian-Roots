@@ -477,6 +477,13 @@ Specific tests should cover:
     - family-query HisKi result parsing
     - sl.gif href extraction
     - citation URL harvesting from child detail pages
+    - family-child query construction:
+        • blank child first-name parameter
+        • start year = marriage year - 1
+        • end year = marriage year + 35
+        • both parents’ given names and patronymics included
+        • maxkpl = 50
+        • configured Central Ostrobothnia parish set used
 
 
 Future Enhancements
