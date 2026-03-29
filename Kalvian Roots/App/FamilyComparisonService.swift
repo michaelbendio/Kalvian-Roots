@@ -69,13 +69,11 @@ final class FamilyComparisonService {
 
     func renderJuuretHiskiReport(_ result: FamilyComparisonResult) -> String {
         let juuretHiskiMatches = result.matches.filter(isJuuretHiskiMatch)
-        let juuretOnly = result.matches.compactMap(juuretOnlyCandidate(from:))
-        let hiskiOnly = result.matches.compactMap(hiskiOnlyCandidate(from:))
 
         return [
             renderReportSection(title: "Matches", items: juuretHiskiMatches.map(renderMatchLine)),
-            renderReportSection(title: "Juuret only", items: juuretOnly.map(renderCandidateLine)),
-            renderReportSection(title: "HisKi only", items: hiskiOnly.map(renderCandidateLine))
+            renderReportSection(title: "Juuret only", items: result.juuretOnly.map(renderCandidateLine)),
+            renderReportSection(title: "HisKi only", items: result.hiskiOnly.map(renderCandidateLine))
         ].joined(separator: "\n\n")
     }
 }
@@ -84,26 +82,6 @@ private extension FamilyComparisonService {
 
     func isJuuretHiskiMatch(_ match: FamilyComparisonResult.Match) -> Bool {
         match.juuretKalvialla != nil && match.hiski != nil
-    }
-
-    func juuretOnlyCandidate(from match: FamilyComparisonResult.Match) -> PersonCandidate? {
-        guard match.juuretKalvialla != nil,
-              match.hiski == nil,
-              match.familySearch == nil else {
-            return nil
-        }
-
-        return match.juuretKalvialla
-    }
-
-    func hiskiOnlyCandidate(from match: FamilyComparisonResult.Match) -> PersonCandidate? {
-        guard match.hiski != nil,
-              match.juuretKalvialla == nil,
-              match.familySearch == nil else {
-            return nil
-        }
-
-        return match.hiski
     }
 
     func makeFamilySearchCandidate(from person: Person) -> PersonCandidate {

@@ -722,26 +722,32 @@ final class FamilyComparisonServiceTests: XCTestCase {
         )
     }
 
-    func testRenderJuuretHiskiReportRendersMatchedChildUnderMatchesWhenPresentInBothSources() {
-        let report = service.renderJuuretHiskiReport(
-            service.compare(
-                juuretCandidates: [
-                    candidate(
-                        name: "Matti",
-                        birth: date(1802, 6, 25),
-                        source: .juuretKalvialla
-                    )
-                ],
-                hiskiCandidates: [
-                    candidate(
-                        name: "Matti",
-                        birth: date(1802, 6, 25),
-                        source: .hiski,
-                        hiskiCitation: hiskiCitation("matti-1802")
-                    )
-                ]
-            )
+    func testRenderJuuretHiskiReportRendersMatchedChildUnderMatchesWhenPresentInBothSources() throws {
+        let result = service.compare(
+            juuretCandidates: [
+                candidate(
+                    name: "Matti",
+                    birth: date(1802, 6, 25),
+                    source: .juuretKalvialla
+                )
+            ],
+            hiskiCandidates: [
+                candidate(
+                    name: "Matti",
+                    birth: date(1802, 6, 25),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("matti-1802")
+                )
+            ]
         )
+
+        let match = try XCTUnwrap(result.matches.first)
+        XCTAssertNotNil(match.juuretKalvialla)
+        XCTAssertNotNil(match.hiski)
+        XCTAssertTrue(result.juuretOnly.isEmpty)
+        XCTAssertTrue(result.hiskiOnly.isEmpty)
+
+        let report = service.renderJuuretHiskiReport(result)
 
         XCTAssertEqual(
             report,
@@ -761,37 +767,40 @@ final class FamilyComparisonServiceTests: XCTestCase {
         )
     }
 
-    func testRenderJuuretHiskiReportRendersNoneUnderJuuretOnlyWhenAllJuuretChildrenMatch() {
-        let report = service.renderJuuretHiskiReport(
-            service.compare(
-                juuretCandidates: [
-                    candidate(
-                        name: "Liisa",
-                        birth: date(1797, 10, 12),
-                        source: .juuretKalvialla
-                    ),
-                    candidate(
-                        name: "Matti",
-                        birth: date(1802, 6, 25),
-                        source: .juuretKalvialla
-                    )
-                ],
-                hiskiCandidates: [
-                    candidate(
-                        name: "Elisabeta",
-                        birth: date(1797, 10, 12),
-                        source: .hiski,
-                        hiskiCitation: hiskiCitation("liisa-1797")
-                    ),
-                    candidate(
-                        name: "Matti",
-                        birth: date(1802, 6, 25),
-                        source: .hiski,
-                        hiskiCitation: hiskiCitation("matti-1802")
-                    )
-                ]
-            )
+    func testRenderJuuretHiskiReportRendersNoneUnderJuuretAndHiskiOnlyWhenAllChildrenMatch() {
+        let result = service.compare(
+            juuretCandidates: [
+                candidate(
+                    name: "Liisa",
+                    birth: date(1797, 10, 12),
+                    source: .juuretKalvialla
+                ),
+                candidate(
+                    name: "Matti",
+                    birth: date(1802, 6, 25),
+                    source: .juuretKalvialla
+                )
+            ],
+            hiskiCandidates: [
+                candidate(
+                    name: "Elisabeta",
+                    birth: date(1797, 10, 12),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("liisa-1797")
+                ),
+                candidate(
+                    name: "Matti",
+                    birth: date(1802, 6, 25),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("matti-1802")
+                )
+            ]
         )
+
+        XCTAssertTrue(result.juuretOnly.isEmpty)
+        XCTAssertTrue(result.hiskiOnly.isEmpty)
+
+        let report = service.renderJuuretHiskiReport(result)
 
         XCTAssertEqual(
             report,
