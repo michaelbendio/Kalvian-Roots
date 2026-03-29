@@ -117,7 +117,7 @@ final class RootsFileManagerTests: XCTestCase {
     
     func testGetAllFamilyIdsBeforeFileLoads() {
         // When: Getting IDs before file loads
-        let familyIds = fileManager.getAllFamilyIds()
+        let _ = fileManager.getAllFamilyIds()
         
         // Then: Should return empty array or handle gracefully
         XCTAssertTrue(true, "Should handle request before file loads")
@@ -207,12 +207,12 @@ final class RootsFileManagerTests: XCTestCase {
     
     func testMultipleConcurrentExtractions() async {
         // When: Multiple concurrent extractions
-        async let text1 = Task { fileManager.extractFamilyText(familyId: "KORPI 6") }
-        async let text2 = Task { fileManager.extractFamilyText(familyId: "HERLEVI 1") }
-        async let text3 = Task { fileManager.extractFamilyText(familyId: "SIKALA 3") }
-        
+        async let text1 = fileManager.extractFamilyText(familyId: "KORPI 6")
+        async let text2 = fileManager.extractFamilyText(familyId: "HERLEVI 1")
+        async let text3 = fileManager.extractFamilyText(familyId: "SIKALA 3")
+
         // Then: Should handle concurrency
-        let results = await (text1.value, text2.value, text3.value)
+        let results = await (text1, text2, text3)
         XCTAssertNotNil(results.0, "First extraction should succeed")
         XCTAssertNotNil(results.1, "Second extraction should succeed")
         XCTAssertNotNil(results.2, "Third extraction should succeed")
