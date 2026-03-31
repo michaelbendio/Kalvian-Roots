@@ -90,6 +90,91 @@ final class NameEquivalenceManagerTests: XCTestCase {
         // (Some names might have multiple Finnish/Swedish variants)
         XCTAssertTrue(manager.areNamesEquivalent("Johan", "Juho"))
     }
+
+    func testCanonicalNameMatchesMaijaLiisaAndMariaElisTokenByToken() {
+        let juuretIdentity = PersonIdentity(
+            name: "Maija Liisa",
+            birthDate: testDate(1806, 8, 3),
+            nameManager: manager
+        )
+        let hiskiIdentity = PersonIdentity(
+            name: "Maria Elis.",
+            birthDate: testDate(1806, 8, 3),
+            nameManager: manager
+        )
+
+        XCTAssertEqual(juuretIdentity.canonicalName, hiskiIdentity.canonicalName)
+        XCTAssertEqual(juuretIdentity.canonicalName, "maija elis")
+    }
+
+    func testCanonicalNameMatchesBriitaKaisaAndBritaCaisaTokenByToken() {
+        let juuretIdentity = PersonIdentity(
+            name: "Briita Kaisa",
+            birthDate: testDate(1801, 2, 14),
+            nameManager: manager
+        )
+        let hiskiIdentity = PersonIdentity(
+            name: "Brita Caisa",
+            birthDate: testDate(1801, 2, 14),
+            nameManager: manager
+        )
+
+        XCTAssertEqual(juuretIdentity.canonicalName, hiskiIdentity.canonicalName)
+    }
+
+    func testSingleTokenCanonicalNameStillMatchesMattiAndMatts() {
+        let mattiIdentity = PersonIdentity(
+            name: "Matti",
+            birthDate: testDate(1802, 6, 25),
+            nameManager: manager
+        )
+        let mattsIdentity = PersonIdentity(
+            name: "Matts",
+            birthDate: testDate(1802, 6, 25),
+            nameManager: manager
+        )
+
+        XCTAssertEqual(mattiIdentity.canonicalName, mattsIdentity.canonicalName)
+        XCTAssertEqual(mattiIdentity.canonicalName, "matti")
+    }
+
+    func testCanonicalNamePreservesTokenOrderForMaijaLiisa() {
+        XCTAssertEqual(manager.canonicalName(for: "Maija Liisa"), "maija elis")
+    }
+
+    func testPersonCandidatePreservesOriginalRawMultiPartNames() {
+        let juuretCandidate = PersonCandidate(
+            name: "Maija Liisa",
+            birthDate: testDate(1806, 8, 3),
+            source: .juuretKalvialla,
+            nameManager: manager
+        )
+        let hiskiCandidate = PersonCandidate(
+            name: "Maria Elis.",
+            birthDate: testDate(1806, 8, 3),
+            source: .hiski,
+            nameManager: manager
+        )
+
+        XCTAssertEqual(juuretCandidate.rawName, "Maija Liisa")
+        XCTAssertEqual(hiskiCandidate.rawName, "Maria Elis.")
+        XCTAssertEqual(juuretCandidate.identity.canonicalName, hiskiCandidate.identity.canonicalName)
+    }
+
+    private func testDate(_ year: Int, _ month: Int, _ day: Int) -> Date {
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .gregorian)
+        components.timeZone = TimeZone(secondsFromGMT: 0)
+        components.year = year
+        components.month = month
+        components.day = day
+
+        guard let date = components.date else {
+            preconditionFailure("Invalid date components: \(year)-\(month)-\(day)")
+        }
+
+        return date
+    }
 }
 
 // MARK: - HiskiService Tests

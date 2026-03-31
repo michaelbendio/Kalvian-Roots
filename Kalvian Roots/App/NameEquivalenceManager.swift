@@ -27,7 +27,7 @@ class NameEquivalenceManager {
     private let userDefaultsKey = "NameEquivalences"
     private let userDefaultsVersionKey = "NameEquivalencesVersion"
 
-    private let currentVersion = 4
+    private let currentVersion = 5
 
 
     // MARK: - Computed Properties
@@ -123,14 +123,12 @@ class NameEquivalenceManager {
      Deterministic canonical name used by PersonIdentity
      */
     func canonicalName(for name: String) -> String {
+        let tokens = tokenizeName(name)
+        guard !tokens.isEmpty else {
+            return ""
+        }
 
-        let normalized = normalizeName(name)
-
-        var all = getEquivalentNames(for: normalized)
-
-        all.insert(normalized)
-
-        return all.sorted().first!
+        return tokens.map(canonicalTokenName(for:)).joined(separator: " ")
     }
 
 
@@ -186,11 +184,34 @@ class NameEquivalenceManager {
     // MARK: - Helper Methods
 
     private func normalizeName(_ name: String) -> String {
+        tokenizeName(name).joined(separator: " ")
+    }
 
+    private func tokenizeName(_ name: String) -> [String] {
         name
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
+            .map(normalizeToken)
+            .filter { !$0.isEmpty }
+    }
+
+    private func normalizeToken(_ token: String) -> String {
+        token
+            .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
             .lowercased()
             .folding(options: .diacriticInsensitive, locale: .current)
+    }
+
+    private func canonicalTokenName(for token: String) -> String {
+        let normalized = normalizeToken(token)
+        guard !normalized.isEmpty else {
+            return ""
+        }
+
+        var all = getEquivalentNames(for: normalized)
+        all.insert(normalized)
+
+        return all.sorted().first!
     }
 
 
@@ -294,6 +315,7 @@ class NameEquivalenceManager {
 
             ("Liisa", "Elisabet"),
             ("Liisa", "Elis."),
+            ("Maija", "Maria"),
             ("Malin", "Magdalena"),
             ("Helena", "Leena"),
             ("Johan", "Juho"),
@@ -301,6 +323,7 @@ class NameEquivalenceManager {
             ("Matti", "Matias"),
             ("Matti", "Matts"),
             ("Anna", "Annikki"),
+            ("Kaisa", "Caisa"),
             ("Kustaa", "Kustavi"),
             ("Brita", "Birgit"),
             ("Brita", "Briita"),
