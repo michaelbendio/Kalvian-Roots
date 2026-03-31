@@ -89,6 +89,18 @@ final class FamilyComparisonService {
     func makeHiskiCitationProposals(from result: FamilyComparisonResult) -> [HiskiCitationProposal] {
         result.matches.compactMap(makeHiskiCitationProposal)
     }
+
+    func renderHiskiCitationProposals(_ proposals: [HiskiCitationProposal]) -> String {
+        let title = "HisKi Citation Proposals"
+
+        guard !proposals.isEmpty else {
+            return [title, String(repeating: "-", count: title.count), "(none)"]
+                .joined(separator: "\n")
+        }
+
+        return ([title, String(repeating: "-", count: title.count)] + proposals.map(renderProposalBlock))
+            .joined(separator: "\n\n")
+    }
 }
 
 private extension FamilyComparisonService {
@@ -202,6 +214,13 @@ private extension FamilyComparisonService {
         }
 
         return "\(juuretName) / \(hiskiName)"
+    }
+
+    func renderProposalBlock(_ proposal: HiskiCitationProposal) -> String {
+        [
+            "\(proposal.displayName) — \(formatReportDate(proposal.birthDate))",
+            proposal.citationURL.absoluteString
+        ].joined(separator: "\n")
     }
 
     func renderMatchLine(_ match: FamilyComparisonResult.Match) -> String {

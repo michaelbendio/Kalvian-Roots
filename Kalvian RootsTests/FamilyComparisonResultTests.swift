@@ -972,6 +972,84 @@ final class FamilyComparisonServiceTests: XCTestCase {
         XCTAssertTrue(proposals.isEmpty)
     }
 
+    func testRenderHiskiCitationProposalsIncludesDisplayNameBirthDateAndCitationURL() {
+        let proposals = [
+            HiskiCitationProposal(
+                identity: PersonIdentity(
+                    name: "Matti",
+                    birthDate: date(1802, 6, 25),
+                    nameManager: nameManager
+                ),
+                displayName: "Matti / Matts",
+                birthDate: date(1802, 6, 25),
+                juuretName: "Matti",
+                hiskiName: "Matts",
+                citationURL: hiskiCitation("t4092193")
+            )
+        ]
+
+        let report = service.renderHiskiCitationProposals(proposals)
+
+        XCTAssertEqual(
+            report,
+            """
+            HisKi Citation Proposals
+            ------------------------
+            Matti / Matts — 25 Jun 1802
+            https://hiski.genealogia.fi/t4092193
+            """
+        )
+    }
+
+    func testRenderHiskiCitationProposalsPreservesProposalOrdering() {
+        let proposals = [
+            HiskiCitationProposal(
+                identity: PersonIdentity(
+                    name: "Matti",
+                    birthDate: date(1802, 6, 25),
+                    nameManager: nameManager
+                ),
+                displayName: "Matti",
+                birthDate: date(1802, 6, 25),
+                juuretName: "Matti",
+                hiskiName: "Matti",
+                citationURL: hiskiCitation("matti-1802")
+            ),
+            HiskiCitationProposal(
+                identity: PersonIdentity(
+                    name: "Maija Liisa",
+                    birthDate: date(1806, 8, 3),
+                    nameManager: nameManager
+                ),
+                displayName: "Maija Liisa / Maria Elis.",
+                birthDate: date(1806, 8, 3),
+                juuretName: "Maija Liisa",
+                hiskiName: "Maria Elis.",
+                citationURL: hiskiCitation("maija-liisa-1806")
+            )
+        ]
+
+        let report = service.renderHiskiCitationProposals(proposals)
+
+        let mattiIndex = report.range(of: "Matti — 25 Jun 1802")!.lowerBound
+        let maijaIndex = report.range(of: "Maija Liisa / Maria Elis. — 03 Aug 1806")!.lowerBound
+
+        XCTAssertLessThan(mattiIndex, maijaIndex)
+    }
+
+    func testRenderHiskiCitationProposalsRendersEmptyState() {
+        let report = service.renderHiskiCitationProposals([])
+
+        XCTAssertEqual(
+            report,
+            """
+            HisKi Citation Proposals
+            ------------------------
+            (none)
+            """
+        )
+    }
+
     private func candidate(
         name: String,
         birth: Date,

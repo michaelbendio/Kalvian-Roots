@@ -87,6 +87,16 @@ struct FamilyContentView: View {
                     }
                     .padding(.top, 12)
                 }
+
+                if !juuretApp.hiskiCitationProposalReport.isEmpty {
+                    GroupBox("HisKi Citation Proposals") {
+                        Text(juuretApp.hiskiCitationProposalReport)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.top, 12)
+                }
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
