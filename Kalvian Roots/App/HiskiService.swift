@@ -757,38 +757,44 @@ class HiskiService {
             guard let startRange = Range(matches[i].range, in: html) else { continue }
             let rowStart = startRange.lowerBound
 
-            let rowEnd: String.Index
+            var candidateEnds: [String.Index] = []
+
             if i + 1 < matches.count,
                let nextRange = Range(matches[i + 1].range, in: html) {
-                rowEnd = nextRange.lowerBound
-            } else if let rowEndRange = html.range(
+                candidateEnds.append(nextRange.lowerBound)
+            }
+
+            if let rowCloseRange = html.range(
                 of: "</TR>",
                 options: [.caseInsensitive],
                 range: rowStart..<html.endIndex
             ) {
-                rowEnd = rowEndRange.lowerBound
-            } else if let brRange = html.range(
-                of: "<BR",
-                options: [.caseInsensitive],
-                range: rowStart..<html.endIndex
-            ) {
-                rowEnd = brRange.upperBound
-            } else if let tableEndRange = html.range(
+                candidateEnds.append(rowCloseRange.lowerBound)
+            }
+
+            if let tableEndRange = html.range(
                 of: "</TABLE>",
                 options: [.caseInsensitive],
                 range: rowStart..<html.endIndex
             ) {
-                rowEnd = tableEndRange.lowerBound
-            } else {
-                rowEnd = html.endIndex
+                candidateEnds.append(tableEndRange.lowerBound)
             }
 
+            if let brRange = html.range(
+                of: "<BR",
+                options: [.caseInsensitive],
+                range: rowStart..<html.endIndex
+            ) {
+                candidateEnds.append(brRange.lowerBound)
+            }
+
+            let rowEnd = candidateEnds.min() ?? html.endIndex
             rows.append(String(html[rowStart..<rowEnd]))
         }
 
         return rows
     }
-
+    
     private func extractSlGifHref(from html: String) -> String? {
         let pattern = "<a\\s+href=\"([^\"]+)\">\\s*<img[^>]+src=\"/historia/sl\\.gif\""
 

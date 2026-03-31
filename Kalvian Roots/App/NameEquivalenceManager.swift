@@ -27,7 +27,7 @@ class NameEquivalenceManager {
     private let userDefaultsKey = "NameEquivalences"
     private let userDefaultsVersionKey = "NameEquivalencesVersion"
 
-    private let currentVersion = 3
+    private let currentVersion = 4
 
 
     // MARK: - Computed Properties
