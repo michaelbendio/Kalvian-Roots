@@ -1006,7 +1006,27 @@ final class FamilyComparisonServiceTests: XCTestCase {
         XCTAssertTrue(proposals.isEmpty)
     }
 
-    func testRenderHiskiCitationProposalsIncludesDisplayNameBirthDateAndCitationURL() {
+    func testHiskiCitationProposalShortCitationStringRemovesScheme() {
+        let proposal = HiskiCitationProposal(
+            identity: PersonIdentity(
+                name: "Matti",
+                birthDate: date(1802, 6, 25),
+                nameManager: nameManager
+            ),
+            displayName: "Matti / Matts",
+            birthDate: date(1802, 6, 25),
+            juuretName: "Matti",
+            hiskiName: "Matts",
+            citationURL: hiskiCitation("hiski?en+t4092193")
+        )
+
+        XCTAssertEqual(
+            proposal.shortCitationString,
+            "hiski.genealogia.fi/hiski?en+t4092193"
+        )
+    }
+
+    func testRenderHiskiCitationProposalsIncludesDisplayNameAndShortCitationOnOneLine() {
         let proposals = [
             HiskiCitationProposal(
                 identity: PersonIdentity(
@@ -1029,8 +1049,7 @@ final class FamilyComparisonServiceTests: XCTestCase {
             """
             HisKi Citation Proposals
             ------------------------
-            Matti / Matts — 25 Jun 1802
-            https://hiski.genealogia.fi/t4092193
+            Matti / Matts — hiski.genealogia.fi/t4092193
             """
         )
     }
@@ -1065,8 +1084,8 @@ final class FamilyComparisonServiceTests: XCTestCase {
 
         let report = service.renderHiskiCitationProposals(proposals)
 
-        let mattiIndex = report.range(of: "Matti — 25 Jun 1802")!.lowerBound
-        let maijaIndex = report.range(of: "Maija Liisa / Maria Elis. — 03 Aug 1806")!.lowerBound
+        let mattiIndex = report.range(of: "Matti — hiski.genealogia.fi/matti-1802")!.lowerBound
+        let maijaIndex = report.range(of: "Maija Liisa / Maria Elis. — hiski.genealogia.fi/maija-liisa-1806")!.lowerBound
 
         XCTAssertLessThan(mattiIndex, maijaIndex)
     }

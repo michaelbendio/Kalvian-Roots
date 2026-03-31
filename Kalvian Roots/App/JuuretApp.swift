@@ -47,7 +47,7 @@ class JuuretApp {
     var errorMessage: String?
     var extractionProgress: ExtractionProgress = .idle
     var comparisonReport = ""
-    var hiskiCitationProposalReport = ""
+    var hiskiCitationProposals: [HiskiCitationProposal] = []
     
     // MARK: - Detail Routing (macOS NavigationSplitView)
     enum DetailRoute: Equatable {
@@ -86,7 +86,7 @@ class JuuretApp {
         // Set current family and activate workflow with cached network
         self.currentFamily = network.mainFamily
         self.comparisonReport = ""
-        self.hiskiCitationProposalReport = ""
+        self.hiskiCitationProposals = []
         self.familyNetworkWorkflow = FamilyNetworkWorkflow(
             nuclearFamily: network.mainFamily,
             familyResolver: self.familyResolver,
@@ -466,11 +466,10 @@ class JuuretApp {
         return report
     }
 
-    func renderHiskiCitationProposalReport(_ proposals: [HiskiCitationProposal]) -> String {
-        let report = FamilyComparisonService(nameManager: nameEquivalenceManager)
+    func storeHiskiCitationProposals(_ proposals: [HiskiCitationProposal]) -> String {
+        hiskiCitationProposals = proposals
+        return FamilyComparisonService(nameManager: nameEquivalenceManager)
             .renderHiskiCitationProposals(proposals)
-        hiskiCitationProposalReport = report
-        return report
     }
 
     private func runJuuretHiskiComparisonPipeline(for family: Family) async {
@@ -519,7 +518,7 @@ class JuuretApp {
             }
 
             let report = renderJuuretHiskiComparisonReport(result)
-            let proposalReport = renderHiskiCitationProposalReport(proposals)
+            let proposalReport = storeHiskiCitationProposals(proposals)
             logInfo(.app, "📋 Juuret + HisKi comparison report for \(family.familyId):\n\(report)")
             logInfo(.app, "📎 HisKi citation proposals for \(family.familyId):\n\(proposalReport)")
         } catch {
@@ -528,7 +527,7 @@ class JuuretApp {
             }
 
             comparisonReport = ""
-            hiskiCitationProposalReport = ""
+            hiskiCitationProposals = []
             logWarn(.app, "⚠️ Juuret + HisKi comparison unavailable for \(family.familyId): \(error.localizedDescription)")
         }
     }
@@ -604,7 +603,7 @@ class JuuretApp {
             currentFamily = nil
             enhancedFamily = nil
             comparisonReport = ""
-            hiskiCitationProposalReport = ""
+            hiskiCitationProposals = []
             extractionProgress = .extractingText
             pendingFamilyId = normalizedId  // Show this in nav bar immediately
         }
@@ -744,7 +743,7 @@ class JuuretApp {
                 currentFamily = nil
                 enhancedFamily = nil
                 comparisonReport = ""
-                hiskiCitationProposalReport = ""
+                hiskiCitationProposals = []
                 isProcessing = false
                 extractionProgress = .idle
                 pendingFamilyId = nil  // Clear pending on error

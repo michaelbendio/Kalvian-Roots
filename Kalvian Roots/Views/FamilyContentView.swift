@@ -7,6 +7,11 @@
 //
 
 import SwiftUI
+#if os(macOS)
+import AppKit
+#elseif os(iOS)
+import UIKit
+#endif
 
 /**
  * Family content display with authentic genealogy book appearance
@@ -88,12 +93,30 @@ struct FamilyContentView: View {
                     .padding(.top, 12)
                 }
 
-                if !juuretApp.hiskiCitationProposalReport.isEmpty {
+                if !juuretApp.hiskiCitationProposals.isEmpty {
                     GroupBox("HisKi Citation Proposals") {
-                        Text(juuretApp.hiskiCitationProposalReport)
-                            .font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(juuretApp.hiskiCitationProposals, id: \.citationURL) { proposal in
+                                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                    Text(proposal.displayName)
+                                        .foregroundStyle(.primary)
+
+                                    Text("—")
+                                        .foregroundStyle(.secondary)
+
+                                    Button {
+                                        copyToClipboard(proposal.shortCitationString)
+                                    } label: {
+                                        Text(proposal.shortCitationString)
+                                            .underline()
+                                            .foregroundStyle(Color(hex: "0066cc"))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .font(.system(.caption, design: .monospaced))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
                     }
                     .padding(.top, 12)
                 }
@@ -115,6 +138,15 @@ struct FamilyContentView: View {
                 }
             }
         }
+    }
+
+    private func copyToClipboard(_ text: String) {
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        #elseif os(iOS)
+        UIPasteboard.general.string = text
+        #endif
     }
     
     // MARK: - Family Header

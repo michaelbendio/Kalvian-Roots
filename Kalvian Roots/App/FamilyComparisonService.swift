@@ -7,6 +7,24 @@ struct HiskiCitationProposal: Equatable {
     let juuretName: String?
     let hiskiName: String?
     let citationURL: URL
+
+    var shortCitationString: String {
+        guard let host = citationURL.host else {
+            return citationURL.absoluteString.replacingOccurrences(
+                of: #"^https?://"#,
+                with: "",
+                options: .regularExpression
+            )
+        }
+
+        var shortCitation = host + citationURL.path
+
+        if let query = citationURL.percentEncodedQuery, !query.isEmpty {
+            shortCitation += "?\(query)"
+        }
+
+        return shortCitation
+    }
 }
 
 final class FamilyComparisonService {
@@ -220,10 +238,7 @@ private extension FamilyComparisonService {
     }
 
     func renderProposalBlock(_ proposal: HiskiCitationProposal) -> String {
-        [
-            "\(proposal.displayName) — \(formatReportDate(proposal.birthDate))",
-            proposal.citationURL.absoluteString
-        ].joined(separator: "\n")
+        "\(proposal.displayName) — \(proposal.shortCitationString)"
     }
 
     func renderMatchLine(_ match: FamilyComparisonResult.Match) -> String {
