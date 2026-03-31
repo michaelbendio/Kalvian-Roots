@@ -97,6 +97,8 @@ struct FamilyContentView: View {
                     GroupBox("HisKi Citation Proposals") {
                         VStack(alignment: .leading, spacing: 4) {
                             ForEach(juuretApp.hiskiCitationProposals, id: \.citationURL) { proposal in
+                                let shortCitation = proposal.shortCitationString(from: proposal.citationURL)
+
                                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                                     Text(proposal.displayName)
                                         .foregroundStyle(.primary)
@@ -105,9 +107,9 @@ struct FamilyContentView: View {
                                         .foregroundStyle(.secondary)
 
                                     Button {
-                                        copyToClipboard(proposal.shortCitationString)
+                                        copyToClipboard(shortCitation)
                                     } label: {
-                                        Text(proposal.shortCitationString)
+                                        Text(shortCitation)
                                             .underline()
                                             .foregroundStyle(Color(hex: "0066cc"))
                                     }

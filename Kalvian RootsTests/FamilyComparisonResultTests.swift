@@ -1021,7 +1021,7 @@ final class FamilyComparisonServiceTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            proposal.shortCitationString,
+            proposal.shortCitationString(from: proposal.citationURL),
             "hiski.genealogia.fi/hiski?en+t4092193"
         )
     }

@@ -8,22 +8,8 @@ struct HiskiCitationProposal: Equatable {
     let hiskiName: String?
     let citationURL: URL
 
-    var shortCitationString: String {
-        guard let host = citationURL.host else {
-            return citationURL.absoluteString.replacingOccurrences(
-                of: #"^https?://"#,
-                with: "",
-                options: .regularExpression
-            )
-        }
-
-        var shortCitation = host + citationURL.path
-
-        if let query = citationURL.percentEncodedQuery, !query.isEmpty {
-            shortCitation += "?\(query)"
-        }
-
-        return shortCitation
+    func shortCitationString(from url: URL) -> String {
+        url.absoluteString.replacingOccurrences(of: "https://", with: "")
     }
 }
 
@@ -238,7 +224,7 @@ private extension FamilyComparisonService {
     }
 
     func renderProposalBlock(_ proposal: HiskiCitationProposal) -> String {
-        "\(proposal.displayName) — \(proposal.shortCitationString)"
+        "\(proposal.displayName) — \(proposal.shortCitationString(from: proposal.citationURL))"
     }
 
     func renderMatchLine(_ match: FamilyComparisonResult.Match) -> String {
