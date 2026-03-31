@@ -887,7 +887,7 @@ final class FamilyComparisonServiceTests: XCTestCase {
         XCTAssertEqual(proposals.first?.hiskiName, "Maria Elis.")
     }
 
-    func testMakeHiskiCitationProposalsSkipsMatchesWithoutCitationAndSkipsSourceOnlyChildren() {
+    func testMakeHiskiCitationProposalsIncludesHiskiOnlyChildAndExcludesJuuretOnlyChild() {
         let result = service.compare(
             juuretCandidates: [
                 candidate(
@@ -919,6 +919,34 @@ final class FamilyComparisonServiceTests: XCTestCase {
 
         let proposals = service.makeHiskiCitationProposals(from: result)
 
+        XCTAssertEqual(proposals.count, 1)
+        XCTAssertEqual(proposals.first?.displayName, "Anders")
+        XCTAssertNil(proposals.first?.juuretName)
+        XCTAssertEqual(proposals.first?.hiskiName, "Anders")
+        XCTAssertEqual(proposals.first?.citationURL, hiskiCitation("anders-1806"))
+    }
+
+    func testMakeHiskiCitationProposalsSkipsMissingCitationURL() {
+        let result = service.compare(
+            juuretCandidates: [
+                candidate(
+                    name: "Matti",
+                    birth: date(1802, 6, 25),
+                    source: .juuretKalvialla
+                )
+            ],
+            hiskiCandidates: [
+                candidate(
+                    name: "Matti",
+                    birth: date(1802, 6, 25),
+                    source: .hiski,
+                    hiskiCitation: nil
+                )
+            ]
+        )
+
+        let proposals = service.makeHiskiCitationProposals(from: result)
+
         XCTAssertTrue(proposals.isEmpty)
     }
 
@@ -944,6 +972,12 @@ final class FamilyComparisonServiceTests: XCTestCase {
                     hiskiCitation: hiskiCitation("matti-1802")
                 ),
                 candidate(
+                    name: "Anders",
+                    birth: date(1804, 11, 22),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("anders-1804")
+                ),
+                candidate(
                     name: "Maija Liisa",
                     birth: date(1806, 8, 3),
                     source: .hiski,
@@ -956,11 +990,11 @@ final class FamilyComparisonServiceTests: XCTestCase {
 
         XCTAssertEqual(
             proposals.map(\.displayName),
-            ["Matti", "Maija Liisa"]
+            ["Matti", "Anders", "Maija Liisa"]
         )
         XCTAssertEqual(
             proposals.map(\.birthDate),
-            [date(1802, 6, 25), date(1806, 8, 3)]
+            [date(1802, 6, 25), date(1804, 11, 22), date(1806, 8, 3)]
         )
     }
 

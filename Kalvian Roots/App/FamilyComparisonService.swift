@@ -188,7 +188,6 @@ private extension FamilyComparisonService {
 
     func makeHiskiCitationProposal(from match: FamilyComparisonResult.Match) -> HiskiCitationProposal? {
         guard
-            let juuret = match.juuretKalvialla,
             let hiski = match.hiski,
             let citationURL = hiski.hiskiCitation
         else {
@@ -198,17 +197,21 @@ private extension FamilyComparisonService {
         return HiskiCitationProposal(
             identity: match.identity,
             displayName: makeProposalDisplayName(
-                juuretName: juuret.rawName,
+                juuretName: match.juuretKalvialla?.rawName,
                 hiskiName: hiski.rawName
             ),
             birthDate: match.identity.birthDate,
-            juuretName: juuret.rawName,
+            juuretName: match.juuretKalvialla?.rawName,
             hiskiName: hiski.rawName,
             citationURL: citationURL
         )
     }
 
-    func makeProposalDisplayName(juuretName: String, hiskiName: String) -> String {
+    func makeProposalDisplayName(juuretName: String?, hiskiName: String) -> String {
+        guard let juuretName else {
+            return hiskiName
+        }
+
         if juuretName == hiskiName {
             return juuretName
         }
