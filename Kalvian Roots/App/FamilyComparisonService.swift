@@ -1,5 +1,14 @@
 import Foundation
 
+struct HiskiCitationProposal: Equatable {
+    let identity: PersonIdentity
+    let displayName: String
+    let birthDate: Date?
+    let juuretName: String?
+    let hiskiName: String?
+    let citationURL: URL
+}
+
 final class FamilyComparisonService {
 
     private let nameManager: NameEquivalenceManager
@@ -75,6 +84,10 @@ final class FamilyComparisonService {
             renderReportSection(title: "Juuret only", items: result.juuretOnly.map(renderCandidateLine)),
             renderReportSection(title: "HisKi only", items: result.hiskiOnly.map(renderCandidateLine))
         ].joined(separator: "\n\n")
+    }
+
+    func makeHiskiCitationProposals(from result: FamilyComparisonResult) -> [HiskiCitationProposal] {
+        result.matches.compactMap(makeHiskiCitationProposal)
     }
 }
 
@@ -159,6 +172,36 @@ private extension FamilyComparisonService {
     func renderReportSection(title: String, items: [String]) -> String {
         let body = items.isEmpty ? ["(none)"] : items
         return ([title, String(repeating: "-", count: title.count)] + body).joined(separator: "\n")
+    }
+
+    func makeHiskiCitationProposal(from match: FamilyComparisonResult.Match) -> HiskiCitationProposal? {
+        guard
+            let juuret = match.juuretKalvialla,
+            let hiski = match.hiski,
+            let citationURL = hiski.hiskiCitation
+        else {
+            return nil
+        }
+
+        return HiskiCitationProposal(
+            identity: match.identity,
+            displayName: makeProposalDisplayName(
+                juuretName: juuret.rawName,
+                hiskiName: hiski.rawName
+            ),
+            birthDate: match.identity.birthDate,
+            juuretName: juuret.rawName,
+            hiskiName: hiski.rawName,
+            citationURL: citationURL
+        )
+    }
+
+    func makeProposalDisplayName(juuretName: String, hiskiName: String) -> String {
+        if juuretName == hiskiName {
+            return juuretName
+        }
+
+        return "\(juuretName) / \(hiskiName)"
     }
 
     func renderMatchLine(_ match: FamilyComparisonResult.Match) -> String {

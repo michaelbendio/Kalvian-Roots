@@ -821,6 +821,157 @@ final class FamilyComparisonServiceTests: XCTestCase {
         )
     }
 
+    func testMakeHiskiCitationProposalsCreatesProposalForExactNameMatch() throws {
+        let result = service.compare(
+            juuretCandidates: [
+                candidate(
+                    name: "Matti",
+                    birth: date(1802, 6, 25),
+                    source: .juuretKalvialla
+                )
+            ],
+            hiskiCandidates: [
+                candidate(
+                    name: "Matti",
+                    birth: date(1802, 6, 25),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("matti-1802")
+                )
+            ]
+        )
+
+        let proposals = service.makeHiskiCitationProposals(from: result)
+
+        XCTAssertEqual(proposals.count, 1)
+
+        let proposal = try XCTUnwrap(proposals.first)
+        XCTAssertEqual(proposal.identity, PersonIdentity(
+            name: "Matti",
+            birthDate: date(1802, 6, 25),
+            nameManager: nameManager
+        ))
+        XCTAssertEqual(proposal.displayName, "Matti")
+        XCTAssertEqual(proposal.birthDate, date(1802, 6, 25))
+        XCTAssertEqual(proposal.juuretName, "Matti")
+        XCTAssertEqual(proposal.hiskiName, "Matti")
+        XCTAssertEqual(proposal.citationURL, hiskiCitation("matti-1802"))
+    }
+
+    func testMakeHiskiCitationProposalsUsesCombinedDisplayNameForEquivalentNames() throws {
+        nameManager.addEquivalence(between: "Maija", and: "Maria")
+        nameManager.addEquivalence(between: "Liisa", and: "Elis.")
+
+        let result = service.compare(
+            juuretCandidates: [
+                candidate(
+                    name: "Maija Liisa",
+                    birth: date(1806, 8, 3),
+                    source: .juuretKalvialla
+                )
+            ],
+            hiskiCandidates: [
+                candidate(
+                    name: "Maria Elis.",
+                    birth: date(1806, 8, 3),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("maija-liisa-1806")
+                )
+            ]
+        )
+
+        let proposals = service.makeHiskiCitationProposals(from: result)
+
+        XCTAssertEqual(proposals.count, 1)
+        XCTAssertEqual(proposals.first?.displayName, "Maija Liisa / Maria Elis.")
+        XCTAssertEqual(proposals.first?.juuretName, "Maija Liisa")
+        XCTAssertEqual(proposals.first?.hiskiName, "Maria Elis.")
+    }
+
+    func testMakeHiskiCitationProposalsSkipsMatchesWithoutCitationAndSkipsSourceOnlyChildren() {
+        let result = service.compare(
+            juuretCandidates: [
+                candidate(
+                    name: "Matti",
+                    birth: date(1802, 6, 25),
+                    source: .juuretKalvialla
+                ),
+                candidate(
+                    name: "Maija Liisa",
+                    birth: date(1806, 8, 3),
+                    source: .juuretKalvialla
+                )
+            ],
+            hiskiCandidates: [
+                candidate(
+                    name: "Matti",
+                    birth: date(1802, 6, 25),
+                    source: .hiski,
+                    hiskiCitation: nil
+                ),
+                candidate(
+                    name: "Anders",
+                    birth: date(1806, 11, 22),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("anders-1806")
+                )
+            ]
+        )
+
+        let proposals = service.makeHiskiCitationProposals(from: result)
+
+        XCTAssertTrue(proposals.isEmpty)
+    }
+
+    func testMakeHiskiCitationProposalsPreservesMatchOrdering() {
+        let result = service.compare(
+            juuretCandidates: [
+                candidate(
+                    name: "Matti",
+                    birth: date(1802, 6, 25),
+                    source: .juuretKalvialla
+                ),
+                candidate(
+                    name: "Maija Liisa",
+                    birth: date(1806, 8, 3),
+                    source: .juuretKalvialla
+                )
+            ],
+            hiskiCandidates: [
+                candidate(
+                    name: "Matti",
+                    birth: date(1802, 6, 25),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("matti-1802")
+                ),
+                candidate(
+                    name: "Maija Liisa",
+                    birth: date(1806, 8, 3),
+                    source: .hiski,
+                    hiskiCitation: hiskiCitation("maija-liisa-1806")
+                )
+            ]
+        )
+
+        let proposals = service.makeHiskiCitationProposals(from: result)
+
+        XCTAssertEqual(
+            proposals.map(\.displayName),
+            ["Matti", "Maija Liisa"]
+        )
+        XCTAssertEqual(
+            proposals.map(\.birthDate),
+            [date(1802, 6, 25), date(1806, 8, 3)]
+        )
+    }
+
+    func testMakeHiskiCitationProposalsReturnsEmptyForEmptyResult() {
+        let proposals = service.makeHiskiCitationProposals(
+            from: service.compare(juuretCandidates: [], hiskiCandidates: [])
+        )
+
+        XCTAssertTrue(proposals.isEmpty)
+    }
+
     private func candidate(
         name: String,
         birth: Date,
