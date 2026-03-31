@@ -761,6 +761,12 @@ class HiskiService {
             if i + 1 < matches.count,
                let nextRange = Range(matches[i + 1].range, in: html) {
                 rowEnd = nextRange.lowerBound
+            } else if let rowEndRange = html.range(
+                of: "</TR>",
+                options: [.caseInsensitive],
+                range: rowStart..<html.endIndex
+            ) {
+                rowEnd = rowEndRange.lowerBound
             } else if let brRange = html.range(
                 of: "<BR",
                 options: [.caseInsensitive],

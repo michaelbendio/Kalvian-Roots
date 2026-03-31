@@ -187,6 +187,26 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertTrue(rows.isEmpty)
     }
 
+    func testParseFamilyBirthResultsTableStopsFinalRowBeforeFooterText() {
+        let html = """
+        <TABLE>
+            <TR><TH>Announc.<TH>Born<TH>Bapt.<TH>Village<TH>Farm<TH>Father<TH>Mother<TH>Child
+            <TR><TD><a href="/hiski?en+0265+kastetut+8551"><img src="/historia/sl.gif"></a>3.2.1827 <TD>4.2.1827 <TD>&nbsp; <TD>&nbsp; <TD> Elias Mattsson Kykyri <TD> Maria Andersdr. &nbsp; 40-45 <TD>Abraham</TR>
+        A total of 8 events found.
+        <FORM><INPUT type="text" name="dummy"></FORM>
+        </TABLE>
+        """
+
+        let rows = service.parseFamilyBirthResultsTable(html)
+
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].recordPath, "/hiski?en+0265+kastetut+8551")
+        XCTAssertEqual(rows[0].birthDate, "3.2.1827")
+        XCTAssertEqual(rows[0].childName, "Abraham")
+        XCTAssertEqual(rows[0].fatherName, "Elias Mattsson Kykyri")
+        XCTAssertEqual(rows[0].motherName, "Maria Andersdr. 40-45")
+    }
+
     func testFetchCitationsForFamilyBirthRowsBuildsOrderedEvents() async throws {
         let rows = [
             HiskiService.HiskiFamilyBirthRow(
