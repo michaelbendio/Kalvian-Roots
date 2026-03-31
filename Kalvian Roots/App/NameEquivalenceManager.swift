@@ -27,7 +27,7 @@ class NameEquivalenceManager {
     private let userDefaultsKey = "NameEquivalences"
     private let userDefaultsVersionKey = "NameEquivalencesVersion"
 
-    private let currentVersion = 2
+    private let currentVersion = 3
 
 
     // MARK: - Computed Properties
@@ -293,20 +293,24 @@ class NameEquivalenceManager {
         let defaultPairs = [
 
             ("Liisa", "Elisabet"),
+            ("Liisa", "Elis."),
             ("Malin", "Magdalena"),
             ("Helena", "Leena"),
             ("Johan", "Juho"),
+            ("Juho", "Johannes"),
             ("Matti", "Matias"),
+            ("Matti", "Matts"),
             ("Anna", "Annikki"),
             ("Kustaa", "Kustavi"),
             ("Brita", "Birgit"),
+            ("Brita", "Briita"),
             ("Erik", "Erkki"),
             ("Henrik", "Heikki"),
             ("Margareta", "Marketta"),
             ("Kristina", "Kirstine"),
-            ("Pietari", "Petrus")
+            ("Pietari", "Petrus"),
+            ("Antti", "Anders")
         ]
-
         for (name1, name2) in defaultPairs {
             addEquivalence(between: name1, and: name2)
         }

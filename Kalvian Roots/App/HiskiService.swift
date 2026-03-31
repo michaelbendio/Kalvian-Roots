@@ -738,11 +738,17 @@ class HiskiService {
 
     private func extractTableRows(from html: String) -> [String] {
         let rowStartPattern = "<TR[^>]*>"
-        guard let rowStartRegex = try? NSRegularExpression(pattern: rowStartPattern, options: [.caseInsensitive]) else {
+        guard let rowStartRegex = try? NSRegularExpression(
+            pattern: rowStartPattern,
+            options: [.caseInsensitive]
+        ) else {
             return []
         }
 
-        let matches = rowStartRegex.matches(in: html, range: NSRange(html.startIndex..., in: html))
+        let matches = rowStartRegex.matches(
+            in: html,
+            range: NSRange(html.startIndex..., in: html)
+        )
         guard !matches.isEmpty else { return [] }
 
         var rows: [String] = []
@@ -755,8 +761,18 @@ class HiskiService {
             if i + 1 < matches.count,
                let nextRange = Range(matches[i + 1].range, in: html) {
                 rowEnd = nextRange.lowerBound
-            } else if let tableEnd = html.range(of: "</TABLE>", options: [.caseInsensitive], range: rowStart..<html.endIndex) {
-                rowEnd = tableEnd.lowerBound
+            } else if let brRange = html.range(
+                of: "<BR",
+                options: [.caseInsensitive],
+                range: rowStart..<html.endIndex
+            ) {
+                rowEnd = brRange.upperBound
+            } else if let tableEndRange = html.range(
+                of: "</TABLE>",
+                options: [.caseInsensitive],
+                range: rowStart..<html.endIndex
+            ) {
+                rowEnd = tableEndRange.lowerBound
             } else {
                 rowEnd = html.endIndex
             }
@@ -781,18 +797,16 @@ class HiskiService {
 
     private func extractTableCellContents(from html: String) -> [String] {
         let delimiter = "\u{1F}"
+
         let tdSeparated = html.replacingOccurrences(
             of: "(?i)<td[^>]*>",
             with: delimiter,
             options: .regularExpression
         )
 
-        return tdSeparated
-            .components(separatedBy: delimiter)
-            .dropFirst()
-            .map(String.init)
+        return Array(tdSeparated.components(separatedBy: delimiter).dropFirst())
     }
-
+    
     private func cleanHiskiCellText(_ html: String) -> String {
         let withoutSmallNotes = html.replacingOccurrences(
             of: "(?is)<small[^>]*>.*?</small>",
