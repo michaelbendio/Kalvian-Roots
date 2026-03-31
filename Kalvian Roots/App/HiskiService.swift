@@ -700,6 +700,7 @@ class HiskiService {
 
     private func parseFamilyBirthRow(from rowHtml: String) -> HiskiFamilyBirthRow? {
         guard let recordPath = extractSlGifHref(from: rowHtml) else {
+            
             return nil
         }
 
@@ -737,18 +738,34 @@ class HiskiService {
     }
 
     private func extractTableRows(from html: String) -> [String] {
-        let rowPattern = "<TR[^>]*>(.*?)</TR>"
-        guard let rowRegex = try? NSRegularExpression(pattern: rowPattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else {
+        let rowStartPattern = "<TR[^>]*>"
+        guard let rowStartRegex = try? NSRegularExpression(pattern: rowStartPattern, options: [.caseInsensitive]) else {
             return []
         }
 
-        return rowRegex.matches(in: html, range: NSRange(html.startIndex..., in: html)).compactMap { match in
-            guard let rowRange = Range(match.range(at: 1), in: html) else {
-                return nil
+        let matches = rowStartRegex.matches(in: html, range: NSRange(html.startIndex..., in: html))
+        guard !matches.isEmpty else { return [] }
+
+        var rows: [String] = []
+
+        for i in matches.indices {
+            guard let startRange = Range(matches[i].range, in: html) else { continue }
+            let rowStart = startRange.lowerBound
+
+            let rowEnd: String.Index
+            if i + 1 < matches.count,
+               let nextRange = Range(matches[i + 1].range, in: html) {
+                rowEnd = nextRange.lowerBound
+            } else if let tableEnd = html.range(of: "</TABLE>", options: [.caseInsensitive], range: rowStart..<html.endIndex) {
+                rowEnd = tableEnd.lowerBound
+            } else {
+                rowEnd = html.endIndex
             }
 
-            return String(html[rowRange])
+            rows.append(String(html[rowStart..<rowEnd]))
         }
+
+        return rows
     }
 
     private func extractSlGifHref(from html: String) -> String? {

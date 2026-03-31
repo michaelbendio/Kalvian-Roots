@@ -1016,6 +1016,7 @@ class JuuretApp {
     
     // MARK: - Hiski Search URL Generation
     
+/*
     private func extractYear(from dateString: String) -> String? {
         // Handle various date formats
         let components = dateString.components(separatedBy: CharacterSet.decimalDigits.inverted)
@@ -1026,6 +1027,7 @@ class JuuretApp {
         }
         return nil
     }
+ */
     
     /**
      * Configure the AI service (DeepSeek)
