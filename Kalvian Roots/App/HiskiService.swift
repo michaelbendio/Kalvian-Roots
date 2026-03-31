@@ -700,7 +700,6 @@ class HiskiService {
 
     private func parseFamilyBirthRow(from rowHtml: String) -> HiskiFamilyBirthRow? {
         guard let recordPath = extractSlGifHref(from: rowHtml) else {
-            
             return nil
         }
 
@@ -781,22 +780,27 @@ class HiskiService {
     }
 
     private func extractTableCellContents(from html: String) -> [String] {
-        let cellPattern = "<TD[^>]*>(.*?)</TD>"
-        guard let cellRegex = try? NSRegularExpression(pattern: cellPattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else {
-            return []
-        }
+        let delimiter = "\u{1F}"
+        let tdSeparated = html.replacingOccurrences(
+            of: "(?i)<td[^>]*>",
+            with: delimiter,
+            options: .regularExpression
+        )
 
-        return cellRegex.matches(in: html, range: NSRange(html.startIndex..., in: html)).compactMap { match in
-            guard let cellRange = Range(match.range(at: 1), in: html) else {
-                return nil
-            }
-
-            return String(html[cellRange])
-        }
+        return tdSeparated
+            .components(separatedBy: delimiter)
+            .dropFirst()
+            .map(String.init)
     }
 
     private func cleanHiskiCellText(_ html: String) -> String {
-        let textWithoutTags = html.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+        let withoutSmallNotes = html.replacingOccurrences(
+            of: "(?is)<small[^>]*>.*?</small>",
+            with: " ",
+            options: .regularExpression
+        )
+
+        let textWithoutTags = withoutSmallNotes.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
 
         let decodedText = textWithoutTags
             .replacingOccurrences(of: "&nbsp;", with: " ")

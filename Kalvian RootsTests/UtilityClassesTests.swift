@@ -147,36 +147,16 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertEqual(values["srk"], "0053,0093,0165,0183,0218,0172,0265,0295,0301,0386,0555,0581,0614")
     }
 
-    func testParseFamilyBirthResultsTableParsesMultipleChildRows() {
+    func testParseFamilyBirthResultsTableParsesTdOnlyChildRows() {
         let html = """
         <html>
         <body>
-        <table>
-            <tr>
-                <th>Announc.</th><th>Born</th><th>Bapt.</th><th>Village</th><th>Farm</th><th>Father</th><th>Mother</th><th>Child</th>
-            </tr>
-            <tr>
-                <td><a href="/hiski?en+abc123"><img src="/historia/sl.gif"></a> 24.6.1801</td>
-                <td>26.6.1801</td>
-                <td>Kykyri</td>
-                <td>II 8</td>
-                <td>Elias Matinp.</td>
-                <td>Maria Antint.</td>
-                <td>Anna</td>
-            </tr>
-            <tr>
-                <td><a href="/hiski?en+abc124"><img src="/historia/sl.gif"></a> 1.3.1804</td>
-                <td>2.3.1804</td>
-                <td>Kykyri</td>
-                <td>II 8</td>
-                <td>Elias Matinp.</td>
-                <td>Maria Antint.</td>
-                <td>Matts</td>
-            </tr>
-            <tr>
-                <td colspan="7">Summary row without child data</td>
-            </tr>
-        </table>
+        <TABLE>
+            <TR><TH>Announc.<TH>Born<TH>Bapt.<TH>Village<TH>Farm<TH>Father<TH>Mother<TH>Child
+            <TR><TD><a href="/hiski?en+0265+kastetut+8443"><img src="/historia/sl.gif"></a>25.6.1802 <TD>27.6.1802 <TD>&nbsp; <TD>&nbsp; <TD> Elias Mattsson Kykyri <TD> Maria Andersdr. &nbsp; 20-25 <TD>Matts<BR>
+            <TR><TD><a href="/hiski?en+0265+kastetut+8444"><img src="/historia/sl.gif"></a>1.3.1804 <TD>2.3.1804 <TD>&nbsp; <TD>&nbsp; <TD> Elias Mattsson Kykyri <TD> Maria Andersdr. &nbsp; 20-25 <TD>Anna<BR><SMALL>(n.d.conf.)</SMALL>
+            <TR><TD colspan="7">Summary row without child data
+        </TABLE>
         </body>
         </html>
         """
@@ -184,29 +164,22 @@ final class HiskiServiceTests: XCTestCase {
         let rows = service.parseFamilyBirthResultsTable(html)
 
         XCTAssertEqual(rows.count, 2)
-        XCTAssertEqual(rows[0].recordPath, "/hiski?en+abc123")
-        XCTAssertEqual(rows[0].birthDate, "24.6.1801")
-        XCTAssertEqual(rows[0].childName, "Anna")
-        XCTAssertEqual(rows[0].fatherName, "Elias Matinp.")
-        XCTAssertEqual(rows[0].motherName, "Maria Antint.")
-        XCTAssertEqual(rows[1].recordPath, "/hiski?en+abc124")
+        XCTAssertEqual(rows[0].recordPath, "/hiski?en+0265+kastetut+8443")
+        XCTAssertEqual(rows[0].birthDate, "25.6.1802")
+        XCTAssertEqual(rows[0].childName, "Matts")
+        XCTAssertEqual(rows[0].fatherName, "Elias Mattsson Kykyri")
+        XCTAssertEqual(rows[0].motherName, "Maria Andersdr. 20-25")
+        XCTAssertEqual(rows[1].recordPath, "/hiski?en+0265+kastetut+8444")
         XCTAssertEqual(rows[1].birthDate, "1.3.1804")
-        XCTAssertEqual(rows[1].childName, "Matts")
+        XCTAssertEqual(rows[1].childName, "Anna")
     }
 
-    func testParseFamilyBirthResultsTableIgnoresIncompleteRows() {
+    func testParseFamilyBirthResultsTableIgnoresIncompleteTdOnlyRows() {
         let html = """
-        <table>
-            <tr>
-                <td><a href="/hiski?en+skipme"><img src="/historia/sl.gif"></a> 12.5.1806</td>
-                <td>13.5.1806</td>
-                <td>Kykyri</td>
-                <td>II 8</td>
-                <td>Elias Matinp.</td>
-                <td></td>
-                <td></td>
-            </tr>
-        </table>
+        <TABLE>
+            <TR><TD><a href="/hiski?en+skipme"><img src="/historia/sl.gif"></a>12.5.1806 <TD>13.5.1806 <TD>&nbsp; <TD>&nbsp; <TD> Elias Mattsson Kykyri <TD>&nbsp; <TD>&nbsp;
+            <TR><TD colspan="7">Summary row without child data
+        </TABLE>
         """
 
         let rows = service.parseFamilyBirthResultsTable(html)
