@@ -1111,7 +1111,7 @@ final class HTTPHandler: ChannelInboundHandler {
         let familySearchChildren = session.familySearchExtraction(for: family.familyId)?.children ?? []
 
         guard let marriageDate = couple.fullMarriageDate ?? couple.marriageDate,
-              let marriageYear = extractYear(from: marriageDate) else {
+              let marriageYear = extractYear(from: marriageDate).flatMap(Int.init) else {
             return comparisonService.compare(
                 juuretCandidates: comparisonService.makeJuuretCandidates(from: couple.children),
                 hiskiCandidates: [],
@@ -1179,12 +1179,12 @@ final class HTTPHandler: ChannelInboundHandler {
         return html
     }
 
-    private func extractYear(from rawDate: String) -> Int? {
+    private func extractYear(from rawDate: String) -> String? {
         guard let yearRange = rawDate.range(of: #"\b\d{4}\b"#, options: .regularExpression) else {
             return nil
         }
 
-        return Int(rawDate[yearRange])
+        return String(rawDate[yearRange])
     }
 
     // MARK: - Response Writer (EventLoop only)

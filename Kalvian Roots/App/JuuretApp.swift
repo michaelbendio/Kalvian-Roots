@@ -47,6 +47,9 @@ class JuuretApp {
     var errorMessage: String?
     var extractionProgress: ExtractionProgress = .idle
     var comparisonReport = ""
+    var familySearchComparisonResult: FamilyComparisonResult?
+    var familySearchComparisonDebugMessage = "Comparison not triggered"
+    var familySearchComparisonDebugLines: [String] = []
     var hiskiCitationProposals: [HiskiCitationProposal] = []
     
     // MARK: - Detail Routing (macOS NavigationSplitView)
@@ -62,6 +65,7 @@ class JuuretApp {
 
     func navigateToFamily(_ familyId: String, updateHistory _: Bool) {
         let normalizedId = familyId.uppercased().trimmingCharacters(in: .whitespaces)
+        logInfo(.ui, "🧪 family selected: \(normalizedId)")
 
         // Validate family ID
         guard FamilyIDs.isValid(familyId: normalizedId) else {
@@ -86,6 +90,7 @@ class JuuretApp {
         // Set current family and activate workflow with cached network
         self.currentFamily = network.mainFamily
         self.comparisonReport = ""
+        resetFamilySearchComparisonDebug(message: "Comparison not triggered")
         self.hiskiCitationProposals = []
         self.familyNetworkWorkflow = FamilyNetworkWorkflow(
             nuclearFamily: network.mainFamily,
@@ -100,6 +105,10 @@ class JuuretApp {
         let after = self.currentFamily?.familyId ?? "nil"
         logInfo(.ui, "🔄 currentFamily changed: \(before) -> \(after)")
         logInfo(.ui, "📦 Loaded cached family \(familyId) (workflow activated via helper)")
+
+        Task {
+            await self.runJuuretHiskiComparisonPipeline(for: network.mainFamily)
+        }
     }
     
     // MARK: - Sequential File Navigation (Previous/Next in file order)
@@ -472,25 +481,78 @@ class JuuretApp {
             .renderHiskiCitationProposals(proposals)
     }
 
+    func familySearchComparisonStatus(for match: FamilyComparisonResult.Match) -> String {
+        FamilyComparisonService(nameManager: nameEquivalenceManager).status(for: match)
+    }
+
+    private func resetFamilySearchComparisonDebug(message: String) {
+        familySearchComparisonResult = nil
+        familySearchComparisonDebugMessage = message
+        familySearchComparisonDebugLines = [message]
+        logInfo(.ui, "🧪 FamilySearch comparison debug reset: \(message)")
+    }
+
+    private func appendFamilySearchComparisonDebug(_ message: String) {
+        familySearchComparisonDebugMessage = message
+        familySearchComparisonDebugLines.append(message)
+        logInfo(.ui, "🧪 \(message)")
+    }
+
+    private func familySearchParentId(in family: Family) -> String? {
+        guard let couple = family.primaryCouple else {
+            return nil
+        }
+
+        return couple.husband.familySearchId ?? couple.wife.familySearchId
+    }
+
     private func runJuuretHiskiComparisonPipeline(for family: Family) async {
         guard let couple = family.primaryCouple else {
+            resetFamilySearchComparisonDebug(message: "Comparison not triggered: no primary couple")
             logInfo(.app, "ℹ️ Skipping Juuret + HisKi comparison for \(family.familyId): no primary couple")
             return
         }
 
+        appendFamilySearchComparisonDebug("Family selected: \(family.familyId)")
+
+        let familySearchPersonId = familySearchParentId(in: family)
+        if let familySearchPersonId {
+            appendFamilySearchComparisonDebug("FamilySearch ID found: \(familySearchPersonId)")
+            appendFamilySearchComparisonDebug("FamilySearch extraction started: \(familySearchPersonId)")
+        } else {
+            appendFamilySearchComparisonDebug("FamilySearch comparison not yet available: no FamilySearch parent ID found")
+            appendFamilySearchComparisonDebug("FamilySearch extraction started: skipped because no FamilySearch parent ID was found")
+        }
+
+        let familySearchChildren: [FamilySearchChild] = []
+        appendFamilySearchComparisonDebug("FamilySearch extraction finished, child count: \(familySearchChildren.count)")
+
         guard !couple.husband.name.isEmpty, !couple.wife.name.isEmpty else {
+            assignFamilySearchComparisonFallback(
+                family: family,
+                couple: couple,
+                familySearchChildren: familySearchChildren,
+                message: "Comparison not triggered: missing first-couple names"
+            )
             logInfo(.app, "ℹ️ Skipping Juuret + HisKi comparison for \(family.familyId): missing first-couple names")
             return
         }
 
         guard let marriageDate = couple.fullMarriageDate ?? couple.marriageDate,
               let marriageYear = extractYear(from: marriageDate) else {
+            assignFamilySearchComparisonFallback(
+                family: family,
+                couple: couple,
+                familySearchChildren: familySearchChildren,
+                message: "Comparison not triggered: missing first-couple marriage year"
+            )
             logInfo(.app, "ℹ️ Skipping Juuret + HisKi comparison for \(family.familyId): missing first-couple marriage year")
             return
         }
 
         let comparisonService = FamilyComparisonService(nameManager: nameEquivalenceManager)
         let juuretCandidates = comparisonService.makeJuuretCandidates(from: couple.children)
+        let familySearchCandidates = comparisonService.makeFamilySearchCandidates(from: familySearchChildren)
         let hiskiService = HiskiService(nameEquivalenceManager: nameEquivalenceManager)
         hiskiService.setCurrentFamily(family.familyId)
 
@@ -507,9 +569,11 @@ class JuuretApp {
             let rows = hiskiService.parseFamilyBirthResultsTable(searchHtml)
             let hiskiEvents = try await hiskiService.fetchCitationsForFamilyBirthRows(rows)
             let hiskiCandidates = comparisonService.makeHiskiCandidates(from: hiskiEvents)
+            appendFamilySearchComparisonDebug("FamilyComparisonService invoked")
             let result = comparisonService.compare(
                 juuretCandidates: juuretCandidates,
-                hiskiCandidates: hiskiCandidates
+                hiskiCandidates: hiskiCandidates,
+                familySearchCandidates: familySearchCandidates
             )
             let proposals = comparisonService.makeHiskiCitationProposals(from: result)
 
@@ -519,6 +583,15 @@ class JuuretApp {
 
             let report = renderJuuretHiskiComparisonReport(result)
             let proposalReport = storeHiskiCitationProposals(proposals)
+            familySearchComparisonResult = result
+            if familySearchPersonId == nil {
+                familySearchComparisonDebugMessage = "FamilySearch comparison not yet available"
+            } else if familySearchChildren.isEmpty {
+                familySearchComparisonDebugMessage = "FamilySearch extraction returned 0 children"
+            } else {
+                familySearchComparisonDebugMessage = "FamilySearch comparison ready"
+            }
+            appendFamilySearchComparisonDebug("comparison results assigned to UI state: \(result.rows.count) rows")
             logInfo(.app, "📋 Juuret + HisKi comparison report for \(family.familyId):\n\(report)")
             logInfo(.app, "📎 HisKi citation proposals for \(family.familyId):\n\(proposalReport)")
         } catch {
@@ -526,10 +599,37 @@ class JuuretApp {
                 return
             }
 
+            assignFamilySearchComparisonFallback(
+                family: family,
+                couple: couple,
+                familySearchChildren: familySearchChildren,
+                message: "FamilySearch comparison not yet available: HisKi comparison failed"
+            )
             comparisonReport = ""
             hiskiCitationProposals = []
             logWarn(.app, "⚠️ Juuret + HisKi comparison unavailable for \(family.familyId): \(error.localizedDescription)")
         }
+    }
+
+    private func assignFamilySearchComparisonFallback(
+        family: Family,
+        couple: Couple,
+        familySearchChildren: [FamilySearchChild],
+        message: String
+    ) {
+        guard currentFamily?.familyId == family.familyId else {
+            return
+        }
+
+        let comparisonService = FamilyComparisonService(nameManager: nameEquivalenceManager)
+        appendFamilySearchComparisonDebug("FamilyComparisonService invoked")
+        familySearchComparisonResult = comparisonService.compare(
+            juuretCandidates: comparisonService.makeJuuretCandidates(from: couple.children),
+            hiskiCandidates: [],
+            familySearchCandidates: comparisonService.makeFamilySearchCandidates(from: familySearchChildren)
+        )
+        familySearchComparisonDebugMessage = message
+        appendFamilySearchComparisonDebug("comparison results assigned to UI state: \(familySearchComparisonResult?.rows.count ?? 0) rows")
     }
 
     private func loadHiskiSearchHtml(from url: URL) async throws -> String {
@@ -603,6 +703,7 @@ class JuuretApp {
             currentFamily = nil
             enhancedFamily = nil
             comparisonReport = ""
+            resetFamilySearchComparisonDebug(message: "Comparison not triggered")
             hiskiCitationProposals = []
             extractionProgress = .extractingText
             pendingFamilyId = normalizedId  // Show this in nav bar immediately
@@ -616,6 +717,7 @@ class JuuretApp {
             await MainActor.run {
                 currentFamily = cached.mainFamily
                 enhancedFamily = cached.mainFamily
+                resetFamilySearchComparisonDebug(message: "Comparison not triggered")
                 
                 // Create workflow with cached network
                 familyNetworkWorkflow = FamilyNetworkWorkflow(
@@ -743,6 +845,7 @@ class JuuretApp {
                 currentFamily = nil
                 enhancedFamily = nil
                 comparisonReport = ""
+                resetFamilySearchComparisonDebug(message: "Comparison not triggered")
                 hiskiCitationProposals = []
                 isProcessing = false
                 extractionProgress = .idle

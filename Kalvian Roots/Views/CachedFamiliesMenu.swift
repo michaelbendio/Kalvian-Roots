@@ -161,8 +161,8 @@ struct CachedFamiliesMenu: View {
                                             showingPopover = false
                                             // Try to load directly from cache for immediate UI switch
                                             if let cached = app.familyNetworkCache.getCachedNetwork(familyId: familyId) {
-                                                app.currentFamily = cached.mainFamily
-                                                logInfo(.ui, "📦 Loaded cached family \(familyId) from AI Settings")
+                                                app.showFamilyFromCache(cached)
+                                                logInfo(.ui, "📦 Loaded cached family \(familyId) from Cached Families menu")
                                             } else {
                                                 // Fallback: if not in cache (stale list), trigger extraction
                                                 Task {
@@ -355,4 +355,3 @@ private struct FamilyRow: View {
         }
     }
 }
-

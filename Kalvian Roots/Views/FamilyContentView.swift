@@ -122,11 +122,143 @@ struct FamilyContentView: View {
                     }
                     .padding(.top, 12)
                 }
+
+                if shouldRenderFamilySearchComparisonUI {
+                    familySearchComparisonPanel
+                        .padding(.top, 12)
+                }
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color(hex: "fefdf8"))
+    }
+
+    private var shouldRenderFamilySearchComparisonUI: Bool {
+        let shouldRender = juuretApp.familySearchComparisonResult != nil ||
+            !juuretApp.familySearchComparisonDebugMessage.isEmpty
+
+        logInfo(
+            .ui,
+            "🧪 comparison UI render condition evaluated: \(shouldRender) " +
+            "(resultRows: \(juuretApp.familySearchComparisonResult?.rows.count ?? 0), " +
+            "message: \(juuretApp.familySearchComparisonDebugMessage))"
+        )
+
+        return shouldRender
+    }
+
+    private var familySearchComparisonPanel: some View {
+        GroupBox("Juuret / HisKi / FamilySearch Children Comparison") {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(juuretApp.familySearchComparisonDebugMessage.isEmpty
+                    ? "Comparison not triggered"
+                    : juuretApp.familySearchComparisonDebugMessage)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+
+                if !juuretApp.familySearchComparisonDebugLines.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(Array(juuretApp.familySearchComparisonDebugLines.enumerated()), id: \.offset) { _, line in
+                            Text(line)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.black.opacity(0.04))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+
+                if let result = juuretApp.familySearchComparisonResult, !result.rows.isEmpty {
+                    familySearchComparisonTable(rows: result.rows)
+                } else {
+                    Text(juuretApp.familySearchComparisonDebugMessage.isEmpty
+                        ? "Comparison not triggered"
+                        : juuretApp.familySearchComparisonDebugMessage)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func familySearchComparisonTable(rows: [FamilyComparisonResult.Match]) -> some View {
+        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
+            GridRow {
+                comparisonHeader("Child name")
+                comparisonHeader("Juuret")
+                comparisonHeader("HisKi")
+                comparisonHeader("FamilySearch")
+                comparisonHeader("Status")
+            }
+
+            Divider()
+                .gridCellColumns(5)
+
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                GridRow {
+                    comparisonCell(displayName(for: row))
+                    comparisonCell(sourceCell(row.juuretKalvialla))
+                    comparisonCell(sourceCell(row.hiski))
+                    comparisonCell(sourceCell(row.familySearch))
+                    comparisonCell(juuretApp.familySearchComparisonStatus(for: row))
+                }
+            }
+        }
+        .font(.system(.caption, design: .monospaced))
+        .textSelection(.enabled)
+    }
+
+    private func comparisonHeader(_ text: String) -> some View {
+        Text(text)
+            .font(.system(.caption, design: .monospaced).weight(.semibold))
+            .foregroundStyle(.primary)
+    }
+
+    private func comparisonCell(_ text: String) -> some View {
+        Text(text)
+            .foregroundStyle(.primary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func displayName(for row: FamilyComparisonResult.Match) -> String {
+        row.juuretKalvialla?.rawName
+            ?? row.hiski?.rawName
+            ?? row.familySearch?.rawName
+            ?? "(unknown)"
+    }
+
+    private func sourceCell(_ candidate: PersonCandidate?) -> String {
+        guard let candidate else {
+            return "No"
+        }
+
+        var parts = ["Yes"]
+        if let familySearchId = candidate.familySearchId {
+            parts.append("<\(familySearchId)>")
+        }
+        if let birthDate = candidate.birthDate {
+            parts.append(formatComparisonDate(birthDate))
+        }
+        if let deathDate = candidate.deathDate {
+            parts.append("d. \(formatComparisonDate(deathDate))")
+        }
+        return parts.joined(separator: "\n")
+    }
+
+    private func formatComparisonDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "dd MMM yyyy"
+        return formatter.string(from: date)
     }
     
     private func noteDefinitionsSection() -> some View {
