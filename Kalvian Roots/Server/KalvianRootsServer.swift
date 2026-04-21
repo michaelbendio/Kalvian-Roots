@@ -1179,14 +1179,6 @@ final class HTTPHandler: ChannelInboundHandler {
         return html
     }
 
-    private func extractYear(from rawDate: String) -> String? {
-        guard let yearRange = rawDate.range(of: #"\b\d{4}\b"#, options: .regularExpression) else {
-            return nil
-        }
-
-        return String(rawDate[yearRange])
-    }
-
     // MARK: - Response Writer (EventLoop only)
 
     private func send(
