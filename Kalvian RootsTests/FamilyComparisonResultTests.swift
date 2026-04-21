@@ -1246,6 +1246,47 @@ final class FamilySearchDOMServiceTests: XCTestCase {
     }
 }
 
+final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
+
+    func testClipboardTextIncludesDebugAndTabSeparatedRows() {
+        let nameManager = NameEquivalenceManager()
+        nameManager.clearAllEquivalences()
+        nameManager.addEquivalence(between: "Matti", and: "Matthias")
+
+        let result = FamilyComparisonResult(
+            familySearch: [
+                PersonCandidate(
+                    name: "Matthias",
+                    birthDate: date(1761, 3, 14),
+                    source: .familySearch,
+                    nameManager: nameManager,
+                    familySearchId: "LK4Q-YSX"
+                )
+            ],
+            juuretKalvialla: [
+                PersonCandidate(
+                    name: "Matti",
+                    birthDate: date(1761, 3, 14),
+                    source: .juuretKalvialla,
+                    nameManager: nameManager
+                )
+            ],
+            hiski: []
+        )
+
+        let text = FamilySearchComparisonClipboardFormatter.text(
+            debugMessage: "FamilySearch comparison ready",
+            debugLines: ["Family selected: AHOKANGAS 2"],
+            rows: result.rows,
+            status: { _ in "Missing in HisKi" }
+        )
+
+        XCTAssertTrue(text.contains("Family selected: AHOKANGAS 2"))
+        XCTAssertTrue(text.contains("Child name\tJuuret\tHisKi\tFamilySearch\tStatus"))
+        XCTAssertTrue(text.contains("Matti\tYes | 14 Mar 1761\tNo\tYes | <LK4Q-YSX> | 14 Mar 1761\tMissing in HisKi"))
+    }
+}
+
 private func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
     var components = DateComponents()
     components.calendar = Calendar(identifier: .gregorian)

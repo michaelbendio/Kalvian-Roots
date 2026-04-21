@@ -151,6 +151,14 @@ struct FamilyContentView: View {
     private var familySearchComparisonPanel: some View {
         GroupBox("Juuret / HisKi / FamilySearch Children Comparison") {
             VStack(alignment: .leading, spacing: 10) {
+                Button {
+                    copyToClipboard(familySearchComparisonClipboardText)
+                } label: {
+                    Label("Copy comparison text", systemImage: "doc.on.doc")
+                        .font(.system(.caption, design: .monospaced))
+                }
+                .buttonStyle(.bordered)
+
                 Text(juuretApp.familySearchComparisonDebugMessage.isEmpty
                     ? "Comparison not triggered"
                     : juuretApp.familySearchComparisonDebugMessage)
@@ -194,6 +202,15 @@ struct FamilyContentView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var familySearchComparisonClipboardText: String {
+        FamilySearchComparisonClipboardFormatter.text(
+            debugMessage: juuretApp.familySearchComparisonDebugMessage,
+            debugLines: juuretApp.familySearchComparisonDebugLines,
+            rows: juuretApp.familySearchComparisonResult?.rows ?? [],
+            status: juuretApp.familySearchComparisonStatus(for:)
+        )
     }
 
     private func familySearchComparisonTable(rows: [FamilyComparisonResult.Match]) -> some View {
@@ -521,6 +538,85 @@ struct FamilyContentView: View {
         case 10: return "X"
         default: return "\(number)"
         }
+    }
+}
+
+enum FamilySearchComparisonClipboardFormatter {
+    static func text(
+        debugMessage: String,
+        debugLines: [String],
+        rows: [FamilyComparisonResult.Match],
+        status: (FamilyComparisonResult.Match) -> String
+    ) -> String {
+        var lines = [
+            "Juuret / HisKi / FamilySearch Children Comparison",
+            debugMessage.isEmpty ? "Comparison not triggered" : debugMessage
+        ]
+
+        if !debugLines.isEmpty {
+            lines.append("")
+            lines.append("Debug")
+            lines.append(contentsOf: debugLines)
+        }
+
+        lines.append("")
+        lines.append(["Child name", "Juuret", "HisKi", "FamilySearch", "Status"].joined(separator: "\t"))
+
+        if rows.isEmpty {
+            lines.append("(no rows)\t\t\t\t\(debugMessage.isEmpty ? "Comparison not triggered" : debugMessage)")
+        } else {
+            lines.append(contentsOf: rows.map { row in
+                [
+                    displayName(for: row),
+                    sourceCell(row.juuretKalvialla),
+                    sourceCell(row.hiski),
+                    sourceCell(row.familySearch),
+                    status(row)
+                ].map(sanitizeCell).joined(separator: "\t")
+            })
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    private static func displayName(for row: FamilyComparisonResult.Match) -> String {
+        row.juuretKalvialla?.rawName
+            ?? row.hiski?.rawName
+            ?? row.familySearch?.rawName
+            ?? "(unknown)"
+    }
+
+    private static func sourceCell(_ candidate: PersonCandidate?) -> String {
+        guard let candidate else {
+            return "No"
+        }
+
+        var parts = ["Yes"]
+        if let familySearchId = candidate.familySearchId {
+            parts.append("<\(familySearchId)>")
+        }
+        if let birthDate = candidate.birthDate {
+            parts.append(formatComparisonDate(birthDate))
+        }
+        if let deathDate = candidate.deathDate {
+            parts.append("d. \(formatComparisonDate(deathDate))")
+        }
+        return parts.joined(separator: " | ")
+    }
+
+    private static func sanitizeCell(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\t", with: " ")
+            .replacingOccurrences(of: "\n", with: " | ")
+    }
+
+    private static func formatComparisonDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "dd MMM yyyy"
+        return formatter.string(from: date)
     }
 }
 
