@@ -32,7 +32,44 @@ final class NameEquivalenceManagerTests: XCTestCase {
         // Test common Finnish-Swedish name pairs
         XCTAssertTrue(manager.areNamesEquivalent("Johan", "Juho"))
         XCTAssertTrue(manager.areNamesEquivalent("Matti", "Matias"))
+        XCTAssertTrue(manager.areNamesEquivalent("Matti", "Matthias"))
+        XCTAssertTrue(manager.areNamesEquivalent("Tuomas", "Thomas"))
+        XCTAssertTrue(manager.areNamesEquivalent("Elisabet", "Elisabeth"))
+        XCTAssertTrue(manager.areNamesEquivalent("Brita", "Britha"))
+        XCTAssertTrue(manager.areNamesEquivalent("Erik", "Ericus"))
+        XCTAssertTrue(manager.areNamesEquivalent("Antti", "Andreas"))
         XCTAssertTrue(manager.areNamesEquivalent("Pietari", "Petrus"))
+    }
+
+    func testDefaultEquivalenceUpgradePreservesStoredCustomNames() throws {
+        let defaults = UserDefaults.standard
+        let savedEquivalences = defaults.data(forKey: "NameEquivalences")
+        let savedVersion = defaults.object(forKey: "NameEquivalencesVersion")
+        defer {
+            if let savedEquivalences {
+                defaults.set(savedEquivalences, forKey: "NameEquivalences")
+            } else {
+                defaults.removeObject(forKey: "NameEquivalences")
+            }
+
+            if let savedVersion {
+                defaults.set(savedVersion, forKey: "NameEquivalencesVersion")
+            } else {
+                defaults.removeObject(forKey: "NameEquivalencesVersion")
+            }
+        }
+
+        let legacyEquivalences = [
+            "customa": ["customb"],
+            "customb": ["customa"]
+        ]
+        defaults.set(try JSONEncoder().encode(legacyEquivalences), forKey: "NameEquivalences")
+        defaults.set(5, forKey: "NameEquivalencesVersion")
+
+        let upgradedManager = NameEquivalenceManager()
+
+        XCTAssertTrue(upgradedManager.areNamesEquivalent("CustomA", "CustomB"))
+        XCTAssertTrue(upgradedManager.areNamesEquivalent("Tuomas", "Thomas"))
     }
     
     func testCaseInsensitiveEquivalence() {
@@ -225,11 +262,38 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertEqual(values["alkuvuosi"], "1799")
         XCTAssertEqual(values["loppuvuosi"], "1835")
         XCTAssertEqual(values["ietunimi"], "Elias")
-        XCTAssertEqual(values["ipatronyymi"], "Matinp.")
+        XCTAssertEqual(values["ipatronyymi"], "Matinp")
         XCTAssertEqual(values["aetunimi"], "Maria")
-        XCTAssertEqual(values["apatronyymi"], "Antint.")
+        XCTAssertEqual(values["apatronyymi"], "Antint")
         XCTAssertEqual(values["maxkpl"], "50")
         XCTAssertEqual(values["srk"], "0053,0093,0165,0183,0218,0172,0265,0295,0301,0386,0555,0581,0614")
+    }
+
+    func testBuildFamilyBirthSearchRequestsIncludesHiskiParentFallback() throws {
+        let requests = try service.buildFamilyBirthSearchRequests(
+            fatherName: "Tuomas",
+            fatherPatronymic: "Juhonp.",
+            motherName: "Malin",
+            motherPatronymic: "Josefint.",
+            marriageYear: 1760
+        )
+
+        XCTAssertEqual(requests.map(\.label), [
+            "primary HisKi parent query",
+            "exact Juuret parent names fallback"
+        ])
+
+        let finalQueryItems = try XCTUnwrap(
+            URLComponents(url: requests[0].url, resolvingAgainstBaseURL: false)?.queryItems
+        )
+        let finalValues = Dictionary(uniqueKeysWithValues: finalQueryItems.map { ($0.name, $0.value ?? "") })
+
+        XCTAssertEqual(finalValues["alkuvuosi"], "1759")
+        XCTAssertEqual(finalValues["loppuvuosi"], "1795")
+        XCTAssertEqual(finalValues["ietunimi"], "Thomas")
+        XCTAssertEqual(finalValues["ipatronyymi"], "Juhonp")
+        XCTAssertEqual(finalValues["aetunimi"], "Malin")
+        XCTAssertEqual(finalValues["apatronyymi"], "Josefint")
     }
 
     func testParseFamilyBirthResultsTableParsesTdOnlyChildRows() {

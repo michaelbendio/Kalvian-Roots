@@ -558,7 +558,7 @@ class JuuretApp {
         hiskiService.setCurrentFamily(family.familyId)
 
         do {
-            let searchURL = try hiskiService.buildFamilyBirthSearchUrl(
+            let searchRequests = try hiskiService.buildFamilyBirthSearchRequests(
                 fatherName: couple.husband.name,
                 fatherPatronymic: couple.husband.patronymic,
                 motherName: couple.wife.name,
@@ -566,8 +566,19 @@ class JuuretApp {
                 marriageYear: marriageYear
             )
 
-            let searchHtml = try await loadHiskiSearchHtml(from: searchURL)
-            let rows = hiskiService.parseFamilyBirthResultsTable(searchHtml)
+            var rows: [HiskiService.HiskiFamilyBirthRow] = []
+            for request in searchRequests {
+                appendFamilySearchComparisonDebug("HisKi family-child search started: \(request.label)")
+                let searchHtml = try await loadHiskiSearchHtml(from: request.url)
+                rows = hiskiService.parseFamilyBirthResultsTable(searchHtml)
+                appendFamilySearchComparisonDebug("HisKi family-child rows parsed: \(rows.count)")
+
+                if !rows.isEmpty {
+                    appendFamilySearchComparisonDebug("HisKi family-child search matched: \(request.label)")
+                    break
+                }
+            }
+
             appendFamilySearchComparisonDebug("HisKi family-child rows parsed: \(rows.count)")
             appendFamilySearchComparisonDebug("FamilyComparisonService invoked")
             let result = comparisonService.compare(

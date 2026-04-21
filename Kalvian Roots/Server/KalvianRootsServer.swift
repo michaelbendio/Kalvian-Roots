@@ -1123,20 +1123,29 @@ final class HTTPHandler: ChannelInboundHandler {
         hiskiService.setCurrentFamily(family.familyId)
 
         do {
-            let searchURL = try hiskiService.buildFamilyBirthSearchUrl(
+            let searchRequests = try hiskiService.buildFamilyBirthSearchRequests(
                 fatherName: couple.husband.name,
                 fatherPatronymic: couple.husband.patronymic,
                 motherName: couple.wife.name,
                 motherPatronymic: couple.wife.patronymic,
                 marriageYear: marriageYear
             )
-            let searchHtml = try await loadHiskiSearchHtml(from: searchURL)
-            let rows = hiskiService.parseFamilyBirthResultsTable(searchHtml)
-            let hiskiEvents = try await hiskiService.fetchCitationsForFamilyBirthRows(rows)
+            var rows: [HiskiService.HiskiFamilyBirthRow] = []
+            for request in searchRequests {
+                let searchHtml = try await loadHiskiSearchHtml(from: request.url)
+                rows = hiskiService.parseFamilyBirthResultsTable(searchHtml)
 
+                if !rows.isEmpty {
+                    logger.info(
+                        "[\(requestID!)] HisKi family-child search matched",
+                        metadata: ["request": "\(request.label)", "rows": "\(rows.count)"]
+                    )
+                    break
+                }
+            }
             return comparisonService.compareChildren(
                 juuretChildren: couple.children,
-                hiskiChildren: hiskiEvents,
+                hiskiRows: rows,
                 familySearchChildren: familySearchChildren
             )
         } catch {

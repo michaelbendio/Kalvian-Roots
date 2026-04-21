@@ -27,7 +27,7 @@ class NameEquivalenceManager {
     private let userDefaultsKey = "NameEquivalences"
     private let userDefaultsVersionKey = "NameEquivalencesVersion"
 
-    private let currentVersion = 5
+    private let currentVersion = 6
 
 
     // MARK: - Computed Properties
@@ -277,9 +277,7 @@ class NameEquivalenceManager {
 
         let savedVersion = UserDefaults.standard.integer(forKey: userDefaultsVersionKey)
 
-        guard savedVersion == currentVersion,
-              let data = UserDefaults.standard.data(forKey: userDefaultsKey)
-        else {
+        guard let data = UserDefaults.standard.data(forKey: userDefaultsKey) else {
 
             loadDefaultEquivalences()
 
@@ -295,6 +293,12 @@ class NameEquivalenceManager {
             equivalences = serializable.mapValues { Set($0) }
 
             logDebug(.nameEquivalence, "📂 Loaded equivalences")
+
+            if savedVersion != currentVersion {
+                logInfo(.nameEquivalence, "🔄 Updating default name equivalences to version \(currentVersion)")
+                loadDefaultEquivalences()
+                UserDefaults.standard.set(currentVersion, forKey: userDefaultsVersionKey)
+            }
 
         } catch {
 
@@ -318,21 +322,28 @@ class NameEquivalenceManager {
             ("Maija", "Maria"),
             ("Malin", "Magdalena"),
             ("Helena", "Leena"),
+            ("Tuomas", "Thomas"),
             ("Johan", "Juho"),
             ("Juho", "Johannes"),
             ("Matti", "Matias"),
             ("Matti", "Matts"),
+            ("Matti", "Matthias"),
             ("Anna", "Annikki"),
             ("Kaisa", "Caisa"),
             ("Kustaa", "Kustavi"),
             ("Brita", "Birgit"),
             ("Brita", "Briita"),
+            ("Brita", "Britha"),
             ("Erik", "Erkki"),
+            ("Erik", "Ericus"),
             ("Henrik", "Heikki"),
+            ("Henrik", "Henric"),
             ("Margareta", "Marketta"),
             ("Kristina", "Kirstine"),
             ("Pietari", "Petrus"),
-            ("Antti", "Anders")
+            ("Antti", "Anders"),
+            ("Antti", "Andreas"),
+            ("Elisabet", "Elisabeth")
         ]
         for (name1, name2) in defaultPairs {
             addEquivalence(between: name1, and: name2)

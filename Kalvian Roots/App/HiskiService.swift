@@ -203,6 +203,11 @@ class HiskiService {
         let recordPath: String
     }
 
+    struct FamilyBirthSearchRequest: Equatable {
+        let label: String
+        let url: URL
+    }
+
     struct HiskiFamilyBirthEvent: Equatable {
         let birthDate: String
         let childName: String
@@ -894,6 +899,78 @@ class HiskiService {
         motherPatronymic: String?,
         marriageYear: Int
     ) throws -> URL {
+        try makeFamilyBirthSearchUrl(
+            fatherName: getSwedishEquivalent(for: fatherName),
+            fatherPatronymic: hiskiPatronymicSearchInput(for: fatherPatronymic),
+            motherName: getSwedishEquivalent(for: motherName),
+            motherPatronymic: hiskiPatronymicSearchInput(for: motherPatronymic),
+            marriageYear: marriageYear
+        )
+    }
+
+    func buildFamilyBirthSearchRequests(
+        fatherName: String,
+        fatherPatronymic: String?,
+        motherName: String,
+        motherPatronymic: String?,
+        marriageYear: Int
+    ) throws -> [FamilyBirthSearchRequest] {
+        var requests: [FamilyBirthSearchRequest] = []
+        var seenURLs: Set<String> = []
+
+        func appendRequest(
+            label: String,
+            fatherSearchName: String,
+            fatherSearchPatronymic: String?,
+            motherSearchName: String,
+            motherSearchPatronymic: String?
+        ) throws {
+            let url = try makeFamilyBirthSearchUrl(
+                fatherName: fatherSearchName,
+                fatherPatronymic: fatherSearchPatronymic,
+                motherName: motherSearchName,
+                motherPatronymic: motherSearchPatronymic,
+                marriageYear: marriageYear
+            )
+
+            guard seenURLs.insert(url.absoluteString).inserted else {
+                return
+            }
+
+            requests.append(FamilyBirthSearchRequest(label: label, url: url))
+        }
+
+        let hiskiFatherName = getSwedishEquivalent(for: fatherName)
+        let hiskiMotherName = getSwedishEquivalent(for: motherName)
+        let hiskiFatherPatronymic = hiskiPatronymicSearchInput(for: fatherPatronymic)
+        let hiskiMotherPatronymic = hiskiPatronymicSearchInput(for: motherPatronymic)
+
+        try appendRequest(
+            label: "primary HisKi parent query",
+            fatherSearchName: hiskiFatherName,
+            fatherSearchPatronymic: hiskiFatherPatronymic,
+            motherSearchName: hiskiMotherName,
+            motherSearchPatronymic: hiskiMotherPatronymic
+        )
+
+        try appendRequest(
+            label: "exact Juuret parent names fallback",
+            fatherSearchName: fatherName,
+            fatherSearchPatronymic: fatherPatronymic,
+            motherSearchName: motherName,
+            motherSearchPatronymic: motherPatronymic
+        )
+
+        return requests
+    }
+
+    private func makeFamilyBirthSearchUrl(
+        fatherName: String,
+        fatherPatronymic: String?,
+        motherName: String,
+        motherPatronymic: String?,
+        marriageYear: Int
+    ) throws -> URL {
         let startYear = marriageYear - Self.yearsBeforeMarriage
         let endYear = marriageYear + Self.childbearingWindowYears
 
@@ -1000,8 +1077,9 @@ class HiskiService {
         logDebug(.app, "   Found equivalents: \(Array(equivalents).sorted())")
         
         // For Hiski queries in Swedish records, prefer Swedish/Latin forms
-        let swedishPreferred = ["Petrus", "Pehr", "Johannes", "Henricus", "Henrik", "Ericus", "Erik",
-                                "Matthias", "Matts", "Mats", "Elisabet", "Birgitta", "Brita"]
+        let swedishPreferred = ["Thomas", "Tomas", "Malin", "Petrus", "Pehr", "Johannes", "Henricus", "Henric",
+                                "Henrik", "Ericus", "Erik", "Matthias", "Matts", "Mats", "Elisabet",
+                                "Elisabeth", "Birgitta", "Brita", "Britha", "Andreas", "Anders", "Magdalena"]
         
         // Check if any equivalent matches our preferred Swedish forms
         for preferred in swedishPreferred {
@@ -1014,6 +1092,18 @@ class HiskiService {
         // If no Swedish equivalent found, return original name
         logWarn(.app, "⚠️ No Swedish equivalent found for '\(finnishName)', using original")
         return finnishName
+    }
+
+    private func hiskiPatronymicSearchInput(for patronymic: String?) -> String? {
+        guard let patronymic else {
+            return nil
+        }
+
+        let cleaned = patronymic.trimmingCharacters(
+            in: .whitespacesAndNewlines.union(.punctuationCharacters)
+        )
+
+        return cleaned.isEmpty ? nil : cleaned
     }
     
     // MARK: - Date Formatting
