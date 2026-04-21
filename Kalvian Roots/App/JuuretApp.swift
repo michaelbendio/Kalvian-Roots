@@ -493,7 +493,6 @@ class JuuretApp {
     }
 
     private func appendFamilySearchComparisonDebug(_ message: String) {
-        familySearchComparisonDebugMessage = message
         familySearchComparisonDebugLines.append(message)
         logInfo(.ui, "🧪 \(message)")
     }
@@ -513,15 +512,17 @@ class JuuretApp {
             return
         }
 
+        familySearchComparisonDebugLines = []
+        familySearchComparisonDebugMessage = "Comparison not triggered"
         appendFamilySearchComparisonDebug("Family selected: \(family.familyId)")
 
         let familySearchPersonId = familySearchParentId(in: family)
         if let familySearchPersonId {
             appendFamilySearchComparisonDebug("FamilySearch ID found: \(familySearchPersonId)")
-            appendFamilySearchComparisonDebug("FamilySearch extraction started: \(familySearchPersonId)")
+            appendFamilySearchComparisonDebug("FamilySearch extraction not started: Atlas DOM extraction is not wired into the SwiftUI family view")
         } else {
             appendFamilySearchComparisonDebug("FamilySearch comparison not yet available: no FamilySearch parent ID found")
-            appendFamilySearchComparisonDebug("FamilySearch extraction started: skipped because no FamilySearch parent ID was found")
+            appendFamilySearchComparisonDebug("FamilySearch extraction not started: no FamilySearch parent ID was found")
         }
 
         let familySearchChildren: [FamilySearchChild] = []
@@ -567,7 +568,9 @@ class JuuretApp {
 
             let searchHtml = try await loadHiskiSearchHtml(from: searchURL)
             let rows = hiskiService.parseFamilyBirthResultsTable(searchHtml)
+            appendFamilySearchComparisonDebug("HisKi family-child rows parsed: \(rows.count)")
             let hiskiEvents = try await hiskiService.fetchCitationsForFamilyBirthRows(rows)
+            appendFamilySearchComparisonDebug("HisKi citation events loaded: \(hiskiEvents.count)")
             let hiskiCandidates = comparisonService.makeHiskiCandidates(from: hiskiEvents)
             appendFamilySearchComparisonDebug("FamilyComparisonService invoked")
             let result = comparisonService.compare(
@@ -587,7 +590,7 @@ class JuuretApp {
             if familySearchPersonId == nil {
                 familySearchComparisonDebugMessage = "FamilySearch comparison not yet available"
             } else if familySearchChildren.isEmpty {
-                familySearchComparisonDebugMessage = "FamilySearch extraction returned 0 children"
+                familySearchComparisonDebugMessage = "FamilySearch comparison not yet available"
             } else {
                 familySearchComparisonDebugMessage = "FamilySearch comparison ready"
             }

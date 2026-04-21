@@ -173,6 +173,14 @@ struct FamilyContentView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
 
+                if juuretApp.familySearchComparisonDebugMessage == "FamilySearch comparison not yet available" {
+                    Text("Use the browser-rendered /family page and Atlas DOM extractor to import FamilySearch children; this SwiftUI view currently renders the Juuret/HisKi fallback.")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
                 if let result = juuretApp.familySearchComparisonResult, !result.rows.isEmpty {
                     familySearchComparisonTable(rows: result.rows)
                 } else {
