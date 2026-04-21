@@ -169,7 +169,26 @@ enum FamilySearchDOMService {
                         const name = lines[i] || '';
                         const sex = lines[i + 1] || '';
                         const lifeSpan = lines[i + 2] || '';
-                        const id = lines.slice(i + 1, i + 6).find(line => /^[A-Z0-9]{4}-[A-Z0-9]{3,}$/i.test(line)) || '';
+                        const idLineIndex = lines.slice(i + 1, i + 6)
+                            .findIndex(line => /\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/i.test(line));
+                        const idLine = idLineIndex >= 0 ? lines[i + 1 + idLineIndex] : '';
+                        const idMatch = idLine.match(/\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/i);
+                        const id = idMatch ? idMatch[0] : '';
+                        const cardLifeSpan = /\\b\\d{4}\\b/.test(idLine) ? idLine.replace(/\\s*•\\s*[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/i, '') : null;
+
+                        if (id && name && !/^(Male|Female|Unknown)$/i.test(name)) {
+                            children.push({
+                                id: id.toUpperCase(),
+                                name,
+                                birthDate: null,
+                                birthPlace: null,
+                                deathDate: null,
+                                deathPlace: null,
+                                lifeSpan: cardLifeSpan || (/\\b\\d{4}\\b/.test(lifeSpan) ? lifeSpan : null)
+                            });
+                            i += idLineIndex + 2;
+                            continue;
+                        }
 
                         if (/^(Male|Female|Unknown)$/i.test(sex) && id) {
                             children.push({

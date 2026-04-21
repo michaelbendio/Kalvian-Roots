@@ -612,6 +612,7 @@ final class HTTPHandler: ChannelInboundHandler {
         }
 
         sessionResult.session.storeFamilySearchExtraction(extraction, for: canonicalID)
+        await juuretApp?.storeFamilySearchExtraction(extraction, for: canonicalID)
 
         var responseHeaders = corsHeaders()
         if sessionResult.isNew {

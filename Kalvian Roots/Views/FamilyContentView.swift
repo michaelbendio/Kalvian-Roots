@@ -174,7 +174,7 @@ struct FamilyContentView: View {
                 }
 
                 if juuretApp.familySearchComparisonDebugMessage == "FamilySearch comparison not yet available" {
-                    Text("Use the browser-rendered /family page and Atlas DOM extractor to import FamilySearch children; this SwiftUI view currently renders the Juuret/HisKi fallback.")
+                    Text("Open the browser-rendered family page in Atlas, run the FamilySearch DOM extractor there, and this SwiftUI comparison will update when the extractor posts back.")
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)

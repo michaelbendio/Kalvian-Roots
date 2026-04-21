@@ -389,7 +389,7 @@ struct HTMLRenderer {
             extractionSummary = """
             <div class="fs-debug-summary">
                 FamilySearch children have not been imported for this family.
-                Open \(escapeHTML(FamilySearchDOMService.detailsURL(for: familySearchPersonId))) in Atlas, run the extractor below, then reload this page.
+                Open \(escapeHTML(FamilySearchDOMService.detailsURL(for: familySearchPersonId))) in Atlas, run the extractor below, then reload this page or return to the SwiftUI view.
             </div>
             <textarea class="fs-script" spellcheck="false">\(escapeHTML(script))
 

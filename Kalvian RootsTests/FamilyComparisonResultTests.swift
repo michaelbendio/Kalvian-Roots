@@ -1230,19 +1230,33 @@ final class FamilyComparisonServiceTests: XCTestCase {
 
         return url
     }
+}
 
-    private func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
-        var components = DateComponents()
-        components.calendar = Calendar(identifier: .gregorian)
-        components.timeZone = TimeZone(secondsFromGMT: 0)
-        components.year = year
-        components.month = month
-        components.day = day
+final class FamilySearchDOMServiceTests: XCTestCase {
 
-        guard let date = components.date else {
-            preconditionFailure("Invalid date components: \(year)-\(month)-\(day)")
-        }
+    func testAtlasExtractorIncludesCallbackAndCardLineParser() {
+        let script = FamilySearchDOMService.makeAtlasExtractorScript(
+            callbackURL: "http://127.0.0.1:8081/family/AHOKANGAS%202/familysearch?session=test"
+        )
 
-        return date
+        XCTAssertTrue(script.contains("KALVIAN_ROOTS_CALLBACK_URL = 'http://127.0.0.1:8081/family/AHOKANGAS%202/familysearch?session=test'"))
+        XCTAssertTrue(script.contains("await postResult(result);"))
+        XCTAssertTrue(script.contains("cardLifeSpan"))
+        XCTAssertTrue(script.contains("\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b"))
     }
+}
+
+private func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
+    var components = DateComponents()
+    components.calendar = Calendar(identifier: .gregorian)
+    components.timeZone = TimeZone(secondsFromGMT: 0)
+    components.year = year
+    components.month = month
+    components.day = day
+
+    guard let date = components.date else {
+        preconditionFailure("Invalid date components: \(year)-\(month)-\(day)")
+    }
+
+    return date
 }

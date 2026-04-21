@@ -51,6 +51,7 @@ class JuuretApp {
     var familySearchComparisonDebugMessage = "Comparison not triggered"
     var familySearchComparisonDebugLines: [String] = []
     var hiskiCitationProposals: [HiskiCitationProposal] = []
+    private var familySearchExtractions: [String: FamilySearchFamilyExtraction] = [:]
     
     // MARK: - Detail Routing (macOS NavigationSplitView)
     enum DetailRoute: Equatable {
@@ -505,6 +506,29 @@ class JuuretApp {
         return couple.husband.familySearchId ?? couple.wife.familySearchId
     }
 
+    func storeFamilySearchExtraction(_ extraction: FamilySearchFamilyExtraction, for familyId: String) {
+        let normalizedFamilyId = normalizedFamilySearchExtractionKey(familyId)
+        familySearchExtractions[normalizedFamilyId] = extraction
+        logInfo(.ui, "🧪 FamilySearch extraction stored for SwiftUI: \(normalizedFamilyId), children: \(extraction.children.count)")
+
+        guard currentFamily?.familyId.uppercased() == normalizedFamilyId,
+              let currentFamily else {
+            return
+        }
+
+        Task {
+            await runJuuretHiskiComparisonPipeline(for: currentFamily)
+        }
+    }
+
+    private func familySearchExtraction(for familyId: String) -> FamilySearchFamilyExtraction? {
+        familySearchExtractions[normalizedFamilySearchExtractionKey(familyId)]
+    }
+
+    private func normalizedFamilySearchExtractionKey(_ familyId: String) -> String {
+        familyId.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    }
+
     private func runJuuretHiskiComparisonPipeline(for family: Family) async {
         guard let couple = family.primaryCouple else {
             resetFamilySearchComparisonDebug(message: "Comparison not triggered: no primary couple")
@@ -517,15 +541,20 @@ class JuuretApp {
         appendFamilySearchComparisonDebug("Family selected: \(family.familyId)")
 
         let familySearchPersonId = familySearchParentId(in: family)
+        let storedFamilySearchExtraction = familySearchExtraction(for: family.familyId)
         if let familySearchPersonId {
             appendFamilySearchComparisonDebug("FamilySearch ID found: \(familySearchPersonId)")
-            appendFamilySearchComparisonDebug("FamilySearch extraction not started: Atlas DOM extraction is not wired into the SwiftUI family view")
+            if let storedFamilySearchExtraction {
+                appendFamilySearchComparisonDebug("FamilySearch extraction found in app state: \(storedFamilySearchExtraction.children.count) children")
+            } else {
+                appendFamilySearchComparisonDebug("FamilySearch extraction not started: open http://127.0.0.1:8081/family/\(family.familyId) in Atlas and run the DOM extractor")
+            }
         } else {
             appendFamilySearchComparisonDebug("FamilySearch comparison not yet available: no FamilySearch parent ID found")
             appendFamilySearchComparisonDebug("FamilySearch extraction not started: no FamilySearch parent ID was found")
         }
 
-        let familySearchChildren: [FamilySearchChild] = []
+        let familySearchChildren = storedFamilySearchExtraction?.children ?? []
         appendFamilySearchComparisonDebug("FamilySearch extraction finished, child count: \(familySearchChildren.count)")
 
         guard !couple.husband.name.isEmpty, !couple.wife.name.isEmpty else {
