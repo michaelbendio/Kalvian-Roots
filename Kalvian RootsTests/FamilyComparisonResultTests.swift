@@ -394,6 +394,24 @@ final class FamilyComparisonServiceTests: XCTestCase {
         XCTAssertTrue(candidates.isEmpty)
     }
 
+    func testMakeHiskiCandidatesFromRowsDoesNotRequireCitationUrl() throws {
+        let row = HiskiService.HiskiFamilyBirthRow(
+            birthDate: "25.6.1802",
+            childName: "Matti",
+            fatherName: "Elias Matinp.",
+            motherName: "Maria Antint.",
+            recordPath: "/hiski?en+4092193"
+        )
+
+        let candidates = service.makeHiskiCandidates(from: [row])
+
+        let candidate = try XCTUnwrap(candidates.first)
+        XCTAssertEqual(candidate.rawName, "Matti")
+        XCTAssertEqual(candidate.source, .hiski)
+        XCTAssertEqual(candidate.birthDate, date(1802, 6, 25))
+        XCTAssertNil(candidate.hiskiCitation)
+    }
+
     func testMakeJuuretCandidatesConvertsChildrenToJuuretCandidates() throws {
         let children = [
             Person(name: "Liisa", birthDate: "12.10.1797", noteMarkers: []),

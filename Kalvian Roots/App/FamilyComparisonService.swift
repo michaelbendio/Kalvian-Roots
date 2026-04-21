@@ -74,6 +74,12 @@ final class FamilyComparisonService {
         }
     }
 
+    func makeHiskiCandidates(from rows: [HiskiService.HiskiFamilyBirthRow]) -> [PersonCandidate] {
+        rows.map {
+            makeHiskiCandidate(from: $0)
+        }
+    }
+
     func makeJuuretCandidates(from people: [Person]) -> [PersonCandidate] {
         people.map {
             makeJuuretCandidate(from: $0)
@@ -96,6 +102,18 @@ final class FamilyComparisonService {
         compare(
             juuretCandidates: makeJuuretCandidates(from: juuretChildren),
             hiskiCandidates: makeHiskiCandidates(from: hiskiChildren),
+            familySearchCandidates: makeFamilySearchCandidates(from: familySearchChildren)
+        )
+    }
+
+    func compareChildren(
+        juuretChildren: [Person],
+        hiskiRows: [HiskiService.HiskiFamilyBirthRow],
+        familySearchChildren: [FamilySearchChild]
+    ) -> FamilyComparisonResult {
+        compare(
+            juuretCandidates: makeJuuretCandidates(from: juuretChildren),
+            hiskiCandidates: makeHiskiCandidates(from: hiskiRows),
             familySearchCandidates: makeFamilySearchCandidates(from: familySearchChildren)
         )
     }
@@ -220,6 +238,17 @@ private extension FamilyComparisonService {
             nameManager: nameManager,
             familySearchId: nil,
             hiskiCitation: URL(string: event.citationURL)
+        )
+    }
+
+    func makeHiskiCandidate(from row: HiskiService.HiskiFamilyBirthRow) -> PersonCandidate {
+        PersonCandidate(
+            name: row.childName,
+            birthDate: parseGenealogyDate(row.birthDate),
+            source: .hiski,
+            nameManager: nameManager,
+            familySearchId: nil,
+            hiskiCitation: nil
         )
     }
 

@@ -569,16 +569,27 @@ class JuuretApp {
             let searchHtml = try await loadHiskiSearchHtml(from: searchURL)
             let rows = hiskiService.parseFamilyBirthResultsTable(searchHtml)
             appendFamilySearchComparisonDebug("HisKi family-child rows parsed: \(rows.count)")
-            let hiskiEvents = try await hiskiService.fetchCitationsForFamilyBirthRows(rows)
-            appendFamilySearchComparisonDebug("HisKi citation events loaded: \(hiskiEvents.count)")
-            let hiskiCandidates = comparisonService.makeHiskiCandidates(from: hiskiEvents)
             appendFamilySearchComparisonDebug("FamilyComparisonService invoked")
             let result = comparisonService.compare(
                 juuretCandidates: juuretCandidates,
-                hiskiCandidates: hiskiCandidates,
+                hiskiCandidates: comparisonService.makeHiskiCandidates(from: rows),
                 familySearchCandidates: familySearchCandidates
             )
-            let proposals = comparisonService.makeHiskiCitationProposals(from: result)
+
+            let proposals: [HiskiCitationProposal]
+            do {
+                let hiskiEvents = try await hiskiService.fetchCitationsForFamilyBirthRows(rows)
+                appendFamilySearchComparisonDebug("HisKi citation events loaded: \(hiskiEvents.count)")
+                let citationResult = comparisonService.compare(
+                    juuretCandidates: juuretCandidates,
+                    hiskiCandidates: comparisonService.makeHiskiCandidates(from: hiskiEvents),
+                    familySearchCandidates: familySearchCandidates
+                )
+                proposals = comparisonService.makeHiskiCitationProposals(from: citationResult)
+            } catch {
+                appendFamilySearchComparisonDebug("HisKi citation events unavailable: \(error.localizedDescription)")
+                proposals = []
+            }
 
             guard currentFamily?.familyId == family.familyId else {
                 return
