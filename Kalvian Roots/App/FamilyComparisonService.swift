@@ -25,6 +25,17 @@ final class FamilyComparisonService {
         formatter.dateFormat = "dd MMM yyyy"
         return formatter
     }()
+    private let familySearchDateFormats = [
+        "d.M.yyyy",
+        "dd.MM.yyyy",
+        "d MMM yyyy",
+        "dd MMM yyyy",
+        "d MMMM yyyy",
+        "dd MMMM yyyy",
+        "MMM yyyy",
+        "MMMM yyyy",
+        "yyyy"
+    ]
 
     init(nameManager: NameEquivalenceManager) {
         self.nameManager = nameManager
@@ -69,15 +80,69 @@ final class FamilyComparisonService {
         }
     }
 
+    func makeFamilySearchCandidates(from children: [FamilySearchChild]) -> [PersonCandidate] {
+        FamilySearchDOMService.makePersonCandidates(
+            from: children,
+            nameManager: nameManager,
+            dateParser: parseGenealogyDate
+        )
+    }
+
+    func compareChildren(
+        juuretChildren: [Person],
+        hiskiChildren: [HiskiService.HiskiFamilyBirthEvent],
+        familySearchChildren: [FamilySearchChild]
+    ) -> FamilyComparisonResult {
+        compare(
+            juuretCandidates: makeJuuretCandidates(from: juuretChildren),
+            hiskiCandidates: makeHiskiCandidates(from: hiskiChildren),
+            familySearchCandidates: makeFamilySearchCandidates(from: familySearchChildren)
+        )
+    }
+
+    func compareChildren(
+        _ juuretChildren: [Person],
+        _ hiskiChildren: [HiskiService.HiskiFamilyBirthEvent],
+        _ familySearchChildren: [FamilySearchChild]
+    ) -> FamilyComparisonResult {
+        compareChildren(
+            juuretChildren: juuretChildren,
+            hiskiChildren: hiskiChildren,
+            familySearchChildren: familySearchChildren
+        )
+    }
+
     func compare(
         juuretCandidates: [PersonCandidate],
-        hiskiCandidates: [PersonCandidate]
+        hiskiCandidates: [PersonCandidate],
+        familySearchCandidates: [PersonCandidate] = []
     ) -> FamilyComparisonResult {
         FamilyComparisonResult(
-            familySearch: [],
+            familySearch: familySearchCandidates,
             juuretKalvialla: juuretCandidates,
             hiski: hiskiCandidates
         )
+    }
+
+    func status(for match: FamilyComparisonResult.Match) -> String {
+        switch (match.juuretKalvialla, match.hiski, match.familySearch) {
+        case (.some, .some, .some):
+            return hasNameMismatch(match) ? "Name mismatch" : "Present in all three"
+        case (.some, .some, nil):
+            return "Missing in FamilySearch"
+        case (.some, nil, nil):
+            return "Juuret-only"
+        case (nil, .some, nil):
+            return "HisKi-only"
+        case (nil, nil, .some):
+            return "FamilySearch-only"
+        case (.some, nil, .some):
+            return hasNameMismatch(match) ? "Name mismatch" : "Missing in HisKi"
+        case (nil, .some, .some):
+            return hasNameMismatch(match) ? "Name mismatch" : "Missing in Juuret"
+        case (nil, nil, nil):
+            return "Unknown"
+        }
     }
 
     func renderJuuretHiskiReport(_ result: FamilyComparisonResult) -> String {
@@ -117,6 +182,7 @@ private extension FamilyComparisonService {
         PersonCandidate(
             name: person.name,
             birthDate: parseGenealogyDate(person.birthDate),
+            deathDate: parseGenealogyDate(person.deathDate),
             source: .familySearch,
             nameManager: nameManager,
             familySearchId: person.familySearchId,
@@ -167,9 +233,7 @@ private extension FamilyComparisonService {
             return nil
         }
 
-        let fullDateFormats = ["d.M.yyyy", "dd.MM.yyyy"]
-
-        for format in fullDateFormats {
+        for format in familySearchDateFormats {
             let formatter = DateFormatter()
             formatter.calendar = genealogyCalendar
             formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -183,6 +247,18 @@ private extension FamilyComparisonService {
         }
 
         return nil
+    }
+
+    func hasNameMismatch(_ match: FamilyComparisonResult.Match) -> Bool {
+        let names = [
+            match.juuretKalvialla?.rawName,
+            match.hiski?.rawName,
+            match.familySearch?.rawName
+        ]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        return Set(names).count > 1
     }
 
     func renderReportSection(title: String, items: [String]) -> String {

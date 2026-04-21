@@ -250,6 +250,9 @@ final class HTTPHandler: ChannelInboundHandler {
         )
 
         switch (method, path) {
+        case (.OPTIONS, _):
+            logger.info("[\(requestID!)] Handling CORS preflight")
+            return .html("", headers: corsHeaders())
 
         case (.GET, "/"):
             logger.info("[\(requestID!)] 🏠 Handling landing page")
@@ -316,6 +319,10 @@ final class HTTPHandler: ChannelInboundHandler {
         case (.GET, let p) where p.starts(with: "/family/"):
             logger.info("[\(requestID!)] 👪 Handling family route: \(p)")
             return try await handleFamilyRoute(path: p, queryItems: queryItems)
+
+        case (.POST, let p) where p.starts(with: "/family/") && p.hasSuffix("/familysearch"):
+            logger.info("[\(requestID!)] 👪 Handling FamilySearch extraction POST: \(p)")
+            return try await handleFamilySearchExtractionPost(path: p, queryItems: queryItems)
 
         default:
             logger.warning("[\(requestID!)] ❓ Unknown route: \(method) \(path)")
@@ -532,10 +539,24 @@ final class HTTPHandler: ChannelInboundHandler {
             
         case nil:
             logger.info("[\(requestID!)] 🏠 Rendering family display (no sub-route)")
+            let comparisonResult = await makeChildrenComparisonResult(
+                family: network.mainFamily,
+                session: sessionResult.session
+            )
+            let familySearchPersonId = network.mainFamily.primaryCouple?.husband.familySearchId
+                ?? network.mainFamily.primaryCouple?.wife.familySearchId
+            let familySearchCallbackURL = makeFamilySearchCallbackURL(
+                familyId: canonicalID,
+                sessionId: sessionResult.sessionId
+            )
             let html = HTMLRenderer.renderFamily(
                 family: network.mainFamily,
                 network: network,
-                homeId: homeId
+                homeId: homeId,
+                comparisonResult: comparisonResult,
+                familySearchExtraction: sessionResult.session.familySearchExtraction(for: canonicalID),
+                familySearchPersonId: familySearchPersonId,
+                familySearchCallbackURL: familySearchCallbackURL
             )
 
             var responseHeaders = HTTPHeaders()
@@ -549,6 +570,58 @@ final class HTTPHandler: ChannelInboundHandler {
             logger.warning("[\(requestID!)] ⚠️ Unknown sub-route: \(subRoute ?? "nil")")
             return .error(.notFound, "Unknown route: \(subRoute ?? "")")
         }
+    }
+
+    @MainActor
+    private func handleFamilySearchExtractionPost(
+        path: String,
+        queryItems: [URLQueryItem]
+    ) async throws -> HTTPResponse {
+        let components = path.split(separator: "/").map(String.init)
+        guard components.count == 3 else {
+            return .error(.badRequest, "Invalid FamilySearch extraction path", headers: corsHeaders())
+        }
+
+        let rawID = components[1]
+        let decodedID = rawID.removingPercentEncoding ?? rawID
+        let canonicalID = decodedID.trimmingCharacters(in: .whitespaces).uppercased()
+
+        guard FamilyIDs.isValid(familyId: canonicalID) else {
+            return .error(.badRequest, "Invalid family ID", headers: corsHeaders())
+        }
+
+        guard let body = requestBody,
+              let data = body.data(using: .utf8) else {
+            return .error(.badRequest, "Missing FamilySearch extraction JSON", headers: corsHeaders())
+        }
+
+        let extraction = try JSONDecoder().decode(FamilySearchFamilyExtraction.self, from: data)
+        let explicitSessionId = queryItems.first(where: { $0.name == "session" })?.value
+        let headers = requestHeaders ?? HTTPHeaders()
+        let sessionResult: BrowserSessionManager.SessionResult
+
+        if let explicitSessionId,
+           let session = sessionManager.existingSession(id: explicitSessionId) {
+            sessionResult = BrowserSessionManager.SessionResult(
+                session: session,
+                sessionId: explicitSessionId,
+                isNew: false
+            )
+        } else {
+            sessionResult = sessionManager.session(for: headers)
+        }
+
+        sessionResult.session.storeFamilySearchExtraction(extraction, for: canonicalID)
+
+        var responseHeaders = corsHeaders()
+        if sessionResult.isNew {
+            responseHeaders.add(
+                name: "Set-Cookie",
+                value: sessionManager.makeSessionCookieHeader(for: sessionResult.sessionId)
+            )
+        }
+
+        return .html("OK", headers: responseHeaders)
     }
     
     // MARK: - Citation Handler
@@ -1023,6 +1096,95 @@ final class HTTPHandler: ChannelInboundHandler {
         }
         
         return .html(html, headers: responseHeaders)
+    }
+
+    @MainActor
+    private func makeChildrenComparisonResult(
+        family: Family,
+        session: BrowserSession
+    ) async -> FamilyComparisonResult? {
+        guard let couple = family.primaryCouple else {
+            return nil
+        }
+
+        let comparisonService = FamilyComparisonService(nameManager: session.nameEquivalenceManager)
+        let familySearchChildren = session.familySearchExtraction(for: family.familyId)?.children ?? []
+
+        guard let marriageDate = couple.fullMarriageDate ?? couple.marriageDate,
+              let marriageYear = extractYear(from: marriageDate) else {
+            return comparisonService.compare(
+                juuretCandidates: comparisonService.makeJuuretCandidates(from: couple.children),
+                hiskiCandidates: [],
+                familySearchCandidates: comparisonService.makeFamilySearchCandidates(from: familySearchChildren)
+            )
+        }
+
+        let hiskiService = HiskiService(nameEquivalenceManager: session.nameEquivalenceManager)
+        hiskiService.setCurrentFamily(family.familyId)
+
+        do {
+            let searchURL = try hiskiService.buildFamilyBirthSearchUrl(
+                fatherName: couple.husband.name,
+                fatherPatronymic: couple.husband.patronymic,
+                motherName: couple.wife.name,
+                motherPatronymic: couple.wife.patronymic,
+                marriageYear: marriageYear
+            )
+            let searchHtml = try await loadHiskiSearchHtml(from: searchURL)
+            let rows = hiskiService.parseFamilyBirthResultsTable(searchHtml)
+            let hiskiEvents = try await hiskiService.fetchCitationsForFamilyBirthRows(rows)
+
+            return comparisonService.compareChildren(
+                juuretChildren: couple.children,
+                hiskiChildren: hiskiEvents,
+                familySearchChildren: familySearchChildren
+            )
+        } catch {
+            logger.warning(
+                "[\(requestID!)] Family child comparison fell back without HisKi",
+                metadata: ["error": "\(error.localizedDescription)"]
+            )
+            return comparisonService.compare(
+                juuretCandidates: comparisonService.makeJuuretCandidates(from: couple.children),
+                hiskiCandidates: [],
+                familySearchCandidates: comparisonService.makeFamilySearchCandidates(from: familySearchChildren)
+            )
+        }
+    }
+
+    private func makeFamilySearchCallbackURL(familyId: String, sessionId: String) -> String? {
+        guard let host = requestHeaders?.first(name: "Host") else {
+            return nil
+        }
+
+        let encodedFamilyId = familyId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? familyId
+        return "http://\(host)/family/\(encodedFamilyId)/familysearch?session=\(sessionId)"
+    }
+
+    private func corsHeaders() -> HTTPHeaders {
+        var headers = HTTPHeaders()
+        headers.add(name: "Access-Control-Allow-Origin", value: "https://www.familysearch.org")
+        headers.add(name: "Access-Control-Allow-Methods", value: "POST, OPTIONS")
+        headers.add(name: "Access-Control-Allow-Headers", value: "Content-Type")
+        headers.add(name: "Access-Control-Allow-Credentials", value: "true")
+        return headers
+    }
+
+    private func loadHiskiSearchHtml(from url: URL) async throws -> String {
+        let (data, _) = try await URLSession.shared.data(from: url)
+        guard let html = String(data: data, encoding: .isoLatin1) else {
+            throw HiskiServiceError.sessionFailed
+        }
+
+        return html
+    }
+
+    private func extractYear(from rawDate: String) -> Int? {
+        guard let yearRange = rawDate.range(of: #"\b\d{4}\b"#, options: .regularExpression) else {
+            return nil
+        }
+
+        return Int(rawDate[yearRange])
     }
 
     // MARK: - Response Writer (EventLoop only)

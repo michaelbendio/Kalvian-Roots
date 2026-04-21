@@ -14,6 +14,7 @@ final class BrowserSession {
 
     private(set) var currentFamilyId: String?
     private(set) var loadedNetwork: FamilyNetwork?
+    private var familySearchExtractions: [String: FamilySearchFamilyExtraction] = [:]
 
     private let cache: FamilyNetworkCaching
     private let fileManager: RootsFileManager
@@ -127,6 +128,19 @@ final class BrowserSession {
         logInfo(.network, "🎉 Family loading complete: \(normalizedId)")
         return network
     }
+
+    func storeFamilySearchExtraction(
+        _ extraction: FamilySearchFamilyExtraction,
+        for familyId: String
+    ) {
+        let normalizedId = familyId.uppercased().trimmingCharacters(in: .whitespaces)
+        familySearchExtractions[normalizedId] = extraction
+    }
+
+    func familySearchExtraction(for familyId: String) -> FamilySearchFamilyExtraction? {
+        let normalizedId = familyId.uppercased().trimmingCharacters(in: .whitespaces)
+        return familySearchExtractions[normalizedId]
+    }
 }
 
 @MainActor
@@ -190,6 +204,10 @@ final class BrowserSessionManager {
         
         logInfo(.network, "✅ New session created. Total sessions: \(sessions.count)")
         return SessionResult(session: session, sessionId: sessionId, isNew: true)
+    }
+
+    func existingSession(id sessionId: String) -> BrowserSession? {
+        sessions[sessionId]
     }
 
     func makeSessionCookieHeader(for sessionId: String) -> String {

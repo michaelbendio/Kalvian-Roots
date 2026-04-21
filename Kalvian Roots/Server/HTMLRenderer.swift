@@ -111,7 +111,11 @@ struct HTMLRenderer {
         homeId: String? = nil,
         citationText: String? = nil,
         sourceText: String? = nil,
-        errorMessage: String? = nil
+        errorMessage: String? = nil,
+        comparisonResult: FamilyComparisonResult? = nil,
+        familySearchExtraction: FamilySearchFamilyExtraction? = nil,
+        familySearchPersonId: String? = nil,
+        familySearchCallbackURL: String? = nil
     ) -> String {
         let tokenizer = FamilyTokenizer()
         let tokens = tokenizer.tokenizeFamily(family: family, network: network)
@@ -127,6 +131,13 @@ struct HTMLRenderer {
         let familyHTML = renderTokens(tokens, familyId: displayedId, homeId: actualHomeId)
         let citationPanel = renderCitationPanel(citationText: citationText, errorMessage: errorMessage)
         let sourcePanel = renderSourcePanel(sourceText: sourceText)
+        let comparisonPanel = renderComparisonPanel(
+            family: family,
+            comparisonResult: comparisonResult,
+            familySearchExtraction: familySearchExtraction,
+            familySearchPersonId: familySearchPersonId,
+            familySearchCallbackURL: familySearchCallbackURL
+        )
 
         return """
         <!DOCTYPE html>
@@ -144,6 +155,7 @@ struct HTMLRenderer {
                 \(navBar)
                 \(citationPanel)
                 \(sourcePanel)
+                \(comparisonPanel)
                 <div class="family-content">
                     \(familyHTML)
                 </div>
@@ -338,6 +350,168 @@ struct HTMLRenderer {
             <pre class="source-text">\(escapeHTML(source))</pre>
         </div>
         """
+    }
+
+    // MARK: - Temporary Comparison Panel
+
+    private static func renderComparisonPanel(
+        family: Family,
+        comparisonResult: FamilyComparisonResult?,
+        familySearchExtraction: FamilySearchFamilyExtraction?,
+        familySearchPersonId: String?,
+        familySearchCallbackURL: String?
+    ) -> String {
+        guard comparisonResult != nil || familySearchPersonId != nil else {
+            return ""
+        }
+
+        let coupleHeader: String
+        if let couple = family.primaryCouple {
+            let marriage = familySearchExtraction?.marriage?.date
+                ?? couple.fullMarriageDate
+                ?? couple.marriageDate
+                ?? "unknown marriage"
+            coupleHeader = "\(couple.husband.displayName) + \(couple.wife.displayName) - \(marriage)"
+        } else {
+            coupleHeader = family.familyId
+        }
+
+        let extractionSummary: String
+        if let extraction = familySearchExtraction {
+            extractionSummary = """
+            <div class="fs-debug-summary">
+                FamilySearch source person: \(escapeHTML(extraction.sourcePersonId)).
+                Children extracted: \(extraction.children.count).
+            </div>
+            """
+        } else if let familySearchPersonId {
+            let script = FamilySearchDOMService.makeAtlasExtractorScript(callbackURL: familySearchCallbackURL)
+            extractionSummary = """
+            <div class="fs-debug-summary">
+                FamilySearch children have not been imported for this family.
+                Open \(escapeHTML(FamilySearchDOMService.detailsURL(for: familySearchPersonId))) in Atlas, run the extractor below, then reload this page.
+            </div>
+            <textarea class="fs-script" spellcheck="false">\(escapeHTML(script))
+
+            extractFamilySearchChildren('\(escapeHTML(familySearchPersonId))');</textarea>
+            """
+        } else {
+            extractionSummary = """
+            <div class="fs-debug-summary">
+                No FamilySearch parent ID is available in this Juuret family.
+            </div>
+            """
+        }
+
+        let rowsHTML: String
+        if let comparisonResult {
+            let rows = comparisonResult.rows.map { match in
+                let displayName = match.juuretKalvialla?.rawName
+                    ?? match.hiski?.rawName
+                    ?? match.familySearch?.rawName
+                    ?? "(unknown)"
+
+                return """
+                <tr>
+                    <td>\(escapeHTML(displayName))</td>
+                    <td>\(renderCandidateCell(match.juuretKalvialla))</td>
+                    <td>\(renderCandidateCell(match.hiski))</td>
+                    <td>\(renderCandidateCell(match.familySearch))</td>
+                    <td>\(escapeHTML(comparisonStatus(for: match)))</td>
+                </tr>
+                """
+            }.joined(separator: "\n")
+
+            rowsHTML = rows.isEmpty
+                ? "<tr><td colspan=\"5\">No comparison rows.</td></tr>"
+                : rows
+        } else {
+            rowsHTML = "<tr><td colspan=\"5\">Comparison has not run.</td></tr>"
+        }
+
+        return """
+        <div class="comparison-panel">
+            <div class="comparison-header">
+                <div>
+                    <div class="comparison-title">Children Comparison</div>
+                    <div class="comparison-couple">\(escapeHTML(coupleHeader))</div>
+                </div>
+            </div>
+            \(extractionSummary)
+            <table class="comparison-table">
+                <thead>
+                    <tr>
+                        <th>Child name</th>
+                        <th>Juuret</th>
+                        <th>HisKi</th>
+                        <th>FamilySearch</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    \(rowsHTML)
+                </tbody>
+            </table>
+        </div>
+        """
+    }
+
+    private static func renderCandidateCell(_ candidate: PersonCandidate?) -> String {
+        guard let candidate else {
+            return "No"
+        }
+
+        var parts = ["Yes"]
+        if let familySearchId = candidate.familySearchId {
+            parts.append("&lt;\(escapeHTML(familySearchId))&gt;")
+        }
+        if let birthDate = candidate.birthDate {
+            parts.append(escapeHTML(formatComparisonDate(birthDate)))
+        }
+        if let deathDate = candidate.deathDate {
+            parts.append("d. \(escapeHTML(formatComparisonDate(deathDate)))")
+        }
+
+        return parts.joined(separator: "<br>")
+    }
+
+    private static func comparisonStatus(for match: FamilyComparisonResult.Match) -> String {
+        let names = [
+            match.juuretKalvialla?.rawName,
+            match.hiski?.rawName,
+            match.familySearch?.rawName
+        ]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let hasNameMismatch = Set(names).count > 1
+
+        switch (match.juuretKalvialla, match.hiski, match.familySearch) {
+        case (.some, .some, .some):
+            return hasNameMismatch ? "Name mismatch" : "Present in all three"
+        case (.some, .some, nil):
+            return "Missing in FamilySearch"
+        case (.some, nil, nil):
+            return "Juuret-only"
+        case (nil, .some, nil):
+            return "HisKi-only"
+        case (nil, nil, .some):
+            return "FamilySearch-only"
+        case (.some, nil, .some):
+            return hasNameMismatch ? "Name mismatch" : "Missing in HisKi"
+        case (nil, .some, .some):
+            return hasNameMismatch ? "Name mismatch" : "Missing in Juuret"
+        case (nil, nil, nil):
+            return "Unknown"
+        }
+    }
+
+    private static func formatComparisonDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "dd MMM yyyy"
+        return formatter.string(from: date)
     }
 
     // MARK: - CSS Styles
@@ -602,6 +776,57 @@ struct HTMLRenderer {
             overflow-x: auto;
             line-height: 1.5;
             color: #333;
+        }
+        .comparison-panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .comparison-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+        .comparison-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+        }
+        .comparison-couple, .fs-debug-summary {
+            color: #666;
+            font-size: 13px;
+            margin-top: 4px;
+        }
+        .fs-script {
+            width: 100%;
+            min-height: 140px;
+            margin: 12px 0;
+            padding: 10px;
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+            font-size: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #f9f9f9;
+        }
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            margin-top: 12px;
+        }
+        .comparison-table th,
+        .comparison-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+            vertical-align: top;
+        }
+        .comparison-table th {
+            background: #f5f5f5;
+            font-weight: 700;
         }
         """
     }

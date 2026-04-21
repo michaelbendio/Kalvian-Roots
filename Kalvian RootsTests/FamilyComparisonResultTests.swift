@@ -217,6 +217,34 @@ final class FamilyComparisonResultTests: XCTestCase {
         XCTAssertEqual(result.familySearchOnly.count, 1)
     }
 
+    func testCandidatesWithoutBirthDatesDoNotMatchByNameAlone() {
+        let result = FamilyComparisonResult(
+            familySearch: [
+                PersonCandidate(
+                    name: "Maria",
+                    birthDate: nil,
+                    source: .familySearch,
+                    nameManager: nameManager,
+                    familySearchId: "MARIA-FS-UNKNOWN"
+                )
+            ],
+            juuretKalvialla: [
+                PersonCandidate(
+                    name: "Maria",
+                    birthDate: nil,
+                    source: .juuretKalvialla,
+                    nameManager: nameManager
+                )
+            ],
+            hiski: []
+        )
+
+        XCTAssertEqual(result.matches.count, 0)
+        XCTAssertEqual(result.rows.count, 2)
+        XCTAssertEqual(result.familySearchOnly.count, 1)
+        XCTAssertEqual(result.juuretOnly.count, 1)
+    }
+
     private func candidate(
         name: String,
         birth: Date,
@@ -386,6 +414,64 @@ final class FamilyComparisonServiceTests: XCTestCase {
         let candidates = service.makeJuuretCandidates(from: [])
 
         XCTAssertTrue(candidates.isEmpty)
+    }
+
+    func testMakeFamilySearchCandidatesRetainsIdAndDeathDate() throws {
+        let children = [
+            FamilySearchChild(
+                id: "K1AB-CDE",
+                name: "Matti",
+                birthDate: "25 June 1802",
+                birthPlace: "Kalvia, Vaasa, Finland",
+                deathDate: "14 March 1861",
+                deathPlace: "Kalvia, Vaasa, Finland",
+                lifeSpan: "1802-1861"
+            )
+        ]
+
+        let candidates = service.makeFamilySearchCandidates(from: children)
+
+        let candidate = try XCTUnwrap(candidates.first)
+        XCTAssertEqual(candidate.rawName, "Matti")
+        XCTAssertEqual(candidate.source, .familySearch)
+        XCTAssertEqual(candidate.familySearchId, "K1AB-CDE")
+        XCTAssertEqual(candidate.birthDate, date(1802, 6, 25))
+        XCTAssertEqual(candidate.deathDate, date(1861, 3, 14))
+    }
+
+    func testCompareChildrenIncludesFamilySearchCandidates() throws {
+        let hiskiEvent = HiskiService.HiskiFamilyBirthEvent(
+            birthDate: "25.6.1802",
+            childName: "Matti",
+            fatherName: "Elias Matinp.",
+            motherName: "Maria Antint.",
+            recordURL: "https://hiski.genealogia.fi/hiski?en+4092193",
+            citationURL: "https://hiski.genealogia.fi/hiski?en+t4092193"
+        )
+        let familySearchChild = FamilySearchChild(
+            id: "K1AB-CDE",
+            name: "Matti",
+            birthDate: "25 June 1802",
+            birthPlace: nil,
+            deathDate: nil,
+            deathPlace: nil,
+            lifeSpan: "1802-"
+        )
+
+        let result = service.compareChildren(
+            juuretChildren: [
+                Person(name: "Matti", birthDate: "25.6.1802", noteMarkers: [])
+            ],
+            hiskiChildren: [hiskiEvent],
+            familySearchChildren: [familySearchChild]
+        )
+
+        XCTAssertEqual(result.matches.count, 1)
+        let match = try XCTUnwrap(result.matches.first)
+        XCTAssertEqual(match.juuretKalvialla?.rawName, "Matti")
+        XCTAssertEqual(match.hiski?.rawName, "Matti")
+        XCTAssertEqual(match.familySearch?.familySearchId, "K1AB-CDE")
+        XCTAssertEqual(service.status(for: match), "Present in all three")
     }
 
     func testCompareJuuretAndHiskiCandidatesBuildsExactMatch() throws {

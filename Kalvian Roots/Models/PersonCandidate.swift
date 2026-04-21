@@ -36,6 +36,7 @@ struct PersonCandidate: Hashable, CustomStringConvertible {
     let source: SourceType
     let rawName: String
     let birthDate: Date?
+    let deathDate: Date?
 
     // MARK: - Source Identifiers
 
@@ -47,6 +48,7 @@ struct PersonCandidate: Hashable, CustomStringConvertible {
     init(
         name: String,
         birthDate: Date?,
+        deathDate: Date? = nil,
         source: SourceType,
         nameManager: NameEquivalenceManager,
         familySearchId: String? = nil,
@@ -61,6 +63,7 @@ struct PersonCandidate: Hashable, CustomStringConvertible {
 
         self.rawName = name
         self.birthDate = birthDate
+        self.deathDate = deathDate
         self.source = source
         self.familySearchId = familySearchId
         self.hiskiCitation = hiskiCitation
