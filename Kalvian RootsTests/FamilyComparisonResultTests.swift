@@ -1245,6 +1245,12 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("Spouses and Children section not found"))
         XCTAssertTrue(script.contains("spouse groups not found"))
         XCTAssertTrue(script.contains("failureStatusForError"))
+        XCTAssertTrue(script.contains("popupBlocked"))
+        XCTAssertTrue(script.contains("familySearchWindowUnavailable"))
+        XCTAssertTrue(script.contains("wrongHost"))
+        XCTAssertTrue(script.contains("wrongPageType"))
+        XCTAssertTrue(script.contains("wrong host for FamilySearch extraction"))
+        XCTAssertTrue(script.contains("FamilySearch window unavailable"))
         XCTAssertTrue(script.contains("diagnosticContext"))
         XCTAssertTrue(script.contains("childrenMarkerCount"))
         XCTAssertTrue(script.contains("rawCandidateChildCount"))
@@ -1353,6 +1359,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
           "status": "success",
           "url": "https://www.familysearch.org/en/tree/person/details/KJJH-2QK",
           "pageTitle": "Thomas Johansson Ahokangas | Person | Family Tree",
+          "detectedHost": "www.familysearch.org",
           "detectedPersonId": "KJJH-2QK",
           "expectedPersonId": "KJJH-2QK",
           "isFamilySearchPage": true,
@@ -1382,20 +1389,22 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertEqual(extraction.childrenMarkerCount, 2)
         XCTAssertEqual(extraction.rawCandidateChildCount, 13)
         XCTAssertEqual(extraction.pageTitle, "Thomas Johansson Ahokangas | Person | Family Tree")
+        XCTAssertEqual(extraction.detectedHost, "www.familysearch.org")
         XCTAssertEqual(extraction.children.first?.id, "LK4Q-YSX")
         XCTAssertEqual(extraction.children.last?.id, "L4HD-545")
     }
 
-    func testFailedExtractionPayloadDistinguishesWrongPageFromZeroChildren() throws {
+    func testFailedExtractionPayloadDistinguishesWrongPageTypeFromZeroChildren() throws {
         let json = """
         {
           "sourcePersonId": "KJJH-2QK",
           "children": [],
           "spouseGroups": [],
-          "status": "wrongPage",
-          "failureReason": "not on person details page: https://www.familysearch.org/en/tree/person/sources/KJJH-2QK",
+          "status": "wrongPageType",
+          "failureReason": "wrong page type for FamilySearch extraction: https://www.familysearch.org/en/tree/person/sources/KJJH-2QK",
           "url": "https://www.familysearch.org/en/tree/person/sources/KJJH-2QK",
           "pageTitle": "Sources | FamilySearch",
+          "detectedHost": "www.familysearch.org",
           "detectedPersonId": null,
           "expectedPersonId": "KJJH-2QK",
           "isFamilySearchPage": true,
@@ -1417,10 +1426,48 @@ final class FamilySearchDOMServiceTests: XCTestCase {
 
         XCTAssertFalse(extraction.isSuccessful)
         XCTAssertEqual(extraction.children.count, 0)
-        XCTAssertEqual(extraction.status, "wrongPage")
+        XCTAssertEqual(extraction.status, "wrongPageType")
         XCTAssertEqual(extraction.pageTitle, "Sources | FamilySearch")
+        XCTAssertEqual(extraction.detectedHost, "www.familysearch.org")
         XCTAssertEqual(extraction.isPersonDetailsPage, false)
-        XCTAssertEqual(extraction.failureReason, "not on person details page: https://www.familysearch.org/en/tree/person/sources/KJJH-2QK")
+        XCTAssertEqual(extraction.failureReason, "wrong page type for FamilySearch extraction: https://www.familysearch.org/en/tree/person/sources/KJJH-2QK")
+    }
+
+    func testFailedExtractionPayloadDistinguishesWrongHostFromZeroChildren() throws {
+        let json = """
+        {
+          "sourcePersonId": "KJJH-2QK",
+          "children": [],
+          "spouseGroups": [],
+          "status": "wrongHost",
+          "failureReason": "wrong host for FamilySearch extraction: http://127.0.0.1:8081/family/AHOKANGAS%202?familysearch=auto",
+          "url": "http://127.0.0.1:8081/family/AHOKANGAS%202?familysearch=auto",
+          "pageTitle": "AHOKANGAS 2 - Kalvian Roots",
+          "detectedHost": "127.0.0.1",
+          "detectedPersonId": null,
+          "expectedPersonId": "KJJH-2QK",
+          "isFamilySearchPage": false,
+          "isPersonDetailsPage": false,
+          "familyMembersSectionFound": false,
+          "spousesAndChildrenSectionFound": false,
+          "childrenMarkerCount": 0,
+          "rawCandidateChildCount": 0,
+          "spouseGroupCount": 0,
+          "childCount": 0,
+          "preferredChildCount": 0
+        }
+        """
+
+        let extraction = try JSONDecoder().decode(
+            FamilySearchFamilyExtraction.self,
+            from: Data(json.utf8)
+        )
+
+        XCTAssertFalse(extraction.isSuccessful)
+        XCTAssertEqual(extraction.status, "wrongHost")
+        XCTAssertEqual(extraction.detectedHost, "127.0.0.1")
+        XCTAssertEqual(extraction.isFamilySearchPage, false)
+        XCTAssertEqual(extraction.children.count, 0)
     }
 }
 

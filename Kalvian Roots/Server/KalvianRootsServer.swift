@@ -606,6 +606,7 @@ final class HTTPHandler: ChannelInboundHandler {
                 metadata: [
                     "family": "\(canonicalID)",
                     "url": "\(extraction.url ?? "unknown")",
+                    "host": "\(extraction.detectedHost ?? "unknown")",
                     "detectedPersonId": "\(extraction.detectedPersonId ?? "unknown")",
                     "spouseGroups": "\(extraction.spouseGroupCount ?? extraction.spouseGroups?.count ?? 0)",
                     "rawCandidates": "\(extraction.rawCandidateChildCount ?? 0)",
@@ -620,6 +621,7 @@ final class HTTPHandler: ChannelInboundHandler {
                     "status": "\(extraction.status ?? "unknown")",
                     "reason": "\(extraction.failureReason ?? "unknown")",
                     "url": "\(extraction.url ?? "unknown")",
+                    "host": "\(extraction.detectedHost ?? "unknown")",
                     "detectedPersonId": "\(extraction.detectedPersonId ?? "unknown")",
                     "familyMembersFound": "\(extraction.familyMembersSectionFound.map { $0 ? "true" : "false" } ?? "unknown")",
                     "spousesAndChildrenFound": "\(extraction.spousesAndChildrenSectionFound.map { $0 ? "true" : "false" } ?? "unknown")"

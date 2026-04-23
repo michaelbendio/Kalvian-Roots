@@ -573,6 +573,7 @@ class JuuretApp {
         }
         appendFamilySearchComparisonDebug("FamilySearch extraction context URL: \(debugValue(extraction.url))")
         appendFamilySearchComparisonDebug("FamilySearch extraction context title: \(debugValue(extraction.pageTitle))")
+        appendFamilySearchComparisonDebug("FamilySearch extraction context host: \(debugValue(extraction.detectedHost))")
         appendFamilySearchComparisonDebug("FamilySearch page appears FamilySearch: \(debugYesNo(extraction.isFamilySearchPage))")
         appendFamilySearchComparisonDebug("FamilySearch page type valid: \(debugYesNo(extraction.isPersonDetailsPage))")
         appendFamilySearchComparisonDebug("FamilySearch detected person ID: \(debugValue(extraction.detectedPersonId))")
@@ -829,7 +830,9 @@ class JuuretApp {
             let proposalReport = storeHiskiCitationProposals(proposals)
             familySearchComparisonResult = result
             if let storedFamilySearchExtraction, !storedFamilySearchExtraction.isSuccessful {
-                familySearchComparisonDebugMessage = "FamilySearch comparison not yet available: \(storedFamilySearchExtraction.failureReason ?? "FamilySearch extraction failed")"
+                let status = storedFamilySearchExtraction.status ?? "extractorError"
+                let reason = storedFamilySearchExtraction.failureReason ?? "FamilySearch extraction failed"
+                familySearchComparisonDebugMessage = "FamilySearch extraction failed (\(status)): \(reason)"
             } else if familySearchPersonId == nil {
                 familySearchComparisonDebugMessage = "FamilySearch comparison not yet available"
             } else if familySearchChildren.isEmpty {

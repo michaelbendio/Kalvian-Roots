@@ -44,6 +44,7 @@ struct FamilySearchFamilyExtraction: Codable, Equatable, Hashable {
     var failureReason: String?
     var url: String?
     var pageTitle: String?
+    var detectedHost: String?
     var detectedPersonId: String?
     var expectedPersonId: String?
     var isFamilySearchPage: Bool?
@@ -112,14 +113,76 @@ enum FamilySearchDOMService {
 
             function extractionDocument() {
                 if (extractionWindow && !extractionWindow.closed) {
-                    return extractionWindow.document;
+                    try {
+                        return extractionWindow.document;
+                    } catch (error) {
+                        throw new Error('FamilySearch window unavailable: ' + clean(error && error.message));
+                    }
                 }
-                return document;
+
+                if (isFamilySearchDocument(document)) {
+                    return document;
+                }
+
+                throw new Error('wrong host for FamilySearch extraction: ' + document.location.href);
+            }
+
+            function diagnosticDocument() {
+                try {
+                    return extractionDocument();
+                } catch (_) {
+                    return document;
+                }
+            }
+
+            function documentHost(doc) {
+                try {
+                    return doc.location.hostname;
+                } catch (_) {
+                    return null;
+                }
+            }
+
+            function documentURL(doc) {
+                try {
+                    return doc.location.href;
+                } catch (_) {
+                    return null;
+                }
+            }
+
+            function documentTitle(doc) {
+                try {
+                    return clean(doc.title);
+                } catch (_) {
+                    return '';
+                }
+            }
+
+            function isFamilySearchDocument(doc) {
+                const host = documentHost(doc);
+                return /(^|\\.)familysearch\\.org$/i.test(host || '') || /FamilySearch/i.test(documentTitle(doc));
+            }
+
+            function isPersonDetailsDocument(doc) {
+                try {
+                    return /\\/tree\\/person\\/details\\/[A-Z0-9-]+/i.test(doc.location.pathname);
+                } catch (_) {
+                    return false;
+                }
+            }
+
+            function personIdFromDocumentURL(doc) {
+                try {
+                    const match = doc.location.pathname.match(/\\/tree\\/person\\/details\\/([A-Z0-9-]+)/i);
+                    return match ? match[1].toUpperCase() : null;
+                } catch (_) {
+                    return null;
+                }
             }
 
             function personIdFromURL() {
-                const match = extractionDocument().location.pathname.match(/\\/tree\\/person\\/details\\/([A-Z0-9-]+)/i);
-                return match ? match[1].toUpperCase() : null;
+                return personIdFromDocumentURL(extractionDocument());
             }
 
             function findHeading(label) {
@@ -165,20 +228,23 @@ enum FamilySearchDOMService {
             }
 
             function pageURL() {
-                return extractionDocument().location.href;
+                return documentURL(diagnosticDocument());
             }
 
             function pageTitle() {
-                return clean(extractionDocument().title);
+                return documentTitle(diagnosticDocument());
+            }
+
+            function pageHost() {
+                return documentHost(diagnosticDocument());
             }
 
             function isFamilySearchPage() {
-                const location = extractionDocument().location;
-                return /(^|\\.)familysearch\\.org$/i.test(location.hostname) || /FamilySearch/i.test(pageTitle());
+                return isFamilySearchDocument(diagnosticDocument());
             }
 
             function isPersonDetailsPage() {
-                return /\\/tree\\/person\\/details\\/[A-Z0-9-]+/i.test(extractionDocument().location.pathname);
+                return isPersonDetailsDocument(diagnosticDocument());
             }
 
             function extractMarriage() {
@@ -237,7 +303,12 @@ enum FamilySearchDOMService {
             }
 
             function diagnosticContext() {
-                const section = familyMembersSection();
+                let section = null;
+                try {
+                    section = familyMembersSection();
+                } catch (_) {
+                    section = null;
+                }
                 const allLines = section ? (section.innerText || '').split('\\n').map(clean).filter(Boolean) : [];
                 const spousesIndex = allLines.findIndex(line => /^Spouses and Children$/i.test(line));
                 const parentsIndex = allLines.findIndex((line, index) => index > spousesIndex && /^Parents and Siblings$/i.test(line));
@@ -248,7 +319,8 @@ enum FamilySearchDOMService {
                 return {
                     url: pageURL(),
                     pageTitle: pageTitle(),
-                    detectedPersonId: personIdFromURL(),
+                    detectedHost: pageHost(),
+                    detectedPersonId: personIdFromDocumentURL(diagnosticDocument()),
                     isFamilySearchPage: isFamilySearchPage(),
                     isPersonDetailsPage: isPersonDetailsPage(),
                     familyMembersSectionFound: !!section,
@@ -354,16 +426,42 @@ enum FamilySearchDOMService {
             }
 
             async function waitForDetailsPage(expectedId) {
+                let lastError = null;
                 for (let attempt = 0; attempt < 80; attempt += 1) {
-                    if (isPersonDetailsPage() && personIdFromURL() === expectedId && extractionDocument().readyState === 'complete') {
-                        await sleep(500);
-                        return;
+                    try {
+                        const doc = extractionDocument();
+                        if (!isFamilySearchDocument(doc)) {
+                            const currentURL = documentURL(doc) || pageURL();
+                            if (/^about:blank/i.test(currentURL || '')) {
+                                lastError = new Error('FamilySearch page not loaded yet: ' + currentURL);
+                                await sleep(250);
+                                continue;
+                            }
+                            throw new Error('wrong host for FamilySearch extraction: ' + currentURL);
+                        }
+                        if (isPersonDetailsDocument(doc) && personIdFromDocumentURL(doc) === expectedId && doc.readyState === 'complete') {
+                            await sleep(500);
+                            return;
+                        }
+                    } catch (error) {
+                        lastError = error;
+                        if (/FamilySearch window unavailable|wrong host for FamilySearch extraction/i.test(clean(error && error.message))) {
+                            throw error;
+                        }
                     }
                     await sleep(250);
                 }
 
+                if (lastError && /FamilySearch window unavailable|wrong host for FamilySearch extraction/i.test(clean(lastError && lastError.message))) {
+                    throw lastError;
+                }
+
+                if (!isFamilySearchPage()) {
+                    throw new Error('wrong host for FamilySearch extraction: ' + pageURL());
+                }
+
                 if (!isPersonDetailsPage()) {
-                    throw new Error('not on person details page: ' + pageURL());
+                    throw new Error('wrong page type for FamilySearch extraction: ' + pageURL());
                 }
 
                 const detectedId = personIdFromURL();
@@ -378,6 +476,9 @@ enum FamilySearchDOMService {
                 const target = '\(detailsBaseURL)' + personId;
                 if (!extractionWindow || extractionWindow.closed) {
                     extractionWindow = window.open(target, 'kalvianRootsFamilySearchExtractor', 'popup,width=1200,height=900');
+                    if (!extractionWindow) {
+                        throw new Error('popup blocked opening FamilySearch person details page: ' + target);
+                    }
                 } else if (personIdFromURL() !== personId) {
                     extractionWindow.location.assign(target);
                 }
@@ -399,7 +500,10 @@ enum FamilySearchDOMService {
 
             function failureStatusForError(error) {
                 const message = clean(error && error.message);
-                if (/not on person details page/i.test(message)) return 'wrongPage';
+                if (/popup blocked/i.test(message)) return 'popupBlocked';
+                if (/FamilySearch window unavailable/i.test(message)) return 'familySearchWindowUnavailable';
+                if (/wrong host for FamilySearch extraction/i.test(message)) return 'wrongHost';
+                if (/wrong page type|not on person details page/i.test(message)) return 'wrongPageType';
                 if (/expected .* found/i.test(message)) return 'personMismatch';
                 if (/page not ready|timed out/i.test(message)) return 'pageNotReady';
                 if (/Spouses and Children section not found/i.test(message)) return 'sectionNotFound';
@@ -420,6 +524,7 @@ enum FamilySearchDOMService {
                     failureReason: clean(error && error.message) || 'Unknown FamilySearch extraction error',
                     url: diagnostics.url,
                     pageTitle: diagnostics.pageTitle,
+                    detectedHost: diagnostics.detectedHost,
                     detectedPersonId: diagnostics.detectedPersonId,
                     expectedPersonId,
                     isFamilySearchPage: diagnostics.isFamilySearchPage,
@@ -490,6 +595,7 @@ enum FamilySearchDOMService {
                         failureReason: null,
                         url: diagnostics.url,
                         pageTitle: diagnostics.pageTitle,
+                        detectedHost: diagnostics.detectedHost,
                         detectedPersonId: diagnostics.detectedPersonId,
                         expectedPersonId: normalizedPersonId,
                         isFamilySearchPage: diagnostics.isFamilySearchPage,
