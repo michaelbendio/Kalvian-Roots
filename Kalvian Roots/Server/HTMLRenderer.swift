@@ -115,7 +115,8 @@ struct HTMLRenderer {
         comparisonResult: FamilyComparisonResult? = nil,
         familySearchExtraction: FamilySearchFamilyExtraction? = nil,
         familySearchPersonId: String? = nil,
-        familySearchCallbackURL: String? = nil
+        familySearchCallbackURL: String? = nil,
+        autoExtractFamilySearch: Bool = false
     ) -> String {
         let tokenizer = FamilyTokenizer()
         let tokens = tokenizer.tokenizeFamily(family: family, network: network)
@@ -136,7 +137,8 @@ struct HTMLRenderer {
             comparisonResult: comparisonResult,
             familySearchExtraction: familySearchExtraction,
             familySearchPersonId: familySearchPersonId,
-            familySearchCallbackURL: familySearchCallbackURL
+            familySearchCallbackURL: familySearchCallbackURL,
+            autoExtractFamilySearch: autoExtractFamilySearch
         )
 
         return """
@@ -359,7 +361,8 @@ struct HTMLRenderer {
         comparisonResult: FamilyComparisonResult?,
         familySearchExtraction: FamilySearchFamilyExtraction?,
         familySearchPersonId: String?,
-        familySearchCallbackURL: String?
+        familySearchCallbackURL: String?,
+        autoExtractFamilySearch: Bool
     ) -> String {
         guard comparisonResult != nil || familySearchPersonId != nil else {
             return ""
@@ -405,14 +408,29 @@ struct HTMLRenderer {
             }
         } else if let familySearchPersonId {
             let script = FamilySearchDOMService.makeAtlasExtractorScript(callbackURL: familySearchCallbackURL)
+            let autoRunScript = autoExtractFamilySearch ? """
+            <script>
+            \(script)
+            window.addEventListener('load', function () {
+                const status = document.getElementById('familySearchAutoStatus');
+                if (status) status.textContent = 'FamilySearch extractor invocation status: invoked';
+                extractFamilySearchChildren('\(escapeJavaScript(familySearchPersonId))');
+            });
+            </script>
+            """ : ""
+            let autoRunStatus = autoExtractFamilySearch
+                ? "<div id=\"familySearchAutoStatus\" class=\"fs-debug-summary\">FamilySearch extractor invocation status: pending page load</div>"
+                : ""
             extractionSummary = """
             <div class="fs-debug-summary">
                 FamilySearch children have not been imported for this family.
                 Open \(escapeHTML(FamilySearchDOMService.detailsURL(for: familySearchPersonId))) in Atlas, run the extractor below, then reload this page or return to the SwiftUI view.
             </div>
+            \(autoRunStatus)
             <textarea class="fs-script" spellcheck="false">\(escapeHTML(script))
 
             extractFamilySearchChildren('\(escapeHTML(familySearchPersonId))');</textarea>
+            \(autoRunScript)
             """
         } else {
             extractionSummary = """
@@ -955,6 +973,14 @@ struct HTMLRenderer {
             .replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\"", with: "&quot;")
             .replacingOccurrences(of: "'", with: "&#39;")
+    }
+
+    private static func escapeJavaScript(_ string: String) -> String {
+        return string
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
     }
     
     private static func urlEncode(_ string: String) -> String {

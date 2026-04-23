@@ -1252,6 +1252,32 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b"))
     }
 
+    func testServerRenderedFamilyCanAutoInvokeFamilySearchExtractor() {
+        let family = Family(
+            familyId: "AHOKANGAS 2",
+            pageReferences: ["1"],
+            husband: Person(name: "Thomas", familySearchId: "KJJH-2QK"),
+            wife: Person(name: "Magdalena"),
+            marriageDate: "15.05.1760",
+            children: []
+        )
+
+        let html = HTMLRenderer.renderFamily(
+            family: family,
+            network: nil,
+            comparisonResult: nil,
+            familySearchExtraction: nil,
+            familySearchPersonId: "KJJH-2QK",
+            familySearchCallbackURL: "http://127.0.0.1:8081/family/AHOKANGAS%202/familysearch?session=test",
+            autoExtractFamilySearch: true
+        )
+
+        XCTAssertTrue(html.contains("familySearchAutoStatus"))
+        XCTAssertTrue(html.contains("window.addEventListener('load'"))
+        XCTAssertTrue(html.contains("FamilySearch extractor invocation status: invoked"))
+        XCTAssertTrue(html.contains("extractFamilySearchChildren('KJJH-2QK')"))
+    }
+
     func testKJJH2QKExtractionPayloadCanRepresentPreferredAndSecondSpouseGroups() throws {
         let json = """
         {

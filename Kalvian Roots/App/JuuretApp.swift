@@ -52,6 +52,7 @@ class JuuretApp {
     var familySearchComparisonDebugLines: [String] = []
     var hiskiCitationProposals: [HiskiCitationProposal] = []
     private var familySearchExtractions: [String: FamilySearchFamilyExtraction] = [:]
+    private var requestedFamilySearchExtractions: Set<String> = []
     
     // MARK: - Detail Routing (macOS NavigationSplitView)
     enum DetailRoute: Equatable {
@@ -498,6 +499,13 @@ class JuuretApp {
         logInfo(.ui, "🧪 \(message)")
     }
 
+    private struct FamilySearchNavigationRequest {
+        var requested: Bool
+        var status: String
+        var url: String
+        var detail: String?
+    }
+
     private func debugValue(_ value: String?) -> String {
         guard let value, !value.isEmpty else {
             return "not detected"
@@ -534,6 +542,7 @@ class JuuretApp {
         expectedPersonId: String,
         targetURL: String,
         localFamilyURL: String,
+        navigationRequest: FamilySearchNavigationRequest?,
         extraction: FamilySearchFamilyExtraction?
     ) {
         appendFamilySearchComparisonDebug("FamilySearch expected person ID: \(expectedPersonId)")
@@ -542,9 +551,17 @@ class JuuretApp {
         appendFamilySearchComparisonDebug("FamilySearch extraction depends on Atlas/browser page: yes")
 
         guard let extraction else {
-            appendFamilySearchComparisonDebug("Atlas/browser navigation requested: no")
-            appendFamilySearchComparisonDebug("FamilySearch extractor invocation status: not invoked")
-            appendFamilySearchComparisonDebug("FamilySearch extraction not started: open \(localFamilyURL) in Atlas and run the DOM extractor; it will target \(targetURL)")
+            if let navigationRequest {
+                appendFamilySearchComparisonDebug("Atlas/browser navigation requested: \(navigationRequest.requested ? "yes" : "no")")
+                appendFamilySearchComparisonDebug("FamilySearch extractor invocation status: \(navigationRequest.status)")
+                appendFamilySearchComparisonDebug("FamilySearch extraction request URL: \(navigationRequest.url)")
+                if let detail = navigationRequest.detail {
+                    appendFamilySearchComparisonDebug("FamilySearch extraction request detail: \(detail)")
+                }
+            } else {
+                appendFamilySearchComparisonDebug("Atlas/browser navigation requested: no")
+                appendFamilySearchComparisonDebug("FamilySearch extractor invocation status: not invoked")
+            }
             return
         }
 
@@ -583,6 +600,7 @@ class JuuretApp {
     func storeFamilySearchExtraction(_ extraction: FamilySearchFamilyExtraction, for familyId: String) {
         let normalizedFamilyId = normalizedFamilySearchExtractionKey(familyId)
         familySearchExtractions[normalizedFamilyId] = extraction
+        requestedFamilySearchExtractions.remove(normalizedFamilyId)
         logInfo(.ui, "🧪 FamilySearch extraction stored for SwiftUI: \(normalizedFamilyId), children: \(extraction.children.count)")
 
         guard currentFamily?.familyId.uppercased() == normalizedFamilyId,
@@ -608,6 +626,64 @@ class JuuretApp {
         return "http://127.0.0.1:8081/family/\(encodedFamilyId)"
     }
 
+    private func atlasFamilySearchAutoExtractionURL(for familyId: String) -> String {
+        "\(atlasFamilyURL(for: familyId))?familysearch=auto"
+    }
+
+    private func requestFamilySearchAtlasExtraction(
+        familyId: String,
+        familySearchPersonId: String
+    ) -> FamilySearchNavigationRequest {
+        let normalizedFamilyId = normalizedFamilySearchExtractionKey(familyId)
+        let extractionURL = atlasFamilySearchAutoExtractionURL(for: familyId)
+
+        if requestedFamilySearchExtractions.contains(normalizedFamilyId) {
+            return FamilySearchNavigationRequest(
+                requested: true,
+                status: "pending callback from previously invoked local Atlas page",
+                url: extractionURL,
+                detail: "FamilySearch person \(familySearchPersonId) has already been requested for this family in this app session"
+            )
+        }
+
+        guard let url = URL(string: extractionURL) else {
+            return FamilySearchNavigationRequest(
+                requested: false,
+                status: "navigation request failed",
+                url: extractionURL,
+                detail: "Could not build local Atlas extraction URL"
+            )
+        }
+
+        #if os(macOS)
+        let opened = NSWorkspace.shared.open(url)
+        #elseif os(iOS)
+        let opened = UIApplication.shared.canOpenURL(url)
+        if opened {
+            UIApplication.shared.open(url)
+        }
+        #else
+        let opened = false
+        #endif
+
+        if opened {
+            requestedFamilySearchExtractions.insert(normalizedFamilyId)
+            return FamilySearchNavigationRequest(
+                requested: true,
+                status: "invoked via local Atlas page",
+                url: extractionURL,
+                detail: "Local page will run extractFamilySearchChildren('\(familySearchPersonId)') and post results back to SwiftUI"
+            )
+        }
+
+        return FamilySearchNavigationRequest(
+            requested: false,
+            status: "navigation request failed",
+            url: extractionURL,
+            detail: "System browser open call returned false"
+        )
+    }
+
     private func runJuuretHiskiComparisonPipeline(for family: Family) async {
         guard let couple = family.primaryCouple else {
             resetFamilySearchComparisonDebug(message: "Comparison not triggered: no primary couple")
@@ -621,12 +697,20 @@ class JuuretApp {
 
         let familySearchPersonId = familySearchParentId(in: family)
         let storedFamilySearchExtraction = familySearchExtraction(for: family.familyId)
+        var familySearchNavigationRequest: FamilySearchNavigationRequest?
         if let familySearchPersonId {
+            familySearchNavigationRequest = storedFamilySearchExtraction == nil
+                ? requestFamilySearchAtlasExtraction(
+                    familyId: family.familyId,
+                    familySearchPersonId: familySearchPersonId
+                )
+                : nil
             appendFamilySearchComparisonDebug("FamilySearch ID found: \(familySearchPersonId)")
             appendFamilySearchExtractionDiagnostics(
                 expectedPersonId: familySearchPersonId,
                 targetURL: FamilySearchDOMService.detailsURL(for: familySearchPersonId),
                 localFamilyURL: atlasFamilyURL(for: family.familyId),
+                navigationRequest: familySearchNavigationRequest,
                 extraction: storedFamilySearchExtraction
             )
         } else {
@@ -651,6 +735,8 @@ class JuuretApp {
             familySearchComparisonInputSource = "fallback empty set (extraction failed: \(storedFamilySearchExtraction.status ?? "unknown"))"
         } else if familySearchPersonId == nil {
             familySearchComparisonInputSource = "fallback empty set (no FamilySearch parent ID)"
+        } else if let familySearchNavigationRequest, familySearchNavigationRequest.requested {
+            familySearchComparisonInputSource = "fallback empty set (FamilySearch extraction requested)"
         } else {
             familySearchComparisonInputSource = "fallback empty set (extractor not invoked)"
         }

@@ -549,6 +549,9 @@ final class HTTPHandler: ChannelInboundHandler {
                 familyId: canonicalID,
                 sessionId: sessionResult.sessionId
             )
+            let autoExtractFamilySearch = queryItems.contains { item in
+                item.name == "familysearch" && item.value == "auto"
+            }
             let html = HTMLRenderer.renderFamily(
                 family: network.mainFamily,
                 network: network,
@@ -556,7 +559,8 @@ final class HTTPHandler: ChannelInboundHandler {
                 comparisonResult: comparisonResult,
                 familySearchExtraction: sessionResult.session.familySearchExtraction(for: canonicalID),
                 familySearchPersonId: familySearchPersonId,
-                familySearchCallbackURL: familySearchCallbackURL
+                familySearchCallbackURL: familySearchCallbackURL,
+                autoExtractFamilySearch: autoExtractFamilySearch
             )
 
             var responseHeaders = HTTPHeaders()
