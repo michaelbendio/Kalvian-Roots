@@ -67,12 +67,16 @@ final class PersistentFamilyNetworkStore {
             return
         }
         
-        // Fallback: Use temporary directory if iCloud is unavailable
-        let fallbackDirectory = fileManager.temporaryDirectory
-            .appendingPathComponent("KalvianRootsCache", isDirectory: true)
+        if let fallbackFileURL = Self.durableFallbackCacheFileURL(fileManager: fileManager) {
+            self.init(cacheFileURL: fallbackFileURL, fileManager: fileManager, schemaVersion: schemaVersion)
+            logWarn(.cache, "⚠️ iCloud container unavailable; using durable cache at \(fallbackFileURL.path)")
+            return
+        }
+
+        let fallbackDirectory = Self.applicationSupportCacheDirectory(fileManager: fileManager)
         let fallbackFileURL = fallbackDirectory.appendingPathComponent("families.json")
         self.init(cacheFileURL: fallbackFileURL, fileManager: fileManager, schemaVersion: schemaVersion)
-        logWarn(.cache, "⚠️ Using temporary directory for cache persistence; iCloud container unavailable")
+        logWarn(.cache, "⚠️ iCloud container unavailable; using Application Support cache at \(fallbackFileURL.path)")
     }
     
     deinit {
@@ -292,6 +296,43 @@ final class PersistentFamilyNetworkStore {
     }
 
     // MARK: - Private Helpers
+
+    private static func durableFallbackCacheFileURL(fileManager: FileManager) -> URL? {
+        let candidateFiles = [
+            manuallyResolvedICloudCacheFileURL(fileManager: fileManager),
+            localDocumentsCacheDirectory(fileManager: fileManager)?.appendingPathComponent("families.json"),
+            applicationSupportCacheDirectory(fileManager: fileManager).appendingPathComponent("families.json")
+        ].compactMap { $0 }
+
+        return candidateFiles.first { fileManager.fileExists(atPath: $0.path) }
+    }
+
+    private static func manuallyResolvedICloudCacheFileURL(fileManager: FileManager) -> URL? {
+        guard let bundleIdentifier = Bundle.main.bundleIdentifier,
+              let libraryDirectory = fileManager.urls(for: .libraryDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+
+        let containerName = "iCloud~" + bundleIdentifier.replacingOccurrences(of: ".", with: "~")
+        return libraryDirectory
+            .appendingPathComponent("Mobile Documents", isDirectory: true)
+            .appendingPathComponent(containerName, isDirectory: true)
+            .appendingPathComponent("Documents/Cache/families.json")
+    }
+
+    private static func localDocumentsCacheDirectory(fileManager: FileManager) -> URL? {
+        fileManager.urls(for: .documentDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("Cache", isDirectory: true)
+    }
+
+    private static func applicationSupportCacheDirectory(fileManager: FileManager) -> URL {
+        let baseDirectory = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? fileManager.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support", isDirectory: true)
+
+        return baseDirectory
+            .appendingPathComponent("Kalvian Roots", isDirectory: true)
+            .appendingPathComponent("Cache", isDirectory: true)
+    }
 
     private func loadPayload() -> CachePayload? {
         guard fileManager.fileExists(atPath: cacheFileURL.path) else {
