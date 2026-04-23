@@ -601,7 +601,10 @@ final class HTTPHandler: ChannelInboundHandler {
                 "[\(requestID!)] ✅ FamilySearch extraction received",
                 metadata: [
                     "family": "\(canonicalID)",
+                    "url": "\(extraction.url ?? "unknown")",
+                    "detectedPersonId": "\(extraction.detectedPersonId ?? "unknown")",
                     "spouseGroups": "\(extraction.spouseGroupCount ?? extraction.spouseGroups?.count ?? 0)",
+                    "rawCandidates": "\(extraction.rawCandidateChildCount ?? 0)",
                     "children": "\(extraction.children.count)"
                 ]
             )
@@ -611,7 +614,11 @@ final class HTTPHandler: ChannelInboundHandler {
                 metadata: [
                     "family": "\(canonicalID)",
                     "status": "\(extraction.status ?? "unknown")",
-                    "reason": "\(extraction.failureReason ?? "unknown")"
+                    "reason": "\(extraction.failureReason ?? "unknown")",
+                    "url": "\(extraction.url ?? "unknown")",
+                    "detectedPersonId": "\(extraction.detectedPersonId ?? "unknown")",
+                    "familyMembersFound": "\(extraction.familyMembersSectionFound.map { $0 ? "true" : "false" } ?? "unknown")",
+                    "spousesAndChildrenFound": "\(extraction.spousesAndChildrenSectionFound.map { $0 ? "true" : "false" } ?? "unknown")"
                 ]
             )
         }

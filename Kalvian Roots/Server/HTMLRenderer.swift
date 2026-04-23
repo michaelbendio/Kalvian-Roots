@@ -382,7 +382,12 @@ struct HTMLRenderer {
                 extractionSummary = """
                 <div class="fs-debug-summary">
                     FamilySearch source person: \(escapeHTML(extraction.sourcePersonId)).
+                    Context URL: \(escapeHTML(extraction.url ?? "unknown")).
+                    Expected: \(escapeHTML(extraction.expectedPersonId ?? "unknown")).
+                    Detected: \(escapeHTML(extraction.detectedPersonId ?? "unknown")).
                     Spouse groups: \(extraction.spouseGroupCount ?? extraction.spouseGroups?.count ?? 0).
+                    Children markers: \(extraction.childrenMarkerCount ?? 0).
+                    Raw candidates: \(extraction.rawCandidateChildCount ?? 0).
                     Children extracted: \(extraction.children.count).
                 </div>
                 """
@@ -390,8 +395,11 @@ struct HTMLRenderer {
                 extractionSummary = """
                 <div class="fs-debug-summary">
                     FamilySearch extraction failed: \(escapeHTML(extraction.failureReason ?? extraction.status ?? "unknown failure")).
+                    Context URL: \(escapeHTML(extraction.url ?? "unknown")).
                     Expected: \(escapeHTML(extraction.expectedPersonId ?? "unknown")).
                     Detected: \(escapeHTML(extraction.detectedPersonId ?? "unknown")).
+                    Family Members found: \(extraction.familyMembersSectionFound.map { $0 ? "yes" : "no" } ?? "unknown").
+                    Spouses and Children found: \(extraction.spousesAndChildrenSectionFound.map { $0 ? "yes" : "no" } ?? "unknown").
                 </div>
                 """
             }

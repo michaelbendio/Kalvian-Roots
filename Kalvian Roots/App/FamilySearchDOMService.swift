@@ -43,8 +43,15 @@ struct FamilySearchFamilyExtraction: Codable, Equatable, Hashable {
     var status: String?
     var failureReason: String?
     var url: String?
+    var pageTitle: String?
     var detectedPersonId: String?
     var expectedPersonId: String?
+    var isFamilySearchPage: Bool?
+    var isPersonDetailsPage: Bool?
+    var familyMembersSectionFound: Bool?
+    var spousesAndChildrenSectionFound: Bool?
+    var childrenMarkerCount: Int?
+    var rawCandidateChildCount: Int?
     var spouseGroupCount: Int?
     var childCount: Int?
     var preferredChildCount: Int?
@@ -161,6 +168,15 @@ enum FamilySearchDOMService {
                 return extractionDocument().location.href;
             }
 
+            function pageTitle() {
+                return clean(extractionDocument().title);
+            }
+
+            function isFamilySearchPage() {
+                const location = extractionDocument().location;
+                return /(^|\\.)familysearch\\.org$/i.test(location.hostname) || /FamilySearch/i.test(pageTitle());
+            }
+
             function isPersonDetailsPage() {
                 return /\\/tree\\/person\\/details\\/[A-Z0-9-]+/i.test(extractionDocument().location.pathname);
             }
@@ -218,6 +234,27 @@ enum FamilySearchDOMService {
 
                 const end = lines.findIndex((line, index) => index > start && /^Parents and Siblings$/i.test(line));
                 return lines.slice(start + 1, end >= 0 ? end : lines.length);
+            }
+
+            function diagnosticContext() {
+                const section = familyMembersSection();
+                const allLines = section ? (section.innerText || '').split('\\n').map(clean).filter(Boolean) : [];
+                const spousesIndex = allLines.findIndex(line => /^Spouses and Children$/i.test(line));
+                const parentsIndex = allLines.findIndex((line, index) => index > spousesIndex && /^Parents and Siblings$/i.test(line));
+                const sectionLines = spousesIndex >= 0
+                    ? allLines.slice(spousesIndex + 1, parentsIndex >= 0 ? parentsIndex : allLines.length)
+                    : [];
+
+                return {
+                    url: pageURL(),
+                    pageTitle: pageTitle(),
+                    detectedPersonId: personIdFromURL(),
+                    isFamilySearchPage: isFamilySearchPage(),
+                    isPersonDetailsPage: isPersonDetailsPage(),
+                    familyMembersSectionFound: !!section,
+                    spousesAndChildrenSectionFound: spousesIndex >= 0,
+                    childrenMarkerCount: sectionLines.filter(line => /^Children\\s*\\(\\d+\\)$/i.test(line)).length
+                };
             }
 
             function parseChildCount(line) {
@@ -371,6 +408,7 @@ enum FamilySearchDOMService {
             }
 
             function makeFailureResult(expectedPersonId, error) {
+                const diagnostics = diagnosticContext();
                 return {
                     sourcePersonId: expectedPersonId,
                     focusPerson: null,
@@ -380,9 +418,16 @@ enum FamilySearchDOMService {
                     spouseGroups: [],
                     status: failureStatusForError(error),
                     failureReason: clean(error && error.message) || 'Unknown FamilySearch extraction error',
-                    url: pageURL(),
-                    detectedPersonId: personIdFromURL(),
+                    url: diagnostics.url,
+                    pageTitle: diagnostics.pageTitle,
+                    detectedPersonId: diagnostics.detectedPersonId,
                     expectedPersonId,
+                    isFamilySearchPage: diagnostics.isFamilySearchPage,
+                    isPersonDetailsPage: diagnostics.isPersonDetailsPage,
+                    familyMembersSectionFound: diagnostics.familyMembersSectionFound,
+                    spousesAndChildrenSectionFound: diagnostics.spousesAndChildrenSectionFound,
+                    childrenMarkerCount: diagnostics.childrenMarkerCount,
+                    rawCandidateChildCount: 0,
                     spouseGroupCount: 0,
                     childCount: 0,
                     preferredChildCount: 0,
@@ -398,6 +443,7 @@ enum FamilySearchDOMService {
                     const preferredGroupIndex = spouseGroups.findIndex(group => group.isPreferred);
                     const selectedGroupIndex = preferredGroupIndex >= 0 ? preferredGroupIndex : 0;
                     const selectedGroup = spouseGroups[selectedGroupIndex];
+                    const rawCandidateChildCount = selectedGroup.children.length;
 
                     let spouse = selectedGroup.spouses.find(person => person.id !== normalizedPersonId) || null;
                     if (spouse) {
@@ -432,6 +478,7 @@ enum FamilySearchDOMService {
                         await visitPerson(normalizedPersonId);
                     }
 
+                    const diagnostics = diagnosticContext();
                     const result = {
                         sourcePersonId: normalizedPersonId,
                         focusPerson,
@@ -441,9 +488,16 @@ enum FamilySearchDOMService {
                         spouseGroups,
                         status: 'success',
                         failureReason: null,
-                        url: pageURL(),
-                        detectedPersonId: personIdFromURL(),
+                        url: diagnostics.url,
+                        pageTitle: diagnostics.pageTitle,
+                        detectedPersonId: diagnostics.detectedPersonId,
                         expectedPersonId: normalizedPersonId,
+                        isFamilySearchPage: diagnostics.isFamilySearchPage,
+                        isPersonDetailsPage: diagnostics.isPersonDetailsPage,
+                        familyMembersSectionFound: diagnostics.familyMembersSectionFound,
+                        spousesAndChildrenSectionFound: diagnostics.spousesAndChildrenSectionFound,
+                        childrenMarkerCount: diagnostics.childrenMarkerCount,
+                        rawCandidateChildCount,
                         spouseGroupCount: spouseGroups.length,
                         childCount: children.length,
                         preferredChildCount: selectedGroup.children.length,

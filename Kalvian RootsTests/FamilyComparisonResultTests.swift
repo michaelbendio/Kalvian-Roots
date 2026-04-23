@@ -1245,6 +1245,9 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("Spouses and Children section not found"))
         XCTAssertTrue(script.contains("spouse groups not found"))
         XCTAssertTrue(script.contains("failureStatusForError"))
+        XCTAssertTrue(script.contains("diagnosticContext"))
+        XCTAssertTrue(script.contains("childrenMarkerCount"))
+        XCTAssertTrue(script.contains("rawCandidateChildCount"))
         XCTAssertTrue(script.contains("preferred group children"))
         XCTAssertTrue(script.contains("\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b"))
     }
@@ -1323,8 +1326,15 @@ final class FamilySearchDOMServiceTests: XCTestCase {
           ],
           "status": "success",
           "url": "https://www.familysearch.org/en/tree/person/details/KJJH-2QK",
+          "pageTitle": "Thomas Johansson Ahokangas | Person | Family Tree",
           "detectedPersonId": "KJJH-2QK",
           "expectedPersonId": "KJJH-2QK",
+          "isFamilySearchPage": true,
+          "isPersonDetailsPage": true,
+          "familyMembersSectionFound": true,
+          "spousesAndChildrenSectionFound": true,
+          "childrenMarkerCount": 2,
+          "rawCandidateChildCount": 13,
           "spouseGroupCount": 2,
           "childCount": 13,
           "preferredChildCount": 13,
@@ -1343,6 +1353,9 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertEqual(extraction.spouseGroups?.first?.declaredChildCount, 13)
         XCTAssertEqual(extraction.spouseGroups?.last?.declaredChildCount, 0)
         XCTAssertEqual(extraction.spouseGroups?.last?.children.count, 0)
+        XCTAssertEqual(extraction.childrenMarkerCount, 2)
+        XCTAssertEqual(extraction.rawCandidateChildCount, 13)
+        XCTAssertEqual(extraction.pageTitle, "Thomas Johansson Ahokangas | Person | Family Tree")
         XCTAssertEqual(extraction.children.first?.id, "LK4Q-YSX")
         XCTAssertEqual(extraction.children.last?.id, "L4HD-545")
     }
@@ -1356,8 +1369,15 @@ final class FamilySearchDOMServiceTests: XCTestCase {
           "status": "wrongPage",
           "failureReason": "not on person details page: https://www.familysearch.org/en/tree/person/sources/KJJH-2QK",
           "url": "https://www.familysearch.org/en/tree/person/sources/KJJH-2QK",
+          "pageTitle": "Sources | FamilySearch",
           "detectedPersonId": null,
           "expectedPersonId": "KJJH-2QK",
+          "isFamilySearchPage": true,
+          "isPersonDetailsPage": false,
+          "familyMembersSectionFound": false,
+          "spousesAndChildrenSectionFound": false,
+          "childrenMarkerCount": 0,
+          "rawCandidateChildCount": 0,
           "spouseGroupCount": 0,
           "childCount": 0,
           "preferredChildCount": 0
@@ -1372,6 +1392,8 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertFalse(extraction.isSuccessful)
         XCTAssertEqual(extraction.children.count, 0)
         XCTAssertEqual(extraction.status, "wrongPage")
+        XCTAssertEqual(extraction.pageTitle, "Sources | FamilySearch")
+        XCTAssertEqual(extraction.isPersonDetailsPage, false)
         XCTAssertEqual(extraction.failureReason, "not on person details page: https://www.familysearch.org/en/tree/person/sources/KJJH-2QK")
     }
 }
@@ -1406,12 +1428,19 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
 
         let text = FamilySearchComparisonClipboardFormatter.text(
             debugMessage: "FamilySearch comparison ready",
-            debugLines: ["Family selected: AHOKANGAS 2"],
+            debugLines: [
+                "Family selected: AHOKANGAS 2",
+                "FamilySearch extraction context URL: https://www.familysearch.org/en/tree/person/details/KJJH-2QK",
+                "FamilySearch extraction status: success",
+                "FamilySearch children handed to comparison: 1"
+            ],
             rows: result.rows,
             status: { _ in "Missing in HisKi" }
         )
 
         XCTAssertTrue(text.contains("Family selected: AHOKANGAS 2"))
+        XCTAssertTrue(text.contains("FamilySearch extraction context URL: https://www.familysearch.org/en/tree/person/details/KJJH-2QK"))
+        XCTAssertTrue(text.contains("FamilySearch children handed to comparison: 1"))
         XCTAssertTrue(text.contains("Child name\tJuuret\tHisKi\tFamilySearch\tStatus"))
         XCTAssertTrue(text.contains("Matti\tYes | 14 Mar 1761\tNo\tYes | <LK4Q-YSX> | 14 Mar 1761\tMissing in HisKi"))
     }

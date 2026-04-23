@@ -498,6 +498,80 @@ class JuuretApp {
         logInfo(.ui, "🧪 \(message)")
     }
 
+    private func debugValue(_ value: String?) -> String {
+        guard let value, !value.isEmpty else {
+            return "not detected"
+        }
+
+        return value
+    }
+
+    private func debugYesNo(_ value: Bool?) -> String {
+        guard let value else {
+            return "unknown"
+        }
+
+        return value ? "yes" : "no"
+    }
+
+    private func debugCount(_ value: Int?) -> String {
+        value.map(String.init) ?? "unknown"
+    }
+
+    private func familySearchSpouseGroupSummary(_ extraction: FamilySearchFamilyExtraction) -> String {
+        guard let spouseGroups = extraction.spouseGroups, !spouseGroups.isEmpty else {
+            return "none"
+        }
+
+        return spouseGroups.enumerated().map { index, group in
+            let label = group.isPreferred ? "preferred" : "group"
+            let declared = group.declaredChildCount.map(String.init) ?? "unknown"
+            return "\(label) \(index + 1): declared children \(declared), extracted children \(group.children.count)"
+        }.joined(separator: "; ")
+    }
+
+    private func appendFamilySearchExtractionDiagnostics(
+        expectedPersonId: String,
+        targetURL: String,
+        localFamilyURL: String,
+        extraction: FamilySearchFamilyExtraction?
+    ) {
+        appendFamilySearchComparisonDebug("FamilySearch expected person ID: \(expectedPersonId)")
+        appendFamilySearchComparisonDebug("FamilySearch target URL: \(targetURL)")
+        appendFamilySearchComparisonDebug("FamilySearch local extractor page URL: \(localFamilyURL)")
+        appendFamilySearchComparisonDebug("FamilySearch extraction depends on Atlas/browser page: yes")
+
+        guard let extraction else {
+            appendFamilySearchComparisonDebug("Atlas/browser navigation requested: no")
+            appendFamilySearchComparisonDebug("FamilySearch extractor invocation status: not invoked")
+            appendFamilySearchComparisonDebug("FamilySearch extraction not started: open \(localFamilyURL) in Atlas and run the DOM extractor; it will target \(targetURL)")
+            return
+        }
+
+        let status = extraction.status ?? (extraction.isSuccessful ? "success" : "unknown")
+        appendFamilySearchComparisonDebug("Atlas/browser navigation requested: yes")
+        appendFamilySearchComparisonDebug("FamilySearch extraction status: \(status)")
+        if let failureReason = extraction.failureReason, !failureReason.isEmpty {
+            appendFamilySearchComparisonDebug("FamilySearch extraction failure reason: \(failureReason)")
+        }
+        appendFamilySearchComparisonDebug("FamilySearch extraction context URL: \(debugValue(extraction.url))")
+        appendFamilySearchComparisonDebug("FamilySearch extraction context title: \(debugValue(extraction.pageTitle))")
+        appendFamilySearchComparisonDebug("FamilySearch page appears FamilySearch: \(debugYesNo(extraction.isFamilySearchPage))")
+        appendFamilySearchComparisonDebug("FamilySearch page type valid: \(debugYesNo(extraction.isPersonDetailsPage))")
+        appendFamilySearchComparisonDebug("FamilySearch detected person ID: \(debugValue(extraction.detectedPersonId))")
+        appendFamilySearchComparisonDebug("FamilySearch expected/detected ID match: \(debugYesNo(extraction.detectedPersonId?.uppercased() == expectedPersonId.uppercased()))")
+        appendFamilySearchComparisonDebug("FamilySearch section found: Family Members = \(debugYesNo(extraction.familyMembersSectionFound))")
+        appendFamilySearchComparisonDebug("FamilySearch section found: Spouses and Children = \(debugYesNo(extraction.spousesAndChildrenSectionFound))")
+        appendFamilySearchComparisonDebug("FamilySearch children marker count: \(debugCount(extraction.childrenMarkerCount))")
+        appendFamilySearchComparisonDebug("FamilySearch spouse groups detected: \(debugCount(extraction.spouseGroupCount ?? extraction.spouseGroups?.count))")
+        appendFamilySearchComparisonDebug("FamilySearch spouse group summary: \(familySearchSpouseGroupSummary(extraction))")
+        appendFamilySearchComparisonDebug("FamilySearch raw candidate children: \(debugCount(extraction.rawCandidateChildCount))")
+        appendFamilySearchComparisonDebug("FamilySearch normalized/extracted children: \(debugCount(extraction.childCount ?? extraction.children.count))")
+        extraction.debugNotes?.forEach { note in
+            appendFamilySearchComparisonDebug("FamilySearch extractor note: \(note)")
+        }
+    }
+
     private func familySearchParentId(in family: Family) -> String? {
         guard let couple = family.primaryCouple else {
             return nil
@@ -549,24 +623,12 @@ class JuuretApp {
         let storedFamilySearchExtraction = familySearchExtraction(for: family.familyId)
         if let familySearchPersonId {
             appendFamilySearchComparisonDebug("FamilySearch ID found: \(familySearchPersonId)")
-            if let storedFamilySearchExtraction {
-                if storedFamilySearchExtraction.isSuccessful {
-                    appendFamilySearchComparisonDebug(
-                        "FamilySearch extraction found in app state: spouse groups \(storedFamilySearchExtraction.spouseGroupCount ?? storedFamilySearchExtraction.spouseGroups?.count ?? 0), children \(storedFamilySearchExtraction.children.count)"
-                    )
-                    if let preferredChildCount = storedFamilySearchExtraction.preferredChildCount {
-                        appendFamilySearchComparisonDebug("FamilySearch preferred spouse group children: \(preferredChildCount)")
-                    }
-                } else {
-                    appendFamilySearchComparisonDebug("FamilySearch extraction aborted: \(storedFamilySearchExtraction.failureReason ?? storedFamilySearchExtraction.status ?? "unknown failure")")
-                    if let expected = storedFamilySearchExtraction.expectedPersonId,
-                       let detected = storedFamilySearchExtraction.detectedPersonId {
-                        appendFamilySearchComparisonDebug("FamilySearch expected \(expected), detected \(detected)")
-                    }
-                }
-            } else {
-                appendFamilySearchComparisonDebug("FamilySearch extraction not started: open \(atlasFamilyURL(for: family.familyId)) in Atlas and run the DOM extractor")
-            }
+            appendFamilySearchExtractionDiagnostics(
+                expectedPersonId: familySearchPersonId,
+                targetURL: FamilySearchDOMService.detailsURL(for: familySearchPersonId),
+                localFamilyURL: atlasFamilyURL(for: family.familyId),
+                extraction: storedFamilySearchExtraction
+            )
         } else {
             appendFamilySearchComparisonDebug("FamilySearch comparison not yet available: no FamilySearch parent ID found")
             appendFamilySearchComparisonDebug("FamilySearch extraction not started: no FamilySearch parent ID was found")
@@ -575,9 +637,27 @@ class JuuretApp {
         let familySearchChildren = storedFamilySearchExtraction?.isSuccessful == false
             ? []
             : storedFamilySearchExtraction?.children ?? []
-        appendFamilySearchComparisonDebug("FamilySearch extraction finished, child count: \(familySearchChildren.count)")
+        if let storedFamilySearchExtraction {
+            let childCount = storedFamilySearchExtraction.childCount ?? storedFamilySearchExtraction.children.count
+            appendFamilySearchComparisonDebug("FamilySearch extraction finished, child count: \(childCount)")
+        } else {
+            appendFamilySearchComparisonDebug("FamilySearch extraction finished: not invoked")
+        }
+
+        let familySearchComparisonInputSource: String
+        if let storedFamilySearchExtraction, storedFamilySearchExtraction.isSuccessful {
+            familySearchComparisonInputSource = "stored FamilySearch extraction"
+        } else if let storedFamilySearchExtraction {
+            familySearchComparisonInputSource = "fallback empty set (extraction failed: \(storedFamilySearchExtraction.status ?? "unknown"))"
+        } else if familySearchPersonId == nil {
+            familySearchComparisonInputSource = "fallback empty set (no FamilySearch parent ID)"
+        } else {
+            familySearchComparisonInputSource = "fallback empty set (extractor not invoked)"
+        }
 
         guard !couple.husband.name.isEmpty, !couple.wife.name.isEmpty else {
+            appendFamilySearchComparisonDebug("FamilySearch children handed to comparison: \(familySearchChildren.count)")
+            appendFamilySearchComparisonDebug("FamilySearch comparison input source: \(familySearchComparisonInputSource)")
             assignFamilySearchComparisonFallback(
                 family: family,
                 couple: couple,
@@ -590,6 +670,8 @@ class JuuretApp {
 
         guard let marriageDate = couple.fullMarriageDate ?? couple.marriageDate,
               let marriageYear = extractYear(from: marriageDate) else {
+            appendFamilySearchComparisonDebug("FamilySearch children handed to comparison: \(familySearchChildren.count)")
+            appendFamilySearchComparisonDebug("FamilySearch comparison input source: \(familySearchComparisonInputSource)")
             assignFamilySearchComparisonFallback(
                 family: family,
                 couple: couple,
@@ -603,6 +685,8 @@ class JuuretApp {
         let comparisonService = FamilyComparisonService(nameManager: nameEquivalenceManager)
         let juuretCandidates = comparisonService.makeJuuretCandidates(from: couple.children)
         let familySearchCandidates = comparisonService.makeFamilySearchCandidates(from: familySearchChildren)
+        appendFamilySearchComparisonDebug("FamilySearch children handed to comparison: \(familySearchCandidates.count)")
+        appendFamilySearchComparisonDebug("FamilySearch comparison input source: \(familySearchComparisonInputSource)")
         let hiskiService = HiskiService(nameEquivalenceManager: nameEquivalenceManager)
         hiskiService.setCurrentFamily(family.familyId)
 
