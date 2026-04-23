@@ -1241,8 +1241,138 @@ final class FamilySearchDOMServiceTests: XCTestCase {
 
         XCTAssertTrue(script.contains("KALVIAN_ROOTS_CALLBACK_URL = 'http://127.0.0.1:8081/family/AHOKANGAS%202/familysearch?session=test'"))
         XCTAssertTrue(script.contains("await postResult(result);"))
-        XCTAssertTrue(script.contains("cardLifeSpan"))
+        XCTAssertTrue(script.contains("function extractSpouseGroups()"))
+        XCTAssertTrue(script.contains("Spouses and Children section not found"))
+        XCTAssertTrue(script.contains("spouse groups not found"))
+        XCTAssertTrue(script.contains("failureStatusForError"))
+        XCTAssertTrue(script.contains("preferred group children"))
         XCTAssertTrue(script.contains("\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b"))
+    }
+
+    func testKJJH2QKExtractionPayloadCanRepresentPreferredAndSecondSpouseGroups() throws {
+        let json = """
+        {
+          "sourcePersonId": "KJJH-2QK",
+          "focusPerson": {
+            "id": "KJJH-2QK",
+            "name": "Thomas Johansson Ahokangas",
+            "birthDate": "16 December 1738",
+            "deathDate": "14 August 1808",
+            "lifeSpan": "1738-1808"
+          },
+          "spouse": {
+            "id": "KJJH-2ZN",
+            "name": "Magdalena Klapuri",
+            "birthDate": "1741",
+            "deathDate": "1794",
+            "lifeSpan": "1741-1794"
+          },
+          "marriage": {
+            "date": "15 May 1760",
+            "place": "Kälviä, Vaasa, Finland"
+          },
+          "children": [
+            { "id": "LK4Q-YSX", "name": "Matthias Thomasson Ahokangas", "lifeSpan": "1761-1842" },
+            { "id": "KJJH-2GP", "name": "Andreas Thomasson Klapuri", "lifeSpan": "1763-1763" },
+            { "id": "KJJH-2G5", "name": "Joseph Thomasson Klapuri", "lifeSpan": "1764-1764" },
+            { "id": "KJJH-2GJ", "name": "Maria Thomasdr Klapuri", "lifeSpan": "1765-1797" },
+            { "id": "KJJH-2GK", "name": "Elisabeth Klapuri", "lifeSpan": "1768-1838" },
+            { "id": "M83R-9V3", "name": "Britha Thomasdotter", "lifeSpan": "1769-1813" },
+            { "id": "LXDW-P12", "name": "Johannes Klapuri", "lifeSpan": "1771-Deceased" },
+            { "id": "KJJH-2GT", "name": "Anna Ahokangas", "lifeSpan": "1773-1773" },
+            { "id": "KJJH-2GL", "name": "Ericus Thomasson Ahokangas", "lifeSpan": "1775-Deceased" },
+            { "id": "KJJH-2GR", "name": "Henric Ahokangas", "lifeSpan": "1778-1778" },
+            { "id": "KJJH-2GG", "name": "Antti Tuomaanpoika Lehtimäki", "lifeSpan": "1779-1837" },
+            { "id": "KJJH-2PM", "name": "Thomas Thomasson Ahokangas", "lifeSpan": "1780-1780" },
+            { "id": "L4HD-545", "name": "Elias Thomasson Ahokangas", "lifeSpan": "1782-1845" }
+          ],
+          "spouseGroups": [
+            {
+              "spouses": [
+                { "id": "KJJH-2QK", "name": "Thomas Johansson Ahokangas", "lifeSpan": "1738-1808" },
+                { "id": "KJJH-2ZN", "name": "Magdalena Klapuri", "lifeSpan": "1741-1794" }
+              ],
+              "marriage": { "date": "15 May 1760", "place": "Kälviä, Vaasa, Finland" },
+              "declaredChildCount": 13,
+              "children": [
+                { "id": "LK4Q-YSX", "name": "Matthias Thomasson Ahokangas", "lifeSpan": "1761-1842" },
+                { "id": "KJJH-2GP", "name": "Andreas Thomasson Klapuri", "lifeSpan": "1763-1763" },
+                { "id": "KJJH-2G5", "name": "Joseph Thomasson Klapuri", "lifeSpan": "1764-1764" },
+                { "id": "KJJH-2GJ", "name": "Maria Thomasdr Klapuri", "lifeSpan": "1765-1797" },
+                { "id": "KJJH-2GK", "name": "Elisabeth Klapuri", "lifeSpan": "1768-1838" },
+                { "id": "M83R-9V3", "name": "Britha Thomasdotter", "lifeSpan": "1769-1813" },
+                { "id": "LXDW-P12", "name": "Johannes Klapuri", "lifeSpan": "1771-Deceased" },
+                { "id": "KJJH-2GT", "name": "Anna Ahokangas", "lifeSpan": "1773-1773" },
+                { "id": "KJJH-2GL", "name": "Ericus Thomasson Ahokangas", "lifeSpan": "1775-Deceased" },
+                { "id": "KJJH-2GR", "name": "Henric Ahokangas", "lifeSpan": "1778-1778" },
+                { "id": "KJJH-2GG", "name": "Antti Tuomaanpoika Lehtimäki", "lifeSpan": "1779-1837" },
+                { "id": "KJJH-2PM", "name": "Thomas Thomasson Ahokangas", "lifeSpan": "1780-1780" },
+                { "id": "L4HD-545", "name": "Elias Thomasson Ahokangas", "lifeSpan": "1782-1845" }
+              ],
+              "isPreferred": true
+            },
+            {
+              "spouses": [
+                { "id": "LHZY-M43", "name": "Catharina Carin Mattsdr Norppa", "lifeSpan": "1747-1830" }
+              ],
+              "marriage": null,
+              "declaredChildCount": 0,
+              "children": [],
+              "isPreferred": false
+            }
+          ],
+          "status": "success",
+          "url": "https://www.familysearch.org/en/tree/person/details/KJJH-2QK",
+          "detectedPersonId": "KJJH-2QK",
+          "expectedPersonId": "KJJH-2QK",
+          "spouseGroupCount": 2,
+          "childCount": 13,
+          "preferredChildCount": 13,
+          "debugNotes": ["FamilySearch extraction finished: spouse groups 2, preferred group children 13"]
+        }
+        """
+
+        let extraction = try JSONDecoder().decode(
+            FamilySearchFamilyExtraction.self,
+            from: Data(json.utf8)
+        )
+
+        XCTAssertTrue(extraction.isSuccessful)
+        XCTAssertEqual(extraction.children.count, 13)
+        XCTAssertEqual(extraction.spouseGroups?.count, 2)
+        XCTAssertEqual(extraction.spouseGroups?.first?.declaredChildCount, 13)
+        XCTAssertEqual(extraction.spouseGroups?.last?.declaredChildCount, 0)
+        XCTAssertEqual(extraction.spouseGroups?.last?.children.count, 0)
+        XCTAssertEqual(extraction.children.first?.id, "LK4Q-YSX")
+        XCTAssertEqual(extraction.children.last?.id, "L4HD-545")
+    }
+
+    func testFailedExtractionPayloadDistinguishesWrongPageFromZeroChildren() throws {
+        let json = """
+        {
+          "sourcePersonId": "KJJH-2QK",
+          "children": [],
+          "spouseGroups": [],
+          "status": "wrongPage",
+          "failureReason": "not on person details page: https://www.familysearch.org/en/tree/person/sources/KJJH-2QK",
+          "url": "https://www.familysearch.org/en/tree/person/sources/KJJH-2QK",
+          "detectedPersonId": null,
+          "expectedPersonId": "KJJH-2QK",
+          "spouseGroupCount": 0,
+          "childCount": 0,
+          "preferredChildCount": 0
+        }
+        """
+
+        let extraction = try JSONDecoder().decode(
+            FamilySearchFamilyExtraction.self,
+            from: Data(json.utf8)
+        )
+
+        XCTAssertFalse(extraction.isSuccessful)
+        XCTAssertEqual(extraction.children.count, 0)
+        XCTAssertEqual(extraction.status, "wrongPage")
+        XCTAssertEqual(extraction.failureReason, "not on person details page: https://www.familysearch.org/en/tree/person/sources/KJJH-2QK")
     }
 }
 

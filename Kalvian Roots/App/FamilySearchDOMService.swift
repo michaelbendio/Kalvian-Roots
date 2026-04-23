@@ -15,6 +15,14 @@ struct FamilySearchMarriageSummary: Codable, Equatable, Hashable {
     var place: String?
 }
 
+struct FamilySearchSpouseGroup: Codable, Equatable, Hashable {
+    var spouses: [FamilySearchPersonSummary]
+    var marriage: FamilySearchMarriageSummary?
+    var declaredChildCount: Int?
+    var children: [FamilySearchChild]
+    var isPreferred: Bool
+}
+
 struct FamilySearchChild: Codable, Equatable, Hashable {
     var id: String
     var name: String
@@ -31,6 +39,20 @@ struct FamilySearchFamilyExtraction: Codable, Equatable, Hashable {
     var spouse: FamilySearchPersonSummary?
     var marriage: FamilySearchMarriageSummary?
     var children: [FamilySearchChild]
+    var spouseGroups: [FamilySearchSpouseGroup]?
+    var status: String?
+    var failureReason: String?
+    var url: String?
+    var detectedPersonId: String?
+    var expectedPersonId: String?
+    var spouseGroupCount: Int?
+    var childCount: Int?
+    var preferredChildCount: Int?
+    var debugNotes: [String]?
+
+    var isSuccessful: Bool {
+        status == nil || status == "success"
+    }
 }
 
 enum FamilySearchDOMService {
@@ -135,121 +157,184 @@ enum FamilySearchDOMService {
                 return heading && (heading.closest('section') || heading.closest('div[all]') || heading.parentElement);
             }
 
-            function extractMarriage() {
-                const text = clean((familyMembersSection() || {}).innerText || '');
-                const marriageMatch = text.match(/Marriage\\s+([^\\n]+?)(?:\\s{2,}|\\n|Children \\(|$)/i);
-                if (!marriageMatch) return { date: null, place: null };
+            function pageURL() {
+                return extractionDocument().location.href;
+            }
 
-                const parts = clean(marriageMatch[1]).split(/,\\s*/);
+            function isPersonDetailsPage() {
+                return /\\/tree\\/person\\/details\\/[A-Z0-9-]+/i.test(extractionDocument().location.pathname);
+            }
+
+            function extractMarriage() {
+                const groups = extractSpouseGroups();
+                return groups[0]?.marriage || { date: null, place: null };
+            }
+
+            function makeMarriage(date, place) {
                 return {
-                    date: parts.shift() || null,
-                    place: parts.join(', ') || null
+                    date: date || null,
+                    place: place || null
                 };
             }
 
-            function childCards() {
+            function personFromNameAndDetail(name, detail) {
+                const idMatch = clean(detail).match(/\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/i);
+                if (!idMatch || !clean(name)) return null;
+                return {
+                    id: idMatch[0].toUpperCase(),
+                    name: clean(name),
+                    birthDate: null,
+                    birthPlace: null,
+                    deathDate: null,
+                    deathPlace: null,
+                    lifeSpan: clean(detail).replace(/\\s*•\\s*[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/i, '') || null
+                };
+            }
+
+            function personEntryAt(lines, index) {
+                if (index + 1 >= lines.length) return null;
+                return personFromNameAndDetail(lines[index], lines[index + 1]);
+            }
+
+            function isSpouseGroupBoundary(line) {
+                return /^(Preferred|Add Spouse|Parents and Siblings)$/i.test(clean(line));
+            }
+
+            function isChildCollectionBoundary(line) {
+                return /^(Add Child|Add Spouse|Add Child with an Unknown Mother|Parents and Siblings|Preferred)$/i.test(clean(line));
+            }
+
+            function sectionLinesFromSpousesAndChildren() {
                 const section = familyMembersSection();
-                if (!section) return [];
+                if (!section) {
+                    throw new Error('Spouses and Children section not found: Family Members section not found');
+                }
 
-                const text = section.innerText || '';
-                const childrenStart = text.search(/Children \\(\\d+\\)|\\bChildren\\b/i);
-                if (childrenStart >= 0) {
-                    let end = text.indexOf('ADD CHILD', childrenStart);
-                    if (end === -1) end = text.indexOf('Parents and Siblings', childrenStart);
-                    if (end === -1) end = text.length;
+                const lines = (section.innerText || '').split('\\n').map(clean).filter(Boolean);
+                const start = lines.findIndex(line => /^Spouses and Children$/i.test(line));
+                if (start < 0) {
+                    throw new Error('Spouses and Children section not found');
+                }
 
-                    const lines = text.slice(childrenStart, end)
-                        .split('\\n')
-                        .map(clean)
-                        .filter(Boolean);
-                    const children = [];
-                    let i = /^Children( \\(\\d+\\))?$/i.test(lines[0] || '') ? 1 : 0;
+                const end = lines.findIndex((line, index) => index > start && /^Parents and Siblings$/i.test(line));
+                return lines.slice(start + 1, end >= 0 ? end : lines.length);
+            }
 
-                    while (i < lines.length) {
-                        const name = lines[i] || '';
-                        const sex = lines[i + 1] || '';
-                        const lifeSpan = lines[i + 2] || '';
-                        const idLineIndex = lines.slice(i + 1, i + 6)
-                            .findIndex(line => /\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/i.test(line));
-                        const idLine = idLineIndex >= 0 ? lines[i + 1 + idLineIndex] : '';
-                        const idMatch = idLine.match(/\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/i);
-                        const id = idMatch ? idMatch[0] : '';
-                        const cardLifeSpan = /\\b\\d{4}\\b/.test(idLine) ? idLine.replace(/\\s*•\\s*[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/i, '') : null;
+            function parseChildCount(line) {
+                const match = clean(line).match(/^Children\\s*\\((\\d+)\\)$/i);
+                return match ? parseInt(match[1], 10) : null;
+            }
 
-                        if (id && name && !/^(Male|Female|Unknown)$/i.test(name)) {
-                            children.push({
-                                id: id.toUpperCase(),
-                                name,
-                                birthDate: null,
-                                birthPlace: null,
-                                deathDate: null,
-                                deathPlace: null,
-                                lifeSpan: cardLifeSpan || (/\\b\\d{4}\\b/.test(lifeSpan) ? lifeSpan : null)
-                            });
-                            i += idLineIndex + 2;
-                            continue;
-                        }
+            function parseSpouseGroup(lines, startIndex, expectedPersonId) {
+                let index = startIndex;
+                const isPreferred = /^Preferred$/i.test(lines[index] || '');
+                if (isPreferred) index += 1;
 
-                        if (/^(Male|Female|Unknown)$/i.test(sex) && id) {
-                            children.push({
-                                id: id.toUpperCase(),
-                                name,
-                                birthDate: null,
-                                birthPlace: null,
-                                deathDate: null,
-                                deathPlace: null,
-                                lifeSpan: /\\b\\d{4}\\b/.test(lifeSpan) ? lifeSpan : null
-                            });
-                            i += 5;
-                        } else {
-                            i += 1;
-                        }
+                const group = {
+                    spouses: [],
+                    marriage: null,
+                    declaredChildCount: null,
+                    children: [],
+                    isPreferred
+                };
+
+                while (index + 1 < lines.length) {
+                    if (/^Marriage$/i.test(lines[index]) || /^Children\\s*\\(\\d+\\)$/i.test(lines[index]) || isSpouseGroupBoundary(lines[index])) {
+                        break;
                     }
 
-                    if (children.length > 0) {
-                        return children;
+                    const person = personEntryAt(lines, index);
+                    if (person) {
+                        group.spouses.push(person);
+                        index += 2;
+                    } else {
+                        index += 1;
                     }
                 }
 
-                const childrenHeading = Array.from(section.querySelectorAll('h1,h2,h3,h4,h5,h6,span,div'))
-                    .find(element => /^Children( \\(\\d+\\))?$/i.test(clean(element.textContent)));
-                const childrenRoot = childrenHeading && (childrenHeading.closest('section') || childrenHeading.parentElement);
-                const linkRoot = childrenRoot || section;
+                const marriageIndex = lines.findIndex((line, i) => i >= index && /^Marriage$/i.test(line));
+                const childrenIndex = lines.findIndex((line, i) => i >= index && /^Children\\s*\\(\\d+\\)$/i.test(line));
+                if (marriageIndex >= 0 && childrenIndex >= 0 && marriageIndex < childrenIndex) {
+                    group.marriage = makeMarriage(lines[marriageIndex + 1], lines[marriageIndex + 2]);
+                    index = childrenIndex;
+                } else if (childrenIndex >= 0) {
+                    index = childrenIndex;
+                }
 
-                return Array.from(linkRoot.querySelectorAll('a[href*="/tree/person/details/"]'))
-                    .map(anchor => {
-                        const href = anchor.getAttribute('href') || '';
-                        const match = href.match(/\\/tree\\/person\\/details\\/([A-Z0-9-]+)/i);
-                        if (!match) return null;
+                if (index < lines.length) {
+                    group.declaredChildCount = parseChildCount(lines[index]);
+                    index += 1;
+                }
 
-                        const card = anchor.closest('li,article,div') || anchor;
-                        const lines = (card.innerText || '').split('\\n').map(clean).filter(Boolean);
-                        const name = clean(anchor.textContent) || lines[0] || '';
-                        const lifeSpan = lines.find(line => /\\b\\d{4}\\b/.test(line)) || null;
+                while (index < lines.length) {
+                    const line = lines[index];
+                    if (isChildCollectionBoundary(line)) {
+                        break;
+                    }
 
-                        return {
-                            id: match[1].toUpperCase(),
-                            name,
-                            birthDate: null,
-                            birthPlace: null,
-                            deathDate: null,
-                            deathPlace: null,
-                            lifeSpan
-                        };
-                    })
-                    .filter(Boolean)
-                    .filter((child, index, all) => all.findIndex(other => other.id === child.id) === index);
+                    const person = personEntryAt(lines, index);
+                    if (person) {
+                        const nextAfterEntry = lines[index + 2] || '';
+                        if (/^Marriage$/i.test(nextAfterEntry) || /^Children\\s*\\(\\d+\\)$/i.test(nextAfterEntry)) {
+                            break;
+                        }
+                        group.children.push(person);
+                        index += 2;
+                    } else {
+                        index += 1;
+                    }
+                }
+
+                return { group, nextIndex: index };
+            }
+
+            function extractSpouseGroups() {
+                const lines = sectionLinesFromSpousesAndChildren();
+                const groups = [];
+                let index = 0;
+
+                while (index < lines.length) {
+                    if (/^Add Spouse$/i.test(lines[index]) || /^Add Child with an Unknown Mother$/i.test(lines[index])) {
+                        break;
+                    }
+
+                    if (/^Preferred$/i.test(lines[index]) || personEntryAt(lines, index)) {
+                        const parsed = parseSpouseGroup(lines, index, personIdFromURL());
+                        if (parsed.group.spouses.length > 0 || parsed.group.declaredChildCount != null) {
+                            groups.push(parsed.group);
+                        }
+                        index = Math.max(parsed.nextIndex, index + 1);
+                    } else {
+                        index += 1;
+                    }
+                }
+
+                if (groups.length === 0) {
+                    throw new Error('spouse groups not found in Spouses and Children section');
+                }
+
+                return groups;
             }
 
             async function waitForDetailsPage(expectedId) {
                 for (let attempt = 0; attempt < 80; attempt += 1) {
-                    if (personIdFromURL() === expectedId && extractionDocument().readyState === 'complete') {
+                    if (isPersonDetailsPage() && personIdFromURL() === expectedId && extractionDocument().readyState === 'complete') {
                         await sleep(500);
                         return;
                     }
                     await sleep(250);
                 }
-                throw new Error('Timed out waiting for FamilySearch details page ' + expectedId);
+
+                if (!isPersonDetailsPage()) {
+                    throw new Error('not on person details page: ' + pageURL());
+                }
+
+                const detectedId = personIdFromURL();
+                if (detectedId !== expectedId) {
+                    throw new Error('expected ' + expectedId + ', found ' + (detectedId || 'none'));
+                }
+
+                throw new Error('page not ready within timeout for FamilySearch details page ' + expectedId);
             }
 
             async function visitPerson(personId) {
@@ -275,58 +360,105 @@ enum FamilySearchDOMService {
                 });
             }
 
+            function failureStatusForError(error) {
+                const message = clean(error && error.message);
+                if (/not on person details page/i.test(message)) return 'wrongPage';
+                if (/expected .* found/i.test(message)) return 'personMismatch';
+                if (/page not ready|timed out/i.test(message)) return 'pageNotReady';
+                if (/Spouses and Children section not found/i.test(message)) return 'sectionNotFound';
+                if (/spouse groups not found/i.test(message)) return 'spouseGroupsNotFound';
+                return 'extractorError';
+            }
+
+            function makeFailureResult(expectedPersonId, error) {
+                return {
+                    sourcePersonId: expectedPersonId,
+                    focusPerson: null,
+                    spouse: null,
+                    marriage: null,
+                    children: [],
+                    spouseGroups: [],
+                    status: failureStatusForError(error),
+                    failureReason: clean(error && error.message) || 'Unknown FamilySearch extraction error',
+                    url: pageURL(),
+                    detectedPersonId: personIdFromURL(),
+                    expectedPersonId,
+                    spouseGroupCount: 0,
+                    childCount: 0,
+                    preferredChildCount: 0,
+                    debugNotes: []
+                };
+            }
+
             window.extractFamilySearchChildren = async function extractFamilySearchChildren(personId) {
                 const normalizedPersonId = clean(personId).toUpperCase();
-                const focusPerson = await visitPerson(normalizedPersonId);
-                const marriage = extractMarriage();
-                const summaries = childCards();
+                try {
+                    const focusPerson = await visitPerson(normalizedPersonId);
+                    const spouseGroups = extractSpouseGroups();
+                    const preferredGroupIndex = spouseGroups.findIndex(group => group.isPreferred);
+                    const selectedGroupIndex = preferredGroupIndex >= 0 ? preferredGroupIndex : 0;
+                    const selectedGroup = spouseGroups[selectedGroupIndex];
 
-                let spouse = null;
-                const familyText = clean((familyMembersSection() || {}).innerText || '');
-                const spouseLink = Array.from(extractionDocument().querySelectorAll('a[href*="/tree/person/details/"]'))
-                    .find(anchor => {
-                        const id = ((anchor.getAttribute('href') || '').match(/\\/tree\\/person\\/details\\/([A-Z0-9-]+)/i) || [])[1];
-                        return id && id.toUpperCase() !== normalizedPersonId && !summaries.some(child => child.id === id.toUpperCase()) && familyText.includes(clean(anchor.textContent));
-                    });
+                    let spouse = selectedGroup.spouses.find(person => person.id !== normalizedPersonId) || null;
+                    if (spouse) {
+                        await sleep(900);
+                        spouse = await visitPerson(spouse.id);
+                        await sleep(900);
+                        await visitPerson(normalizedPersonId);
+                    }
 
-                if (spouseLink) {
-                    const spouseId = (spouseLink.getAttribute('href').match(/\\/tree\\/person\\/details\\/([A-Z0-9-]+)/i) || [])[1].toUpperCase();
-                    await sleep(900);
-                    spouse = await visitPerson(spouseId);
-                    await sleep(900);
-                    await visitPerson(normalizedPersonId);
+                    const children = [];
+                    for (const summary of selectedGroup.children) {
+                        await sleep(900);
+                        const detail = await visitPerson(summary.id);
+                        children.push({
+                            id: summary.id,
+                            name: detail.name || summary.name,
+                            birthDate: detail.birthDate || summary.birthDate,
+                            birthPlace: detail.birthPlace || summary.birthPlace,
+                            deathDate: detail.deathDate || summary.deathDate,
+                            deathPlace: detail.deathPlace || summary.deathPlace,
+                            lifeSpan: summary.lifeSpan
+                        });
+                    }
+
+                    spouseGroups[selectedGroupIndex] = {
+                        ...selectedGroup,
+                        children
+                    };
+
+                    if (personIdFromURL() !== normalizedPersonId) {
+                        await sleep(900);
+                        await visitPerson(normalizedPersonId);
+                    }
+
+                    const result = {
+                        sourcePersonId: normalizedPersonId,
+                        focusPerson,
+                        spouse,
+                        marriage: selectedGroup.marriage,
+                        children,
+                        spouseGroups,
+                        status: 'success',
+                        failureReason: null,
+                        url: pageURL(),
+                        detectedPersonId: personIdFromURL(),
+                        expectedPersonId: normalizedPersonId,
+                        spouseGroupCount: spouseGroups.length,
+                        childCount: children.length,
+                        preferredChildCount: selectedGroup.children.length,
+                        debugNotes: [
+                            'FamilySearch extraction finished: spouse groups ' + spouseGroups.length + ', preferred group children ' + selectedGroup.children.length
+                        ]
+                    };
+
+                    await postResult(result);
+                    return result;
+                } catch (error) {
+                    const result = makeFailureResult(normalizedPersonId, error);
+                    await postResult(result);
+                    return result;
                 }
-
-                const children = [];
-                for (const summary of summaries) {
-                    await sleep(900);
-                    const detail = await visitPerson(summary.id);
-                    children.push({
-                        id: summary.id,
-                        name: detail.name || summary.name,
-                        birthDate: detail.birthDate || summary.birthDate,
-                        birthPlace: detail.birthPlace || summary.birthPlace,
-                        deathDate: detail.deathDate || summary.deathDate,
-                        deathPlace: detail.deathPlace || summary.deathPlace,
-                        lifeSpan: summary.lifeSpan
-                    });
-                }
-
-                if (personIdFromURL() !== normalizedPersonId) {
-                    await sleep(900);
-                    await visitPerson(normalizedPersonId);
-                }
-
-                const result = {
-                    sourcePersonId: normalizedPersonId,
-                    focusPerson,
-                    spouse,
-                    marriage,
-                    children
-                };
-
-                await postResult(result);
-                return result;
             };
         })();
         """

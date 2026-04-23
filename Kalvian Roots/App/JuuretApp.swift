@@ -550,7 +550,20 @@ class JuuretApp {
         if let familySearchPersonId {
             appendFamilySearchComparisonDebug("FamilySearch ID found: \(familySearchPersonId)")
             if let storedFamilySearchExtraction {
-                appendFamilySearchComparisonDebug("FamilySearch extraction found in app state: \(storedFamilySearchExtraction.children.count) children")
+                if storedFamilySearchExtraction.isSuccessful {
+                    appendFamilySearchComparisonDebug(
+                        "FamilySearch extraction found in app state: spouse groups \(storedFamilySearchExtraction.spouseGroupCount ?? storedFamilySearchExtraction.spouseGroups?.count ?? 0), children \(storedFamilySearchExtraction.children.count)"
+                    )
+                    if let preferredChildCount = storedFamilySearchExtraction.preferredChildCount {
+                        appendFamilySearchComparisonDebug("FamilySearch preferred spouse group children: \(preferredChildCount)")
+                    }
+                } else {
+                    appendFamilySearchComparisonDebug("FamilySearch extraction aborted: \(storedFamilySearchExtraction.failureReason ?? storedFamilySearchExtraction.status ?? "unknown failure")")
+                    if let expected = storedFamilySearchExtraction.expectedPersonId,
+                       let detected = storedFamilySearchExtraction.detectedPersonId {
+                        appendFamilySearchComparisonDebug("FamilySearch expected \(expected), detected \(detected)")
+                    }
+                }
             } else {
                 appendFamilySearchComparisonDebug("FamilySearch extraction not started: open \(atlasFamilyURL(for: family.familyId)) in Atlas and run the DOM extractor")
             }
@@ -559,7 +572,9 @@ class JuuretApp {
             appendFamilySearchComparisonDebug("FamilySearch extraction not started: no FamilySearch parent ID was found")
         }
 
-        let familySearchChildren = storedFamilySearchExtraction?.children ?? []
+        let familySearchChildren = storedFamilySearchExtraction?.isSuccessful == false
+            ? []
+            : storedFamilySearchExtraction?.children ?? []
         appendFamilySearchComparisonDebug("FamilySearch extraction finished, child count: \(familySearchChildren.count)")
 
         guard !couple.husband.name.isEmpty, !couple.wife.name.isEmpty else {
@@ -643,7 +658,9 @@ class JuuretApp {
             let report = renderJuuretHiskiComparisonReport(result)
             let proposalReport = storeHiskiCitationProposals(proposals)
             familySearchComparisonResult = result
-            if familySearchPersonId == nil {
+            if let storedFamilySearchExtraction, !storedFamilySearchExtraction.isSuccessful {
+                familySearchComparisonDebugMessage = "FamilySearch comparison not yet available: \(storedFamilySearchExtraction.failureReason ?? "FamilySearch extraction failed")"
+            } else if familySearchPersonId == nil {
                 familySearchComparisonDebugMessage = "FamilySearch comparison not yet available"
             } else if familySearchChildren.isEmpty {
                 familySearchComparisonDebugMessage = "FamilySearch comparison not yet available"

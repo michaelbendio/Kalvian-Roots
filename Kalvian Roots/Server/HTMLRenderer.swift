@@ -378,12 +378,23 @@ struct HTMLRenderer {
 
         let extractionSummary: String
         if let extraction = familySearchExtraction {
-            extractionSummary = """
-            <div class="fs-debug-summary">
-                FamilySearch source person: \(escapeHTML(extraction.sourcePersonId)).
-                Children extracted: \(extraction.children.count).
-            </div>
-            """
+            if extraction.isSuccessful {
+                extractionSummary = """
+                <div class="fs-debug-summary">
+                    FamilySearch source person: \(escapeHTML(extraction.sourcePersonId)).
+                    Spouse groups: \(extraction.spouseGroupCount ?? extraction.spouseGroups?.count ?? 0).
+                    Children extracted: \(extraction.children.count).
+                </div>
+                """
+            } else {
+                extractionSummary = """
+                <div class="fs-debug-summary">
+                    FamilySearch extraction failed: \(escapeHTML(extraction.failureReason ?? extraction.status ?? "unknown failure")).
+                    Expected: \(escapeHTML(extraction.expectedPersonId ?? "unknown")).
+                    Detected: \(escapeHTML(extraction.detectedPersonId ?? "unknown")).
+                </div>
+                """
+            }
         } else if let familySearchPersonId {
             let script = FamilySearchDOMService.makeAtlasExtractorScript(callbackURL: familySearchCallbackURL)
             extractionSummary = """

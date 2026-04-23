@@ -596,6 +596,25 @@ final class HTTPHandler: ChannelInboundHandler {
         }
 
         let extraction = try JSONDecoder().decode(FamilySearchFamilyExtraction.self, from: data)
+        if extraction.isSuccessful {
+            logger.info(
+                "[\(requestID!)] ✅ FamilySearch extraction received",
+                metadata: [
+                    "family": "\(canonicalID)",
+                    "spouseGroups": "\(extraction.spouseGroupCount ?? extraction.spouseGroups?.count ?? 0)",
+                    "children": "\(extraction.children.count)"
+                ]
+            )
+        } else {
+            logger.warning(
+                "[\(requestID!)] ⚠️ FamilySearch extraction failed",
+                metadata: [
+                    "family": "\(canonicalID)",
+                    "status": "\(extraction.status ?? "unknown")",
+                    "reason": "\(extraction.failureReason ?? "unknown")"
+                ]
+            )
+        }
         let explicitSessionId = queryItems.first(where: { $0.name == "session" })?.value
         let headers = requestHeaders ?? HTTPHeaders()
         let sessionResult: BrowserSessionManager.SessionResult
