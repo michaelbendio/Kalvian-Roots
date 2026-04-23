@@ -18,41 +18,14 @@ class DeepSeekService: AIService {
     
     // Storage keys
     private let apiKeyStorageKey = "AIService_DeepSeek_APIKey"
-    private let iCloudStore = NSUbiquitousKeyValueStore.default
     
     init() {
-        // First check iCloud store for synced key
-        if let cloudKey = iCloudStore.string(forKey: apiKeyStorageKey),
-           !cloudKey.isEmpty {
-            self.apiKey = cloudKey
-            logInfo(.ai, "✅ DeepSeek auto-configured with iCloud synced API key")
-        }
-        // Fall back to local UserDefaults if no cloud key
-        else if let localKey = UserDefaults.standard.string(forKey: apiKeyStorageKey),
-                !localKey.isEmpty {
+        if let localKey = UserDefaults.standard.string(forKey: apiKeyStorageKey),
+           !localKey.isEmpty {
             self.apiKey = localKey
-            // Migrate to iCloud
-            iCloudStore.set(localKey, forKey: apiKeyStorageKey)
-            iCloudStore.synchronize()
-            logInfo(.ai, "📤 Migrated DeepSeek API key to iCloud")
+            logInfo(.ai, "✅ DeepSeek auto-configured with local API key")
         } else {
             logDebug(.ai, "No saved API key found for DeepSeek")
-        }
-        
-        // Listen for iCloud changes
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(iCloudKeysChanged),
-            name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
-            object: iCloudStore
-        )
-    }
-    
-    @objc private func iCloudKeysChanged(_ notification: Notification) {
-        if let cloudKey = iCloudStore.string(forKey: apiKeyStorageKey),
-           !cloudKey.isEmpty {
-            self.apiKey = cloudKey
-            logInfo(.ai, "🔄 DeepSeek API key updated from iCloud")
         }
     }
     
@@ -67,16 +40,13 @@ class DeepSeekService: AIService {
         
         self.apiKey = apiKey
         
-        // Save to both iCloud and local storage
-        iCloudStore.set(apiKey, forKey: apiKeyStorageKey)
-        iCloudStore.synchronize()
         UserDefaults.standard.set(apiKey, forKey: apiKeyStorageKey)
         
         #if os(iOS)
         UserDefaults.standard.synchronize()
         #endif
         
-        logInfo(.ai, "✅ DeepSeek API key saved to iCloud (will sync to all devices)")
+        logInfo(.ai, "✅ DeepSeek API key saved locally")
     }
     
     func parseFamily(familyId: String, familyText: String) async throws -> String {

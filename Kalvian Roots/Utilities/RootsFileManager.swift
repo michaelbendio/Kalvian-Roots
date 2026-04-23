@@ -2,7 +2,7 @@
 //  RootsFileManager.swift
 //  Kalvian Roots
 //
-//  Canonical location file management - iCloud preferred, local Documents fallback
+//  Local Documents file management
 //
 
 import Foundation
@@ -15,15 +15,12 @@ import AppKit
 
 /// Custom error types for file operations
 enum RootsFileManagerError: LocalizedError {
-    case iCloudNotAvailable
     case fileNotFound(String)
     case wrongFile(String)
     case loadFailed(String)
     
     var errorDescription: String? {
         switch self {
-        case .iCloudNotAvailable:
-            return "iCloud Drive is unavailable right now. The app will use a local Documents copy if one exists, or you can import the file again."
         case .fileNotFound(let details):
             return "File not found: \(details)"
         case .wrongFile(let details):
@@ -58,39 +55,24 @@ final class RootsFileManager {
     // MARK: - Init
     
     init() {
-        logInfo(.file, "📁 RootsFileManager initialized (iCloud preferred, local fallback)")
+        logInfo(.file, "📁 RootsFileManager initialized (local Documents)")
     }
 
-    // MARK: - Canonical iCloud Locations
-    
-    // Point to main iCloud Drive
-    private func containerURL() -> URL? {
-        // Start with any ubiquity container to get the Mobile Documents path
-        guard let anyContainer = FileManager.default.url(forUbiquityContainerIdentifier: nil) else {
-            return nil
-        }
-        // Get the Mobile Documents directory
-        let mobileDocsURL = anyContainer.deletingLastPathComponent()
-        // Return the main iCloud Drive container
-        return mobileDocsURL.appendingPathComponent("com~apple~CloudDocs", isDirectory: true)
-    }
-    
-    /// The canonical folder where the file lives: <container>/Documents
+    // MARK: - Local Documents Location
+
+    /// The local Documents folder where the file lives.
     private func documentsURL() -> URL? {
-        guard let root = containerURL() else { return nil }
-        return root.appendingPathComponent("Documents", isDirectory: true)
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
     }
     
-    /// Canonical file URL (<container>/Documents/JuuretKälviällä.roots)
+    /// Canonical local file URL (<app/user Documents>/JuuretKälviällä.roots)
     func getCanonicalFileURL() -> URL? {
         guard let docsURL = documentsURL() else { return nil }
         return docsURL.appendingPathComponent(defaultFileName)
     }
 
-    /// Local fallback file URL (<app Documents>/JuuretKälviällä.roots)
     private func getLocalFallbackFileURL() -> URL? {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?
-            .appendingPathComponent(defaultFileName)
+        getCanonicalFileURL()
     }
 
     private func fileExists(at url: URL?) -> Bool {
@@ -98,45 +80,11 @@ final class RootsFileManager {
         return FileManager.default.fileExists(atPath: url.path)
     }
 
-#if os(iOS)
-    private func resolveBookmarkedFileURL() -> URL? {
-        guard let bookmarkData = UserDefaults.standard.data(forKey: bookmarkKey) else {
-            return nil
-        }
-
-        do {
-            var isStale = false
-            let url = try URL(
-                resolvingBookmarkData: bookmarkData,
-                bookmarkDataIsStale: &isStale
-            )
-
-            if isStale {
-                logWarn(.file, "⚠️ Saved file bookmark is stale")
-                return nil
-            }
-
-            return url
-        } catch {
-            logWarn(.file, "⚠️ Failed to resolve bookmark: \(error)")
-            return nil
-        }
-    }
-#endif
-
-    /// Resolve the best reachable iCloud source before falling back locally.
+    /// Resolve the reachable local source.
     private func getReachableCanonicalFileLocation() -> (url: URL, requiresSecurityScopedAccess: Bool, sourceDescription: String)? {
         if let canonicalURL = getCanonicalFileURL(), fileExists(at: canonicalURL) {
-            return (canonicalURL, false, "iCloud canonical file")
+            return (canonicalURL, false, "local Documents file")
         }
-
-#if os(iOS)
-        if let bookmarkedURL = resolveBookmarkedFileURL(),
-           bookmarkedURL.lastPathComponent == defaultFileName,
-           fileExists(at: bookmarkedURL) {
-            return (bookmarkedURL, true, "saved iCloud bookmark")
-        }
-#endif
 
         return nil
     }
@@ -148,12 +96,6 @@ final class RootsFileManager {
             candidates.append(canonicalLocation)
         }
 
-        if let localFallbackURL = getLocalFallbackFileURL(),
-           fileExists(at: localFallbackURL),
-           !candidates.contains(where: { $0.url.standardizedFileURL == localFallbackURL.standardizedFileURL }) {
-            candidates.append((localFallbackURL, false, "local Documents fallback"))
-        }
-
         return candidates
     }
 
@@ -163,8 +105,7 @@ final class RootsFileManager {
     
     
     /// Get the effective file URL for cache path derivation
-    /// Returns the loaded file URL when available, otherwise the preferred source:
-    /// iCloud canonical first, local Documents fallback second.
+    /// Returns the loaded file URL when available, otherwise the local Documents source.
     func getEffectiveFileURL() -> URL? {
         if let loadedURL = currentFileURL {
             return loadedURL
@@ -175,14 +116,14 @@ final class RootsFileManager {
     
     // MARK: - Loading methods
     
-    /// Auto-load the preferred roots file: iCloud first, local fallback second.
+    /// Auto-load the local roots file.
     func autoLoadDefaultFile() async {
-        logInfo(.file, "🔍 Auto-loading preferred roots file")
+        logInfo(.file, "🔍 Auto-loading local roots file")
 
         let candidates = getAutoLoadCandidates()
         guard !candidates.isEmpty else {
             let message = """
-                JuuretKälviällä.roots was not found in iCloud Drive or local Documents.
+                JuuretKälviällä.roots was not found in local Documents.
                 Import or select the file to continue.
                 """
             await setLoadFailure(message)
@@ -199,9 +140,7 @@ final class RootsFileManager {
 #if os(iOS)
                 if candidate.requiresSecurityScopedAccess {
                     guard candidate.url.startAccessingSecurityScopedResource() else {
-                        throw RootsFileManagerError.loadFailed(
-                            "Cannot access the saved iCloud file. The local Documents copy will be used if available."
-                        )
+                        throw RootsFileManagerError.loadFailed("Cannot access the selected roots file.")
                     }
 
                     defer { candidate.url.stopAccessingSecurityScopedResource() }
@@ -218,7 +157,7 @@ final class RootsFileManager {
         }
 
         let message = lastError?.localizedDescription
-            ?? "Unable to load JuuretKälviällä.roots from iCloud Drive or local Documents."
+            ?? "Unable to load JuuretKälviällä.roots from local Documents."
         await setLoadFailure(message)
         logError(.file, "❌ Auto-load failed: \(message)")
     }

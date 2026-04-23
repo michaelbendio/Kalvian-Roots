@@ -22,7 +22,7 @@ struct DocumentPickerView: View {
             Text("Select File")
                 .font(.largeTitle)
             
-            Text("Please select JuuretKälviällä.roots from iCloud Drive/Documents")
+            Text("Please select JuuretKälviällä.roots from local Documents")
                 .multilineTextAlignment(.center)
                 .foregroundColor(.secondary)
                 .padding()
