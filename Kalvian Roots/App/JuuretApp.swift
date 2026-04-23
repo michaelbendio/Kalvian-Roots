@@ -529,6 +529,11 @@ class JuuretApp {
         familyId.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
     }
 
+    private func atlasFamilyURL(for familyId: String) -> String {
+        let encodedFamilyId = familyId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? familyId
+        return "http://127.0.0.1:8081/family/\(encodedFamilyId)"
+    }
+
     private func runJuuretHiskiComparisonPipeline(for family: Family) async {
         guard let couple = family.primaryCouple else {
             resetFamilySearchComparisonDebug(message: "Comparison not triggered: no primary couple")
@@ -547,7 +552,7 @@ class JuuretApp {
             if let storedFamilySearchExtraction {
                 appendFamilySearchComparisonDebug("FamilySearch extraction found in app state: \(storedFamilySearchExtraction.children.count) children")
             } else {
-                appendFamilySearchComparisonDebug("FamilySearch extraction not started: open http://127.0.0.1:8081/family/\(family.familyId) in Atlas and run the DOM extractor")
+                appendFamilySearchComparisonDebug("FamilySearch extraction not started: open \(atlasFamilyURL(for: family.familyId)) in Atlas and run the DOM extractor")
             }
         } else {
             appendFamilySearchComparisonDebug("FamilySearch comparison not yet available: no FamilySearch parent ID found")
