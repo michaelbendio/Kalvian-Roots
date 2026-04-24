@@ -435,10 +435,12 @@ final class FamilyComparisonServiceTests: XCTestCase {
     }
 
     func testMakeFamilySearchCandidatesRetainsIdAndDeathDate() throws {
+        nameManager.addEquivalence(between: "Matti", and: "Matthias")
+
         let children = [
             FamilySearchChild(
                 id: "K1AB-CDE",
-                name: "Matti",
+                name: "Matthias Thomasson Ahokangas",
                 birthDate: "25 June 1802",
                 birthPlace: "Kalvia, Vaasa, Finland",
                 deathDate: "14 March 1861",
@@ -450,14 +452,41 @@ final class FamilyComparisonServiceTests: XCTestCase {
         let candidates = service.makeFamilySearchCandidates(from: children)
 
         let candidate = try XCTUnwrap(candidates.first)
-        XCTAssertEqual(candidate.rawName, "Matti")
+        XCTAssertEqual(candidate.rawName, "Matthias Thomasson Ahokangas")
+        XCTAssertEqual(candidate.identity.canonicalName, "matti")
         XCTAssertEqual(candidate.source, .familySearch)
         XCTAssertEqual(candidate.familySearchId, "K1AB-CDE")
         XCTAssertEqual(candidate.birthDate, date(1802, 6, 25))
         XCTAssertEqual(candidate.deathDate, date(1861, 3, 14))
     }
 
+    func testMakeFamilySearchCandidatesUsesStructuredVitalDateWhenLegacyDateIsBlank() throws {
+        nameManager.addEquivalence(between: "Matti", and: "Matthias")
+
+        let children = [
+            FamilySearchChild(
+                id: "LK4Q-YSX",
+                name: "Matthias Thomasson Ahokangas",
+                birthDate: " ",
+                birthPlace: nil,
+                deathDate: nil,
+                deathPlace: nil,
+                birth: FamilySearchVitalSummary(date: "14 March 1761", place: "Kälviä, Vaasa, Finland"),
+                lifeSpan: "1761-1842"
+            )
+        ]
+
+        let candidate = try XCTUnwrap(service.makeFamilySearchCandidates(from: children).first)
+
+        XCTAssertEqual(candidate.rawName, "Matthias Thomasson Ahokangas")
+        XCTAssertEqual(candidate.identity.canonicalName, "matti")
+        XCTAssertEqual(candidate.birthDate, date(1761, 3, 14))
+        XCTAssertEqual(candidate.familySearchId, "LK4Q-YSX")
+    }
+
     func testCompareChildrenIncludesFamilySearchCandidates() throws {
+        nameManager.addEquivalence(between: "Matti", and: "Matthias")
+
         let hiskiEvent = HiskiService.HiskiFamilyBirthEvent(
             birthDate: "25.6.1802",
             childName: "Matti",
@@ -468,7 +497,7 @@ final class FamilyComparisonServiceTests: XCTestCase {
         )
         let familySearchChild = FamilySearchChild(
             id: "K1AB-CDE",
-            name: "Matti",
+            name: "Matthias Thomasson Ahokangas",
             birthDate: "25 June 1802",
             birthPlace: nil,
             deathDate: nil,
@@ -488,6 +517,7 @@ final class FamilyComparisonServiceTests: XCTestCase {
         let match = try XCTUnwrap(result.matches.first)
         XCTAssertEqual(match.juuretKalvialla?.rawName, "Matti")
         XCTAssertEqual(match.hiski?.rawName, "Matti")
+        XCTAssertEqual(match.familySearch?.rawName, "Matthias Thomasson Ahokangas")
         XCTAssertEqual(match.familySearch?.familySearchId, "K1AB-CDE")
         XCTAssertEqual(service.status(for: match), "Present in all three")
     }
@@ -1246,6 +1276,12 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("function cleanPersonName(name)"))
         XCTAssertTrue(script.contains("function personEntryParseAt(lines, index)"))
         XCTAssertTrue(script.contains("index = parsed.nextIndex"))
+        XCTAssertTrue(script.contains("function vitalLabelsFor(label)"))
+        XCTAssertTrue(script.contains("function dateLikeFromText(text)"))
+        XCTAssertTrue(script.contains("function vitalFromTextBlock(panel, label)"))
+        XCTAssertTrue(script.contains("Birth|Born|Christening|Christened|Baptism|Baptized|Death|Died|Burial|Buried"))
+        XCTAssertTrue(script.contains("const existingPanels = new Set(panelCandidatesFor(summary.id))"))
+        XCTAssertTrue(script.contains("familySection.contains(element) && !isOverlayLike"))
         XCTAssertTrue(script.contains("Spouses and Children section not found"))
         XCTAssertTrue(script.contains("spouse groups not found"))
         XCTAssertTrue(script.contains("failureStatusForError"))

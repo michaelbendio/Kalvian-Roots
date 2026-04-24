@@ -47,6 +47,7 @@ struct PersonCandidate: Hashable, CustomStringConvertible {
 
     init(
         name: String,
+        identityName: String? = nil,
         birthDate: Date?,
         deathDate: Date? = nil,
         source: SourceType,
@@ -56,7 +57,7 @@ struct PersonCandidate: Hashable, CustomStringConvertible {
     ) {
 
         self.identity = PersonIdentity(
-            name: name,
+            name: identityName ?? name,
             birthDate: birthDate,
             nameManager: nameManager
         )

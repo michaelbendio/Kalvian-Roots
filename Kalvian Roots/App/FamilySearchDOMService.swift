@@ -99,14 +99,28 @@ enum FamilySearchDOMService {
         children.map { child in
             PersonCandidate(
                 name: child.name,
-                birthDate: dateParser(child.birthDate ?? child.birth?.date ?? child.christeningDate ?? child.christening?.date),
-                deathDate: dateParser(child.deathDate ?? child.death?.date ?? child.burialDate ?? child.burial?.date),
+                identityName: comparisonGivenName(from: child.name),
+                birthDate: dateParser(firstNonBlank(child.birthDate, child.birth?.date, child.christeningDate, child.christening?.date)),
+                deathDate: dateParser(firstNonBlank(child.deathDate, child.death?.date, child.burialDate, child.burial?.date)),
                 source: .familySearch,
                 nameManager: nameManager,
                 familySearchId: child.id,
                 hiskiCitation: nil
             )
         }
+    }
+
+    private static func firstNonBlank(_ values: String?...) -> String? {
+        values
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+    }
+
+    private static func comparisonGivenName(from name: String) -> String {
+        name
+            .split(whereSeparator: \.isWhitespace)
+            .first
+            .map(String.init) ?? name
     }
 
     static func makeAtlasExtractorScript(callbackURL: String? = nil) -> String {
@@ -534,9 +548,15 @@ enum FamilySearchDOMService {
             }
 
             function panelCandidatesFor(id) {
-                return Array.from(localDocument.querySelectorAll('[role="dialog"],aside,section,article,[data-testid],div'))
+                const familySection = familyMembersSection();
+                return Array.from(localDocument.querySelectorAll('[role="dialog"],[aria-modal="true"],aside,section,article,[data-testid],div'))
                     .filter(element => {
                         const text = visibleText(element);
+                        const testId = clean(element.getAttribute('data-testid') || '').toLowerCase();
+                        const isOverlayLike = element.matches('[role="dialog"],[aria-modal="true"],aside') || /panel|drawer|flyout/.test(testId);
+                        if (familySection && familySection.contains(element) && !isOverlayLike) {
+                            return false;
+                        }
                         return text.includes(id) &&
                             /\\b(Birth|Christening|Death|Burial|Sex)\\b/i.test(text) &&
                             element.offsetWidth > 0 &&
@@ -545,9 +565,9 @@ enum FamilySearchDOMService {
                     .sort((a, b) => visibleText(a).length - visibleText(b).length);
             }
 
-            async function waitForChildPanel(id) {
+            async function waitForChildPanel(id, ignoredPanels) {
                 for (let attempt = 0; attempt < 40; attempt += 1) {
-                    const panels = panelCandidatesFor(id);
+                    const panels = panelCandidatesFor(id).filter(panel => !ignoredPanels || !ignoredPanels.has(panel));
                     if (panels.length > 0) {
                         return panels[0];
                     }
@@ -564,12 +584,76 @@ enum FamilySearchDOMService {
             }
 
             function isVitalLabel(line) {
-                return /^(Birth|Christening|Death|Burial|Sex|Parents and Siblings|Spouses and Children|Vitals)$/i.test(clean(line));
+                return /^(Birth|Born|Christening|Christened|Baptism|Baptized|Death|Died|Burial|Buried|Sex|Parents and Siblings|Spouses and Children|Vitals)$/i.test(clean(line));
+            }
+
+            function vitalLabelsFor(label) {
+                if (label === 'Birth') return ['Birth', 'Born'];
+                if (label === 'Christening') return ['Christening', 'Christened', 'Baptism', 'Baptized'];
+                if (label === 'Death') return ['Death', 'Died'];
+                if (label === 'Burial') return ['Burial', 'Buried'];
+                return [label];
+            }
+
+            function dateLikeFromText(text) {
+                const value = clean(text);
+                const fullDate = value.match(/\\b\\d{1,2}\\s+[A-Za-zÅÄÖåäö.]+\\s+\\d{3,4}\\b/);
+                if (fullDate) return fullDate[0];
+                const dottedDate = value.match(/\\b\\d{1,2}\\.\\d{1,2}\\.\\d{3,4}\\b/);
+                if (dottedDate) return dottedDate[0];
+                const monthYear = value.match(/\\b[A-Za-zÅÄÖåäö.]+\\s+\\d{3,4}\\b/);
+                if (monthYear) return monthYear[0];
+                const year = value.match(/\\b\\d{3,4}\\b/);
+                return year ? year[0] : null;
+            }
+
+            function splitVitalLine(text, labels) {
+                let value = clean(text);
+                for (const label of labels) {
+                    value = value.replace(new RegExp('^' + label + '\\\\b[:\\\\s•·-]*', 'i'), '');
+                }
+                value = clean(value);
+                const date = dateLikeFromText(value);
+                if (!date) return null;
+                const place = clean(value.slice(value.indexOf(date) + date.length).replace(/^[•·,;:-]+/, '')) || null;
+                return { date, place };
+            }
+
+            function vitalFromTextBlock(panel, label) {
+                const labels = vitalLabelsFor(label);
+                const lines = linesFrom(panel);
+
+                for (const line of lines) {
+                    if (labels.some(vitalLabel => new RegExp('^' + vitalLabel + '\\\\b', 'i').test(line))) {
+                        const parsed = splitVitalLine(line, labels);
+                        if (parsed) return parsed;
+                    }
+                }
+
+                const text = lines.join('\\n');
+                const labelPattern = labels.join('|');
+                const nextLabelPattern = 'Birth|Born|Christening|Christened|Baptism|Baptized|Death|Died|Burial|Buried|Sex|Parents and Siblings|Spouses and Children|Vitals';
+                const match = text.match(new RegExp('(?:' + labelPattern + ')\\\\s*[:\\\\n ]+([\\\\s\\\\S]*?)(?=\\\\n(?:' + nextLabelPattern + ')\\\\b|$)', 'i'));
+                if (!match) return null;
+                const segmentLines = match[1].split('\\n').map(clean).filter(Boolean);
+                if (segmentLines.length === 0) return null;
+                const date = dateLikeFromText(segmentLines[0]) || dateLikeFromText(match[1]);
+                if (!date) return null;
+                const place = segmentLines.length > 1
+                    ? segmentLines[1]
+                    : clean(match[1].slice(match[1].indexOf(date) + date.length).replace(/^[•·,;:-]+/, '')) || null;
+                return { date, place };
             }
 
             function vitalFromPanel(panel, label) {
+                const textBlockVital = vitalFromTextBlock(panel, label);
+                if (textBlockVital) {
+                    return textBlockVital;
+                }
+
                 const lines = linesFrom(panel);
-                const index = lines.findIndex(line => clean(line) === label);
+                const labels = vitalLabelsFor(label);
+                const index = lines.findIndex(line => labels.some(vitalLabel => clean(line) === vitalLabel));
                 if (index < 0) {
                     return { date: null, place: null };
                 }
@@ -615,11 +699,12 @@ enum FamilySearchDOMService {
                         throw new Error('child control not found for ' + summary.id);
                     }
 
+                    const existingPanels = new Set(panelCandidatesFor(summary.id));
                     control.scrollIntoView({ block: 'center', inline: 'nearest' });
                     await sleep(150);
                     control.click();
 
-                    const panel = await waitForChildPanel(summary.id);
+                    const panel = await waitForChildPanel(summary.id, existingPanels);
                     const birth = vitalFromPanel(panel, 'Birth');
                     const christening = vitalFromPanel(panel, 'Christening');
                     const death = vitalFromPanel(panel, 'Death');
