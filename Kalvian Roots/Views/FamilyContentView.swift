@@ -25,6 +25,7 @@ import UIKit
  */
 struct FamilyContentView: View {
     @Environment(JuuretApp.self) private var juuretApp
+    @State private var familySearchBookmarkletCopied = false
     let family: Family
     
     // Citation and Hiski handlers
@@ -167,6 +168,23 @@ struct FamilyContentView: View {
                             .font(.system(.caption, design: .monospaced))
                     }
                     .buttonStyle(.bordered)
+
+                    Button {
+                        copyToClipboard(FamilySearchDOMService.makeBookmarklet())
+                        familySearchBookmarkletCopied = true
+                    } label: {
+                        Label("Copy FamilySearch bookmarklet", systemImage: "bookmark")
+                            .font(.system(.caption, design: .monospaced))
+                    }
+                    .buttonStyle(.bordered)
+
+                    if familySearchBookmarkletCopied {
+                        Text("Bookmarklet copied. In Atlas, create a bookmark named Kalvian Roots FamilySearch Extractor and paste this as the URL.")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
 
                 Text(juuretApp.familySearchComparisonDebugMessage.isEmpty
@@ -192,7 +210,7 @@ struct FamilyContentView: View {
                 }
 
                 if juuretApp.familySearchComparisonDebugMessage == "FamilySearch comparison not yet available" {
-                    Text("Open the FamilySearch person Details page, click the reusable Kalvian Roots FamilySearch Extractor bookmarklet in Atlas, then return here.")
+                    Text("Install the reusable bookmarklet once with Copy FamilySearch bookmarklet. Then open the FamilySearch person Details page, click the bookmarklet in Atlas, and return here.")
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
