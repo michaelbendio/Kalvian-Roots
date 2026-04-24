@@ -192,7 +192,7 @@ struct FamilyContentView: View {
                 }
 
                 if juuretApp.familySearchComparisonDebugMessage == "FamilySearch comparison not yet available" {
-                    Text("Open FamilySearch, run the FamilySearch DOM extractor on the person details page, and this SwiftUI comparison will update when the extractor posts back.")
+                    Text("Open the FamilySearch person Details page, click the reusable Kalvian Roots FamilySearch Extractor bookmarklet in Atlas, then return here.")
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)

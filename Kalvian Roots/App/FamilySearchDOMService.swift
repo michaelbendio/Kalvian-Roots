@@ -15,6 +15,11 @@ struct FamilySearchMarriageSummary: Codable, Equatable, Hashable {
     var place: String?
 }
 
+struct FamilySearchVitalSummary: Codable, Equatable, Hashable {
+    var date: String?
+    var place: String?
+}
+
 struct FamilySearchSpouseGroup: Codable, Equatable, Hashable {
     var spouses: [FamilySearchPersonSummary]
     var marriage: FamilySearchMarriageSummary?
@@ -26,15 +31,30 @@ struct FamilySearchSpouseGroup: Codable, Equatable, Hashable {
 struct FamilySearchChild: Codable, Equatable, Hashable {
     var id: String
     var name: String
+    var sex: String? = nil
+    var summaryYears: String? = nil
     var birthDate: String?
     var birthPlace: String?
     var deathDate: String?
     var deathPlace: String?
+    var christeningDate: String? = nil
+    var christeningPlace: String? = nil
+    var burialDate: String? = nil
+    var burialPlace: String? = nil
+    var birth: FamilySearchVitalSummary? = nil
+    var christening: FamilySearchVitalSummary? = nil
+    var death: FamilySearchVitalSummary? = nil
+    var burial: FamilySearchVitalSummary? = nil
     var lifeSpan: String?
+    var extractionStatus: String? = nil
+    var extractionNotes: [String]? = nil
 }
 
 struct FamilySearchFamilyExtraction: Codable, Equatable, Hashable {
     var sourcePersonId: String
+    var parentFamilySearchId: String? = nil
+    var extractedAt: String? = nil
+    var sourceUrl: String? = nil
     var focusPerson: FamilySearchPersonSummary?
     var spouse: FamilySearchPersonSummary?
     var marriage: FamilySearchMarriageSummary?
@@ -79,8 +99,8 @@ enum FamilySearchDOMService {
         children.map { child in
             PersonCandidate(
                 name: child.name,
-                birthDate: dateParser(child.birthDate),
-                deathDate: dateParser(child.deathDate),
+                birthDate: dateParser(child.birthDate ?? child.birth?.date ?? child.christeningDate ?? child.christening?.date),
+                deathDate: dateParser(child.deathDate ?? child.death?.date ?? child.burialDate ?? child.burial?.date),
                 source: .familySearch,
                 nameManager: nameManager,
                 familySearchId: child.id,
@@ -94,7 +114,7 @@ enum FamilySearchDOMService {
         if let callbackURL {
             callbackLine = "const KALVIAN_ROOTS_CALLBACK_URL = '\(escapeJavaScript(callbackURL))';"
         } else {
-            callbackLine = "const KALVIAN_ROOTS_CALLBACK_URL = null;"
+            callbackLine = "const KALVIAN_ROOTS_CALLBACK_URL = 'http://127.0.0.1:8081/familysearch/extraction-result';"
         }
 
         return """
@@ -263,6 +283,8 @@ enum FamilySearchDOMService {
                 return {
                     id: idMatch[0].toUpperCase(),
                     name: clean(name),
+                    sex: null,
+                    summaryYears: clean(detail).replace(/\\s*•\\s*[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/i, '') || null,
                     birthDate: null,
                     birthPlace: null,
                     deathDate: null,
@@ -423,12 +445,197 @@ enum FamilySearchDOMService {
                 return groups;
             }
 
+            function visibleText(element) {
+                if (!element) return '';
+                const style = localDocument.defaultView.getComputedStyle(element);
+                if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return '';
+                return clean(element.innerText || element.textContent || '');
+            }
+
+            function candidateChildControls(id) {
+                const scopedRoot = familyMembersSection() || localDocument;
+                const selectors = [
+                    'a[href*="/tree/person/details/' + id + '"]',
+                    'a[href*="/tree/person/' + id + '"]',
+                    'button[aria-label*="' + id + '"]',
+                    '[role="button"][aria-label*="' + id + '"]',
+                    '[data-testid*="' + id + '"]'
+                ];
+                const direct = selectors.flatMap(selector => Array.from(scopedRoot.querySelectorAll(selector)));
+                const byText = Array.from(scopedRoot.querySelectorAll('a,button,[role="button"],[tabindex]')).filter(element => {
+                    const text = clean(element.getAttribute('aria-label') || element.textContent || '');
+                    return text.includes(id);
+                });
+                return Array.from(new Set(direct.concat(byText))).filter(element => visibleText(element));
+            }
+
+            function findChildControl(summary) {
+                const controls = candidateChildControls(summary.id);
+                if (controls.length > 0) {
+                    return controls.find(element => clean(element.textContent).includes(summary.name)) || controls[0];
+                }
+
+                const scopedRoot = familyMembersSection() || localDocument;
+                return Array.from(scopedRoot.querySelectorAll('a,button,[role="button"],[tabindex]'))
+                    .find(element => {
+                        const text = visibleText(element);
+                        return text.includes(summary.name) && text.includes(summary.id);
+                    }) || null;
+            }
+
+            function panelCandidatesFor(id) {
+                return Array.from(localDocument.querySelectorAll('[role="dialog"],aside,section,article,[data-testid],div'))
+                    .filter(element => {
+                        const text = visibleText(element);
+                        return text.includes(id) &&
+                            /\\b(Birth|Christening|Death|Burial|Sex)\\b/i.test(text) &&
+                            element.offsetWidth > 0 &&
+                            element.offsetHeight > 0;
+                    })
+                    .sort((a, b) => visibleText(a).length - visibleText(b).length);
+            }
+
+            async function waitForChildPanel(id) {
+                for (let attempt = 0; attempt < 40; attempt += 1) {
+                    const panels = panelCandidatesFor(id);
+                    if (panels.length > 0) {
+                        return panels[0];
+                    }
+                    await sleep(250);
+                }
+                throw new Error('child detail panel did not open for ' + id);
+            }
+
+            function linesFrom(element) {
+                return (element ? (element.innerText || element.textContent || '') : '')
+                    .split('\\n')
+                    .map(clean)
+                    .filter(Boolean);
+            }
+
+            function isVitalLabel(line) {
+                return /^(Birth|Christening|Death|Burial|Sex|Parents and Siblings|Spouses and Children|Vitals)$/i.test(clean(line));
+            }
+
+            function vitalFromPanel(panel, label) {
+                const lines = linesFrom(panel);
+                const index = lines.findIndex(line => clean(line) === label);
+                if (index < 0) {
+                    return { date: null, place: null };
+                }
+
+                const values = [];
+                for (let i = index + 1; i < lines.length && values.length < 2; i += 1) {
+                    if (isVitalLabel(lines[i])) break;
+                    values.push(lines[i]);
+                }
+
+                return {
+                    date: values[0] || null,
+                    place: values[1] || null
+                };
+            }
+
+            function sexFromPanel(panel) {
+                const lines = linesFrom(panel);
+                const index = lines.findIndex(line => clean(line) === 'Sex');
+                if (index >= 0 && lines[index + 1] && !isVitalLabel(lines[index + 1])) {
+                    return lines[index + 1];
+                }
+                const text = visibleText(panel);
+                const match = text.match(/\\b(Male|Female|Unknown)\\b/i);
+                return match ? match[1] : null;
+            }
+
+            function closeChildPanel() {
+                const closeButton = Array.from(localDocument.querySelectorAll('button,[role="button"]'))
+                    .find(element => /close/i.test(clean(element.getAttribute('aria-label') || element.textContent || '')));
+                if (closeButton) {
+                    closeButton.click();
+                } else {
+                    localDocument.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+                }
+            }
+
+            async function extractChildDetails(summary) {
+                const notes = [];
+                try {
+                    const control = findChildControl(summary);
+                    if (!control) {
+                        throw new Error('child control not found for ' + summary.id);
+                    }
+
+                    control.scrollIntoView({ block: 'center', inline: 'nearest' });
+                    await sleep(150);
+                    control.click();
+
+                    const panel = await waitForChildPanel(summary.id);
+                    const birth = vitalFromPanel(panel, 'Birth');
+                    const christening = vitalFromPanel(panel, 'Christening');
+                    const death = vitalFromPanel(panel, 'Death');
+                    const burial = vitalFromPanel(panel, 'Burial');
+                    const sex = sexFromPanel(panel);
+                    closeChildPanel();
+                    await sleep(250);
+
+                    return {
+                        id: summary.id,
+                        name: summary.name,
+                        sex,
+                        summaryYears: summary.summaryYears || summary.lifeSpan || null,
+                        birth,
+                        birthDate: birth.date,
+                        birthPlace: birth.place,
+                        christening,
+                        christeningDate: christening.date,
+                        christeningPlace: christening.place,
+                        death,
+                        deathDate: death.date,
+                        deathPlace: death.place,
+                        burial,
+                        burialDate: burial.date,
+                        burialPlace: burial.place,
+                        lifeSpan: summary.lifeSpan || summary.summaryYears || null,
+                        extractionStatus: 'success',
+                        extractionNotes: notes
+                    };
+                } catch (error) {
+                    notes.push(clean(error && error.message));
+                    console.warn('Kalvian Roots FamilySearch child extraction failed for ' + summary.id + ':', error);
+                    closeChildPanel();
+                    await sleep(250);
+                    return {
+                        id: summary.id,
+                        name: summary.name,
+                        sex: summary.sex || null,
+                        summaryYears: summary.summaryYears || summary.lifeSpan || null,
+                        birth: { date: summary.birthDate || null, place: summary.birthPlace || null },
+                        birthDate: summary.birthDate || null,
+                        birthPlace: summary.birthPlace || null,
+                        christening: { date: null, place: null },
+                        christeningDate: null,
+                        christeningPlace: null,
+                        death: { date: summary.deathDate || null, place: summary.deathPlace || null },
+                        deathDate: summary.deathDate || null,
+                        deathPlace: summary.deathPlace || null,
+                        burial: { date: null, place: null },
+                        burialDate: null,
+                        burialPlace: null,
+                        lifeSpan: summary.lifeSpan || summary.summaryYears || null,
+                        extractionStatus: 'partial',
+                        extractionNotes: notes
+                    };
+                }
+            }
+
             function assertCurrentFamilySearchDetailsPage(expectedId) {
                 if (!isFamilySearchDocument(localDocument)) {
+                    console.error('Not on FamilySearch person details page');
                     throw new Error('not on FamilySearch person details page: ' + documentURL(localDocument));
                 }
 
                 if (!isPersonDetailsDocument(localDocument)) {
+                    console.error('Not on FamilySearch person details page');
                     throw new Error('wrong page type for FamilySearch extraction: ' + documentURL(localDocument));
                 }
 
@@ -550,15 +757,39 @@ enum FamilySearchDOMService {
             }
 
             async function postResult(result) {
-                if (!KALVIAN_ROOTS_CALLBACK_URL) return;
+                if (!KALVIAN_ROOTS_CALLBACK_URL) {
+                    console.warn('Kalvian Roots FamilySearch extractor has no callback URL; result was not posted.');
+                    return;
+                }
 
-                await fetch(KALVIAN_ROOTS_CALLBACK_URL, {
-                    method: 'POST',
-                    mode: 'cors',
-                    credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(result)
-                });
+                let response = null;
+                try {
+                    response = await fetch(KALVIAN_ROOTS_CALLBACK_URL, {
+                        method: 'POST',
+                        mode: 'cors',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(result)
+                    });
+                } catch (error) {
+                    console.error('Kalvian Roots FamilySearch extractor callback POST failed:', error);
+                    throw new Error('callback POST failed: ' + clean(error && error.message));
+                }
+
+                if (!response.ok) {
+                    console.error('Kalvian Roots FamilySearch extractor callback POST failed: HTTP ' + response.status);
+                    throw new Error('callback POST failed: HTTP ' + response.status);
+                }
+
+                console.info('Kalvian Roots FamilySearch extractor callback POST succeeded.');
+            }
+
+            async function postFailureResult(result) {
+                try {
+                    await postResult(result);
+                } catch (error) {
+                    console.error('Kalvian Roots FamilySearch extractor failure callback POST failed:', error);
+                }
             }
 
             function failureStatusForError(error) {
@@ -568,6 +799,7 @@ enum FamilySearchDOMService {
                 if (/wrong host for FamilySearch extraction/i.test(message)) return 'wrongHost';
                 if (/wrong page type|not on person details page/i.test(message)) return 'wrongPageType';
                 if (/expected .* found/i.test(message)) return 'personMismatch';
+                if (/callback POST failed/i.test(message)) return 'callbackPostFailed';
                 if (/page not ready|timed out/i.test(message)) return 'pageNotReady';
                 if (/Spouses and Children section not found/i.test(message)) return 'sectionNotFound';
                 if (/spouse groups not found/i.test(message)) return 'spouseGroupsNotFound';
@@ -578,6 +810,9 @@ enum FamilySearchDOMService {
                 const diagnostics = diagnosticContext();
                 return {
                     sourcePersonId: expectedPersonId,
+                    parentFamilySearchId: expectedPersonId,
+                    extractedAt: new Date().toISOString(),
+                    sourceUrl: diagnostics.url,
                     focusPerson: null,
                     spouse: null,
                     marriage: null,
@@ -606,6 +841,7 @@ enum FamilySearchDOMService {
             window.extractFamilySearchChildren = async function extractFamilySearchChildren(personId) {
                 const normalizedPersonId = clean(personId).toUpperCase();
                 try {
+                    console.info('Kalvian Roots FamilySearch extractor started for ' + normalizedPersonId + '.');
                     assertCurrentFamilySearchDetailsPage(normalizedPersonId);
                     const focusPerson = await visitPerson(normalizedPersonId);
                     const spouseGroups = extractSpouseGroups();
@@ -615,26 +851,11 @@ enum FamilySearchDOMService {
                     const rawCandidateChildCount = selectedGroup.children.length;
 
                     let spouse = selectedGroup.spouses.find(person => person.id !== normalizedPersonId) || null;
-                    if (spouse) {
-                        await sleep(900);
-                        spouse = await visitPerson(spouse.id);
-                        await sleep(900);
-                        await visitPerson(normalizedPersonId);
-                    }
 
                     const children = [];
                     for (const summary of selectedGroup.children) {
-                        await sleep(900);
-                        const detail = await visitPerson(summary.id);
-                        children.push({
-                            id: summary.id,
-                            name: detail.name || summary.name,
-                            birthDate: detail.birthDate || summary.birthDate,
-                            birthPlace: detail.birthPlace || summary.birthPlace,
-                            deathDate: detail.deathDate || summary.deathDate,
-                            deathPlace: detail.deathPlace || summary.deathPlace,
-                            lifeSpan: summary.lifeSpan
-                        });
+                        await sleep(250);
+                        children.push(await extractChildDetails(summary));
                     }
 
                     spouseGroups[selectedGroupIndex] = {
@@ -650,6 +871,9 @@ enum FamilySearchDOMService {
                     const diagnostics = diagnosticContext();
                     const result = {
                         sourcePersonId: normalizedPersonId,
+                        parentFamilySearchId: normalizedPersonId,
+                        extractedAt: new Date().toISOString(),
+                        sourceUrl: diagnostics.url,
                         focusPerson,
                         spouse,
                         marriage: selectedGroup.marriage,
@@ -676,16 +900,49 @@ enum FamilySearchDOMService {
                         ]
                     };
 
-                    await postResult(result);
+                    if (children.length === 0) {
+                        console.warn('Kalvian Roots FamilySearch extractor found zero children; posting result anyway.');
+                    }
+
+                    try {
+                        await postResult(result);
+                        console.info('Kalvian Roots FamilySearch extraction succeeded: ' + children.length + ' children.');
+                    } catch (postError) {
+                        result.status = 'callbackPostFailed';
+                        result.failureReason = clean(postError && postError.message);
+                        result.debugNotes = result.debugNotes.concat(['FamilySearch callback POST failed: ' + result.failureReason]);
+                        console.error('Kalvian Roots FamilySearch extraction completed but callback POST failed:', postError);
+                    }
                     return result;
                 } catch (error) {
+                    console.error('Kalvian Roots FamilySearch extraction failed:', error);
                     const result = makeFailureResult(normalizedPersonId, error);
-                    await postResult(result);
+                    await postFailureResult(result);
                     return result;
                 }
             };
         })();
         """
+    }
+
+    static func makeBookmarklet() -> String {
+        let extractorScript = makeAtlasExtractorScript()
+        let bookmarkletBody = """
+        (() => {
+        \(extractorScript)
+        const match = location.pathname.match(/\\/tree\\/person\\/details\\/([A-Z0-9-]+)/i);
+        if (!match) {
+            alert('Open a FamilySearch person Details page before running the Kalvian Roots extractor.');
+            console.error('Not on FamilySearch person details page');
+            return;
+        }
+        window.extractFamilySearchChildren(match[1].toUpperCase());
+        })()
+        """
+        var allowed = CharacterSet.urlFragmentAllowed
+        allowed.remove(charactersIn: "%")
+        let encodedBody = bookmarkletBody.addingPercentEncoding(withAllowedCharacters: allowed) ?? bookmarkletBody
+        return "javascript:" + encodedBody
     }
 
     private static func escapeJavaScript(_ string: String) -> String {
@@ -694,4 +951,5 @@ enum FamilySearchDOMService {
             .replacingOccurrences(of: "'", with: "\\'")
             .replacingOccurrences(of: "\n", with: "\\n")
     }
+
 }

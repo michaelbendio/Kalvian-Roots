@@ -264,6 +264,10 @@ final class HTTPHandler: ChannelInboundHandler {
             logger.info("[\(requestID!)] 📝 Handling landing page POST")
             return handleLandingPagePost()
 
+        case (.POST, "/familysearch/extraction-result"):
+            logger.info("[\(requestID!)] 👪 Handling generic FamilySearch extraction POST")
+            return try await handleGenericFamilySearchExtractionPost()
+
         case (.GET, "/family"):
             // Handle form submission from navigation bar
             logger.info("[\(requestID!)] 📝 Handling family form submission")
@@ -645,6 +649,63 @@ final class HTTPHandler: ChannelInboundHandler {
 
         sessionResult.session.storeFamilySearchExtraction(extraction, for: canonicalID)
         await juuretApp?.storeFamilySearchExtraction(extraction, for: canonicalID)
+
+        var responseHeaders = corsHeaders()
+        if sessionResult.isNew {
+            responseHeaders.add(
+                name: "Set-Cookie",
+                value: sessionManager.makeSessionCookieHeader(for: sessionResult.sessionId)
+            )
+        }
+
+        return .html("OK", headers: responseHeaders)
+    }
+
+    @MainActor
+    private func handleGenericFamilySearchExtractionPost() async throws -> HTTPResponse {
+        guard let body = requestBody,
+              let data = body.data(using: .utf8) else {
+            return .error(.badRequest, "Missing FamilySearch extraction JSON", headers: corsHeaders())
+        }
+
+        let extraction = try JSONDecoder().decode(FamilySearchFamilyExtraction.self, from: data)
+        let parentId = (extraction.parentFamilySearchId ?? extraction.sourcePersonId)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+
+        guard !parentId.isEmpty else {
+            return .error(.badRequest, "Missing FamilySearch parent ID", headers: corsHeaders())
+        }
+
+        guard let familyId = juuretApp?.storeFamilySearchExtractionForCurrentFamily(extraction) else {
+            logger.warning(
+                "[\(requestID!)] ⚠️ Generic FamilySearch extraction could not be associated",
+                metadata: [
+                    "parentFamilySearchId": "\(parentId)",
+                    "sourceUrl": "\(extraction.sourceUrl ?? extraction.url ?? "unknown")",
+                    "children": "\(extraction.children.count)"
+                ]
+            )
+            return .error(
+                .badRequest,
+                "No selected Kalvian Roots family matches FamilySearch person \(parentId)",
+                headers: corsHeaders()
+            )
+        }
+
+        let headers = requestHeaders ?? HTTPHeaders()
+        let sessionResult = sessionManager.session(for: headers)
+        sessionResult.session.storeFamilySearchExtraction(extraction, for: familyId)
+
+        logger.info(
+            "[\(requestID!)] ✅ Generic FamilySearch extraction received",
+            metadata: [
+                "family": "\(familyId)",
+                "parentFamilySearchId": "\(parentId)",
+                "sourceUrl": "\(extraction.sourceUrl ?? extraction.url ?? "unknown")",
+                "children": "\(extraction.children.count)"
+            ]
+        )
 
         var responseHeaders = corsHeaders()
         if sessionResult.isNew {

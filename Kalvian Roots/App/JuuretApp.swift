@@ -621,6 +621,27 @@ class JuuretApp {
         }
     }
 
+    func storeFamilySearchExtractionForCurrentFamily(_ extraction: FamilySearchFamilyExtraction) -> String? {
+        guard let currentFamily,
+              let expectedPersonId = familySearchParentId(in: currentFamily)?.uppercased() else {
+            return nil
+        }
+
+        let postedPersonId = (extraction.parentFamilySearchId ?? extraction.sourcePersonId)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+
+        guard postedPersonId == expectedPersonId else {
+            appendFamilySearchComparisonDebug(
+                "FamilySearch extraction ignored: expected \(expectedPersonId), received \(postedPersonId)"
+            )
+            return nil
+        }
+
+        storeFamilySearchExtraction(extraction, for: currentFamily.familyId)
+        return currentFamily.familyId
+    }
+
     private func familySearchExtraction(for familyId: String) -> FamilySearchFamilyExtraction? {
         familySearchExtractions[normalizedFamilySearchExtractionKey(familyId)]
     }
@@ -666,7 +687,7 @@ class JuuretApp {
                     requested: false,
                     status: "waiting for user-opened FamilySearch page",
                     url: FamilySearchDOMService.detailsURL(for: familySearchPersonId),
-                    detail: "Use Open FamilySearch, then run extractFamilySearchChildren('\(familySearchPersonId)') on the FamilySearch details page"
+                    detail: "Open the FamilySearch person Details page, click the reusable Kalvian Roots FamilySearch Extractor bookmarklet in Atlas, then return to the local family page"
                 )
             }
             appendFamilySearchComparisonDebug("FamilySearch ID found: \(familySearchPersonId)")

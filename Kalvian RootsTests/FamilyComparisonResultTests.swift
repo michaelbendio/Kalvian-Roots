@@ -1241,6 +1241,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
 
         XCTAssertTrue(script.contains("KALVIAN_ROOTS_CALLBACK_URL = 'http://127.0.0.1:8081/family/AHOKANGAS%202/familysearch?session=test'"))
         XCTAssertTrue(script.contains("await postResult(result);"))
+        XCTAssertTrue(script.contains("window.extractFamilySearchChildren"))
         XCTAssertTrue(script.contains("function extractSpouseGroups()"))
         XCTAssertTrue(script.contains("Spouses and Children section not found"))
         XCTAssertTrue(script.contains("spouse groups not found"))
@@ -1256,11 +1257,14 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("diagnosticContext"))
         XCTAssertTrue(script.contains("childrenMarkerCount"))
         XCTAssertTrue(script.contains("rawCandidateChildCount"))
+        XCTAssertTrue(script.contains("callback POST failed"))
+        XCTAssertTrue(script.contains("found zero children"))
+        XCTAssertTrue(script.contains("Kalvian Roots FamilySearch extraction succeeded"))
         XCTAssertTrue(script.contains("preferred group children"))
         XCTAssertTrue(script.contains("\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b"))
     }
 
-    func testServerRenderedFamilyProvidesUserOpenedFamilySearchExtractorLink() {
+    func testServerRenderedFamilyProvidesReusableFamilySearchBookmarklet() {
         let family = Family(
             familyId: "AHOKANGAS 2",
             pageReferences: ["1"],
@@ -1281,11 +1285,71 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         )
 
         XCTAssertTrue(html.contains("familySearchAutoStatus"))
+        XCTAssertTrue(html.contains("Use the same Kalvian Roots FamilySearch Extractor bookmarklet for every family"))
         XCTAssertTrue(html.contains("Open FamilySearch extractor page"))
+        XCTAssertTrue(html.contains("Copy bookmarklet"))
         XCTAssertTrue(html.contains("href=\"https://www.familysearch.org/en/tree/person/details/KJJH-2QK\""))
+        XCTAssertTrue(html.contains("familySearchBookmarkletStatus"))
+        XCTAssertTrue(html.contains("Drag this reusable bookmarklet to your Atlas bookmarks bar"))
+        XCTAssertTrue(html.contains("Kalvian Roots FamilySearch Extractor"))
         XCTAssertTrue(html.contains("FamilySearch extractor invocation status: waiting for user-opened FamilySearch page"))
         XCTAssertFalse(html.contains("window.addEventListener('load'"))
-        XCTAssertTrue(html.contains("extractFamilySearchChildren('KJJH-2QK')"))
+        XCTAssertFalse(html.contains("Run FamilySearch Extractor"))
+        XCTAssertFalse(html.contains("run extractFamilySearchChildren"))
+        XCTAssertFalse(html.contains("const personId = 'KJJH-2QK'"))
+    }
+
+    func testBookmarkletInjectsExtractorAndDetectsPersonIdFromURL() {
+        let bookmarklet = FamilySearchDOMService.makeBookmarklet()
+
+        XCTAssertTrue(bookmarklet.hasPrefix("javascript:"))
+        XCTAssertTrue(bookmarklet.contains("extractFamilySearchChildren"))
+        XCTAssertTrue(bookmarklet.contains("location.pathname.match"))
+        XCTAssertTrue(bookmarklet.contains("familysearch"))
+        XCTAssertTrue(bookmarklet.contains("extraction-result"))
+        XCTAssertTrue(bookmarklet.contains("Open%20a%20FamilySearch%20person%20Details%20page"))
+        XCTAssertTrue(bookmarklet.contains("Not%20on%20FamilySearch%20person%20details%20page"))
+        XCTAssertFalse(bookmarklet.contains("KJJH-2QK"))
+    }
+
+    func testGenericBookmarkletPayloadDecodesRichChildVitals() throws {
+        let json = """
+        {
+          "sourcePersonId": "KJJH-2QK",
+          "parentFamilySearchId": "KJJH-2QK",
+          "extractedAt": "2026-04-24T10:00:00Z",
+          "sourceUrl": "https://www.familysearch.org/en/tree/person/details/KJJH-2QK",
+          "children": [
+            {
+              "id": "LK4Q-YSX",
+              "name": "Lisa Ahokangas",
+              "sex": "Female",
+              "summaryYears": "1761-1830",
+              "birth": { "date": "4 May 1761", "place": "Kälviä, Finland" },
+              "christening": { "date": "5 May 1761", "place": "Kälviä, Finland" },
+              "death": { "date": "10 June 1830", "place": "Kälviä, Finland" },
+              "burial": { "date": "15 June 1830", "place": "Kälviä, Finland" },
+              "extractionStatus": "success",
+              "extractionNotes": []
+            }
+          ],
+          "status": "success"
+        }
+        """
+
+        let extraction = try JSONDecoder().decode(
+            FamilySearchFamilyExtraction.self,
+            from: Data(json.utf8)
+        )
+
+        XCTAssertTrue(extraction.isSuccessful)
+        XCTAssertEqual(extraction.parentFamilySearchId, "KJJH-2QK")
+        XCTAssertEqual(extraction.sourceUrl, "https://www.familysearch.org/en/tree/person/details/KJJH-2QK")
+        XCTAssertEqual(extraction.children.first?.sex, "Female")
+        XCTAssertEqual(extraction.children.first?.birth?.date, "4 May 1761")
+        XCTAssertEqual(extraction.children.first?.christening?.place, "Kälviä, Finland")
+        XCTAssertEqual(extraction.children.first?.burial?.date, "15 June 1830")
+        XCTAssertEqual(extraction.children.first?.extractionStatus, "success")
     }
 
     func testKJJH2QKExtractionPayloadCanRepresentPreferredAndSecondSpouseGroups() throws {

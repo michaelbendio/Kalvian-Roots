@@ -410,6 +410,7 @@ struct HTMLRenderer {
             }
         } else if let familySearchPersonId {
             let script = FamilySearchDOMService.makeAtlasExtractorScript(callbackURL: familySearchCallbackURL)
+            let bookmarklet = FamilySearchDOMService.makeBookmarklet()
             let autoRunStatus = autoExtractFamilySearch
                 ? "<div id=\"familySearchAutoStatus\" class=\"fs-debug-summary\">FamilySearch extractor invocation status: waiting for user-opened FamilySearch page</div>"
                 : ""
@@ -417,13 +418,41 @@ struct HTMLRenderer {
             extractionSummary = """
             <div class="fs-debug-summary">
                 FamilySearch children have not been imported for this family.
-                Open the FamilySearch extractor page with the action below, run the extractor on that FamilySearch page, then reload this page or return to the SwiftUI view.
+                Use the same Kalvian Roots FamilySearch Extractor bookmarklet for every family:
+                1. Open the FamilySearch person Details page.
+                2. Click the Kalvian Roots FamilySearch Extractor bookmarklet in Atlas.
+                3. Return to this local family page to view comparison results.
             </div>
             <a class="fs-action" href="\(escapeHTML(familySearchURL))">Open FamilySearch extractor page</a>
+            <button id="copyFamilySearchBookmarklet" class="fs-action fs-button" type="button">Copy bookmarklet</button>
             \(autoRunStatus)
-            <textarea class="fs-script" spellcheck="false">\(escapeHTML(script))
-
-            extractFamilySearchChildren('\(escapeHTML(familySearchPersonId))');</textarea>
+            <div class="fs-debug-summary">Drag this reusable bookmarklet to your Atlas bookmarks bar:
+                <a class="fs-bookmarklet" href="\(escapeHTML(bookmarklet))">Kalvian Roots FamilySearch Extractor</a>
+            </div>
+            <div id="familySearchBookmarkletStatus" class="fs-debug-summary">Bookmarklet status: ready to install</div>
+            <textarea class="fs-script" spellcheck="false">\(escapeHTML(script))</textarea>
+            <script>
+            (function () {
+                const button = document.getElementById('copyFamilySearchBookmarklet');
+                const status = document.getElementById('familySearchBookmarkletStatus');
+                const bookmarklet = '\(escapeJavaScript(bookmarklet))';
+                if (!button) return;
+                button.addEventListener('click', async function () {
+                    try {
+                        await navigator.clipboard.writeText(bookmarklet);
+                        if (status) {
+                            status.textContent = 'Bookmarklet copied. Create an Atlas bookmark and paste it as the URL.';
+                            status.dataset.state = 'ready';
+                        }
+                    } catch (error) {
+                        if (status) {
+                            status.textContent = 'Copy failed. Drag the bookmarklet link to the Atlas bookmarks bar instead.';
+                            status.dataset.state = 'error';
+                        }
+                    }
+                });
+            })();
+            </script>
             """
         } else {
             extractionSummary = """
@@ -844,15 +873,29 @@ struct HTMLRenderer {
         .fs-action {
             display: inline-block;
             margin-top: 10px;
+            margin-right: 8px;
             padding: 8px 12px;
             border-radius: 4px;
+            border: none;
             background: #0066cc;
             color: white;
             font-size: 13px;
             text-decoration: none;
+            cursor: pointer;
         }
         .fs-action:hover {
             background: #0052a3;
+        }
+        .fs-action:disabled {
+            cursor: wait;
+            opacity: 0.65;
+        }
+        .fs-bookmarklet {
+            color: #0066cc;
+            font-weight: 600;
+        }
+        #familySearchBookmarkletStatus[data-state="error"] {
+            color: #b00020;
         }
         .comparison-table {
             width: 100%;
