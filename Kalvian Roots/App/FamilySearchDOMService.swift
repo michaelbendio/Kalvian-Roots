@@ -907,11 +907,13 @@ enum FamilySearchDOMService {
                     try {
                         await postResult(result);
                         console.info('Kalvian Roots FamilySearch extraction succeeded: ' + children.length + ' children.');
+                        alert('Kalvian Roots received FamilySearch extraction for ' + normalizedPersonId + ': ' + children.length + ' children. Return to the local family page.');
                     } catch (postError) {
                         result.status = 'callbackPostFailed';
                         result.failureReason = clean(postError && postError.message);
                         result.debugNotes = result.debugNotes.concat(['FamilySearch callback POST failed: ' + result.failureReason]);
                         console.error('Kalvian Roots FamilySearch extraction completed but callback POST failed:', postError);
+                        alert('FamilySearch extraction finished, but Kalvian Roots did not receive it: ' + result.failureReason);
                     }
                     return result;
                 } catch (error) {

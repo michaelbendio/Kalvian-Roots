@@ -1269,6 +1269,7 @@ final class HTTPHandler: ChannelInboundHandler {
         headers.add(name: "Access-Control-Allow-Origin", value: "https://www.familysearch.org")
         headers.add(name: "Access-Control-Allow-Methods", value: "POST, OPTIONS")
         headers.add(name: "Access-Control-Allow-Headers", value: "Content-Type")
+        headers.add(name: "Access-Control-Allow-Private-Network", value: "true")
         headers.add(name: "Access-Control-Allow-Credentials", value: "true")
         return headers
     }

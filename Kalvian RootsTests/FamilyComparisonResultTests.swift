@@ -1260,6 +1260,8 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("callback POST failed"))
         XCTAssertTrue(script.contains("found zero children"))
         XCTAssertTrue(script.contains("Kalvian Roots FamilySearch extraction succeeded"))
+        XCTAssertTrue(script.contains("Kalvian Roots received FamilySearch extraction"))
+        XCTAssertTrue(script.contains("FamilySearch extraction finished, but Kalvian Roots did not receive it"))
         XCTAssertTrue(script.contains("preferred group children"))
         XCTAssertTrue(script.contains("\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b"))
     }
