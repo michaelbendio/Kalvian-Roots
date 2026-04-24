@@ -279,23 +279,73 @@ enum FamilySearchDOMService {
 
             function personFromNameAndDetail(name, detail) {
                 const idMatch = clean(detail).match(/\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/i);
-                if (!idMatch || !clean(name)) return null;
+                const personName = cleanPersonName(name);
+                if (!idMatch || !personName) return null;
                 return {
                     id: idMatch[0].toUpperCase(),
-                    name: clean(name),
+                    name: personName,
                     sex: null,
-                    summaryYears: clean(detail).replace(/\\s*•\\s*[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/i, '') || null,
+                    summaryYears: summaryYearsFromDetail(detail),
                     birthDate: null,
                     birthPlace: null,
                     deathDate: null,
                     deathPlace: null,
-                    lifeSpan: clean(detail).replace(/\\s*•\\s*[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/i, '') || null
+                    lifeSpan: summaryYearsFromDetail(detail)
                 };
             }
 
-            function personEntryAt(lines, index) {
+            function cleanPersonName(name) {
+                const text = clean(name)
+                    .replace(/\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/ig, '')
+                    .replace(/[•·]/g, '')
+                    .trim();
+                if (!text) return '';
+                if (/^(Preferred|Marriage|Children\\s*\\(\\d+\\)|Add Child|Add Spouse|Parents and Siblings|Spouses and Children)$/i.test(text)) return '';
+                if (/^[\\d\\s–\\-—?]+$/.test(text)) return '';
+                return text;
+            }
+
+            function summaryYearsFromDetail(detail) {
+                const value = clean(detail)
+                    .replace(/\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/ig, '')
+                    .replace(/[•·]/g, '')
+                    .trim();
+                return value || null;
+            }
+
+            function personEntryParseAt(lines, index) {
+                if (index >= lines.length) return null;
+
+                for (let offset = 0; offset <= 4 && index + offset < lines.length; offset += 1) {
+                    const idLine = lines[index + offset];
+                    if (!/\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/i.test(clean(idLine))) continue;
+
+                    const nameCandidates = [
+                        lines[index],
+                        lines[index + offset - 1],
+                        lines[index + offset - 2],
+                        lines[index + offset - 3],
+                        lines[index + 1]
+                    ];
+                    const name = nameCandidates.map(cleanPersonName).find(Boolean);
+                    if (!name) return null;
+
+                    const detail = lines
+                        .slice(index, index + offset + 1)
+                        .filter(line => clean(line) !== name)
+                        .join(' ');
+                    const person = personFromNameAndDetail(name, detail);
+                    return person ? { person, nextIndex: index + offset + 1 } : null;
+                }
+
                 if (index + 1 >= lines.length) return null;
-                return personFromNameAndDetail(lines[index], lines[index + 1]);
+                const person = personFromNameAndDetail(lines[index], lines[index + 1]);
+                return person ? { person, nextIndex: index + 2 } : null;
+            }
+
+            function personEntryAt(lines, index) {
+                const parsed = personEntryParseAt(lines, index);
+                return parsed ? parsed.person : null;
             }
 
             function isSpouseGroupBoundary(line) {
@@ -372,10 +422,10 @@ enum FamilySearchDOMService {
                         break;
                     }
 
-                    const person = personEntryAt(lines, index);
-                    if (person) {
-                        group.spouses.push(person);
-                        index += 2;
+                    const parsed = personEntryParseAt(lines, index);
+                    if (parsed) {
+                        group.spouses.push(parsed.person);
+                        index = parsed.nextIndex;
                     } else {
                         index += 1;
                     }
@@ -401,14 +451,14 @@ enum FamilySearchDOMService {
                         break;
                     }
 
-                    const person = personEntryAt(lines, index);
-                    if (person) {
-                        const nextAfterEntry = lines[index + 2] || '';
+                    const parsed = personEntryParseAt(lines, index);
+                    if (parsed) {
+                        const nextAfterEntry = lines[parsed.nextIndex] || '';
                         if (/^Marriage$/i.test(nextAfterEntry) || /^Children\\s*\\(\\d+\\)$/i.test(nextAfterEntry)) {
                             break;
                         }
-                        group.children.push(person);
-                        index += 2;
+                        group.children.push(parsed.person);
+                        index = parsed.nextIndex;
                     } else {
                         index += 1;
                     }
