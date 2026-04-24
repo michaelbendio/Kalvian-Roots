@@ -109,22 +109,20 @@ enum FamilySearchDOMService {
                 return new Promise(resolve => setTimeout(resolve, ms));
             }
 
-            let extractionWindow = null;
+            let detailsBaseURL = '\(detailsBaseURL)';
+            let localDocument = document;
+            let detailFrameId = 'kalvian-roots-familysearch-detail-frame';
+            let failedDetailDocuments = new Set();
+            let currentDocumentOverride = { value: null };
 
             function extractionDocument() {
-                if (extractionWindow && !extractionWindow.closed) {
-                    try {
-                        return extractionWindow.document;
-                    } catch (error) {
-                        throw new Error('FamilySearch window unavailable: ' + clean(error && error.message));
-                    }
+                const doc = currentDocumentOverride.value || localDocument;
+
+                if (isFamilySearchDocument(doc)) {
+                    return doc;
                 }
 
-                if (isFamilySearchDocument(document)) {
-                    return document;
-                }
-
-                throw new Error('wrong host for FamilySearch extraction: ' + document.location.href);
+                throw new Error('not on FamilySearch person details page: ' + documentURL(doc));
             }
 
             function diagnosticDocument() {
@@ -425,11 +423,54 @@ enum FamilySearchDOMService {
                 return groups;
             }
 
-            async function waitForDetailsPage(expectedId) {
+            function assertCurrentFamilySearchDetailsPage(expectedId) {
+                if (!isFamilySearchDocument(localDocument)) {
+                    throw new Error('not on FamilySearch person details page: ' + documentURL(localDocument));
+                }
+
+                if (!isPersonDetailsDocument(localDocument)) {
+                    throw new Error('wrong page type for FamilySearch extraction: ' + documentURL(localDocument));
+                }
+
+                const detectedId = personIdFromDocumentURL(localDocument);
+                if (detectedId !== expectedId) {
+                    throw new Error('expected ' + expectedId + ', found ' + (detectedId || 'none'));
+                }
+            }
+
+            function detailFrame() {
+                let frame = localDocument.getElementById(detailFrameId);
+                if (frame) return frame;
+
+                frame = localDocument.createElement('iframe');
+                frame.id = detailFrameId;
+                frame.title = 'Kalvian Roots FamilySearch detail loader';
+                frame.style.position = 'fixed';
+                frame.style.width = '1px';
+                frame.style.height = '1px';
+                frame.style.left = '-10000px';
+                frame.style.top = '-10000px';
+                frame.style.opacity = '0';
+                frame.setAttribute('aria-hidden', 'true');
+                localDocument.body.appendChild(frame);
+                return frame;
+            }
+
+            function documentForDetailFrame(frame) {
+                try {
+                    return frame.contentDocument || frame.contentWindow.document;
+                } catch (error) {
+                    throw new Error('FamilySearch detail frame unavailable: ' + clean(error && error.message));
+                }
+            }
+
+            async function waitForDetailsPage(expectedId, documentProvider) {
                 let lastError = null;
+                let lastDocument = null;
                 for (let attempt = 0; attempt < 80; attempt += 1) {
                     try {
-                        const doc = extractionDocument();
+                        const doc = documentProvider();
+                        lastDocument = doc;
                         if (!isFamilySearchDocument(doc)) {
                             const currentURL = documentURL(doc) || pageURL();
                             if (/^about:blank/i.test(currentURL || '')) {
@@ -437,7 +478,7 @@ enum FamilySearchDOMService {
                                 await sleep(250);
                                 continue;
                             }
-                            throw new Error('wrong host for FamilySearch extraction: ' + currentURL);
+                            throw new Error('not on FamilySearch person details page: ' + currentURL);
                         }
                         if (isPersonDetailsDocument(doc) && personIdFromDocumentURL(doc) === expectedId && doc.readyState === 'complete') {
                             await sleep(500);
@@ -445,26 +486,27 @@ enum FamilySearchDOMService {
                         }
                     } catch (error) {
                         lastError = error;
-                        if (/FamilySearch window unavailable|wrong host for FamilySearch extraction/i.test(clean(error && error.message))) {
+                        if (/FamilySearch detail frame unavailable|not on FamilySearch person details page/i.test(clean(error && error.message))) {
                             throw error;
                         }
                     }
                     await sleep(250);
                 }
 
-                if (lastError && /FamilySearch window unavailable|wrong host for FamilySearch extraction/i.test(clean(lastError && lastError.message))) {
+                if (lastError && /FamilySearch detail frame unavailable|not on FamilySearch person details page/i.test(clean(lastError && lastError.message))) {
                     throw lastError;
                 }
 
-                if (!isFamilySearchPage()) {
-                    throw new Error('wrong host for FamilySearch extraction: ' + pageURL());
+                const doc = lastDocument || documentProvider();
+                if (!isFamilySearchDocument(doc)) {
+                    throw new Error('not on FamilySearch person details page: ' + (documentURL(doc) || pageURL()));
                 }
 
-                if (!isPersonDetailsPage()) {
-                    throw new Error('wrong page type for FamilySearch extraction: ' + pageURL());
+                if (!isPersonDetailsDocument(doc)) {
+                    throw new Error('wrong page type for FamilySearch extraction: ' + (documentURL(doc) || pageURL()));
                 }
 
-                const detectedId = personIdFromURL();
+                const detectedId = personIdFromDocumentURL(doc);
                 if (detectedId !== expectedId) {
                     throw new Error('expected ' + expectedId + ', found ' + (detectedId || 'none'));
                 }
@@ -473,17 +515,38 @@ enum FamilySearchDOMService {
             }
 
             async function visitPerson(personId) {
-                const target = '\(detailsBaseURL)' + personId;
-                if (!extractionWindow || extractionWindow.closed) {
-                    extractionWindow = window.open(target, 'kalvianRootsFamilySearchExtractor', 'popup,width=1200,height=900');
-                    if (!extractionWindow) {
-                        throw new Error('popup blocked opening FamilySearch person details page: ' + target);
+                const target = detailsBaseURL + personId;
+                const currentDoc = extractionDocument();
+                if (personIdFromDocumentURL(currentDoc) === personId) {
+                    currentDocumentOverride.value = currentDoc;
+                    await waitForDetailsPage(personId, function () { return currentDoc; });
+                    try {
+                        return extractPersonSummary();
+                    } finally {
+                        currentDocumentOverride.value = null;
                     }
-                } else if (personIdFromURL() !== personId) {
-                    extractionWindow.location.assign(target);
                 }
-                await waitForDetailsPage(personId);
-                return extractPersonSummary();
+
+                if (failedDetailDocuments.has(personId)) {
+                    throw new Error('page not ready within timeout for FamilySearch details page ' + personId);
+                }
+
+                const frame = detailFrame();
+                if (documentURL(documentForDetailFrame(frame)) !== target) {
+                    frame.src = target;
+                }
+                await waitForDetailsPage(personId, function () { return documentForDetailFrame(frame); });
+
+                const frameDocument = documentForDetailFrame(frame);
+                currentDocumentOverride.value = frameDocument;
+                try {
+                    return extractPersonSummary();
+                } catch (error) {
+                    failedDetailDocuments.add(personId);
+                    throw error;
+                } finally {
+                    currentDocumentOverride.value = null;
+                }
             }
 
             async function postResult(result) {
@@ -500,8 +563,8 @@ enum FamilySearchDOMService {
 
             function failureStatusForError(error) {
                 const message = clean(error && error.message);
-                if (/popup blocked/i.test(message)) return 'popupBlocked';
-                if (/FamilySearch window unavailable/i.test(message)) return 'familySearchWindowUnavailable';
+                if (/not on FamilySearch person details page/i.test(message)) return 'notOnFamilySearch';
+                if (/FamilySearch detail frame unavailable/i.test(message)) return 'familySearchDetailUnavailable';
                 if (/wrong host for FamilySearch extraction/i.test(message)) return 'wrongHost';
                 if (/wrong page type|not on person details page/i.test(message)) return 'wrongPageType';
                 if (/expected .* found/i.test(message)) return 'personMismatch';
@@ -543,6 +606,7 @@ enum FamilySearchDOMService {
             window.extractFamilySearchChildren = async function extractFamilySearchChildren(personId) {
                 const normalizedPersonId = clean(personId).toUpperCase();
                 try {
+                    assertCurrentFamilySearchDetailsPage(normalizedPersonId);
                     const focusPerson = await visitPerson(normalizedPersonId);
                     const spouseGroups = extractSpouseGroups();
                     const preferredGroupIndex = spouseGroups.findIndex(group => group.isPreferred);

@@ -159,6 +159,16 @@ struct FamilyContentView: View {
                 }
                 .buttonStyle(.bordered)
 
+                if juuretApp.currentFamilySearchExtractorPageURL != nil {
+                    Button {
+                        juuretApp.openCurrentFamilySearchExtractorPage()
+                    } label: {
+                        Label("Open FamilySearch", systemImage: "safari")
+                            .font(.system(.caption, design: .monospaced))
+                    }
+                    .buttonStyle(.bordered)
+                }
+
                 Text(juuretApp.familySearchComparisonDebugMessage.isEmpty
                     ? "Comparison not triggered"
                     : juuretApp.familySearchComparisonDebugMessage)
@@ -182,7 +192,7 @@ struct FamilyContentView: View {
                 }
 
                 if juuretApp.familySearchComparisonDebugMessage == "FamilySearch comparison not yet available" {
-                    Text("Open the browser-rendered family page in Atlas, run the FamilySearch DOM extractor there, and this SwiftUI comparison will update when the extractor posts back.")
+                    Text("Open FamilySearch, run the FamilySearch DOM extractor on the person details page, and this SwiftUI comparison will update when the extractor posts back.")
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)

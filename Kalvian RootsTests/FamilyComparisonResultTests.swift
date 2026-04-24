@@ -1245,12 +1245,14 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("Spouses and Children section not found"))
         XCTAssertTrue(script.contains("spouse groups not found"))
         XCTAssertTrue(script.contains("failureStatusForError"))
-        XCTAssertTrue(script.contains("popupBlocked"))
-        XCTAssertTrue(script.contains("familySearchWindowUnavailable"))
+        XCTAssertFalse(script.contains("window.open"))
+        XCTAssertFalse(script.contains("popupBlocked"))
+        XCTAssertTrue(script.contains("notOnFamilySearch"))
+        XCTAssertTrue(script.contains("familySearchDetailUnavailable"))
         XCTAssertTrue(script.contains("wrongHost"))
         XCTAssertTrue(script.contains("wrongPageType"))
-        XCTAssertTrue(script.contains("wrong host for FamilySearch extraction"))
-        XCTAssertTrue(script.contains("FamilySearch window unavailable"))
+        XCTAssertTrue(script.contains("not on FamilySearch person details page"))
+        XCTAssertTrue(script.contains("kalvian-roots-familysearch-detail-frame"))
         XCTAssertTrue(script.contains("diagnosticContext"))
         XCTAssertTrue(script.contains("childrenMarkerCount"))
         XCTAssertTrue(script.contains("rawCandidateChildCount"))
@@ -1258,7 +1260,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b"))
     }
 
-    func testServerRenderedFamilyCanAutoInvokeFamilySearchExtractor() {
+    func testServerRenderedFamilyProvidesUserOpenedFamilySearchExtractorLink() {
         let family = Family(
             familyId: "AHOKANGAS 2",
             pageReferences: ["1"],
@@ -1279,8 +1281,10 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         )
 
         XCTAssertTrue(html.contains("familySearchAutoStatus"))
-        XCTAssertTrue(html.contains("window.addEventListener('load'"))
-        XCTAssertTrue(html.contains("FamilySearch extractor invocation status: invoked"))
+        XCTAssertTrue(html.contains("Open FamilySearch extractor page"))
+        XCTAssertTrue(html.contains("href=\"https://www.familysearch.org/en/tree/person/details/KJJH-2QK\""))
+        XCTAssertTrue(html.contains("FamilySearch extractor invocation status: waiting for user-opened FamilySearch page"))
+        XCTAssertFalse(html.contains("window.addEventListener('load'"))
         XCTAssertTrue(html.contains("extractFamilySearchChildren('KJJH-2QK')"))
     }
 
@@ -1433,15 +1437,15 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertEqual(extraction.failureReason, "wrong page type for FamilySearch extraction: https://www.familysearch.org/en/tree/person/sources/KJJH-2QK")
     }
 
-    func testFailedExtractionPayloadDistinguishesWrongHostFromZeroChildren() throws {
+    func testFailedExtractionPayloadDistinguishesNotOnFamilySearchFromZeroChildren() throws {
         let json = """
         {
           "sourcePersonId": "KJJH-2QK",
           "children": [],
           "spouseGroups": [],
-          "status": "wrongHost",
-          "failureReason": "wrong host for FamilySearch extraction: http://127.0.0.1:8081/family/AHOKANGAS%202?familysearch=auto",
-          "url": "http://127.0.0.1:8081/family/AHOKANGAS%202?familysearch=auto",
+          "status": "notOnFamilySearch",
+          "failureReason": "not on FamilySearch person details page: http://127.0.0.1:8081/family/AHOKANGAS%202",
+          "url": "http://127.0.0.1:8081/family/AHOKANGAS%202",
           "pageTitle": "AHOKANGAS 2 - Kalvian Roots",
           "detectedHost": "127.0.0.1",
           "detectedPersonId": null,
@@ -1464,7 +1468,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         )
 
         XCTAssertFalse(extraction.isSuccessful)
-        XCTAssertEqual(extraction.status, "wrongHost")
+        XCTAssertEqual(extraction.status, "notOnFamilySearch")
         XCTAssertEqual(extraction.detectedHost, "127.0.0.1")
         XCTAssertEqual(extraction.isFamilySearchPage, false)
         XCTAssertEqual(extraction.children.count, 0)

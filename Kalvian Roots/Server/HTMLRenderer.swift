@@ -410,29 +410,20 @@ struct HTMLRenderer {
             }
         } else if let familySearchPersonId {
             let script = FamilySearchDOMService.makeAtlasExtractorScript(callbackURL: familySearchCallbackURL)
-            let autoRunScript = autoExtractFamilySearch ? """
-            <script>
-            \(script)
-            window.addEventListener('load', function () {
-                const status = document.getElementById('familySearchAutoStatus');
-                if (status) status.textContent = 'FamilySearch extractor invocation status: invoked';
-                extractFamilySearchChildren('\(escapeJavaScript(familySearchPersonId))');
-            });
-            </script>
-            """ : ""
             let autoRunStatus = autoExtractFamilySearch
-                ? "<div id=\"familySearchAutoStatus\" class=\"fs-debug-summary\">FamilySearch extractor invocation status: pending page load</div>"
+                ? "<div id=\"familySearchAutoStatus\" class=\"fs-debug-summary\">FamilySearch extractor invocation status: waiting for user-opened FamilySearch page</div>"
                 : ""
+            let familySearchURL = FamilySearchDOMService.detailsURL(for: familySearchPersonId)
             extractionSummary = """
             <div class="fs-debug-summary">
                 FamilySearch children have not been imported for this family.
-                Open \(escapeHTML(FamilySearchDOMService.detailsURL(for: familySearchPersonId))) in Atlas, run the extractor below, then reload this page or return to the SwiftUI view.
+                Open the FamilySearch extractor page with the action below, run the extractor on that FamilySearch page, then reload this page or return to the SwiftUI view.
             </div>
+            <a class="fs-action" href="\(escapeHTML(familySearchURL))">Open FamilySearch extractor page</a>
             \(autoRunStatus)
             <textarea class="fs-script" spellcheck="false">\(escapeHTML(script))
 
             extractFamilySearchChildren('\(escapeHTML(familySearchPersonId))');</textarea>
-            \(autoRunScript)
             """
         } else {
             extractionSummary = """
@@ -849,6 +840,19 @@ struct HTMLRenderer {
             border: 1px solid #ddd;
             border-radius: 4px;
             background: #f9f9f9;
+        }
+        .fs-action {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 8px 12px;
+            border-radius: 4px;
+            background: #0066cc;
+            color: white;
+            font-size: 13px;
+            text-decoration: none;
+        }
+        .fs-action:hover {
+            background: #0052a3;
         }
         .comparison-table {
             width: 100%;

@@ -52,7 +52,15 @@ class JuuretApp {
     var familySearchComparisonDebugLines: [String] = []
     var hiskiCitationProposals: [HiskiCitationProposal] = []
     private var familySearchExtractions: [String: FamilySearchFamilyExtraction] = [:]
-    private var requestedFamilySearchExtractions: Set<String> = []
+
+    var currentFamilySearchExtractorPageURL: URL? {
+        guard let currentFamily,
+              let familySearchPersonId = familySearchParentId(in: currentFamily) else {
+            return nil
+        }
+
+        return URL(string: FamilySearchDOMService.detailsURL(for: familySearchPersonId))
+    }
     
     // MARK: - Detail Routing (macOS NavigationSplitView)
     enum DetailRoute: Equatable {
@@ -601,7 +609,6 @@ class JuuretApp {
     func storeFamilySearchExtraction(_ extraction: FamilySearchFamilyExtraction, for familyId: String) {
         let normalizedFamilyId = normalizedFamilySearchExtractionKey(familyId)
         familySearchExtractions[normalizedFamilyId] = extraction
-        requestedFamilySearchExtractions.remove(normalizedFamilyId)
         logInfo(.ui, "🧪 FamilySearch extraction stored for SwiftUI: \(normalizedFamilyId), children: \(extraction.children.count)")
 
         guard currentFamily?.familyId.uppercased() == normalizedFamilyId,
@@ -622,67 +629,21 @@ class JuuretApp {
         familyId.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
     }
 
-    private func atlasFamilyURL(for familyId: String) -> String {
-        let encodedFamilyId = familyId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? familyId
-        return "http://127.0.0.1:8081/family/\(encodedFamilyId)"
-    }
-
-    private func atlasFamilySearchAutoExtractionURL(for familyId: String) -> String {
-        "\(atlasFamilyURL(for: familyId))?familysearch=auto"
-    }
-
-    private func requestFamilySearchAtlasExtraction(
-        familyId: String,
-        familySearchPersonId: String
-    ) -> FamilySearchNavigationRequest {
-        let normalizedFamilyId = normalizedFamilySearchExtractionKey(familyId)
-        let extractionURL = atlasFamilySearchAutoExtractionURL(for: familyId)
-
-        if requestedFamilySearchExtractions.contains(normalizedFamilyId) {
-            return FamilySearchNavigationRequest(
-                requested: true,
-                status: "pending callback from previously invoked local Atlas page",
-                url: extractionURL,
-                detail: "FamilySearch person \(familySearchPersonId) has already been requested for this family in this app session"
-            )
-        }
-
-        guard let url = URL(string: extractionURL) else {
-            return FamilySearchNavigationRequest(
-                requested: false,
-                status: "navigation request failed",
-                url: extractionURL,
-                detail: "Could not build local Atlas extraction URL"
-            )
+    func openCurrentFamilySearchExtractorPage() {
+        guard let url = currentFamilySearchExtractorPageURL else {
+            return
         }
 
         #if os(macOS)
-        let opened = NSWorkspace.shared.open(url)
+        NSWorkspace.shared.open(url)
         #elseif os(iOS)
-        let opened = UIApplication.shared.canOpenURL(url)
-        if opened {
-            UIApplication.shared.open(url)
-        }
-        #else
-        let opened = false
+        UIApplication.shared.open(url)
         #endif
+    }
 
-        if opened {
-            requestedFamilySearchExtractions.insert(normalizedFamilyId)
-            return FamilySearchNavigationRequest(
-                requested: true,
-                status: "invoked via local Atlas page",
-                url: extractionURL,
-                detail: "Local page will run extractFamilySearchChildren('\(familySearchPersonId)') and post results back to SwiftUI"
-            )
-        }
-
-        return FamilySearchNavigationRequest(
-            requested: false,
-            status: "navigation request failed",
-            url: extractionURL,
-            detail: "System browser open call returned false"
-        )
+    private func atlasFamilyURL(for familyId: String) -> String {
+        let encodedFamilyId = familyId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? familyId
+        return "http://127.0.0.1:8081/family/\(encodedFamilyId)"
     }
 
     private func runJuuretHiskiComparisonPipeline(for family: Family) async {
@@ -700,12 +661,14 @@ class JuuretApp {
         let storedFamilySearchExtraction = familySearchExtraction(for: family.familyId)
         var familySearchNavigationRequest: FamilySearchNavigationRequest?
         if let familySearchPersonId {
-            familySearchNavigationRequest = storedFamilySearchExtraction == nil
-                ? requestFamilySearchAtlasExtraction(
-                    familyId: family.familyId,
-                    familySearchPersonId: familySearchPersonId
+            if storedFamilySearchExtraction == nil {
+                familySearchNavigationRequest = FamilySearchNavigationRequest(
+                    requested: false,
+                    status: "waiting for user-opened FamilySearch page",
+                    url: FamilySearchDOMService.detailsURL(for: familySearchPersonId),
+                    detail: "Use Open FamilySearch, then run extractFamilySearchChildren('\(familySearchPersonId)') on the FamilySearch details page"
                 )
-                : nil
+            }
             appendFamilySearchComparisonDebug("FamilySearch ID found: \(familySearchPersonId)")
             appendFamilySearchExtractionDiagnostics(
                 expectedPersonId: familySearchPersonId,
