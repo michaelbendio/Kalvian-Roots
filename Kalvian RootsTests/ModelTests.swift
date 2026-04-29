@@ -247,14 +247,14 @@ final class FamilyTests: XCTestCase {
     
     var testFamily: Family!
     
-    override func setUp() throws {
-        try super.setUp()
+    override func setUp() {
+        super.setUp()
         testFamily = createTestFamily()
     }
     
-    override func tearDown() throws {
+    override func tearDown() {
         testFamily = nil
-        try super.tearDown()
+        super.tearDown()
     }
     
     func testFamilyInitialization() {

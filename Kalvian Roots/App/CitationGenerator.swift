@@ -102,6 +102,11 @@ struct CitationGenerator {
         
         // Format children for all couples
         for couple in family.couples {
+            // Additional spouse section
+            if couple != family.primaryCouple {
+                citation += formatAdditionalSpouseSection(couple: couple, family: family)
+            }
+
             if !couple.children.isEmpty {
                 citation += "Children:\n"
                 
@@ -121,11 +126,6 @@ struct CitationGenerator {
                     )
                     citation += childLine
                 }
-            }
-            
-            // Additional spouse section
-            if couple != family.primaryCouple {
-                citation += formatAdditionalSpouseSection(couple: couple, family: family)
             }
         }
         

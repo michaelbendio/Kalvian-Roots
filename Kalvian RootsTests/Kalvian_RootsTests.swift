@@ -19,7 +19,7 @@ struct Kalvian_RootsTests {
 
     // MARK: - Hiski service initialization
     @Test func testHiskiServiceInitialization() async throws {
-        let service = HiskiService()
+        let service = HiskiService(nameEquivalenceManager: NameEquivalenceManager())
         service.setCurrentFamily("KORPI 6")
         
         // Just verify service can be created

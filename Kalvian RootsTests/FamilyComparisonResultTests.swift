@@ -389,7 +389,8 @@ final class FamilyComparisonServiceTests: XCTestCase {
     }
 
     func testMakeHiskiCandidatesReturnsEmptyForEmptyInput() {
-        let candidates = service.makeHiskiCandidates(from: [])
+        let events: [HiskiService.HiskiFamilyBirthEvent] = []
+        let candidates = service.makeHiskiCandidates(from: events)
 
         XCTAssertTrue(candidates.isEmpty)
     }

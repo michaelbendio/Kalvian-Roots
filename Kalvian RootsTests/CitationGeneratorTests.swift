@@ -14,18 +14,18 @@ final class CitationGeneratorTests: XCTestCase {
     var testNetwork: FamilyNetwork!
     var nameEquivalenceManager: NameEquivalenceManager!
     
-    override func setUp() throws {
-        try super.setUp()
+    override func setUp() {
+        super.setUp()
         nameEquivalenceManager = NameEquivalenceManager()
         testFamily = createTestFamily()
         testNetwork = createTestNetwork()
     }
     
-    override func tearDown() throws {
+    override func tearDown() {
         testFamily = nil
         testNetwork = nil
         nameEquivalenceManager = nil
-        try super.tearDown()
+        super.tearDown()
     }
     
     // MARK: - Main Family Citation Tests
@@ -308,7 +308,34 @@ final class CitationGeneratorTests: XCTestCase {
         // Then: Should include all couples
         XCTAssertTrue(citation.contains("Additional spouse"), "Should note additional spouse")
     }
-    
+
+    func testAdditionalSpouseChildrenAppearAfterTheirSpouseSection() {
+        // Given: A remarriage family where the first spouse has no named children
+        let family = createTikkanenSixLikeFamily()
+
+        // When: Generating citation
+        let citation = CitationGenerator.generateMainFamilyCitation(
+            family: family,
+            targetPerson: family.couples[1].children.first,
+            network: nil
+        )
+
+        // Then: Each additional spouse must appear before that spouse's children
+        guard let annikaRange = citation.range(of: "Annika Matint."),
+              let annaRange = citation.range(of: "Additional spouse:\nAnna Pietarint."),
+              let britaRange = citation.range(of: "Brita, b. 20 May 1750"),
+              let mariaRange = citation.range(of: "Additional spouse:\nMaria Martint."),
+              let mattiRange = citation.range(of: "Matti, b. 14 March 1756") else {
+            XCTFail("Citation did not contain expected spouse and child sections:\n\(citation)")
+            return
+        }
+
+        XCTAssertLessThan(annikaRange.lowerBound, annaRange.lowerBound)
+        XCTAssertLessThan(annaRange.lowerBound, britaRange.lowerBound)
+        XCTAssertLessThan(britaRange.lowerBound, mariaRange.lowerBound)
+        XCTAssertLessThan(mariaRange.lowerBound, mattiRange.lowerBound)
+    }
+
     func testCitationWithWidowInfo() {
         // Test: Should include widow/widower information
         // (Would require family with widow notes)
@@ -421,7 +448,7 @@ final class CitationGeneratorTests: XCTestCase {
     }
     
     private func createTestNetwork() -> FamilyNetwork {
-        let network = FamilyNetwork(mainFamily: testFamily)
+        var network = FamilyNetwork(mainFamily: testFamily)
         
         // Add asChild families for parents
         if let parent = testFamily.allParents.first {
@@ -489,7 +516,71 @@ final class CitationGeneratorTests: XCTestCase {
             noteDefinitions: [:]
         )
     }
-    
+
+    private func createTikkanenSixLikeFamily() -> Family {
+        let husband = Person(
+            name: "Erik",
+            patronymic: "Juhonp.",
+            birthDate: "1716",
+            deathDate: "27.02.1797",
+            noteMarkers: []
+        )
+
+        let firstCouple = Couple(
+            husband: husband,
+            wife: Person(
+                name: "Annika",
+                patronymic: "Matint.",
+                birthDate: "1721",
+                deathDate: "20.01.1740",
+                noteMarkers: []
+            ),
+            fullMarriageDate: "29.10.1738",
+            children: [],
+            coupleNotes: ["Lapsia kaksi, kuolivat pieninä."]
+        )
+
+        let secondCouple = Couple(
+            husband: husband,
+            wife: Person(
+                name: "Anna",
+                patronymic: "Pietarint.",
+                birthDate: "1721",
+                deathDate: "06.02.1753",
+                noteMarkers: []
+            ),
+            fullMarriageDate: "24.06.1746",
+            children: [
+                Person(name: "Brita", birthDate: "20.05.1750", noteMarkers: []),
+                Person(name: "Johannes", birthDate: "27.11.1751", noteMarkers: []),
+                Person(name: "Erik", birthDate: "06.02.1753", deathDate: "03.06.1785", noteMarkers: [])
+            ]
+        )
+
+        let thirdCouple = Couple(
+            husband: husband,
+            wife: Person(
+                name: "Maria",
+                patronymic: "Martint.",
+                birthDate: "02.06.1735",
+                noteMarkers: []
+            ),
+            fullMarriageDate: "27.11.1753",
+            children: [
+                Person(name: "Matti", birthDate: "14.03.1756", noteMarkers: []),
+                Person(name: "Brita", birthDate: "04.12.1763", noteMarkers: [])
+            ]
+        )
+
+        return Family(
+            familyId: "TIKKANEN 6",
+            pageReferences: ["240", "241"],
+            couples: [firstCouple, secondCouple, thirdCouple],
+            notes: [],
+            noteDefinitions: [:]
+        )
+    }
+
     private func createMinimalFamily() -> Family {
         let husband = Person(name: "Test Father", noteMarkers: [])
         let wife = Person(name: "Test Mother", noteMarkers: [])
