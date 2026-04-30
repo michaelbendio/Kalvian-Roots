@@ -50,3 +50,16 @@ Source of Truth
 Do not maintain a second hand-written bookmarklet. The local app renders the
 bookmarklet link from `FamilySearchDOMService.makeBookmarklet()` so the visible
 install link and extractor implementation stay in sync.
+
+
+Related Documents
+-----------------
+
+Before changing this workflow, also read:
+
+    AGENTS.md
+    Docs/Architecture.md
+    Docs/implementation-plan.md
+
+FamilySearch extraction must remain manual or user-triggered. Do not add
+automated crawling or hidden repeated page navigation.

@@ -20,6 +20,10 @@ Agents must read BOTH of the following before making changes:
     Docs/implementation-plan.md
     Docs/Architecture.md
 
+For FamilySearch extraction work, also read:
+
+    Docs/familysearch-bookmarklet.md
+
 Architecture Overview
 ---------------------
 
@@ -225,14 +229,21 @@ Storage Rule
 
 JuuretKälviällä.roots is treated as:
 
-    iCloud preferred
-    local Documents fallback
+    local Documents canonical file
 
 The app must:
 
-    • prefer the canonical iCloud copy when available
-    • fall back to a local copy when iCloud is unavailable
-    • avoid fatal errors caused solely by iCloud unavailability
+    • look for JuuretKälviällä.roots in local Documents
+    • allow explicit user selection when auto-load fails
+    • use local durable storage for app caches
+    • store family network cache data in Application Support
+
+The family network cache is local machine state. Do not reintroduce
+iCloud/ubiquity, CoreData, CloudKit, temporary-directory fallback, or
+cross-device cache sync unless the user explicitly requests that design.
+
+Cache access failures are critical. Do not silently continue with a
+throwaway cache.
 
 
 Testing
@@ -242,7 +253,7 @@ All new comparison logic must include tests.
 
 Tests live in:
 
-    KalvianRootsTests
+    Kalvian RootsTests
 
 Tests should verify:
 
@@ -257,10 +268,15 @@ Test Requirement
 
 Agents must add or update tests before committing changes.
 
-Do NOT commit code that:
+Do NOT commit code that intentionally:
 
     • introduces new logic without tests
     • breaks existing tests
+
+When the full Xcode test suite is already blocked by an unrelated stale
+test or machine setup problem, run the most relevant available checks and
+report the exact remaining blocker. Do not broaden the task into unrelated
+test-target cleanup unless the user asks for it.
 
 
 Coding Guidelines
@@ -295,15 +311,24 @@ Directory Structure
 Kalvian-Roots
     AGENTS.md
     README.md
+    development.md
     Docs/
+        Architecture.md
+        familysearch-bookmarklet.md
         implementation-plan.md
+        integration.md
 
     Kalvian Roots/
-        Models/
         App/
-        Services/
+        Models/
+        Server/
+        Utilities/
+        Views/
 
-    KalvianRootsTests/
+    Kalvian RootsTests/
+    Kalvian RootsUITests/
+    KalvianRootsCore/
+    KalvianRootsServer/
 
 
 Agent Expectations
@@ -312,6 +337,8 @@ Agent Expectations
 Agents modifying this repository should:
 
     • read Docs/implementation-plan.md before making architectural changes
+    • read Docs/Architecture.md before changing source pipeline behavior
+    • read Docs/familysearch-bookmarklet.md before changing FamilySearch extraction
     • maintain the PersonCandidate → PersonIdentity → comparison pipeline
     • avoid introducing new identity heuristics
     • reuse existing parsing and extraction logic whenever possible

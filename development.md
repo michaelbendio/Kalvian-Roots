@@ -1,98 +1,116 @@
 # Kalvian Roots Development Guide
 
-## Branch Structure
+This file describes the current local build, test, and development workflow for
+the Kalvian Roots checkout.
 
-- `main` - Production branch
-- `stable-working` - Protected stable version (all citations working)
-- `feature/next-family-cache` - Current feature development branch
-- `backup-ios-attempt` - Previous iOS compatibility work
+## Current Branch Model
 
-## Important Tags
+- `main` is the active development branch for this personal project.
+- Use a feature branch only when the user asks for one or the change is risky
+  enough to need isolation.
+- Before committing, run `git status -sb` and stage only the files that belong
+  to the requested change.
 
-- `v1.0-stable` - Tagged stable version before cache feature (created Nov 2024)
+## Local Xcode Setup
 
-## Safety Commands
+Open the project:
 
-### If something goes wrong during development:
 ```bash
-# Quick escape to stable version
-git checkout stable-working
-
-# Or reset feature branch to stable tag
-git checkout feature/next-family-cache
-git reset --hard v1.0-stable
+open "Kalvian Roots.xcodeproj"
 ```
 
-### To see current branch:
+The project uses Swift package dependencies configured in Xcode, including
+SwiftNIO and SwiftLog. Do not re-add these manually unless package resolution is
+actually broken.
+
+If Xcode beta is installed at `/Applications/Xcode-beta.app`, command-line
+builds can be run with:
+
 ```bash
-git branch
+DEVELOPER_DIR="/Applications/Xcode-beta.app/Contents/Developer" xcodebuild test -project "Kalvian Roots.xcodeproj" -scheme "Kalvian Roots"
 ```
 
-### To see all branches including remote:
+To make Xcode beta the selected command-line developer directory:
+
 ```bash
-git branch -a
+sudo xcode-select -s /Applications/Xcode-beta.app/Contents/Developer
+xcodebuild -license accept
+xcodebuild -version
 ```
 
-## Current Development: Next Family Cache
+## App Data
 
-Adding background processing to pre-fetch the next family while working on current family citations.
+The canonical roots file is local:
 
-Features being added:
-- Background extraction of next family after blank line
-- CoreData + CloudKit caching for multi-device sync
-- "Next" button appears when next family is ready
-- Non-intrusive error handling
-
-## Working Workflow
-
-1. Always develop on feature branches
-2. `stable-working` branch should never be modified directly
-3. Test features on families already completed before using on new work
-4. Run app from Xcode while on `feature/next-family-cache` branch for testing
-
-## Git Reminders
-
-- This repo uses GitHub: https://github.com/michaelbendio/Kalvian-Roots
-- Working directory: ~/Kalvian-Roots
-- .gitignore is configured to exclude Xcode user files and .DS_Store
-
-## Testing Approach
-
-- Test cache with already-completed families first
-- Verify citations match exactly before using on new families
-- Background processing errors should not interrupt current work
-
-## How to Use This Guide
-
-When working with a new AI assistant or returning after a break:
-1. Show them this file: `cat DEVELOPMENT.md`
-2. Tell them which branch you're currently on: `git branch`
-3. Explain what you're trying to accomplish
-
-## Rollback Procedures
-
-If the cache feature causes issues:
-```bash
-# Option 1: Switch to stable version immediately
-git checkout stable-working
-
-# Option 2: Reset feature branch to stable
-git checkout feature/next-family-cache
-git reset --hard v1.0-stable
-
-# Option 3: Stash changes and switch
-git stash
-git checkout stable-working
+```text
+~/Documents/JuuretKälviällä.roots
 ```
 
-## Cache Feature Implementation Status
+The durable family network cache is local Application Support data:
 
-- [ ] FileManager extension for finding next family
-- [ ] FamilyNetworkCache class with CoreData
-- [ ] JuuretApp integration with cache
-- [ ] UI updates for Next button
-- [ ] Background processing queue
-- [ ] Error handling and notifications
-- [ ] Testing with completed families
-- [ ] CloudKit sync configuration
+```text
+~/Library/Application Support/Kalvian Roots/Cache/families.json
+```
 
+Do not reintroduce iCloud/ubiquity, CoreData, CloudKit, or temporary-directory
+cache fallback behavior unless that design is explicitly requested.
+
+## AI Configuration
+
+The current AI parser uses hosted DeepSeek through `AIParsingService`.
+
+Configure the API key in the app's AI Settings screen. The key is stored
+locally for personal use.
+
+## FamilySearch Workflow
+
+FamilySearch extraction is manual or user-triggered.
+
+Use the workflow in:
+
+```text
+Docs/familysearch-bookmarklet.md
+```
+
+The generated bookmarklet comes from `FamilySearchDOMService.makeBookmarklet()`.
+Do not maintain a second hand-written bookmarklet.
+
+## Validation
+
+Preferred checks for documentation-only changes:
+
+```bash
+git diff --check
+```
+
+Preferred checks for Swift source changes:
+
+```bash
+DEVELOPER_DIR="/Applications/Xcode-beta.app/Contents/Developer" xcodebuild test -project "Kalvian Roots.xcodeproj" -scheme "Kalvian Roots"
+git diff --check
+```
+
+When the full Xcode test suite is blocked by an unrelated stale test or local
+toolchain issue, run the most relevant targeted checks and report the exact
+blocker instead of silently skipping validation.
+
+## Test Locations
+
+- App tests: `Kalvian RootsTests`
+- UI tests: `Kalvian RootsUITests`
+- Swift package tests: `KalvianRootsCore/Tests`
+
+New comparison, parsing, or citation logic should include focused tests in the
+appropriate target.
+
+## Useful Inspection Commands
+
+```bash
+git status -sb
+rg --files -g '*.swift'
+rg --files -g '*.md'
+rg -n "PersonCandidate|PersonIdentity|FamilyComparisonResult"
+```
+
+Use `rg` before adding new logic so existing parsing, extraction, comparison,
+and citation helpers are reused instead of duplicated.

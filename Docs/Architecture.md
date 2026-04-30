@@ -10,8 +10,8 @@ Kalvian Roots is a genealogy comparison and citation system that integrates:
     2. Juuret Kälviällä reconstructed families
     3. HisKi parish records
 
-The system extracts, normalizes, compares, and presents evidence across
-these sources and proposes citations for user approval.
+The system extracts, converts, compares, and presents evidence across these
+sources and proposes citations for user approval.
 
 The system is built around a deterministic comparison pipeline, with AI
 used only where necessary to interpret complex historical text.
@@ -312,13 +312,15 @@ Services:
 
     AIParsingService
     HiskiService
-    FamilyResolver (future comparison/navigation)
+    FamilySearchDOMService
+    CitationGenerator
+    FamilyNetworkCache
 
 Utilities:
 
     DebugLogger
     FamilyIDs
-    FileManager
+    RootsFileManager
 
 
 File I/O
@@ -330,9 +332,16 @@ Primary file:
 
 Storage strategy:
 
-    - Prefer iCloud canonical location
-    - Fallback to local Documents copy
-    - Maintain synchronized local cache
+    - Prefer the local Documents copy of JuuretKälviällä.roots
+    - Allow explicit user selection when auto-load cannot find the file
+    - Preserve the canonical Juuret text exactly unless the user approves edits
+
+Family network cache:
+
+    - Stored locally in Application Support
+    - File name: families.json
+    - Schema-versioned JSON payload
+    - Treated as local durable machine state, not iCloud-synced data
 
 
 Testing Strategy
@@ -348,18 +357,31 @@ Each stage must be testable independently:
 
 Tests live in:
 
-    KalvianRootsTests
+    Kalvian RootsTests
+
+There are also Swift package test targets under:
+
+    KalvianRootsCore/Tests
+
+When the full Xcode scheme is blocked by an unrelated stale test or local
+toolchain issue, run the most relevant targeted checks and report the exact
+blocker.
 
 
 Future Enhancements
 -------------------
 
-    - Multiple spouse handling in HisKi queries
+    - Broader multiple spouse handling in HisKi queries
     - Missing marriage date fallback
     - Improved name normalization
-    - Automated FamilySearch navigation
-    - Cached family networks
+    - Additional user-driven FamilySearch extraction affordances
     - Multi-parish support (if needed)
+
+Completed or current capabilities:
+
+    - Multiple-spouse Juuret parsing and Kalvian Roots citation grouping
+    - Local durable family network cache
+    - FamilySearch bookmarklet extraction workflow
 
 
 Summary
@@ -377,4 +399,3 @@ Kalvian Roots is a hybrid system:
         - citation generation
 
 All actions remain user-controlled and auditable.
-

@@ -4,7 +4,8 @@ Kalvian Roots Implementation Plan
 Purpose
 -------
 
-This document describes the incremental plan for integrating:
+This document describes the incremental plan and current implementation status
+for integrating:
 
 1. FamilySearch family data
 2. Juuret Kälviällä reconstructed families
@@ -13,8 +14,9 @@ This document describes the incremental plan for integrating:
 The system will compare these sources and generate citation proposals.
 All citations require explicit user approval before insertion.
 
-The implementation is intentionally incremental. Each stage must work
-and be testable before proceeding to the next.
+The implementation is intentionally incremental. Each stage must work and be
+testable before proceeding to the next. Older stage text should be read as a
+planning record when the corresponding feature is already implemented.
 
 
 Guiding Principles
@@ -49,9 +51,8 @@ Guiding Principles
 
 6. Storage resilience
 
-   iCloud is preferred when available, but the app must not depend on
-   iCloud availability in order to run.
-   Local fallback copies are allowed.
+   The roots file and cache are local durable data on this machine.
+   The app must not depend on iCloud or temporary-directory fallback.
 
 
 Core Data Structures
@@ -178,14 +179,20 @@ Storage Rule
 
 JuuretKälviällä.roots is treated as:
 
-    iCloud preferred
-    local Documents fallback
+    local Documents canonical file
 
 The app must:
 
-    prefer the canonical iCloud copy when available
-    fall back to a local copy when iCloud is unavailable
-    avoid fatal errors caused solely by iCloud unavailability
+    load JuuretKälviällä.roots from local Documents when available
+    allow explicit user file selection when auto-load fails
+    preserve the canonical text unless the user approves edits
+
+Family network caches are local durable app data:
+
+    Application Support/Kalvian Roots/Cache/families.json
+
+Do not reintroduce iCloud/ubiquity, CoreData, CloudKit, or temporary cache
+fallback behavior without an explicit design change.
 
 
 Stage 1 – Extract FamilySearch Family
@@ -228,8 +235,9 @@ Extract
 
     birthDate
     childName
-    first couple
-    first couple marriage date
+    couples
+    couple marriage dates
+    spouse-specific child groups
 
 Output
 
@@ -237,9 +245,10 @@ Output
 
 Notes
 
-    The first couple is the only couple used for the initial HisKi
-    family-child query.
-    Multiple spouses are deferred.
+    Multiple-spouse Juuret families are part of the current model.
+    Children must remain grouped with the spouse/couple they belong to.
+    Do not flatten children across spouses when generating Kalvian Roots
+    citations.
 
 
 Stage 3 – Build HisKi Family-Child Query
@@ -247,8 +256,7 @@ Stage 3 – Build HisKi Family-Child Query
 
 Goal
 
-    Build a single HisKi query that retrieves the child set for the
-    first couple in the Juuret family.
+    Build HisKi queries that retrieve child sets for Juuret couples.
 
 Search scope
 
@@ -492,11 +500,22 @@ Future Enhancements
     fallback HisKi queries
     improved name equivalence learning
     missing marriage date handling
-    multiple spouses
+    broader multiple-spouse HisKi query coverage
     multi-region support
     spouse expansion
-    caching of previously visited families
-    automated traversal of FamilySearch families
+    cache inspection and maintenance tools
+    additional user-driven FamilySearch extraction affordances
+
+
+Current Implemented Capabilities
+--------------------------------
+
+    DeepSeek-backed Juuret parsing
+    multiple-spouse Juuret family parsing
+    spouse-specific Kalvian Roots citation grouping
+    local durable family network cache
+    FamilySearch bookmarklet extraction workflow
+    deterministic PersonCandidate → PersonIdentity comparison pipeline
 
 
 Development Order
@@ -512,4 +531,3 @@ Development Order
 8. Generate HisKi citation proposals
 9. Insert HisKi citations
 10. Generate Kalvian Roots citations
-

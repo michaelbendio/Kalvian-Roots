@@ -1,3 +1,27 @@
+Historical FamilySearch Integration Sketch
+==========================================
+
+Status
+------
+
+This document is an early design note. It records the original desired
+FamilySearch citation workflow and should not be treated as the current
+implementation contract.
+
+Current source-of-truth documents:
+
+    Docs/Architecture.md
+    Docs/implementation-plan.md
+    Docs/familysearch-bookmarklet.md
+
+Current FamilySearch extraction is manual or user-triggered through the local
+page and bookmarklet workflow. Do not implement automated crawling or hidden
+FamilySearch traversal from this sketch without a new approved design.
+
+
+Original Notes
+--------------
+
 The purpose of Kalvian Roots is to help the user to add source citations to FamilySearch. Source citations for a person are generated using data from Juuret Kälviällä. They will take the form of 
 Information on page 244 includes:
 Matti Erikinp., b. 14 March 1756
@@ -40,5 +64,4 @@ Click on the spouse name
 for each of the children
    click on the name, get the birth and death years
    Add the Kalvian Roots source citation()
-
 
