@@ -727,49 +727,39 @@ enum FamilySearchDOMService {
                 }
             }
 
+            async function extractChildDetailsFromPersonPage(summary) {
+                const notes = [];
+                const person = await visitPerson(summary.id);
+                const birth = { date: person.birthDate || null, place: person.birthPlace || null };
+                const death = { date: person.deathDate || null, place: person.deathPlace || null };
+
+                return {
+                    id: summary.id,
+                    name: person.name || summary.name,
+                    sex: summary.sex || null,
+                    summaryYears: summary.summaryYears || summary.lifeSpan || person.lifeSpan || null,
+                    birth,
+                    birthDate: birth.date,
+                    birthPlace: birth.place,
+                    christening: { date: null, place: null },
+                    christeningDate: null,
+                    christeningPlace: null,
+                    death,
+                    deathDate: death.date,
+                    deathPlace: death.place,
+                    burial: { date: null, place: null },
+                    burialDate: null,
+                    burialPlace: null,
+                    lifeSpan: person.lifeSpan || summary.lifeSpan || summary.summaryYears || null,
+                    extractionStatus: 'success',
+                    extractionNotes: notes
+                };
+            }
+
             async function extractChildDetails(summary) {
                 const notes = [];
                 try {
-                    const control = findChildControl(summary);
-                    if (!control) {
-                        throw new Error('child control not found for ' + summary.id);
-                    }
-
-                    const existingPanels = new Set(panelCandidatesFor(summary.id));
-                    control.scrollIntoView({ block: 'center', inline: 'nearest' });
-                    await sleep(150);
-                    control.click();
-
-                    const panel = await waitForChildPanel(summary.id, existingPanels);
-                    const birth = vitalFromPanel(panel, 'Birth');
-                    const christening = vitalFromPanel(panel, 'Christening');
-                    const death = vitalFromPanel(panel, 'Death');
-                    const burial = vitalFromPanel(panel, 'Burial');
-                    const sex = sexFromPanel(panel);
-                    closeChildPanel();
-                    await sleep(250);
-
-                    return {
-                        id: summary.id,
-                        name: summary.name,
-                        sex,
-                        summaryYears: summary.summaryYears || summary.lifeSpan || null,
-                        birth,
-                        birthDate: birth.date,
-                        birthPlace: birth.place,
-                        christening,
-                        christeningDate: christening.date,
-                        christeningPlace: christening.place,
-                        death,
-                        deathDate: death.date,
-                        deathPlace: death.place,
-                        burial,
-                        burialDate: burial.date,
-                        burialPlace: burial.place,
-                        lifeSpan: summary.lifeSpan || summary.summaryYears || null,
-                        extractionStatus: 'success',
-                        extractionNotes: notes
-                    };
+                    return await extractChildDetailsFromPersonPage(summary);
                 } catch (error) {
                     notes.push(clean(error && error.message));
                     console.warn('Kalvian Roots FamilySearch child extraction failed for ' + summary.id + ':', error);
