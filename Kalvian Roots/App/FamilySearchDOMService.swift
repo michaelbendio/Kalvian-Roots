@@ -516,6 +516,37 @@ enum FamilySearchDOMService {
                 return clean(element.innerText || element.textContent || '');
             }
 
+            function isEditControl(element) {
+                const label = clean(element.getAttribute('aria-label') || element.getAttribute('title') || element.textContent || '');
+                return /\\b(Edit|Pencil)\\b/i.test(label);
+            }
+
+            function childCardFor(element, id) {
+                let current = element;
+                while (current && current !== localDocument.body) {
+                    if (visibleText(current).includes(id)) {
+                        return current;
+                    }
+                    current = current.parentElement;
+                }
+                return null;
+            }
+
+            function clickableNameControl(summary) {
+                const scopedRoot = familyMembersSection() || localDocument;
+                const candidates = Array.from(scopedRoot.querySelectorAll('a,button,[role="button"],[tabindex],span,div'))
+                    .filter(element => {
+                        if (!visibleText(element).includes(summary.name)) return false;
+                        if (isEditControl(element)) return false;
+                        return !!childCardFor(element, summary.id);
+                    })
+                    .sort((a, b) => visibleText(a).length - visibleText(b).length);
+
+                const best = candidates[0];
+                if (!best) return null;
+                return best.closest('a,button,[role="button"],[tabindex]') || best;
+            }
+
             function candidateChildControls(id) {
                 const scopedRoot = familyMembersSection() || localDocument;
                 const selectors = [
@@ -528,22 +559,27 @@ enum FamilySearchDOMService {
                 const direct = selectors.flatMap(selector => Array.from(scopedRoot.querySelectorAll(selector)));
                 const byText = Array.from(scopedRoot.querySelectorAll('a,button,[role="button"],[tabindex]')).filter(element => {
                     const text = clean(element.getAttribute('aria-label') || element.textContent || '');
-                    return text.includes(id);
+                    return text.includes(id) && !isEditControl(element);
                 });
-                return Array.from(new Set(direct.concat(byText))).filter(element => visibleText(element));
+                return Array.from(new Set(direct.concat(byText))).filter(element => visibleText(element) && !isEditControl(element));
             }
 
             function findChildControl(summary) {
+                const nameControl = clickableNameControl(summary);
+                if (nameControl) {
+                    return nameControl;
+                }
+
                 const controls = candidateChildControls(summary.id);
                 if (controls.length > 0) {
-                    return controls.find(element => clean(element.textContent).includes(summary.name)) || controls[0];
+                    return controls.find(element => visibleText(element).includes(summary.name)) || controls[0];
                 }
 
                 const scopedRoot = familyMembersSection() || localDocument;
                 return Array.from(scopedRoot.querySelectorAll('a,button,[role="button"],[tabindex]'))
                     .find(element => {
                         const text = visibleText(element);
-                        return text.includes(summary.name) && text.includes(summary.id);
+                        return text.includes(summary.name) && text.includes(summary.id) && !isEditControl(element);
                     }) || null;
             }
 
@@ -987,16 +1023,21 @@ enum FamilySearchDOMService {
 
                     let spouse = selectedGroup.spouses.find(person => person.id !== normalizedPersonId) || null;
 
-                    const children = [];
-                    for (const summary of selectedGroup.children) {
-                        await sleep(250);
-                        children.push(await extractChildDetails(summary));
+                    const enrichedSpouseGroups = [];
+                    for (const group of spouseGroups) {
+                        const enrichedChildren = [];
+                        for (const summary of group.children) {
+                            await sleep(250);
+                            enrichedChildren.push(await extractChildDetails(summary));
+                        }
+                        enrichedSpouseGroups.push({
+                            ...group,
+                            children: enrichedChildren
+                        });
                     }
 
-                    spouseGroups[selectedGroupIndex] = {
-                        ...selectedGroup,
-                        children
-                    };
+                    const selectedEnrichedGroup = enrichedSpouseGroups[selectedGroupIndex];
+                    const children = selectedEnrichedGroup.children;
 
                     if (personIdFromURL() !== normalizedPersonId) {
                         await sleep(900);
@@ -1011,9 +1052,9 @@ enum FamilySearchDOMService {
                         sourceUrl: diagnostics.url,
                         focusPerson,
                         spouse,
-                        marriage: selectedGroup.marriage,
+                        marriage: selectedEnrichedGroup.marriage,
                         children,
-                        spouseGroups,
+                        spouseGroups: enrichedSpouseGroups,
                         status: 'success',
                         failureReason: null,
                         url: diagnostics.url,
@@ -1027,11 +1068,11 @@ enum FamilySearchDOMService {
                         spousesAndChildrenSectionFound: diagnostics.spousesAndChildrenSectionFound,
                         childrenMarkerCount: diagnostics.childrenMarkerCount,
                         rawCandidateChildCount,
-                        spouseGroupCount: spouseGroups.length,
+                        spouseGroupCount: enrichedSpouseGroups.length,
                         childCount: children.length,
-                        preferredChildCount: selectedGroup.children.length,
+                        preferredChildCount: selectedEnrichedGroup.children.length,
                         debugNotes: [
-                            'FamilySearch extraction finished: spouse groups ' + spouseGroups.length + ', preferred group children ' + selectedGroup.children.length
+                            'FamilySearch extraction finished: spouse groups ' + enrichedSpouseGroups.length + ', preferred group children ' + selectedEnrichedGroup.children.length
                         ]
                     };
 
