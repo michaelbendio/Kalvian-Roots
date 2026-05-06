@@ -16,13 +16,14 @@ final class FamilyResolverTests: XCTestCase {
     var nameEquivalenceManager: NameEquivalenceManager!
     var aiParsingService: AIParsingService!
     var cache: FamilyNetworkCache!
+    private var temporaryCacheDirectory: URL!
     
     override func setUp() async throws {
         try await super.setUp()
         fileManager = RootsFileManager()
         nameEquivalenceManager = NameEquivalenceManager()
         aiParsingService = AIParsingService()
-        cache = FamilyNetworkCache(rootsFileManager: fileManager)
+        cache = makeTestCache()
         
         resolver = FamilyResolver(
             aiParsingService: aiParsingService,
@@ -46,7 +47,19 @@ final class FamilyResolverTests: XCTestCase {
         nameEquivalenceManager = nil
         aiParsingService = nil
         cache = nil
+        if let temporaryCacheDirectory {
+            try? FileManager.default.removeItem(at: temporaryCacheDirectory)
+        }
+        temporaryCacheDirectory = nil
         try await super.tearDown()
+    }
+
+    private func makeTestCache() -> FamilyNetworkCache {
+        temporaryCacheDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("KalvianRootsTests-\(UUID().uuidString)", isDirectory: true)
+        let cacheFileURL = temporaryCacheDirectory.appendingPathComponent("families.json")
+        let store = PersistentFamilyNetworkStore(cacheFileURL: cacheFileURL)
+        return FamilyNetworkCache(persistenceStore: store)
     }
     
     // MARK: - Initialization Tests

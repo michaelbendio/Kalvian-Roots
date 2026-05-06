@@ -16,13 +16,14 @@ final class FamilyNetworkWorkflowTests: XCTestCase {
     var familyResolver: FamilyResolver!
     var fileManager: RootsFileManager!
     var aiParsingService: AIParsingService!
+    private var temporaryCacheDirectory: URL!
     
     override func setUp() async throws {
         try await super.setUp()
         fileManager = RootsFileManager()
         let nameEquivalenceManager = NameEquivalenceManager()
         aiParsingService = AIParsingService()
-        let cache = FamilyNetworkCache(rootsFileManager: fileManager)
+        let cache = makeTestCache()
         
         familyResolver = FamilyResolver(
             aiParsingService: aiParsingService,
@@ -48,7 +49,19 @@ final class FamilyNetworkWorkflowTests: XCTestCase {
         familyResolver = nil
         fileManager = nil
         aiParsingService = nil
+        if let temporaryCacheDirectory {
+            try? FileManager.default.removeItem(at: temporaryCacheDirectory)
+        }
+        temporaryCacheDirectory = nil
         try await super.tearDown()
+    }
+
+    private func makeTestCache() -> FamilyNetworkCache {
+        temporaryCacheDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("KalvianRootsTests-\(UUID().uuidString)", isDirectory: true)
+        let cacheFileURL = temporaryCacheDirectory.appendingPathComponent("families.json")
+        let store = PersistentFamilyNetworkStore(cacheFileURL: cacheFileURL)
+        return FamilyNetworkCache(persistenceStore: store)
     }
     
     // MARK: - FamilyNetwork Tests

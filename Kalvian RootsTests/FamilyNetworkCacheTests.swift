@@ -10,14 +10,24 @@ import XCTest
 final class FamilyNetworkCacheTests: XCTestCase {
 
     private var cache: FamilyNetworkCache!
+    private var temporaryCacheDirectory: URL!
 
     override func setUp() async throws {
         try await super.setUp()
-        cache = FamilyNetworkCache()
+
+        temporaryCacheDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("KalvianRootsTests-\(UUID().uuidString)", isDirectory: true)
+        let cacheFileURL = temporaryCacheDirectory.appendingPathComponent("families.json")
+        let store = PersistentFamilyNetworkStore(cacheFileURL: cacheFileURL)
+        cache = FamilyNetworkCache(persistenceStore: store)
     }
 
     override func tearDown() async throws {
         cache = nil
+        if let temporaryCacheDirectory {
+            try? FileManager.default.removeItem(at: temporaryCacheDirectory)
+        }
+        temporaryCacheDirectory = nil
         try await super.tearDown()
     }
 
