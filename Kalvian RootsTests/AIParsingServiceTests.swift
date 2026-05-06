@@ -12,14 +12,30 @@ import XCTest
 final class AIParsingServiceTests: XCTestCase {
     
     var service: AIParsingService!
+    private let apiKeyStorageKey = "AIService_DeepSeek_APIKey"
+    private var savedAPIKey: String?
     
     override func setUp() async throws {
         try await super.setUp()
+
+        let defaults = UserDefaults.standard
+        savedAPIKey = defaults.string(forKey: apiKeyStorageKey)
+        defaults.removeObject(forKey: apiKeyStorageKey)
+
         service = AIParsingService()
     }
     
     override func tearDown() async throws {
+        let defaults = UserDefaults.standard
+        if let savedAPIKey {
+            defaults.set(savedAPIKey, forKey: apiKeyStorageKey)
+        } else {
+            defaults.removeObject(forKey: apiKeyStorageKey)
+        }
+
         service = nil
+        savedAPIKey = nil
+
         try await super.tearDown()
     }
     
@@ -30,18 +46,18 @@ final class AIParsingServiceTests: XCTestCase {
         XCTAssertFalse(service.isConfigured, "Service should not be configured without API key")
     }
     
-    func testServiceConfiguration() {
+    func testServiceConfiguration() throws {
         // When: Setting an API key
-        service.setDeepSeekAPIKey("test-api-key")
+        try service.configure(apiKey: "test-api-key")
         
         // Then: Service should be configured
         XCTAssertTrue(service.isConfigured, "Service should be configured with API key")
         XCTAssertEqual(service.currentServiceName, "DeepSeek", "Should use DeepSeek by default")
     }
     
-    func testMultipleServiceTypes() {
+    func testMultipleServiceTypes() throws {
         // Test: Service can handle different AI providers
-        service.setDeepSeekAPIKey("deepseek-key")
+        try service.configure(apiKey: "deepseek-key")
         XCTAssertTrue(service.isConfigured, "Should configure DeepSeek")
         
         // Note: MLX services would be tested separately as they don't require API keys
@@ -49,7 +65,12 @@ final class AIParsingServiceTests: XCTestCase {
     
     func testEmptyAPIKeyDoesNotConfigure() {
         // When: Setting empty API key
-        service.setDeepSeekAPIKey("")
+        XCTAssertThrowsError(try service.configure(apiKey: "")) { error in
+            guard case AIServiceError.apiKeyMissing = error else {
+                XCTFail("Expected apiKeyMissing, got \(error)")
+                return
+            }
+        }
         
         // Then: Service should not be configured
         XCTAssertFalse(service.isConfigured, "Empty API key should not configure service")
@@ -80,8 +101,8 @@ final class AIParsingServiceTests: XCTestCase {
         XCTAssertEqual(service.currentServiceName, "DeepSeek", "Default service should be DeepSeek")
     }
     
-    func testServiceNameAfterConfiguration() {
-        service.setDeepSeekAPIKey("test-key")
+    func testServiceNameAfterConfiguration() throws {
+        try service.configure(apiKey: "test-key")
         XCTAssertEqual(service.currentServiceName, "DeepSeek", "Service name should match configured service")
     }
     
@@ -105,27 +126,32 @@ final class AIParsingServiceTests: XCTestCase {
     
     // MARK: - API Key Management Tests
     
-    func testAPIKeyCanBeChanged() {
+    func testAPIKeyCanBeChanged() throws {
         // When: Setting initial key
-        service.setDeepSeekAPIKey("key1")
+        try service.configure(apiKey: "key1")
         XCTAssertTrue(service.isConfigured)
         
         // When: Changing key
-        service.setDeepSeekAPIKey("key2")
+        try service.configure(apiKey: "key2")
         
         // Then: Service should remain configured
         XCTAssertTrue(service.isConfigured, "Service should remain configured with new key")
     }
     
-    func testAPIKeyCanBeCleared() {
+    func testEmptyAPIKeyDoesNotClearExistingConfiguration() throws {
         // Given: Configured service
-        service.setDeepSeekAPIKey("test-key")
+        try service.configure(apiKey: "test-key")
         XCTAssertTrue(service.isConfigured)
         
-        // When: Clearing key
-        service.setDeepSeekAPIKey("")
+        // When: Attempting to configure with an empty key
+        XCTAssertThrowsError(try service.configure(apiKey: "")) { error in
+            guard case AIServiceError.apiKeyMissing = error else {
+                XCTFail("Expected apiKeyMissing, got \(error)")
+                return
+            }
+        }
         
-        // Then: Service should be unconfigured
-        XCTAssertFalse(service.isConfigured, "Service should be unconfigured after clearing key")
+        // Then: Existing configuration remains intact; the app has no clear-key API.
+        XCTAssertTrue(service.isConfigured, "Empty key should not clear an existing configuration")
     }
 }
