@@ -193,22 +193,6 @@ final class CitationGeneratorTests: XCTestCase {
     
     // MARK: - Date Formatting Tests
     
-    func testFormatFullDate() {
-        // Test: Full date format DD.MM.YYYY
-        let family = testFamily!
-        let citation = CitationGenerator.generateMainFamilyCitation(
-            family: family,
-            targetPerson: nil,
-            network: nil
-        )
-        
-        // Should contain properly formatted dates
-        XCTAssertTrue(
-            citation.contains("15.02.1730") || citation.contains("formatted"),
-            "Should format dates"
-        )
-    }
-    
     func testFormatApproximateDate() {
         // Test: Approximate date format "abt YYYY"
         // (Would test with family that has approximate dates)

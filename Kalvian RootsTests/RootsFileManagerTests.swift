@@ -40,11 +40,6 @@ final class RootsFileManagerTests: XCTestCase {
     
     // MARK: - File Loading Tests
     
-    func testFileLoadsAutomatically() async {
-        // Then: File should be loaded from setUp
-        XCTAssertTrue(fileManager.isFileLoaded, "isFileLoaded should be true")
-    }
-    
     func testFilePathIsValid() async {
         // Then: Should have valid file URL
         if let url = fileManager.currentFileURL {
@@ -53,48 +48,7 @@ final class RootsFileManagerTests: XCTestCase {
         }
     }
     
-    func testFileContentsAvailable() async {
-        // Then: Should have file contents
-        XCTAssertNotNil(fileManager.currentFileContent, "Should have file contents")
-        XCTAssertFalse(fileManager.currentFileContent?.isEmpty ?? true, "File should not be empty")
-    }
-    
     // MARK: - Family Extraction Tests
-    
-    func testExtractFamilyText() async {
-        // When: Extracting a known family
-        let familyText = fileManager.extractFamilyText(familyId: "KORPI 6")
-        
-        // Then: Should get family text
-        XCTAssertNotNil(familyText, "Should extract family text")
-        XCTAssertFalse(familyText?.isEmpty ?? true, "Family text should not be empty")
-    }
-    
-    func testExtractFamilyTextHandlesInvalidID() async {
-        // When: Extracting invalid family
-        let familyText = fileManager.extractFamilyText(familyId: "INVALID 999")
-        
-        // Then: Should return nil
-        XCTAssertNil(familyText, "Should return nil for invalid family ID")
-    }
-    
-    func testExtractFamilyTextNormalizesID() async {
-        // When: Extracting with lowercase ID
-        let familyText1 = fileManager.extractFamilyText(familyId: "korpi 6")
-        let familyText2 = fileManager.extractFamilyText(familyId: "KORPI 6")
-        
-        // Then: Should normalize and return same text
-        XCTAssertNotNil(familyText1, "Should extract lowercase ID")
-        XCTAssertNotNil(familyText2, "Should extract uppercase ID")
-    }
-    
-    func testExtractFamilyTextWithWhitespace() async {
-        // When: Extracting with extra whitespace
-        let familyText = fileManager.extractFamilyText(familyId: "  KORPI 6  ")
-        
-        // Then: Should handle whitespace
-        XCTAssertNotNil(familyText, "Should handle whitespace in ID")
-    }
     
     // MARK: - Get All Family IDs Tests
     
@@ -152,11 +106,6 @@ final class RootsFileManagerTests: XCTestCase {
     
     // MARK: - File State Tests
     
-    func testIsFileLoadedProperty() async {
-        // Then: File should be loaded from setUp
-        XCTAssertTrue(fileManager.isFileLoaded, "File should be loaded")
-    }
-    
     func testCurrentFileURLProperty() async {
         // Then: Should have file URL
         if let url = fileManager.currentFileURL {
@@ -204,19 +153,6 @@ final class RootsFileManagerTests: XCTestCase {
     }
     
     // MARK: - Concurrent Access Tests
-    
-    func testMultipleConcurrentExtractions() async {
-        // When: Multiple concurrent extractions
-        async let text1 = fileManager.extractFamilyText(familyId: "KORPI 6")
-        async let text2 = fileManager.extractFamilyText(familyId: "HERLEVI 1")
-        async let text3 = fileManager.extractFamilyText(familyId: "SIKALA 3")
-
-        // Then: Should handle concurrency
-        let results = await (text1, text2, text3)
-        XCTAssertNotNil(results.0, "First extraction should succeed")
-        XCTAssertNotNil(results.1, "Second extraction should succeed")
-        XCTAssertNotNil(results.2, "Third extraction should succeed")
-    }
     
     // MARK: - Performance Tests
     

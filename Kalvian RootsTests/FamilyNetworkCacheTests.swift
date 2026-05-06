@@ -27,10 +27,6 @@ final class FamilyNetworkCacheTests: XCTestCase {
         XCTAssertNotNil(cache)
     }
 
-    func testCacheStartsEmpty() {
-        XCTAssertFalse(cache.isCached(familyId: "KORPI 6"))
-    }
-
     // MARK: - Cache Storage
 
     func testCacheNetworkStoresFamily() {

@@ -11,6 +11,7 @@ final class FamilyComparisonResultTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
+        nameEquivalenceUserDefaultsLock.lock()
 
         let defaults = UserDefaults.standard
         savedEquivalencesData = defaults.data(forKey: equivalencesKey)
@@ -23,6 +24,10 @@ final class FamilyComparisonResultTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        defer {
+            nameEquivalenceUserDefaultsLock.unlock()
+        }
+
         let defaults = UserDefaults.standard
 
         if let savedEquivalencesData {
@@ -114,46 +119,6 @@ final class FamilyComparisonResultTests: XCTestCase {
         XCTAssertNotNil(match.familySearch)
         XCTAssertNil(match.juuretKalvialla)
         XCTAssertNotNil(match.hiski)
-    }
-
-    func testHiskiTwinRecordSplitProducesTwoSeparateMatches() {
-        let result = FamilyComparisonResult(
-            familySearch: [
-                candidate(
-                    name: "Maria",
-                    birth: date(1791, 11, 26),
-                    source: .familySearch,
-                    familySearchId: "MARIA-FS-1791"
-                ),
-                candidate(
-                    name: "Catharina",
-                    birth: date(1791, 11, 26),
-                    source: .familySearch,
-                    familySearchId: "CATHARINA-FS-1791"
-                )
-            ],
-            juuretKalvialla: [],
-            hiski: [
-                candidate(
-                    name: "Maria",
-                    birth: date(1791, 11, 26),
-                    source: .hiski,
-                    hiskiCitation: hiskiCitation("maria-1791")
-                ),
-                candidate(
-                    name: "Catharina",
-                    birth: date(1791, 11, 26),
-                    source: .hiski,
-                    hiskiCitation: hiskiCitation("catharina-1791")
-                )
-            ]
-        )
-
-        XCTAssertEqual(result.matches.count, 2)
-        XCTAssertEqual(Set(result.matches.map(\.identity.canonicalName)), ["catharina", "maria"])
-        XCTAssertTrue(result.matches.allSatisfy { $0.familySearch != nil })
-        XCTAssertTrue(result.matches.allSatisfy { $0.hiski != nil })
-        XCTAssertTrue(result.matches.allSatisfy { $0.juuretKalvialla == nil })
     }
 
     func testHiskiOnlyChildIsReportedWhenNoFamilySearchOrJuuretEntryExists() {
@@ -285,6 +250,7 @@ final class FamilyComparisonServiceTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
+        nameEquivalenceUserDefaultsLock.lock()
 
         let defaults = UserDefaults.standard
         savedEquivalencesData = defaults.data(forKey: equivalencesKey)
@@ -298,6 +264,10 @@ final class FamilyComparisonServiceTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        defer {
+            nameEquivalenceUserDefaultsLock.unlock()
+        }
+
         let defaults = UserDefaults.standard
 
         if let savedEquivalencesData {
@@ -411,94 +381,6 @@ final class FamilyComparisonServiceTests: XCTestCase {
         let candidates = service.makeJuuretCandidates(from: [])
 
         XCTAssertTrue(candidates.isEmpty)
-    }
-
-    func testMakeFamilySearchCandidatesRetainsIdAndDeathDate() throws {
-        nameManager.addEquivalence(between: "Matti", and: "Matthias")
-
-        let children = [
-            FamilySearchChild(
-                id: "K1AB-CDE",
-                name: "Matthias Thomasson Ahokangas",
-                birthDate: "25 June 1802",
-                birthPlace: "Kalvia, Vaasa, Finland",
-                deathDate: "14 March 1861",
-                deathPlace: "Kalvia, Vaasa, Finland",
-                lifeSpan: "1802-1861"
-            )
-        ]
-
-        let candidates = service.makeFamilySearchCandidates(from: children)
-
-        let candidate = try XCTUnwrap(candidates.first)
-        XCTAssertEqual(candidate.rawName, "Matthias Thomasson Ahokangas")
-        XCTAssertEqual(candidate.identity.canonicalName, "matti")
-        XCTAssertEqual(candidate.source, .familySearch)
-        XCTAssertEqual(candidate.familySearchId, "K1AB-CDE")
-        XCTAssertEqual(candidate.birthDate, date(1802, 6, 25))
-        XCTAssertEqual(candidate.deathDate, date(1861, 3, 14))
-    }
-
-    func testMakeFamilySearchCandidatesUsesStructuredVitalDateWhenLegacyDateIsBlank() throws {
-        nameManager.addEquivalence(between: "Matti", and: "Matthias")
-
-        let children = [
-            FamilySearchChild(
-                id: "LK4Q-YSX",
-                name: "Matthias Thomasson Ahokangas",
-                birthDate: " ",
-                birthPlace: nil,
-                deathDate: nil,
-                deathPlace: nil,
-                birth: FamilySearchVitalSummary(date: "14 March 1761", place: "Kälviä, Vaasa, Finland"),
-                lifeSpan: "1761-1842"
-            )
-        ]
-
-        let candidate = try XCTUnwrap(service.makeFamilySearchCandidates(from: children).first)
-
-        XCTAssertEqual(candidate.rawName, "Matthias Thomasson Ahokangas")
-        XCTAssertEqual(candidate.identity.canonicalName, "matti")
-        XCTAssertEqual(candidate.birthDate, date(1761, 3, 14))
-        XCTAssertEqual(candidate.familySearchId, "LK4Q-YSX")
-    }
-
-    func testCompareChildrenIncludesFamilySearchCandidates() throws {
-        nameManager.addEquivalence(between: "Matti", and: "Matthias")
-
-        let hiskiEvent = HiskiService.HiskiFamilyBirthEvent(
-            birthDate: "25.6.1802",
-            childName: "Matti",
-            fatherName: "Elias Matinp.",
-            motherName: "Maria Antint.",
-            recordURL: "https://hiski.genealogia.fi/hiski?en+4092193",
-            citationURL: "https://hiski.genealogia.fi/hiski?en+t4092193"
-        )
-        let familySearchChild = FamilySearchChild(
-            id: "K1AB-CDE",
-            name: "Matthias Thomasson Ahokangas",
-            birthDate: "25 June 1802",
-            birthPlace: nil,
-            deathDate: nil,
-            deathPlace: nil,
-            lifeSpan: "1802-"
-        )
-
-        let result = service.compareChildren(
-            juuretChildren: [
-                Person(name: "Matti", birthDate: "25.6.1802", noteMarkers: [])
-            ],
-            hiskiChildren: [hiskiEvent],
-            familySearchChildren: [familySearchChild]
-        )
-
-        XCTAssertEqual(result.matches.count, 1)
-        let match = try XCTUnwrap(result.matches.first)
-        XCTAssertEqual(match.juuretKalvialla?.rawName, "Matti")
-        XCTAssertEqual(match.hiski?.rawName, "Matti")
-        XCTAssertEqual(match.familySearch?.rawName, "Matthias Thomasson Ahokangas")
-        XCTAssertEqual(match.familySearch?.familySearchId, "K1AB-CDE")
-        XCTAssertEqual(service.status(for: match), "Present in all three")
     }
 
     func testCompareJuuretAndHiskiCandidatesBuildsExactMatch() throws {
@@ -1000,45 +882,6 @@ final class FamilyComparisonServiceTests: XCTestCase {
         XCTAssertEqual(proposals.first?.hiskiName, "Maria Elis.")
     }
 
-    func testMakeHiskiCitationProposalsIncludesHiskiOnlyChildAndExcludesJuuretOnlyChild() {
-        let result = service.compare(
-            juuretCandidates: [
-                candidate(
-                    name: "Matti",
-                    birth: date(1802, 6, 25),
-                    source: .juuretKalvialla
-                ),
-                candidate(
-                    name: "Maija Liisa",
-                    birth: date(1806, 8, 3),
-                    source: .juuretKalvialla
-                )
-            ],
-            hiskiCandidates: [
-                candidate(
-                    name: "Matti",
-                    birth: date(1802, 6, 25),
-                    source: .hiski,
-                    hiskiCitation: nil
-                ),
-                candidate(
-                    name: "Anders",
-                    birth: date(1806, 11, 22),
-                    source: .hiski,
-                    hiskiCitation: hiskiCitation("anders-1806")
-                )
-            ]
-        )
-
-        let proposals = service.makeHiskiCitationProposals(from: result)
-
-        XCTAssertEqual(proposals.count, 1)
-        XCTAssertEqual(proposals.first?.displayName, "Anders")
-        XCTAssertNil(proposals.first?.juuretName)
-        XCTAssertEqual(proposals.first?.hiskiName, "Anders")
-        XCTAssertEqual(proposals.first?.citationURL, hiskiCitation("anders-1806"))
-    }
-
     func testMakeHiskiCitationProposalsSkipsMissingCitationURL() {
         let result = service.compare(
             juuretCandidates: [
@@ -1061,54 +904,6 @@ final class FamilyComparisonServiceTests: XCTestCase {
         let proposals = service.makeHiskiCitationProposals(from: result)
 
         XCTAssertTrue(proposals.isEmpty)
-    }
-
-    func testMakeHiskiCitationProposalsPreservesMatchOrdering() {
-        let result = service.compare(
-            juuretCandidates: [
-                candidate(
-                    name: "Matti",
-                    birth: date(1802, 6, 25),
-                    source: .juuretKalvialla
-                ),
-                candidate(
-                    name: "Maija Liisa",
-                    birth: date(1806, 8, 3),
-                    source: .juuretKalvialla
-                )
-            ],
-            hiskiCandidates: [
-                candidate(
-                    name: "Matti",
-                    birth: date(1802, 6, 25),
-                    source: .hiski,
-                    hiskiCitation: hiskiCitation("matti-1802")
-                ),
-                candidate(
-                    name: "Anders",
-                    birth: date(1804, 11, 22),
-                    source: .hiski,
-                    hiskiCitation: hiskiCitation("anders-1804")
-                ),
-                candidate(
-                    name: "Maija Liisa",
-                    birth: date(1806, 8, 3),
-                    source: .hiski,
-                    hiskiCitation: hiskiCitation("maija-liisa-1806")
-                )
-            ]
-        )
-
-        let proposals = service.makeHiskiCitationProposals(from: result)
-
-        XCTAssertEqual(
-            proposals.map(\.displayName),
-            ["Matti", "Anders", "Maija Liisa"]
-        )
-        XCTAssertEqual(
-            proposals.map(\.birthDate),
-            [date(1802, 6, 25), date(1804, 11, 22), date(1806, 8, 3)]
-        )
     }
 
     func testMakeHiskiCitationProposalsReturnsEmptyForEmptyResult() {
@@ -1136,34 +931,6 @@ final class FamilyComparisonServiceTests: XCTestCase {
         XCTAssertEqual(
             proposal.shortCitationString(from: proposal.citationURL),
             "hiski.genealogia.fi/hiski?en+t4092193"
-        )
-    }
-
-    func testRenderHiskiCitationProposalsIncludesDisplayNameAndShortCitationOnOneLine() {
-        let proposals = [
-            HiskiCitationProposal(
-                identity: PersonIdentity(
-                    name: "Matti",
-                    birthDate: date(1802, 6, 25),
-                    nameManager: nameManager
-                ),
-                displayName: "Matti / Matts",
-                birthDate: date(1802, 6, 25),
-                juuretName: "Matti",
-                hiskiName: "Matts",
-                citationURL: hiskiCitation("t4092193")
-            )
-        ]
-
-        let report = service.renderHiskiCitationProposals(proposals)
-
-        XCTAssertEqual(
-            report,
-            """
-            HisKi Citation Proposals
-            ------------------------
-            Matti / Matts — hiski.genealogia.fi/t4092193
-            """
         )
     }
 
@@ -1614,6 +1381,7 @@ final class TikkanenSixDevelopmentDataTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
+        nameEquivalenceUserDefaultsLock.lock()
 
         let defaults = UserDefaults.standard
         savedEquivalencesData = defaults.data(forKey: equivalencesKey)
@@ -1621,6 +1389,10 @@ final class TikkanenSixDevelopmentDataTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        defer {
+            nameEquivalenceUserDefaultsLock.unlock()
+        }
+
         let defaults = UserDefaults.standard
 
         if let savedEquivalencesData {

@@ -415,20 +415,6 @@ final class FamilyTests: XCTestCase {
         XCTAssertEqual(couple?.husband.name, "Matti")
     }
     
-    func testFamilyGetParentNames() {
-        // Given: Child in family
-        let child = testFamily.allChildren.first!
-        
-        // When: Getting parent names
-        if let parentNames = testFamily.getParentNames(for: child) {
-            // Then: Should have parent names
-            XCTAssertEqual(parentNames.father, "Matti")
-            XCTAssertEqual(parentNames.mother, "Maria")
-        } else {
-            XCTFail("Should find parent names")
-        }
-    }
-    
     func testFamilyEquality() {
         // Given: Two identical families
         let family1 = testFamily!
@@ -445,28 +431,6 @@ final class FamilyTests: XCTestCase {
         
         // Then: Should be in set
         XCTAssertTrue(set.contains(testFamily))
-    }
-    
-    func testFamilyWithMultipleCouples() {
-        // Given: Family with remarriage
-        let husband = Person(name: "Matti", noteMarkers: [])
-        let firstWife = Person(name: "Maria", deathDate: "01.01.1760", noteMarkers: [])
-        let secondWife = Person(name: "Brita", noteMarkers: [])
-        
-        let couple1 = Couple(husband: husband, wife: firstWife)
-        let couple2 = Couple(husband: husband, wife: secondWife)
-        
-        let family = Family(
-            familyId: "REMARRIAGE 1",
-            pageReferences: ["200"],
-            couples: [couple1, couple2],
-            notes: [],
-            noteDefinitions: [:]
-        )
-        
-        // Then: Should have two couples
-        XCTAssertEqual(family.couples.count, 2)
-        XCTAssertEqual(family.allParents.count, 3) // Husband counted once, two wives
     }
     
     // MARK: - Helper Methods

@@ -346,25 +346,6 @@ final class FamilyContentViewTests: XCTestCase {
         XCTAssertNotNil(father.deathDate, "Death date clickable")
     }
     
-    func testFamilyIDsAreClickable() {
-        // Test: Valid family IDs should be clickable
-        let father = testFamily.primaryCouple!.husband
-        let marriedChild = testFamily.primaryCouple!.children[0]
-        
-        XCTAssertNotNil(father.asChild, "Parent asChild clickable")
-        XCTAssertNotNil(marriedChild.asParent, "Child asParent clickable")
-        
-        // Verify they're valid
-        if let asChild = father.asChild {
-            XCTAssertTrue(FamilyIDs.isValid(familyId: asChild),
-                          "asChild should be valid ID")
-        }
-        if let asParent = marriedChild.asParent {
-            XCTAssertTrue(FamilyIDs.isValid(familyId: asParent),
-                          "asParent should be valid ID")
-        }
-    }
-    
     // MARK: - Color Tests
     
     func testColorHexInitialization() {

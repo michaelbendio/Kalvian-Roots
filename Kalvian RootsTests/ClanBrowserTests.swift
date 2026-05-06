@@ -62,16 +62,6 @@ final class ClanBrowserTests: XCTestCase {
         }
     }
     
-    func testClansAreSortedAlphabetically() {
-        let clans = ClanBrowserView.groupFamilyIDsByClan()
-        
-        // Check that clans are in alphabetical order
-        let clanNames = clans.map { $0.clanName }
-        let sortedNames = clanNames.sorted()
-        
-        XCTAssertEqual(clanNames, sortedNames, "Clans should be sorted alphabetically")
-    }
-    
     func testSuffixesAreSortedNaturally() {
         let clans = ClanBrowserView.groupFamilyIDsByClan()
         

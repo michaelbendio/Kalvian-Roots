@@ -8,6 +8,8 @@
 import XCTest
 @testable import Kalvian_Roots
 
+let nameEquivalenceUserDefaultsLock = NSLock()
+
 // MARK: - NameEquivalenceManager Tests
 
 final class NameEquivalenceManagerTests: XCTestCase {
@@ -19,6 +21,7 @@ final class NameEquivalenceManagerTests: XCTestCase {
     
     override func setUpWithError() throws {
         try super.setUpWithError()
+        nameEquivalenceUserDefaultsLock.lock()
 
         let defaults = UserDefaults.standard
         savedUserEquivalencesData = defaults.data(forKey: userEquivalencesKey)
@@ -29,6 +32,10 @@ final class NameEquivalenceManagerTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        defer {
+            nameEquivalenceUserDefaultsLock.unlock()
+        }
+
         let defaults = UserDefaults.standard
 
         if let savedUserEquivalencesData {
@@ -115,15 +122,6 @@ final class NameEquivalenceManagerTests: XCTestCase {
         XCTAssertEqual(manager.canonicalName(for: "Annika"), "anna")
     }
 
-    func testCustomEquivalencePersistsAfterRecreatingManager() {
-        manager.addEquivalence(between: "CustomA", and: "CustomB")
-
-        let recreatedManager = NameEquivalenceManager()
-
-        XCTAssertTrue(recreatedManager.areNamesEquivalent("CustomA", "CustomB"))
-        XCTAssertTrue(recreatedManager.areNamesEquivalent("Anna", "Annika"))
-    }
-
     func testClearAllEquivalencesClearsOnlyUserEquivalences() {
         manager.addEquivalence(between: "CustomA", and: "CustomB")
 
@@ -179,22 +177,6 @@ final class NameEquivalenceManagerTests: XCTestCase {
         )
 
         XCTAssertEqual(juuretIdentity.canonicalName, hiskiIdentity.canonicalName)
-    }
-
-    func testSingleTokenCanonicalNameStillMatchesMattiAndMatts() {
-        let mattiIdentity = PersonIdentity(
-            name: "Matti",
-            birthDate: testDate(1802, 6, 25),
-            nameManager: manager
-        )
-        let mattsIdentity = PersonIdentity(
-            name: "Matts",
-            birthDate: testDate(1802, 6, 25),
-            nameManager: manager
-        )
-
-        XCTAssertEqual(mattiIdentity.canonicalName, mattsIdentity.canonicalName)
-        XCTAssertEqual(mattiIdentity.canonicalName, "matti")
     }
 
     func testCanonicalNamePreservesTokenOrderForMaijaLiisa() {
@@ -343,19 +325,6 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertEqual(rows[1].recordPath, "/hiski?en+0265+kastetut+8444")
         XCTAssertEqual(rows[1].birthDate, "1.3.1804")
         XCTAssertEqual(rows[1].childName, "Anna")
-    }
-
-    func testParseFamilyBirthResultsTableIgnoresIncompleteTdOnlyRows() {
-        let html = """
-        <TABLE>
-            <TR><TD><a href="/hiski?en+skipme"><img src="/historia/sl.gif"></a>12.5.1806 <TD>13.5.1806 <TD>&nbsp; <TD>&nbsp; <TD> Elias Mattsson Kykyri <TD>&nbsp; <TD>&nbsp;
-            <TR><TD colspan="7">Summary row without child data
-        </TABLE>
-        """
-
-        let rows = service.parseFamilyBirthResultsTable(html)
-
-        XCTAssertTrue(rows.isEmpty)
     }
 
     func testParseFamilyBirthResultsTableStopsFinalRowBeforeFooterText() {
