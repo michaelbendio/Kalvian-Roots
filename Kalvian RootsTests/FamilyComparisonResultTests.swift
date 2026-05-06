@@ -1407,7 +1407,8 @@ final class TikkanenSixDevelopmentDataTests: XCTestCase {
     func testTikkanenSixDevelopmentGroupsAreBuiltPerCouple() throws {
         let groups = TikkanenSixDevelopmentData.makeComparisonGroups(
             for: makeTikkanenSixFamily(),
-            nameManager: NameEquivalenceManager()
+            nameManager: NameEquivalenceManager(),
+            familySearchChildrenByCouple: makeTikkanenSixFamilySearchChildrenByCouple()
         )
 
         XCTAssertEqual(groups.count, 3)
@@ -1430,7 +1431,8 @@ final class TikkanenSixDevelopmentDataTests: XCTestCase {
                 nameManager: NameEquivalenceManager(),
                 hiskiRowsByCouple: [
                     2: makeMariaHiskiRows(couple: family.couples[2])
-                ]
+                ],
+                familySearchChildrenByCouple: makeTikkanenSixFamilySearchChildrenByCouple()
             ).last
         )
 
@@ -1447,11 +1449,163 @@ final class TikkanenSixDevelopmentDataTests: XCTestCase {
         XCTAssertEqual(abrahamRow.hiski?.rawName, "Abram")
     }
 
+    func testTikkanenSixUsesExtractedFamilySearchChildrenWhenProvided() throws {
+        let family = makeTikkanenSixFamily()
+        let mariaGroup = try XCTUnwrap(
+            TikkanenSixDevelopmentData.makeComparisonGroups(
+                for: family,
+                nameManager: NameEquivalenceManager(),
+                hiskiRowsByCouple: [
+                    2: makeMariaHiskiRows(couple: family.couples[2])
+                ],
+                familySearchChildrenByCouple: [
+                    2: [
+                        FamilySearchChild(
+                            id: "FS-MICHEL",
+                            name: "Michel Tikkanen",
+                            birthDate: "1757"
+                        )
+                    ]
+                ]
+            ).last
+        )
+
+        let mikkoRow = try XCTUnwrap(mariaGroup.result.rows.first {
+            $0.juuretKalvialla?.rawName == "Mikko"
+        })
+        XCTAssertEqual(mikkoRow.familySearch?.familySearchId, "FS-MICHEL")
+        XCTAssertEqual(mikkoRow.familySearch?.rawName, "Michel Tikkanen")
+        XCTAssertNil(mariaGroup.result.rows.first {
+            $0.familySearch?.rawName == "Gustaf Tikkanen"
+        })
+    }
+
+    func testFamilySearchSpouseGroupsAreMatchedToTikkanenCouplesBySpecificParentId() throws {
+        let family = makeTikkanenSixFamily()
+        var extraction = FamilySearchFamilyExtraction(
+            sourcePersonId: "K2YQ-1ZY",
+            children: []
+        )
+        extraction.status = "success"
+        extraction.spouseGroups = [
+            spouseGroup(
+                wifeId: "K8CD-718",
+                child: FamilySearchChild(id: "MARIA-CHILD", name: "Maria child", birthDate: "1755")
+            ),
+            spouseGroup(
+                wifeId: "GMQH-8GF",
+                child: FamilySearchChild(id: "ANNA-CHILD", name: "Anna child", birthDate: "1747")
+            ),
+            spouseGroup(
+                wifeId: "K2YQ-18B",
+                child: FamilySearchChild(id: "ANNIKA-CHILD", name: "Annika child", birthDate: "1739")
+            )
+        ]
+
+        let matches = TikkanenSixDevelopmentData.matchFamilySearchChildrenByCouple(
+            for: family,
+            extraction: extraction
+        )
+
+        XCTAssertEqual(matches.map { $0.children.first?.id }, [
+            "ANNIKA-CHILD",
+            "ANNA-CHILD",
+            "MARIA-CHILD"
+        ])
+        XCTAssertTrue(matches[0].debugSummary.contains("K2YQ-18B"))
+        XCTAssertTrue(matches[1].debugSummary.contains("GMQH-8GF"))
+        XCTAssertTrue(matches[2].debugSummary.contains("K8CD-718"))
+    }
+
+    func testFamilySearchSpouseGroupsDoNotMatchMultiCoupleFamilyBySharedParentOnly() throws {
+        var family = makeTikkanenSixFamily()
+        for index in family.couples.indices {
+            family.couples[index].wife.familySearchId = nil
+        }
+
+        var extraction = FamilySearchFamilyExtraction(
+            sourcePersonId: "K2YQ-1ZY",
+            children: []
+        )
+        extraction.status = "success"
+        extraction.spouseGroups = [
+            FamilySearchSpouseGroup(
+                spouses: [
+                    FamilySearchPersonSummary(id: "K2YQ-1ZY", name: "Erik Johansson Tikkanen")
+                ],
+                marriage: nil,
+                declaredChildCount: 1,
+                children: [FamilySearchChild(id: "AMBIGUOUS", name: "Ambiguous child", birthDate: "1739")],
+                isPreferred: false
+            )
+        ]
+
+        let matches = TikkanenSixDevelopmentData.matchFamilySearchChildrenByCouple(
+            for: family,
+            extraction: extraction
+        )
+
+        XCTAssertTrue(matches.allSatisfy { $0.children.isEmpty })
+        XCTAssertTrue(matches.allSatisfy {
+            $0.debugSummary.contains("no unused spouse group contains a couple-specific FamilySearch ID")
+        })
+    }
+
     private func makeMariaHiskiRows(couple: Couple) -> [HiskiService.HiskiFamilyBirthRow] {
         [
             hiskiRow("05.03.1757", "Michel", couple),
             hiskiRow("25.11.1774", "Abram", couple)
         ]
+    }
+
+    private func makeTikkanenSixFamilySearchChildrenByCouple() -> [Int: [FamilySearchChild]] {
+        [
+            0: [
+                familySearchChild(id: "LXSP-RTS", name: "Tikkanen", birthDate: "1739", deathDate: "1739"),
+                familySearchChild(id: "LXSP-T4T", name: "Carin Tikkanen", birthDate: "1740", deathDate: "1740")
+            ],
+            1: [
+                familySearchChild(id: "M88C-9G5", name: "Elisabeth Tikkanen", birthDate: "1747", deathDate: "1747"),
+                familySearchChild(id: "M8ZT-H6K", name: "Anna Eriksson", birthDate: "1748"),
+                familySearchChild(id: "M8ZP-9VD", name: "Brita Eriksson", birthDate: "20.05.1750", deathDate: "1750"),
+                familySearchChild(id: "M88M-KZZ", name: "Johannes Eriksson", birthDate: "27.11.1751"),
+                familySearchChild(id: "M8ZL-2C1", name: "Erik Eriksson", birthDate: "06.02.1753", deathDate: "03.06.1785")
+            ],
+            2: [
+                familySearchChild(id: "M8Z1-C8M", name: "Elias Tikkanen", birthDate: "1755", deathDate: "1755"),
+                familySearchChild(id: "M8ZN-Q6S", name: "Matts Tikkanen", birthDate: "1755", deathDate: "1755"),
+                familySearchChild(id: "LHH6-W2P", name: "Matts Tikkanen", birthDate: "14.03.1756", deathDate: "1829"),
+                familySearchChild(id: "M8ZB-PGR", name: "Michel Tikkanen", birthDate: "05.03.1757", deathDate: "1809"),
+                familySearchChild(id: "M883-K1G", name: "Gustaf Tikkanen", birthDate: "1758", deathDate: "1758"),
+                familySearchChild(id: "K2TZ-DY4", name: "Gustav Tikkanen", birthDate: "13.09.1759", deathDate: "1825"),
+                familySearchChild(id: "KHM5-VHL", name: "Elias Tikkanen", birthDate: "14.12.1760"),
+                familySearchChild(id: "M88Z-4M5", name: "Jacob Eriksson", birthDate: "1762", deathDate: "1762"),
+                familySearchChild(id: "M8Z5-CXJ", name: "Brita Tikkanen", birthDate: "04.12.1763"),
+                familySearchChild(id: "M887-WG3", name: "Anders Eriksson Tikkanen", birthDate: "07.03.1765", deathDate: "1838"),
+                familySearchChild(id: "M8ZN-M45", name: "Malin Eriksdotter", birthDate: "1766", deathDate: "1766"),
+                familySearchChild(id: "GW9B-8JZ", name: "Elisabet Eriksdr. Tikkanen", birthDate: "28.11.1767", deathDate: "1843"),
+                familySearchChild(id: "M88Z-4SX", name: "Jacob Eriksson", birthDate: "24.03.1769"),
+                familySearchChild(id: "M8ZK-MCM", name: "Maria Eriksdotter", birthDate: "31.05.1770", deathDate: "1851"),
+                familySearchChild(id: "KZXH-GLC", name: "Kaarin Erikintytär Tikkanen", birthDate: "16.06.1773", deathDate: "1828"),
+                familySearchChild(id: "M8ZY-KJ8", name: "Isaac Eriksson", birthDate: "1774", deathDate: "1774"),
+                familySearchChild(id: "M887-1Q4", name: "Abram Eriksson", birthDate: "25.11.1774", deathDate: "1834"),
+                familySearchChild(id: "M88M-7ZH", name: "Hinric Eriksson", birthDate: "1777", deathDate: "1777")
+            ]
+        ]
+    }
+
+    private func familySearchChild(
+        id: String,
+        name: String,
+        birthDate: String,
+        deathDate: String? = nil
+    ) -> FamilySearchChild {
+        FamilySearchChild(
+            id: id,
+            name: name,
+            birthDate: birthDate,
+            deathDate: deathDate
+        )
     }
 
     private func hiskiRow(
@@ -1465,6 +1619,22 @@ final class TikkanenSixDevelopmentDataTests: XCTestCase {
             fatherName: couple.husband.displayName,
             motherName: couple.wife.displayName,
             recordPath: "/hiski?en+test"
+        )
+    }
+
+    private func spouseGroup(
+        wifeId: String,
+        child: FamilySearchChild
+    ) -> FamilySearchSpouseGroup {
+        FamilySearchSpouseGroup(
+            spouses: [
+                FamilySearchPersonSummary(id: "K2YQ-1ZY", name: "Erik Johansson Tikkanen"),
+                FamilySearchPersonSummary(id: wifeId, name: "Wife")
+            ],
+            marriage: nil,
+            declaredChildCount: 1,
+            children: [child],
+            isPreferred: false
         )
     }
 

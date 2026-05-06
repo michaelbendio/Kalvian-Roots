@@ -140,6 +140,13 @@ struct FamilyChildrenComparisonGroup {
     let result: FamilyComparisonResult
 }
 
+struct FamilySearchCoupleChildrenMatch: Equatable {
+    let coupleIndex: Int
+    let spouseGroupIndex: Int?
+    let children: [FamilySearchChild]
+    let debugSummary: String
+}
+
 enum TikkanenSixDevelopmentData {
     static let familyId = "TIKKANEN 6"
 
@@ -150,7 +157,8 @@ enum TikkanenSixDevelopmentData {
     static func makeComparisonGroups(
         for family: Family,
         nameManager: NameEquivalenceManager,
-        hiskiRowsByCouple: [Int: [HiskiService.HiskiFamilyBirthRow]] = [:]
+        hiskiRowsByCouple: [Int: [HiskiService.HiskiFamilyBirthRow]] = [:],
+        familySearchChildrenByCouple: [Int: [FamilySearchChild]] = [:]
     ) -> [FamilyChildrenComparisonGroup] {
         guard isEnabled(for: family) else {
             return []
@@ -177,6 +185,7 @@ enum TikkanenSixDevelopmentData {
                 hiskiRows: hiskiRowsByCouple[index] ?? [],
                 familySearchChildren: familySearchChildren(
                     forCoupleAt: index,
+                    childrenByCouple: familySearchChildrenByCouple,
                     hiskiRows: hiskiRowsByCouple[index] ?? [],
                     nameManager: nameManager
                 )
@@ -190,15 +199,105 @@ enum TikkanenSixDevelopmentData {
             )
         }
     }
+
+    static func matchFamilySearchChildrenByCouple(
+        for family: Family,
+        extraction: FamilySearchFamilyExtraction?
+    ) -> [FamilySearchCoupleChildrenMatch] {
+        guard let extraction else {
+            return family.couples.indices.map { index in
+                FamilySearchCoupleChildrenMatch(
+                    coupleIndex: index,
+                    spouseGroupIndex: nil,
+                    children: [],
+                    debugSummary: "FamilySearch spouse group not matched to couple \(index + 1): no stored extraction"
+                )
+            }
+        }
+
+        guard extraction.isSuccessful else {
+            let status = extraction.status ?? "unknown"
+            return family.couples.indices.map { index in
+                FamilySearchCoupleChildrenMatch(
+                    coupleIndex: index,
+                    spouseGroupIndex: nil,
+                    children: [],
+                    debugSummary: "FamilySearch spouse group not matched to couple \(index + 1): extraction status \(status)"
+                )
+            }
+        }
+
+        guard let spouseGroups = extraction.spouseGroups, !spouseGroups.isEmpty else {
+            return family.couples.indices.map { index in
+                let children = family.couples.count == 1 ? extraction.children : []
+                let detail = family.couples.count == 1
+                    ? "fallback to top-level extracted children"
+                    : "no spouse groups in extraction"
+                return FamilySearchCoupleChildrenMatch(
+                    coupleIndex: index,
+                    spouseGroupIndex: nil,
+                    children: children,
+                    debugSummary: "FamilySearch spouse group not matched to couple \(index + 1): \(detail), children \(children.count)"
+                )
+            }
+        }
+
+        let familySearchIdCounts = family.couples
+            .flatMap { normalizedFamilySearchIds(for: $0) }
+            .reduce(into: [String: Int]()) { counts, id in
+                counts[id, default: 0] += 1
+            }
+
+        var usedGroupIndexes = Set<Int>()
+        return family.couples.enumerated().map { index, couple in
+            let coupleIds = normalizedFamilySearchIds(for: couple)
+            let preferredIds = coupleIds.filter { familySearchIdCounts[$0, default: 0] == 1 }
+            let idsForMatching: [String]
+            if preferredIds.isEmpty, family.couples.count > 1 {
+                idsForMatching = []
+            } else {
+                idsForMatching = preferredIds.isEmpty ? coupleIds : preferredIds
+            }
+
+            if let match = bestSpouseGroupMatch(
+                spouseGroups: spouseGroups,
+                candidateParentIds: idsForMatching,
+                usedGroupIndexes: usedGroupIndexes
+            ) {
+                usedGroupIndexes.insert(match.groupIndex)
+                let idDetail = match.matchedFamilySearchId.map { " by parent FamilySearch ID \($0)" } ?? ""
+                let declared = spouseGroups[match.groupIndex].declaredChildCount.map(String.init) ?? "unknown"
+                return FamilySearchCoupleChildrenMatch(
+                    coupleIndex: index,
+                    spouseGroupIndex: match.groupIndex,
+                    children: spouseGroups[match.groupIndex].children,
+                    debugSummary: "FamilySearch spouse group \(match.groupIndex + 1) matched to couple \(index + 1)\(idDetail): declared children \(declared), extracted children \(spouseGroups[match.groupIndex].children.count)"
+                )
+            }
+
+            return FamilySearchCoupleChildrenMatch(
+                coupleIndex: index,
+                spouseGroupIndex: nil,
+                children: [],
+                debugSummary: "FamilySearch spouse group not matched to couple \(index + 1): no unused spouse group contains a couple-specific FamilySearch ID"
+            )
+        }
+    }
 }
 
 private extension TikkanenSixDevelopmentData {
+    struct SpouseGroupMatch {
+        let groupIndex: Int
+        let matchedFamilySearchId: String?
+    }
+
     static func familySearchChildren(
         forCoupleAt index: Int,
+        childrenByCouple: [Int: [FamilySearchChild]],
         hiskiRows: [HiskiService.HiskiFamilyBirthRow],
         nameManager: NameEquivalenceManager
     ) -> [FamilySearchChild] {
-        familySearchChildren(forCoupleAt: index).map { child in
+        (childrenByCouple[index] ?? []).map { child in
             guard isYearOnly(child.birthDate),
                   let hiskiBirthDate = matchingHiskiBirthDate(
                     for: child,
@@ -211,47 +310,6 @@ private extension TikkanenSixDevelopmentData {
             var updated = child
             updated.birthDate = hiskiBirthDate
             return updated
-        }
-    }
-
-    static func familySearchChildren(forCoupleAt index: Int) -> [FamilySearchChild] {
-        switch index {
-        case 0:
-            return [
-                familySearchChild(id: "LXSP-RTS", name: "Tikkanen", birthDate: "1739", deathDate: "1739"),
-                familySearchChild(id: "LXSP-T4T", name: "Carin Tikkanen", birthDate: "1740", deathDate: "1740")
-            ]
-        case 1:
-            return [
-                familySearchChild(id: "M88C-9G5", name: "Elisabeth Tikkanen", birthDate: "1747", deathDate: "1747"),
-                familySearchChild(id: "M8ZT-H6K", name: "Anna Eriksson", birthDate: "1748"),
-                familySearchChild(id: "M8ZP-9VD", name: "Brita Eriksson", birthDate: "20.05.1750", deathDate: "1750"),
-                familySearchChild(id: "M88M-KZZ", name: "Johannes Eriksson", birthDate: "27.11.1751"),
-                familySearchChild(id: "M8ZL-2C1", name: "Erik Eriksson", birthDate: "06.02.1753", deathDate: "03.06.1785")
-            ]
-        case 2:
-            return [
-                familySearchChild(id: "M8Z1-C8M", name: "Elias Tikkanen", birthDate: "1755", deathDate: "1755"),
-                familySearchChild(id: "M8ZN-Q6S", name: "Matts Tikkanen", birthDate: "1755", deathDate: "1755"),
-                familySearchChild(id: "LHH6-W2P", name: "Matts Tikkanen", birthDate: "14.03.1756", deathDate: "1829"),
-                familySearchChild(id: "M8ZB-PGR", name: "Michel Tikkanen", birthDate: "05.03.1757", deathDate: "1809"),
-                familySearchChild(id: "M883-K1G", name: "Gustaf Tikkanen", birthDate: "1758", deathDate: "1758"),
-                familySearchChild(id: "K2TZ-DY4", name: "Gustav Tikkanen", birthDate: "13.09.1759", deathDate: "1825"),
-                familySearchChild(id: "KHM5-VHL", name: "Elias Tikkanen", birthDate: "14.12.1760"),
-                familySearchChild(id: "M88Z-4M5", name: "Jacob Eriksson", birthDate: "1762", deathDate: "1762"),
-                familySearchChild(id: "M8Z5-CXJ", name: "Brita Tikkanen", birthDate: "04.12.1763"),
-                familySearchChild(id: "M887-WG3", name: "Anders Eriksson Tikkanen", birthDate: "07.03.1765", deathDate: "1838"),
-                familySearchChild(id: "M8ZN-M45", name: "Malin Eriksdotter", birthDate: "1766", deathDate: "1766"),
-                familySearchChild(id: "GW9B-8JZ", name: "Elisabet Eriksdr. Tikkanen", birthDate: "28.11.1767", deathDate: "1843"),
-                familySearchChild(id: "M88Z-4SX", name: "Jacob Eriksson", birthDate: "24.03.1769"),
-                familySearchChild(id: "M8ZK-MCM", name: "Maria Eriksdotter", birthDate: "31.05.1770", deathDate: "1851"),
-                familySearchChild(id: "KZXH-GLC", name: "Kaarin Erikintytär Tikkanen", birthDate: "16.06.1773", deathDate: "1828"),
-                familySearchChild(id: "M8ZY-KJ8", name: "Isaac Eriksson", birthDate: "1774", deathDate: "1774"),
-                familySearchChild(id: "M887-1Q4", name: "Abram Eriksson", birthDate: "25.11.1774", deathDate: "1834"),
-                familySearchChild(id: "M88M-7ZH", name: "Hinric Eriksson", birthDate: "1777", deathDate: "1777")
-            ]
-        default:
-            return []
         }
     }
 
@@ -287,20 +345,6 @@ private extension TikkanenSixDevelopmentData {
         return rawDate.range(of: #"^\d{4}$"#, options: .regularExpression) != nil
     }
 
-    static func familySearchChild(
-        id: String,
-        name: String,
-        birthDate: String,
-        deathDate: String? = nil
-    ) -> FamilySearchChild {
-        FamilySearchChild(
-            id: id,
-            name: name,
-            birthDate: birthDate,
-            deathDate: deathDate
-        )
-    }
-
     static func extractYear(from rawDate: String?) -> Int? {
         guard let rawDate,
               let yearRange = rawDate.range(of: #"\b\d{4}\b"#, options: .regularExpression) else {
@@ -308,5 +352,37 @@ private extension TikkanenSixDevelopmentData {
         }
 
         return Int(rawDate[yearRange])
+    }
+
+    static func normalizedFamilySearchIds(for couple: Couple) -> [String] {
+        [
+            normalizedFamilySearchId(couple.husband.familySearchId),
+            normalizedFamilySearchId(couple.wife.familySearchId)
+        ]
+            .compactMap { $0 }
+    }
+
+    static func normalizedFamilySearchId(_ id: String?) -> String? {
+        guard let id else {
+            return nil
+        }
+
+        let normalized = id.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return normalized.isEmpty ? nil : normalized
+    }
+
+    static func bestSpouseGroupMatch(
+        spouseGroups: [FamilySearchSpouseGroup],
+        candidateParentIds: [String],
+        usedGroupIndexes: Set<Int>
+    ) -> SpouseGroupMatch? {
+        for (index, group) in spouseGroups.enumerated() where !usedGroupIndexes.contains(index) {
+            let spouseIds = Set(group.spouses.compactMap { normalizedFamilySearchId($0.id) })
+            if let matchedId = candidateParentIds.first(where: { spouseIds.contains($0) }) {
+                return SpouseGroupMatch(groupIndex: index, matchedFamilySearchId: matchedId)
+            }
+        }
+
+        return nil
     }
 }

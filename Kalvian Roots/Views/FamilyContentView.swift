@@ -216,6 +216,21 @@ struct FamilyContentView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
 
+                if !familySearchComparisonDebugCopyText.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Copyable debug information")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: .constant(familySearchComparisonDebugCopyText))
+                            .font(.system(size: 11, design: .monospaced))
+                            .frame(minHeight: 140)
+                            .textSelection(.enabled)
+                            .scrollContentBackground(.hidden)
+                            .background(Color.black.opacity(0.04))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
                 if juuretApp.familySearchComparisonDebugMessage == "FamilySearch comparison not yet available" {
                     Text("Install the reusable bookmarklet once with Copy FamilySearch bookmarklet. Then open the FamilySearch person Details page, click the bookmarklet in Atlas, and return here.")
                         .font(.system(.caption, design: .monospaced))
@@ -244,6 +259,15 @@ struct FamilyContentView: View {
             debugMessage: juuretApp.familySearchComparisonDebugMessage,
             debugLines: juuretApp.familySearchComparisonDebugLines,
             rows: juuretApp.familySearchComparisonResult?.rows ?? [],
+            status: juuretApp.familySearchComparisonStatus(for:)
+        )
+    }
+
+    private var familySearchComparisonDebugCopyText: String {
+        FamilySearchComparisonClipboardFormatter.text(
+            debugMessage: juuretApp.familySearchComparisonDebugMessage,
+            debugLines: juuretApp.familySearchComparisonDebugLines,
+            rows: [],
             status: juuretApp.familySearchComparisonStatus(for:)
         )
     }
