@@ -273,6 +273,64 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertEqual(values["srk"], "0053,0093,0165,0183,0218,0172,0265,0295,0301,0386,0555,0581,0614")
     }
 
+    func testBuildFamilyBirthSearchUrlUsesOnlyHiskiGivenNameExceptions() throws {
+        let url = try service.buildFamilyBirthSearchUrl(
+            fatherName: "Pietari",
+            fatherPatronymic: "Matinp.",
+            motherName: "Malin",
+            motherPatronymic: "Josefint.",
+            marriageYear: 1760
+        )
+
+        let queryItems = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+        let values = Dictionary(uniqueKeysWithValues: queryItems.map { ($0.name, $0.value ?? "") })
+
+        XCTAssertEqual(values["ietunimi"], "Per")
+        XCTAssertEqual(values["aetunimi"], "Magdalena")
+        XCTAssertEqual(values["ipatronyymi"], "Matinp")
+        XCTAssertEqual(values["apatronyymi"], "Josefint")
+    }
+
+    func testBuildFamilyBirthSearchUrlUsesHiskiPietariPatronymicExceptions() throws {
+        let mariaUrl = try service.buildFamilyBirthSearchUrl(
+            fatherName: "Erik",
+            fatherPatronymic: "Juhonp.",
+            motherName: "Maria",
+            motherPatronymic: "Pietarint",
+            marriageYear: 1760
+        )
+
+        let mattiUrl = try service.buildFamilyBirthSearchUrl(
+            fatherName: "Matti",
+            fatherPatronymic: "Pietarinp.",
+            motherName: "Anna",
+            motherPatronymic: "Pietarint.",
+            marriageYear: 1760
+        )
+
+        let tytarUrl = try service.buildFamilyBirthSearchUrl(
+            fatherName: "Matti",
+            fatherPatronymic: "Juhonp.",
+            motherName: "Maria",
+            motherPatronymic: "Pietarintytär",
+            marriageYear: 1760
+        )
+
+        let mariaItems = try XCTUnwrap(URLComponents(url: mariaUrl, resolvingAgainstBaseURL: false)?.queryItems)
+        let mariaValues = Dictionary(uniqueKeysWithValues: mariaItems.map { ($0.name, $0.value ?? "") })
+        let mattiItems = try XCTUnwrap(URLComponents(url: mattiUrl, resolvingAgainstBaseURL: false)?.queryItems)
+        let mattiValues = Dictionary(uniqueKeysWithValues: mattiItems.map { ($0.name, $0.value ?? "") })
+        let tytarItems = try XCTUnwrap(URLComponents(url: tytarUrl, resolvingAgainstBaseURL: false)?.queryItems)
+        let tytarValues = Dictionary(uniqueKeysWithValues: tytarItems.map { ($0.name, $0.value ?? "") })
+
+        XCTAssertEqual(mariaValues["aetunimi"], "Maria")
+        XCTAssertEqual(mariaValues["apatronyymi"], "Persdr")
+        XCTAssertEqual(mattiValues["ietunimi"], "Matti")
+        XCTAssertEqual(mattiValues["ipatronyymi"], "Perss")
+        XCTAssertEqual(mattiValues["apatronyymi"], "Persdr")
+        XCTAssertEqual(tytarValues["apatronyymi"], "Persdr")
+    }
+
     func testBuildFamilyBirthSearchRequestsIncludesHiskiParentFallback() throws {
         let requests = try service.buildFamilyBirthSearchRequests(
             fatherName: "Tuomas",
@@ -294,9 +352,9 @@ final class HiskiServiceTests: XCTestCase {
 
         XCTAssertEqual(finalValues["alkuvuosi"], "1759")
         XCTAssertEqual(finalValues["loppuvuosi"], "1796")
-        XCTAssertEqual(finalValues["ietunimi"], "Thomas")
+        XCTAssertEqual(finalValues["ietunimi"], "Tuomas")
         XCTAssertEqual(finalValues["ipatronyymi"], "Juhonp")
-        XCTAssertEqual(finalValues["aetunimi"], "Malin")
+        XCTAssertEqual(finalValues["aetunimi"], "Magdalena")
         XCTAssertEqual(finalValues["apatronyymi"], "Josefint")
     }
 

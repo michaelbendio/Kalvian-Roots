@@ -236,7 +236,7 @@ class HiskiService {
      */
     func queryDeathWithResult(name: String, date: String, mode: HiskiExtractionMode = .webView) async -> HiskiQueryResult {
         do {
-            let swedishName = getSwedishEquivalent(for: name)
+            let swedishName = normalizeForHiskiQuery(name)
             let firstName = swedishName.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishName
             let formattedDate = formatDateForHiski(date)
 
@@ -292,12 +292,12 @@ class HiskiService {
      */
     func queryBirthWithResult(name: String, date: String, fatherName: String? = nil, mode: HiskiExtractionMode = .webView) async -> HiskiQueryResult {
         do {
-            let swedishName = getSwedishEquivalent(for: name)
+            let swedishName = normalizeForHiskiQuery(name)
             let firstName = swedishName.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishName
 
             var fatherFirstName: String? = nil
             if let father = fatherName {
-                let swedishFather = getSwedishEquivalent(for: father)
+                let swedishFather = normalizeForHiskiQuery(father)
                 fatherFirstName = swedishFather.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines)
             }
 
@@ -356,8 +356,8 @@ class HiskiService {
      */
     func queryMarriageWithResult(husbandName: String, wifeName: String, date: String, mode: HiskiExtractionMode = .webView) async -> HiskiQueryResult {
         do {
-            let swedishHusband = getSwedishEquivalent(for: husbandName)
-            let swedishWife = getSwedishEquivalent(for: wifeName)
+            let swedishHusband = normalizeForHiskiQuery(husbandName)
+            let swedishWife = normalizeForHiskiQuery(wifeName)
 
             let husbandFirst = swedishHusband.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishHusband
             let wifeFirst = swedishWife.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishWife
@@ -415,7 +415,7 @@ class HiskiService {
     // MARK: - Query Methods (using WKWebView for record pages)
     
     func queryDeath(name: String, date: String) async throws -> HiskiCitation {
-        let swedishName = getSwedishEquivalent(for: name)
+        let swedishName = normalizeForHiskiQuery(name)
         let firstName = swedishName.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishName
         let formattedDate = formatDateForHiski(date)
         
@@ -465,12 +465,12 @@ class HiskiService {
     }
     
     func queryBirth(name: String, date: String, fatherName: String? = nil) async throws -> HiskiCitation {
-        let swedishName = getSwedishEquivalent(for: name)
+        let swedishName = normalizeForHiskiQuery(name)
         let firstName = swedishName.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishName
         
         var fatherFirstName: String? = nil
         if let father = fatherName {
-            let swedishFather = getSwedishEquivalent(for: father)
+            let swedishFather = normalizeForHiskiQuery(father)
             fatherFirstName = swedishFather.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         
@@ -524,8 +524,8 @@ class HiskiService {
     }
     
     func queryMarriage(husbandName: String, wifeName: String, date: String) async throws -> HiskiCitation {
-        let swedishHusband = getSwedishEquivalent(for: husbandName)
-        let swedishWife = getSwedishEquivalent(for: wifeName)
+        let swedishHusband = normalizeForHiskiQuery(husbandName)
+        let swedishWife = normalizeForHiskiQuery(wifeName)
         
         let husbandFirst = swedishHusband.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishHusband
         let wifeFirst = swedishWife.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishWife
@@ -900,9 +900,9 @@ class HiskiService {
         marriageYear: Int
     ) throws -> URL {
         try makeFamilyBirthSearchUrl(
-            fatherName: getSwedishEquivalent(for: fatherName),
+            fatherName: normalizeForHiskiQuery(fatherName),
             fatherPatronymic: hiskiPatronymicSearchInput(for: fatherPatronymic),
-            motherName: getSwedishEquivalent(for: motherName),
+            motherName: normalizeForHiskiQuery(motherName),
             motherPatronymic: hiskiPatronymicSearchInput(for: motherPatronymic),
             marriageYear: marriageYear
         )
@@ -940,8 +940,8 @@ class HiskiService {
             requests.append(FamilyBirthSearchRequest(label: label, url: url))
         }
 
-        let hiskiFatherName = getSwedishEquivalent(for: fatherName)
-        let hiskiMotherName = getSwedishEquivalent(for: motherName)
+        let hiskiFatherName = normalizeForHiskiQuery(fatherName)
+        let hiskiMotherName = normalizeForHiskiQuery(motherName)
         let hiskiFatherPatronymic = hiskiPatronymicSearchInput(for: fatherPatronymic)
         let hiskiMotherPatronymic = hiskiPatronymicSearchInput(for: motherPatronymic)
 
@@ -1067,31 +1067,36 @@ class HiskiService {
         return url
     }
     
-    // MARK: - Name Translation
-    
-    private func getSwedishEquivalent(for finnishName: String) -> String {
-        // Get all equivalent names
-        let equivalents = nameEquivalenceManager.getEquivalentNames(for: finnishName)
-        
-        logDebug(.app, "🔍 Swedish equivalent lookup for '\(finnishName)':")
-        logDebug(.app, "   Found equivalents: \(Array(equivalents).sorted())")
-        
-        // For Hiski queries in Swedish records, prefer Swedish/Latin forms; Annika is safer than Anna for this source.
-        let swedishPreferred = ["Annika", "Anna", "Thomas", "Tomas", "Malin", "Petrus", "Pehr", "Johannes", "Henricus", "Henric",
-                                "Henrik", "Ericus", "Erik", "Matthias", "Matts", "Mats", "Elisabet",
-                                "Elisabeth", "Birgitta", "Brita", "Britha", "Andreas", "Anders", "Magdalena"]
-        
-        // Check if any equivalent matches our preferred Swedish forms
-        for preferred in swedishPreferred {
-            if equivalents.contains(where: { $0.lowercased() == preferred.lowercased() }) {
-                logInfo(.app, "✅ Translated '\(finnishName)' → '\(preferred)' for Hiski query")
-                return preferred
-            }
+    // MARK: - HisKi Query Normalization
+
+    private func normalizeForHiskiQuery(_ name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return trimmed
         }
-        
-        // If no Swedish equivalent found, return original name
-        logWarn(.app, "⚠️ No Swedish equivalent found for '\(finnishName)', using original")
-        return finnishName
+
+        var parts = trimmed.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard let firstPart = parts.first,
+              let override = hiskiGivenNameOverride(for: firstPart) else {
+            return trimmed
+        }
+
+        parts[0] = override
+        let normalized = parts.joined(separator: " ")
+        logInfo(.app, "✅ HisKi query override '\(trimmed)' → '\(normalized)'")
+        return normalized
+    }
+
+    private func hiskiGivenNameOverride(for name: String) -> String? {
+        // HisKi already handles most Finnish/Swedish equivalents; these are only known query exceptions.
+        switch normalizedHiskiLookupToken(name) {
+        case "malin":
+            return "Magdalena"
+        case "pietari":
+            return "Per"
+        default:
+            return nil
+        }
     }
 
     private func hiskiPatronymicSearchInput(for patronymic: String?) -> String? {
@@ -1103,7 +1108,35 @@ class HiskiService {
             in: .whitespacesAndNewlines.union(.punctuationCharacters)
         )
 
-        return cleaned.isEmpty ? nil : cleaned
+        guard !cleaned.isEmpty else {
+            return nil
+        }
+
+        if let override = hiskiPatronymicOverride(for: cleaned) {
+            logInfo(.app, "✅ HisKi patronymic override '\(cleaned)' → '\(override)'")
+            return override
+        }
+
+        return cleaned
+    }
+
+    private func hiskiPatronymicOverride(for patronymic: String) -> String? {
+        // HisKi already handles most patronymic variants; these Pietari-derived forms need explicit query terms.
+        switch normalizedHiskiLookupToken(patronymic) {
+        case "pietarinp":
+            return "Perss"
+        case "pietarint", "pietarintytar":
+            return "Persdr"
+        default:
+            return nil
+        }
+    }
+
+    private func normalizedHiskiLookupToken(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            .lowercased()
+            .folding(options: .diacriticInsensitive, locale: .current)
     }
     
     // MARK: - Date Formatting
