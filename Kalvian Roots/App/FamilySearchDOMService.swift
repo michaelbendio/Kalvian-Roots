@@ -229,6 +229,11 @@ enum FamilySearchDOMService {
             }
 
             function extractVital(label) {
+                const textBlockVital = vitalFromTextBlock(extractionDocument(), label);
+                if (textBlockVital) {
+                    return textBlockVital;
+                }
+
                 const text = sectionTextAfterLabel(label);
                 const lines = text.split(/\\n| {2,}/).map(clean).filter(Boolean);
                 const index = lines.findIndex(line => line === label);
@@ -1028,6 +1033,11 @@ enum FamilySearchDOMService {
 
                     const selectedEnrichedGroup = enrichedSpouseGroups[selectedGroupIndex];
                     const children = selectedEnrichedGroup.children;
+                    const allEnrichedChildren = enrichedSpouseGroups.reduce((all, group) => all.concat(group.children), []);
+                    const selectedBirthDateCount = children.filter(child => clean(child.birthDate)).length;
+                    const selectedDeathDateCount = children.filter(child => clean(child.deathDate)).length;
+                    const allBirthDateCount = allEnrichedChildren.filter(child => clean(child.birthDate)).length;
+                    const allDeathDateCount = allEnrichedChildren.filter(child => clean(child.deathDate)).length;
 
                     if (personIdFromURL() !== normalizedPersonId) {
                         await sleep(900);
@@ -1062,7 +1072,9 @@ enum FamilySearchDOMService {
                         childCount: children.length,
                         preferredChildCount: selectedEnrichedGroup.children.length,
                         debugNotes: [
-                            'FamilySearch extraction finished: spouse groups ' + enrichedSpouseGroups.length + ', preferred group children ' + selectedEnrichedGroup.children.length
+                            'FamilySearch extraction finished: spouse groups ' + enrichedSpouseGroups.length + ', preferred group children ' + selectedEnrichedGroup.children.length,
+                            'FamilySearch selected group child birth dates extracted: ' + selectedBirthDateCount + '/' + children.length + ', death dates extracted: ' + selectedDeathDateCount + '/' + children.length,
+                            'FamilySearch all spouse group child birth dates extracted: ' + allBirthDateCount + '/' + allEnrichedChildren.length + ', death dates extracted: ' + allDeathDateCount + '/' + allEnrichedChildren.length
                         ]
                     };
 
