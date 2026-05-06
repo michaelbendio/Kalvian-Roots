@@ -39,6 +39,13 @@ final class NameEquivalenceManagerTests: XCTestCase {
         XCTAssertTrue(manager.areNamesEquivalent("Erik", "Ericus"))
         XCTAssertTrue(manager.areNamesEquivalent("Antti", "Andreas"))
         XCTAssertTrue(manager.areNamesEquivalent("Pietari", "Petrus"))
+        XCTAssertTrue(manager.areNamesEquivalent("Pietari", "Per"))
+        XCTAssertTrue(manager.areNamesEquivalent("Mikko", "Michel"))
+        XCTAssertTrue(manager.areNamesEquivalent("Kustaa", "Gustav"))
+        XCTAssertTrue(manager.areNamesEquivalent("Jaakko", "Jacob"))
+        XCTAssertTrue(manager.areNamesEquivalent("Kaarin", "Carin"))
+        XCTAssertTrue(manager.areNamesEquivalent("Henrik", "Hinric"))
+        XCTAssertTrue(manager.areNamesEquivalent("Abraham", "Abram"))
     }
 
     func testDefaultEquivalenceUpgradePreservesStoredCustomNames() throws {
@@ -102,18 +109,6 @@ final class NameEquivalenceManagerTests: XCTestCase {
         
         // Then: Should recognize equivalence
         XCTAssertTrue(manager.areNamesEquivalent("TestName1", "TestName2"))
-    }
-    
-    func testRemoveEquivalence() {
-        // Given: Custom equivalence
-        manager.addEquivalence(between: "TestName1", and: "TestName2")
-        XCTAssertTrue(manager.areNamesEquivalent("TestName1", "TestName2"))
-
-        // When: Removing equivalence
-        manager.removeEquivalence(between: "TestName1", and: "TestName2")
-        
-        // Then: Should no longer be equivalent
-        XCTAssertFalse(manager.areNamesEquivalent("TestName1", "TestName2"))
     }
     
     func testBidirectionalEquivalence() {
@@ -260,7 +255,7 @@ final class HiskiServiceTests: XCTestCase {
 
         XCTAssertEqual(values["etunimi"], "")
         XCTAssertEqual(values["alkuvuosi"], "1799")
-        XCTAssertEqual(values["loppuvuosi"], "1835")
+        XCTAssertEqual(values["loppuvuosi"], "1836")
         XCTAssertEqual(values["ietunimi"], "Elias")
         XCTAssertEqual(values["ipatronyymi"], "Matinp")
         XCTAssertEqual(values["aetunimi"], "Maria")
@@ -289,7 +284,7 @@ final class HiskiServiceTests: XCTestCase {
         let finalValues = Dictionary(uniqueKeysWithValues: finalQueryItems.map { ($0.name, $0.value ?? "") })
 
         XCTAssertEqual(finalValues["alkuvuosi"], "1759")
-        XCTAssertEqual(finalValues["loppuvuosi"], "1795")
+        XCTAssertEqual(finalValues["loppuvuosi"], "1796")
         XCTAssertEqual(finalValues["ietunimi"], "Thomas")
         XCTAssertEqual(finalValues["ipatronyymi"], "Juhonp")
         XCTAssertEqual(finalValues["aetunimi"], "Malin")

@@ -192,7 +192,7 @@ class HiskiWebViewManager {
 
 class HiskiService {
     static let yearsBeforeMarriage = 1
-    static let childbearingWindowYears = 35
+    static let childbearingWindowYears = 36
     static let maxHiskiResults = 50
 
     struct HiskiFamilyBirthRow: Equatable {

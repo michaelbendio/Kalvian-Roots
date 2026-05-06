@@ -50,7 +50,10 @@ struct FamilyContentView: View {
                     }
                     
                     // 4. "Lapset" header + children
-                    if !couple.children.isEmpty {
+                    if let comparisonGroup = comparisonGroup(forCoupleAt: 0) {
+                        comparisonChildrenSection(group: comparisonGroup)
+                            .padding(.top, 8)
+                    } else if !couple.children.isEmpty {
                         childrenSection(children: couple.children)
                             .padding(.top, 8)
                     }
@@ -136,6 +139,10 @@ struct FamilyContentView: View {
     }
 
     private var shouldRenderFamilySearchComparisonUI: Bool {
+        if !juuretApp.familyChildrenComparisonGroups.isEmpty {
+            return false
+        }
+
         let shouldRender = juuretApp.familySearchComparisonResult != nil ||
             !juuretApp.familySearchComparisonDebugMessage.isEmpty
 
@@ -454,6 +461,58 @@ struct FamilyContentView: View {
             }
         }
     }
+
+    private func comparisonChildrenSection(group: FamilyChildrenComparisonGroup) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Lapset")
+                .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                .foregroundColor(.primary)
+                .padding(.bottom, 2)
+
+            ForEach(Array(group.result.rows.enumerated()), id: \.offset) { _, row in
+                comparisonChildLine(row: row, couple: group.couple)
+            }
+        }
+    }
+
+    private func comparisonChildLine(row: FamilyComparisonResult.Match, couple: Couple) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Text("★")
+                .font(.system(size: 16, design: .monospaced))
+                .foregroundColor(.primary)
+
+            Text(displayDate(for: row))
+                .font(.system(size: 16, design: .monospaced))
+                .foregroundColor(dateColor(for: row))
+
+            if let child = juuretChild(for: row, in: couple) {
+                Button {
+                    generateCitationFor(child)
+                } label: {
+                    Text(displayName(for: row))
+                        .font(.system(size: 16, design: .monospaced))
+                        .foregroundColor(Color(hex: "0066cc"))
+                }
+                .buttonStyle(.plain)
+            } else {
+                Text(displayName(for: row))
+                    .font(.system(size: 16, design: .monospaced))
+                    .foregroundColor(.primary)
+            }
+
+            if let familySearchId = row.familySearch?.familySearchId {
+                Text("<\(familySearchId)>")
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+
+            Text(sourceMarkers(for: row))
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .foregroundColor(.secondary)
+
+            Spacer()
+        }
+    }
     
     // MARK: - Additional Spouses
     
@@ -503,7 +562,10 @@ struct FamilyContentView: View {
             }
             
             // Children with this spouse
-            if !couple.children.isEmpty {
+            if let comparisonGroup = comparisonGroup(forCoupleAt: spouseNumber - 1) {
+                comparisonChildrenSection(group: comparisonGroup)
+                    .padding(.top, 4)
+            } else if !couple.children.isEmpty {
                 childrenSection(children: couple.children)
                     .padding(.top, 4)
             }
@@ -552,6 +614,76 @@ struct FamilyContentView: View {
             onShowHiski(result)
         }
     }
+
+    private func comparisonGroup(forCoupleAt index: Int) -> FamilyChildrenComparisonGroup? {
+        juuretApp.familyChildrenComparisonGroups.first { $0.coupleIndex == index }
+    }
+
+    private func displayDate(for row: FamilyComparisonResult.Match) -> String {
+        let date = row.juuretKalvialla?.birthDate
+            ?? row.hiski?.birthDate
+            ?? row.familySearch?.birthDate
+
+        return formatUnionDate(date)
+    }
+
+    private func dateColor(for row: FamilyComparisonResult.Match) -> Color {
+        if row.hiski != nil {
+            return Color(hex: "11853b")
+        }
+
+        if row.familySearch == nil && (row.juuretKalvialla != nil || row.hiski != nil) {
+            return Color(hex: "b45f06")
+        }
+
+        return .primary
+    }
+
+    private func sourceMarkers(for row: FamilyComparisonResult.Match) -> String {
+        var markers: [String] = []
+        if row.familySearch != nil {
+            markers.append("FS")
+        }
+        if row.juuretKalvialla != nil {
+            markers.append("J")
+        }
+        if row.hiski != nil {
+            markers.append("H")
+        }
+        return markers.joined(separator: ", ")
+    }
+
+    private func juuretChild(for row: FamilyComparisonResult.Match, in couple: Couple) -> Person? {
+        guard let juuret = row.juuretKalvialla else {
+            return nil
+        }
+
+        return couple.children.first { child in
+            child.name == juuret.rawName
+        }
+    }
+
+    private func formatUnionDate(_ date: Date?) -> String {
+        guard let date else {
+            return "unknown"
+        }
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let components = calendar.dateComponents([.day, .month, .year], from: date)
+
+        if components.day == 1, components.month == 1, let year = components.year {
+            return String(year)
+        }
+
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "dd.MM.yyyy"
+        return formatter.string(from: date)
+    }
+
     private func romanNumeral(_ number: Int) -> String {
         switch number {
         case 1: return "I"

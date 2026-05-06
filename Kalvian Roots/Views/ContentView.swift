@@ -30,7 +30,7 @@ struct ContentView: View {
         }
     }
 
-    /// Load the first cached family on startup
+    /// Load the development target family on startup
     private func loadStartupFamily() async {
         let startTime = Date()
         
@@ -38,9 +38,10 @@ struct ContentView: View {
         guard !hasLoadedStartupFamily else { return }
         hasLoadedStartupFamily = true
         
+        let firstFamilyId = TikkanenSixDevelopmentData.familyId
+
         // Check if we have any cached families
-        guard app.familyNetworkCache.hasCachedFamilies,
-              let firstFamilyId = app.familyNetworkCache.getFirstCachedFamilyId() else {
+        guard app.familyNetworkCache.hasCachedFamilies else {
             logInfo(.app, "📱 No cached families found at startup")
             return
         }

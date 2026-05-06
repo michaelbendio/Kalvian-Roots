@@ -27,7 +27,7 @@ class NameEquivalenceManager {
     private let userDefaultsKey = "NameEquivalences"
     private let userDefaultsVersionKey = "NameEquivalencesVersion"
 
-    private let currentVersion = 6
+    private let currentVersion = 7
 
 
     // MARK: - Computed Properties
@@ -35,29 +35,6 @@ class NameEquivalenceManager {
     var totalEquivalences: Int {
         equivalences.values.reduce(0) { $0 + $1.count }
     }
-
-    var equivalenceGroups: [[String]] {
-
-        var processed: Set<String> = []
-        var groups: [[String]] = []
-
-        for (name, equivalentNames) in equivalences {
-
-            if !processed.contains(name) {
-
-                let group = [name] + Array(equivalentNames)
-                groups.append(group.sorted())
-
-                processed.insert(name)
-                for equivalent in equivalentNames {
-                    processed.insert(equivalent)
-                }
-            }
-        }
-
-        return groups.sorted { $0.first ?? "" < $1.first ?? "" }
-    }
-
 
     // MARK: - Initialization
 
@@ -142,42 +119,11 @@ class NameEquivalenceManager {
 
         logInfo(.nameEquivalence, "➕ Adding equivalence: \(normalized1) ↔ \(normalized2)")
 
-        addDirectionalEquivalence(from: normalized1, to: normalized2)
-        addDirectionalEquivalence(from: normalized2, to: normalized1)
-
-        ensureTransitivity(for: normalized1)
-        ensureTransitivity(for: normalized2)
+        addEquivalence(normalized1, normalized2)
 
         saveEquivalences()
 
         logDebug(.nameEquivalence, "✅ Equivalence added and saved")
-    }
-
-
-    /**
-     Remove equivalence
-     */
-    func removeEquivalence(between name1: String, and name2: String) {
-
-        let normalized1 = normalizeName(name1)
-        let normalized2 = normalizeName(name2)
-
-        logInfo(.nameEquivalence, "➖ Removing equivalence: \(normalized1) ↔ \(normalized2)")
-
-        equivalences[normalized1]?.remove(normalized2)
-        equivalences[normalized2]?.remove(normalized1)
-
-        if equivalences[normalized1]?.isEmpty == true {
-            equivalences.removeValue(forKey: normalized1)
-        }
-
-        if equivalences[normalized2]?.isEmpty == true {
-            equivalences.removeValue(forKey: normalized2)
-        }
-
-        saveEquivalences()
-
-        logDebug(.nameEquivalence, "✅ Equivalence removed and saved")
     }
 
 
@@ -208,10 +154,18 @@ class NameEquivalenceManager {
             return ""
         }
 
-        var all = getEquivalentNames(for: normalized)
-        all.insert(normalized)
+        let all = getEquivalentNames(for: normalized)
 
         return all.sorted().first!
+    }
+
+
+    private func addEquivalence(_ normalized1: String, _ normalized2: String) {
+        addDirectionalEquivalence(from: normalized1, to: normalized2)
+        addDirectionalEquivalence(from: normalized2, to: normalized1)
+
+        ensureTransitivity(for: normalized1)
+        ensureTransitivity(for: normalized2)
     }
 
 
@@ -328,36 +282,36 @@ class NameEquivalenceManager {
             ("Matti", "Matias"),
             ("Matti", "Matts"),
             ("Matti", "Matthias"),
-            ("Anna", "Annikki"),
+            ("Mikko", "Michel"),
+            ("Anna", "Annika"),
             ("Kaisa", "Caisa"),
             ("Kustaa", "Kustavi"),
+            ("Kustaa", "Gustav"),
             ("Brita", "Birgit"),
             ("Brita", "Briita"),
             ("Brita", "Britha"),
             ("Erik", "Erkki"),
             ("Erik", "Ericus"),
+            ("Jaakko", "Jacob"),
+            ("Kaarin", "Carin"),
             ("Henrik", "Heikki"),
             ("Henrik", "Henric"),
+            ("Henrik", "Hinric"),
             ("Margareta", "Marketta"),
             ("Kristina", "Kirstine"),
             ("Pietari", "Petrus"),
+            ("Pietari", "Per"),
             ("Antti", "Anders"),
             ("Antti", "Andreas"),
-            ("Elisabet", "Elisabeth")
+            ("Elisabet", "Elisabeth"),
+            ("Abraham", "Abram")
         ]
         for (name1, name2) in defaultPairs {
-            addEquivalence(between: name1, and: name2)
+            addEquivalence(normalizeName(name1), normalizeName(name2))
         }
+        saveEquivalences()
 
         logInfo(.nameEquivalence, "✅ Loaded \(defaultPairs.count) default equivalences")
-    }
-
-
-    // MARK: - User Interaction Support
-
-    func generateEquivalenceQuestion(for name1: String, and name2: String) -> String {
-
-        "Are '\(name1)' and '\(name2)' the same person? (Common Finnish name variations)"
     }
 
 
@@ -372,27 +326,5 @@ class NameEquivalenceManager {
         UserDefaults.standard.removeObject(forKey: userDefaultsKey)
 
         logInfo(.nameEquivalence, "✅ All equivalences cleared")
-    }
-}
-
-
-// MARK: - Supporting Structures
-
-struct EquivalenceStatistics {
-
-    let totalGroups: Int
-    let totalNames: Int
-    let averageGroupSize: Double
-    let largestGroupSize: Int
-
-    var description: String {
-
-        """
-        Name Equivalence Statistics:
-        - Total groups: \(totalGroups)
-        - Total names: \(totalNames)
-        - Average group size: \(String(format: "%.1f", averageGroupSize))
-        - Largest group: \(largestGroupSize) names
-        """
     }
 }

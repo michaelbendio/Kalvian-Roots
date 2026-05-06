@@ -1629,6 +1629,182 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
     }
 }
 
+final class TikkanenSixDevelopmentDataTests: XCTestCase {
+
+    private let equivalencesKey = "NameEquivalences"
+    private let equivalenceVersionKey = "NameEquivalencesVersion"
+    private var savedEquivalencesData: Data?
+    private var savedVersionValue: Any?
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+
+        let defaults = UserDefaults.standard
+        savedEquivalencesData = defaults.data(forKey: equivalencesKey)
+        savedVersionValue = defaults.object(forKey: equivalenceVersionKey)
+        defaults.removeObject(forKey: equivalencesKey)
+        defaults.removeObject(forKey: equivalenceVersionKey)
+    }
+
+    override func tearDownWithError() throws {
+        let defaults = UserDefaults.standard
+
+        if let savedEquivalencesData {
+            defaults.set(savedEquivalencesData, forKey: equivalencesKey)
+        } else {
+            defaults.removeObject(forKey: equivalencesKey)
+        }
+
+        if let savedVersionValue {
+            defaults.set(savedVersionValue, forKey: equivalenceVersionKey)
+        } else {
+            defaults.removeObject(forKey: equivalenceVersionKey)
+        }
+
+        try super.tearDownWithError()
+    }
+
+    func testTikkanenSixDevelopmentGroupsAreBuiltPerCouple() throws {
+        let groups = TikkanenSixDevelopmentData.makeComparisonGroups(
+            for: makeTikkanenSixFamily(),
+            nameManager: NameEquivalenceManager()
+        )
+
+        XCTAssertEqual(groups.count, 3)
+        XCTAssertEqual(groups.map { $0.result.rows.count }, [2, 5, 18])
+        XCTAssertEqual(groups.map { $0.hiskiSearchRequests.count }, [1, 1, 1])
+
+        XCTAssertEqual(queryValue("alkuvuosi", in: groups[0].hiskiSearchRequests[0].url), "1737")
+        XCTAssertEqual(queryValue("loppuvuosi", in: groups[0].hiskiSearchRequests[0].url), "1774")
+        XCTAssertEqual(queryValue("alkuvuosi", in: groups[1].hiskiSearchRequests[0].url), "1745")
+        XCTAssertEqual(queryValue("loppuvuosi", in: groups[1].hiskiSearchRequests[0].url), "1782")
+        XCTAssertEqual(queryValue("alkuvuosi", in: groups[2].hiskiSearchRequests[0].url), "1752")
+        XCTAssertEqual(queryValue("loppuvuosi", in: groups[2].hiskiSearchRequests[0].url), "1789")
+    }
+
+    func testTikkanenSixDevelopmentDisplayFavorsJuuretNames() throws {
+        let family = makeTikkanenSixFamily()
+        let mariaGroup = try XCTUnwrap(
+            TikkanenSixDevelopmentData.makeComparisonGroups(
+                for: family,
+                nameManager: NameEquivalenceManager(),
+                hiskiRowsByCouple: [
+                    2: makeMariaHiskiRows(couple: family.couples[2])
+                ]
+            ).last
+        )
+
+        let mikkoRow = try XCTUnwrap(mariaGroup.result.rows.first {
+            $0.juuretKalvialla?.rawName == "Mikko"
+        })
+        XCTAssertEqual(mikkoRow.familySearch?.rawName, "Michel Tikkanen")
+        XCTAssertEqual(mikkoRow.hiski?.rawName, "Michel")
+
+        let abrahamRow = try XCTUnwrap(mariaGroup.result.rows.first {
+            $0.juuretKalvialla?.rawName == "Abraham"
+        })
+        XCTAssertEqual(abrahamRow.familySearch?.rawName, "Abram Eriksson")
+        XCTAssertEqual(abrahamRow.hiski?.rawName, "Abram")
+    }
+
+    private func makeMariaHiskiRows(couple: Couple) -> [HiskiService.HiskiFamilyBirthRow] {
+        [
+            hiskiRow("05.03.1757", "Michel", couple),
+            hiskiRow("25.11.1774", "Abram", couple)
+        ]
+    }
+
+    private func hiskiRow(
+        _ birthDate: String,
+        _ childName: String,
+        _ couple: Couple
+    ) -> HiskiService.HiskiFamilyBirthRow {
+        HiskiService.HiskiFamilyBirthRow(
+            birthDate: birthDate,
+            childName: childName,
+            fatherName: couple.husband.displayName,
+            motherName: couple.wife.displayName,
+            recordPath: "/hiski?en+test"
+        )
+    }
+
+    private func queryValue(_ name: String, in url: URL) -> String? {
+        URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?
+            .first { $0.name == name }?
+            .value
+    }
+
+    private func makeTikkanenSixFamily() -> Family {
+        let husband = Person(
+            name: "Erik",
+            patronymic: "Juhonp.",
+            birthDate: "1716",
+            deathDate: "27.02.1797",
+            familySearchId: "K2YQ-1ZY"
+        )
+
+        return Family(
+            familyId: "TIKKANEN 6",
+            pageReferences: ["240", "241"],
+            couples: [
+                Couple(
+                    husband: husband,
+                    wife: Person(
+                        name: "Annika",
+                        patronymic: "Matint.",
+                        birthDate: "1721",
+                        deathDate: "20.01.1740",
+                        familySearchId: "K2YQ-18B"
+                    ),
+                    fullMarriageDate: "29.10.1738"
+                ),
+                Couple(
+                    husband: husband,
+                    wife: Person(
+                        name: "Anna",
+                        patronymic: "Pietarint.",
+                        birthDate: "1721",
+                        deathDate: "06.02.1753",
+                        familySearchId: "GMQH-8GF"
+                    ),
+                    fullMarriageDate: "24.06.1746",
+                    children: [
+                        Person(name: "Brita", birthDate: "20.05.1750", familySearchId: "M8ZP-9VD"),
+                        Person(name: "Johannes", birthDate: "27.11.1751", familySearchId: "M88M-KZZ"),
+                        Person(name: "Erik", birthDate: "06.02.1753", deathDate: "03.06.1785", familySearchId: "M8ZL-2C1")
+                    ]
+                ),
+                Couple(
+                    husband: husband,
+                    wife: Person(
+                        name: "Maria",
+                        patronymic: "Martint.",
+                        birthDate: "02.06.1735",
+                        familySearchId: "K8CD-718"
+                    ),
+                    fullMarriageDate: "27.11.1753",
+                    children: [
+                        Person(name: "Matti", birthDate: "14.03.1756", familySearchId: "LHH6-W2P"),
+                        Person(name: "Mikko", birthDate: "05.03.1757", familySearchId: "M8ZB-PGR"),
+                        Person(name: "Kustaa", birthDate: "13.09.1759", familySearchId: "K2TZ-DY4"),
+                        Person(name: "Elias", birthDate: "14.12.1760", familySearchId: "KHM5-VHL"),
+                        Person(name: "Brita", birthDate: "04.12.1763", familySearchId: "M8Z5-CXJ"),
+                        Person(name: "Antti", birthDate: "07.03.1765", familySearchId: "M887-WG3"),
+                        Person(name: "Liisa", birthDate: "28.11.1767", familySearchId: "M88H-SZ7"),
+                        Person(name: "Jaakko", birthDate: "24.03.1769", familySearchId: "M88Z-4SX"),
+                        Person(name: "Maria", birthDate: "31.05.1770", familySearchId: "M8ZK-MCM"),
+                        Person(name: "Kaarin", birthDate: "16.06.1773", familySearchId: "KZXH-GLC"),
+                        Person(name: "Abraham", birthDate: "25.11.1774", familySearchId: "M887-1Q4")
+                    ]
+                )
+            ],
+            notes: [],
+            noteDefinitions: [:]
+        )
+    }
+}
+
 private func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
     var components = DateComponents()
     components.calendar = Calendar(identifier: .gregorian)

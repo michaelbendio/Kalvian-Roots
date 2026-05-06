@@ -48,6 +48,7 @@ class JuuretApp {
     var extractionProgress: ExtractionProgress = .idle
     var comparisonReport = ""
     var familySearchComparisonResult: FamilyComparisonResult?
+    var familyChildrenComparisonGroups: [FamilyChildrenComparisonGroup] = []
     var familySearchComparisonDebugMessage = "Comparison not triggered"
     var familySearchComparisonDebugLines: [String] = []
     var hiskiCitationProposals: [HiskiCitationProposal] = []
@@ -100,6 +101,7 @@ class JuuretApp {
         // Set current family and activate workflow with cached network
         self.currentFamily = network.mainFamily
         self.comparisonReport = ""
+        self.familyChildrenComparisonGroups = []
         resetFamilySearchComparisonDebug(message: "Comparison not triggered")
         self.hiskiCitationProposals = []
         self.familyNetworkWorkflow = FamilyNetworkWorkflow(
@@ -497,6 +499,7 @@ class JuuretApp {
 
     private func resetFamilySearchComparisonDebug(message: String) {
         familySearchComparisonResult = nil
+        familyChildrenComparisonGroups = []
         familySearchComparisonDebugMessage = message
         familySearchComparisonDebugLines = [message]
         logInfo(.ui, "🧪 FamilySearch comparison debug reset: \(message)")
@@ -678,6 +681,31 @@ class JuuretApp {
         familySearchComparisonDebugMessage = "Comparison not triggered"
         appendFamilySearchComparisonDebug("Family selected: \(family.familyId)")
 
+        if TikkanenSixDevelopmentData.isEnabled(for: family) {
+            let hiskiRowsByCouple = await loadTikkanenSixHiskiRows(for: family)
+            let groups = TikkanenSixDevelopmentData.makeComparisonGroups(
+                for: family,
+                nameManager: nameEquivalenceManager,
+                hiskiRowsByCouple: hiskiRowsByCouple
+            )
+            familyChildrenComparisonGroups = groups
+            familySearchComparisonResult = nil
+            comparisonReport = ""
+            hiskiCitationProposals = []
+            familySearchComparisonDebugMessage = "Development Tikkanen 6 comparison ready"
+            appendFamilySearchComparisonDebug("Development comparison source: dummy FamilySearch children and live HisKi rows")
+            appendFamilySearchComparisonDebug("Development comparison groups assigned: \(groups.count)")
+            for group in groups {
+                appendFamilySearchComparisonDebug(
+                    "Couple \(group.coupleIndex + 1) \(group.couple.husband.displayName) + \(group.couple.wife.displayName): \(group.result.rows.count) union rows"
+                )
+                group.hiskiSearchRequests.forEach { request in
+                    appendFamilySearchComparisonDebug("HisKi query built: \(request.label) \(request.url.absoluteString)")
+                }
+            }
+            return
+        }
+
         let familySearchPersonId = familySearchParentId(in: family)
         let storedFamilySearchExtraction = familySearchExtraction(for: family.familyId)
         var familySearchNavigationRequest: FamilySearchNavigationRequest?
@@ -844,6 +872,55 @@ class JuuretApp {
         }
     }
 
+    private func loadTikkanenSixHiskiRows(for family: Family) async -> [Int: [HiskiService.HiskiFamilyBirthRow]] {
+        let hiskiService = HiskiService(nameEquivalenceManager: nameEquivalenceManager)
+        hiskiService.setCurrentFamily(family.familyId)
+        var rowsByCouple: [Int: [HiskiService.HiskiFamilyBirthRow]] = [:]
+
+        for (index, couple) in family.couples.enumerated() {
+            guard let marriageDate = couple.fullMarriageDate ?? couple.marriageDate,
+                  let marriageYear = extractYear(from: marriageDate) else {
+                appendFamilySearchComparisonDebug(
+                    "HisKi child query skipped for couple \(index + 1): missing marriage year"
+                )
+                rowsByCouple[index] = []
+                continue
+            }
+
+            do {
+                let searchRequests = try hiskiService.buildFamilyBirthSearchRequests(
+                    fatherName: couple.husband.name,
+                    fatherPatronymic: couple.husband.patronymic,
+                    motherName: couple.wife.name,
+                    motherPatronymic: couple.wife.patronymic,
+                    marriageYear: marriageYear
+                )
+
+                guard let request = searchRequests.first else {
+                    rowsByCouple[index] = []
+                    continue
+                }
+
+                appendFamilySearchComparisonDebug(
+                    "HisKi live child query started for couple \(index + 1): \(request.url.absoluteString)"
+                )
+                let searchHtml = try await loadHiskiSearchHtml(from: request.url)
+                let rows = hiskiService.parseFamilyBirthResultsTable(searchHtml)
+                appendFamilySearchComparisonDebug(
+                    "HisKi live child rows parsed for couple \(index + 1): \(rows.count)"
+                )
+                rowsByCouple[index] = rows
+            } catch {
+                appendFamilySearchComparisonDebug(
+                    "HisKi live child query failed for couple \(index + 1): \(error.localizedDescription)"
+                )
+                rowsByCouple[index] = []
+            }
+        }
+
+        return rowsByCouple
+    }
+
     private func assignFamilySearchComparisonFallback(
         family: Family,
         couple: Couple,
@@ -936,6 +1013,7 @@ class JuuretApp {
             currentFamily = nil
             enhancedFamily = nil
             comparisonReport = ""
+            familyChildrenComparisonGroups = []
             resetFamilySearchComparisonDebug(message: "Comparison not triggered")
             hiskiCitationProposals = []
             extractionProgress = .extractingText
@@ -950,6 +1028,7 @@ class JuuretApp {
             await MainActor.run {
                 currentFamily = cached.mainFamily
                 enhancedFamily = cached.mainFamily
+                familyChildrenComparisonGroups = []
                 resetFamilySearchComparisonDebug(message: "Comparison not triggered")
                 
                 // Create workflow with cached network
@@ -1078,6 +1157,7 @@ class JuuretApp {
                 currentFamily = nil
                 enhancedFamily = nil
                 comparisonReport = ""
+                familyChildrenComparisonGroups = []
                 resetFamilySearchComparisonDebug(message: "Comparison not triggered")
                 hiskiCitationProposals = []
                 isProcessing = false
