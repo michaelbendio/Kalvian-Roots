@@ -1125,7 +1125,7 @@ class HiskiService {
         switch normalizedHiskiLookupToken(patronymic) {
         case "pietarinp":
             return "Perss"
-        case "pietarint", "pietarintytar":
+        case "pietarint":
             return "Persdr"
         default:
             return nil
