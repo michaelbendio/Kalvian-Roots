@@ -11,16 +11,35 @@ import XCTest
 // MARK: - NameEquivalenceManager Tests
 
 final class NameEquivalenceManagerTests: XCTestCase {
+
+    private let userEquivalencesKey = "UserNameEquivalences"
     
     var manager: NameEquivalenceManager!
+    private var savedUserEquivalencesData: Data?
     
     override func setUpWithError() throws {
         try super.setUpWithError()
+
+        let defaults = UserDefaults.standard
+        savedUserEquivalencesData = defaults.data(forKey: userEquivalencesKey)
+
+        defaults.removeObject(forKey: userEquivalencesKey)
+
         manager = NameEquivalenceManager()
     }
 
     override func tearDownWithError() throws {
+        let defaults = UserDefaults.standard
+
+        if let savedUserEquivalencesData {
+            defaults.set(savedUserEquivalencesData, forKey: userEquivalencesKey)
+        } else {
+            defaults.removeObject(forKey: userEquivalencesKey)
+        }
+
         manager = nil
+        savedUserEquivalencesData = nil
+
         try super.tearDownWithError()
     }
     
@@ -48,35 +67,14 @@ final class NameEquivalenceManagerTests: XCTestCase {
         XCTAssertTrue(manager.areNamesEquivalent("Abraham", "Abram"))
     }
 
-    func testDefaultEquivalenceUpgradePreservesStoredCustomNames() throws {
+    func testDefaultsLoadWithoutPersistingBuiltInEquivalences() {
         let defaults = UserDefaults.standard
-        let savedEquivalences = defaults.data(forKey: "NameEquivalences")
-        let savedVersion = defaults.object(forKey: "NameEquivalencesVersion")
-        defer {
-            if let savedEquivalences {
-                defaults.set(savedEquivalences, forKey: "NameEquivalences")
-            } else {
-                defaults.removeObject(forKey: "NameEquivalences")
-            }
 
-            if let savedVersion {
-                defaults.set(savedVersion, forKey: "NameEquivalencesVersion")
-            } else {
-                defaults.removeObject(forKey: "NameEquivalencesVersion")
-            }
-        }
+        let freshManager = NameEquivalenceManager()
 
-        let legacyEquivalences = [
-            "customa": ["customb"],
-            "customb": ["customa"]
-        ]
-        defaults.set(try JSONEncoder().encode(legacyEquivalences), forKey: "NameEquivalences")
-        defaults.set(5, forKey: "NameEquivalencesVersion")
-
-        let upgradedManager = NameEquivalenceManager()
-
-        XCTAssertTrue(upgradedManager.areNamesEquivalent("CustomA", "CustomB"))
-        XCTAssertTrue(upgradedManager.areNamesEquivalent("Tuomas", "Thomas"))
+        XCTAssertTrue(freshManager.areNamesEquivalent("Anna", "Annika"))
+        XCTAssertTrue(freshManager.areNamesEquivalent("Tuomas", "Thomas"))
+        XCTAssertNil(defaults.data(forKey: userEquivalencesKey))
     }
     
     func testCaseInsensitiveEquivalence() {
@@ -110,6 +108,30 @@ final class NameEquivalenceManagerTests: XCTestCase {
         // Then: Should recognize equivalence
         XCTAssertTrue(manager.areNamesEquivalent("TestName1", "TestName2"))
     }
+
+    func testAnnikaEquivalentNamesAndCanonicalNameAreDeterministic() {
+        XCTAssertTrue(manager.getEquivalentNames(for: "Annika").contains("anna"))
+        XCTAssertTrue(manager.getEquivalentNames(for: "Anna").contains("annika"))
+        XCTAssertEqual(manager.canonicalName(for: "Annika"), "anna")
+    }
+
+    func testCustomEquivalencePersistsAfterRecreatingManager() {
+        manager.addEquivalence(between: "CustomA", and: "CustomB")
+
+        let recreatedManager = NameEquivalenceManager()
+
+        XCTAssertTrue(recreatedManager.areNamesEquivalent("CustomA", "CustomB"))
+        XCTAssertTrue(recreatedManager.areNamesEquivalent("Anna", "Annika"))
+    }
+
+    func testClearAllEquivalencesClearsOnlyUserEquivalences() {
+        manager.addEquivalence(between: "CustomA", and: "CustomB")
+
+        manager.clearAllEquivalences()
+
+        XCTAssertFalse(manager.areNamesEquivalent("CustomA", "CustomB"))
+        XCTAssertTrue(manager.areNamesEquivalent("Anna", "Annika"))
+    }
     
     func testBidirectionalEquivalence() {
         // Test that equivalence works both ways
@@ -121,6 +143,11 @@ final class NameEquivalenceManagerTests: XCTestCase {
         // Test names with multiple equivalent forms
         // (Some names might have multiple Finnish/Swedish variants)
         XCTAssertTrue(manager.areNamesEquivalent("Johan", "Juho"))
+    }
+
+    func testTransitiveEquivalenceIsPreserved() {
+        XCTAssertTrue(manager.areNamesEquivalent("Matias", "Matthias"))
+        XCTAssertTrue(manager.getEquivalentNames(for: "Matias").contains("matthias"))
     }
 
     func testCanonicalNameMatchesMaijaLiisaAndMariaElisTokenByToken() {

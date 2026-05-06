@@ -1076,8 +1076,8 @@ class HiskiService {
         logDebug(.app, "🔍 Swedish equivalent lookup for '\(finnishName)':")
         logDebug(.app, "   Found equivalents: \(Array(equivalents).sorted())")
         
-        // For Hiski queries in Swedish records, prefer Swedish/Latin forms
-        let swedishPreferred = ["Thomas", "Tomas", "Malin", "Petrus", "Pehr", "Johannes", "Henricus", "Henric",
+        // For Hiski queries in Swedish records, prefer Swedish/Latin forms; Annika is safer than Anna for this source.
+        let swedishPreferred = ["Annika", "Anna", "Thomas", "Tomas", "Malin", "Petrus", "Pehr", "Johannes", "Henricus", "Henric",
                                 "Henrik", "Ericus", "Erik", "Matthias", "Matts", "Mats", "Elisabet",
                                 "Elisabeth", "Birgitta", "Brita", "Britha", "Andreas", "Anders", "Magdalena"]
         

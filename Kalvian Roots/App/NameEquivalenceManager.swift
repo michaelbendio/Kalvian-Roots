@@ -23,11 +23,9 @@ class NameEquivalenceManager {
     // MARK: - Properties
 
     private var equivalences: [String: Set<String>] = [:]
+    private var userEquivalencePairs: Set<NamePair> = []
 
-    private let userDefaultsKey = "NameEquivalences"
-    private let userDefaultsVersionKey = "NameEquivalencesVersion"
-
-    private let currentVersion = 7
+    private let userDefaultsKey = "UserNameEquivalences"
 
 
     // MARK: - Computed Properties
@@ -119,7 +117,8 @@ class NameEquivalenceManager {
 
         logInfo(.nameEquivalence, "➕ Adding equivalence: \(normalized1) ↔ \(normalized2)")
 
-        addEquivalence(normalized1, normalized2)
+        addEquivalenceToGraph(normalized1, normalized2)
+        userEquivalencePairs.insert(NamePair(normalized1, normalized2))
 
         saveEquivalences()
 
@@ -160,7 +159,7 @@ class NameEquivalenceManager {
     }
 
 
-    private func addEquivalence(_ normalized1: String, _ normalized2: String) {
+    private func addEquivalenceToGraph(_ normalized1: String, _ normalized2: String) {
         addDirectionalEquivalence(from: normalized1, to: normalized2)
         addDirectionalEquivalence(from: normalized2, to: normalized1)
 
@@ -211,56 +210,56 @@ class NameEquivalenceManager {
 
         do {
 
-            let serializable = equivalences.mapValues { Array($0) }
+            let serializable = userEquivalencePairs.sorted()
 
-            let data = try JSONEncoder().encode(serializable)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+
+            let data = try encoder.encode(serializable)
 
             UserDefaults.standard.set(data, forKey: userDefaultsKey)
-            UserDefaults.standard.set(currentVersion, forKey: userDefaultsVersionKey)
 
-            logTrace(.nameEquivalence, "💾 Equivalences saved")
+            logTrace(.nameEquivalence, "💾 User equivalences saved")
 
         } catch {
 
-            logError(.nameEquivalence, "❌ Failed to save equivalences: \(error)")
+            logError(.nameEquivalence, "❌ Failed to save user equivalences: \(error)")
         }
     }
 
 
     private func loadEquivalences() {
 
-        let savedVersion = UserDefaults.standard.integer(forKey: userDefaultsVersionKey)
+        equivalences.removeAll()
+        userEquivalencePairs.removeAll()
+
+        loadDefaultEquivalences()
+        loadUserEquivalences()
+    }
+
+
+    private func loadUserEquivalences() {
 
         guard let data = UserDefaults.standard.data(forKey: userDefaultsKey) else {
-
-            loadDefaultEquivalences()
-
-            UserDefaults.standard.set(currentVersion, forKey: userDefaultsVersionKey)
 
             return
         }
 
         do {
 
-            let serializable = try JSONDecoder().decode([String: [String]].self, from: data)
+            let savedPairs = try JSONDecoder().decode([NamePair].self, from: data)
 
-            equivalences = serializable.mapValues { Set($0) }
+            userEquivalencePairs = Set(savedPairs)
 
-            logDebug(.nameEquivalence, "📂 Loaded equivalences")
-
-            if savedVersion != currentVersion {
-                logInfo(.nameEquivalence, "🔄 Updating default name equivalences to version \(currentVersion)")
-                loadDefaultEquivalences()
-                UserDefaults.standard.set(currentVersion, forKey: userDefaultsVersionKey)
+            for pair in userEquivalencePairs.sorted() {
+                addEquivalenceToGraph(pair.first, pair.second)
             }
+
+            logDebug(.nameEquivalence, "📂 Loaded \(userEquivalencePairs.count) user equivalences")
 
         } catch {
 
-            logError(.nameEquivalence, "❌ Failed to load equivalences: \(error)")
-
-            loadDefaultEquivalences()
-
-            UserDefaults.standard.set(currentVersion, forKey: userDefaultsVersionKey)
+            logError(.nameEquivalence, "❌ Failed to load user equivalences: \(error)")
         }
     }
 
@@ -307,9 +306,8 @@ class NameEquivalenceManager {
             ("Abraham", "Abram")
         ]
         for (name1, name2) in defaultPairs {
-            addEquivalence(normalizeName(name1), normalizeName(name2))
+            addEquivalenceToGraph(normalizeName(name1), normalizeName(name2))
         }
-        saveEquivalences()
 
         logInfo(.nameEquivalence, "✅ Loaded \(defaultPairs.count) default equivalences")
     }
@@ -321,10 +319,48 @@ class NameEquivalenceManager {
 
         logWarn(.nameEquivalence, "🗑️ Clearing all name equivalences")
 
+        userEquivalencePairs.removeAll()
         equivalences.removeAll()
 
         UserDefaults.standard.removeObject(forKey: userDefaultsKey)
 
-        logInfo(.nameEquivalence, "✅ All equivalences cleared")
+        loadDefaultEquivalences()
+
+        logInfo(.nameEquivalence, "✅ User equivalences cleared")
+    }
+}
+
+private struct NamePair: Codable, Hashable, Comparable {
+    let first: String
+    let second: String
+
+    private enum CodingKeys: String, CodingKey {
+        case first
+        case second
+    }
+
+    init(_ name1: String, _ name2: String) {
+        if name1 <= name2 {
+            first = name1
+            second = name2
+        } else {
+            first = name2
+            second = name1
+        }
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let first = try container.decode(String.self, forKey: .first)
+        let second = try container.decode(String.self, forKey: .second)
+        self.init(first, second)
+    }
+
+    static func < (lhs: NamePair, rhs: NamePair) -> Bool {
+        if lhs.first == rhs.first {
+            return lhs.second < rhs.second
+        }
+
+        return lhs.first < rhs.first
     }
 }

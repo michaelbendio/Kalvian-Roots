@@ -4,22 +4,18 @@ import XCTest
 
 final class FamilyComparisonResultTests: XCTestCase {
 
-    private let equivalencesKey = "NameEquivalences"
-    private let equivalenceVersionKey = "NameEquivalencesVersion"
+    private let equivalencesKey = "UserNameEquivalences"
 
     private var nameManager: NameEquivalenceManager!
     private var savedEquivalencesData: Data?
-    private var savedVersionValue: Any?
 
     override func setUpWithError() throws {
         try super.setUpWithError()
 
         let defaults = UserDefaults.standard
         savedEquivalencesData = defaults.data(forKey: equivalencesKey)
-        savedVersionValue = defaults.object(forKey: equivalenceVersionKey)
 
         defaults.removeObject(forKey: equivalencesKey)
-        defaults.removeObject(forKey: equivalenceVersionKey)
 
         nameManager = NameEquivalenceManager()
         nameManager.clearAllEquivalences()
@@ -35,15 +31,8 @@ final class FamilyComparisonResultTests: XCTestCase {
             defaults.removeObject(forKey: equivalencesKey)
         }
 
-        if let savedVersionValue {
-            defaults.set(savedVersionValue, forKey: equivalenceVersionKey)
-        } else {
-            defaults.removeObject(forKey: equivalenceVersionKey)
-        }
-
         nameManager = nil
         savedEquivalencesData = nil
-        savedVersionValue = nil
 
         try super.tearDownWithError()
     }
@@ -288,23 +277,19 @@ final class FamilyComparisonResultTests: XCTestCase {
 
 final class FamilyComparisonServiceTests: XCTestCase {
 
-    private let equivalencesKey = "NameEquivalences"
-    private let equivalenceVersionKey = "NameEquivalencesVersion"
+    private let equivalencesKey = "UserNameEquivalences"
 
     private var service: FamilyComparisonService!
     private var nameManager: NameEquivalenceManager!
     private var savedEquivalencesData: Data?
-    private var savedVersionValue: Any?
 
     override func setUpWithError() throws {
         try super.setUpWithError()
 
         let defaults = UserDefaults.standard
         savedEquivalencesData = defaults.data(forKey: equivalencesKey)
-        savedVersionValue = defaults.object(forKey: equivalenceVersionKey)
 
         defaults.removeObject(forKey: equivalencesKey)
-        defaults.removeObject(forKey: equivalenceVersionKey)
 
         nameManager = NameEquivalenceManager()
         nameManager.clearAllEquivalences()
@@ -321,16 +306,9 @@ final class FamilyComparisonServiceTests: XCTestCase {
             defaults.removeObject(forKey: equivalencesKey)
         }
 
-        if let savedVersionValue {
-            defaults.set(savedVersionValue, forKey: equivalenceVersionKey)
-        } else {
-            defaults.removeObject(forKey: equivalenceVersionKey)
-        }
-
         service = nil
         nameManager = nil
         savedEquivalencesData = nil
-        savedVersionValue = nil
         try super.tearDownWithError()
     }
 
@@ -1631,19 +1609,15 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
 
 final class TikkanenSixDevelopmentDataTests: XCTestCase {
 
-    private let equivalencesKey = "NameEquivalences"
-    private let equivalenceVersionKey = "NameEquivalencesVersion"
+    private let equivalencesKey = "UserNameEquivalences"
     private var savedEquivalencesData: Data?
-    private var savedVersionValue: Any?
 
     override func setUpWithError() throws {
         try super.setUpWithError()
 
         let defaults = UserDefaults.standard
         savedEquivalencesData = defaults.data(forKey: equivalencesKey)
-        savedVersionValue = defaults.object(forKey: equivalenceVersionKey)
         defaults.removeObject(forKey: equivalencesKey)
-        defaults.removeObject(forKey: equivalenceVersionKey)
     }
 
     override func tearDownWithError() throws {
@@ -1653,12 +1627,6 @@ final class TikkanenSixDevelopmentDataTests: XCTestCase {
             defaults.set(savedEquivalencesData, forKey: equivalencesKey)
         } else {
             defaults.removeObject(forKey: equivalencesKey)
-        }
-
-        if let savedVersionValue {
-            defaults.set(savedVersionValue, forKey: equivalenceVersionKey)
-        } else {
-            defaults.removeObject(forKey: equivalenceVersionKey)
         }
 
         try super.tearDownWithError()
