@@ -139,17 +139,16 @@ struct FamilyContentView: View {
     }
 
     private var shouldRenderFamilySearchComparisonUI: Bool {
-        if !juuretApp.familyChildrenComparisonGroups.isEmpty {
-            return false
-        }
-
         let shouldRender = juuretApp.familySearchComparisonResult != nil ||
+            !juuretApp.familyChildrenComparisonGroups.isEmpty ||
             !juuretApp.familySearchComparisonDebugMessage.isEmpty
 
         logInfo(
             .ui,
             "🧪 comparison UI render condition evaluated: \(shouldRender) " +
             "(resultRows: \(juuretApp.familySearchComparisonResult?.rows.count ?? 0), " +
+            "displayRows: \(familySearchComparisonRows.count), " +
+            "groupCount: \(juuretApp.familyChildrenComparisonGroups.count), " +
             "message: \(juuretApp.familySearchComparisonDebugMessage))"
         )
 
@@ -239,8 +238,8 @@ struct FamilyContentView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                if let result = juuretApp.familySearchComparisonResult, !result.rows.isEmpty {
-                    familySearchComparisonTable(rows: result.rows)
+                if !familySearchComparisonRows.isEmpty {
+                    familySearchComparisonTable(rows: familySearchComparisonRows)
                 } else {
                     Text(juuretApp.familySearchComparisonDebugMessage.isEmpty
                         ? "Comparison not triggered"
@@ -258,7 +257,7 @@ struct FamilyContentView: View {
         FamilySearchComparisonClipboardFormatter.text(
             debugMessage: juuretApp.familySearchComparisonDebugMessage,
             debugLines: juuretApp.familySearchComparisonDebugLines,
-            rows: juuretApp.familySearchComparisonResult?.rows ?? [],
+            rows: familySearchComparisonRows,
             status: juuretApp.familySearchComparisonStatus(for:)
         )
     }
@@ -267,8 +266,15 @@ struct FamilyContentView: View {
         FamilySearchComparisonClipboardFormatter.text(
             debugMessage: juuretApp.familySearchComparisonDebugMessage,
             debugLines: juuretApp.familySearchComparisonDebugLines,
-            rows: [],
+            rows: familySearchComparisonRows,
             status: juuretApp.familySearchComparisonStatus(for:)
+        )
+    }
+
+    private var familySearchComparisonRows: [FamilyComparisonResult.Match] {
+        FamilySearchComparisonClipboardFormatter.rows(
+            result: juuretApp.familySearchComparisonResult,
+            groups: juuretApp.familyChildrenComparisonGroups
         )
     }
 
@@ -726,6 +732,17 @@ struct FamilyContentView: View {
 }
 
 enum FamilySearchComparisonClipboardFormatter {
+    static func rows(
+        result: FamilyComparisonResult?,
+        groups: [FamilyChildrenComparisonGroup]
+    ) -> [FamilyComparisonResult.Match] {
+        if let result, !result.rows.isEmpty {
+            return result.rows
+        }
+
+        return groups.flatMap { $0.result.rows }
+    }
+
     static func text(
         debugMessage: String,
         debugLines: [String],

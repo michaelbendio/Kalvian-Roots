@@ -262,16 +262,24 @@ enum TikkanenSixDevelopmentData {
             if let match = bestSpouseGroupMatch(
                 spouseGroups: spouseGroups,
                 candidateParentIds: idsForMatching,
+                marriageYear: extractYear(from: couple.fullMarriageDate ?? couple.marriageDate),
                 usedGroupIndexes: usedGroupIndexes
             ) {
                 usedGroupIndexes.insert(match.groupIndex)
-                let idDetail = match.matchedFamilySearchId.map { " by parent FamilySearch ID \($0)" } ?? ""
+                let matchDetail: String
+                if let matchedFamilySearchId = match.matchedFamilySearchId {
+                    matchDetail = " by parent FamilySearch ID \(matchedFamilySearchId)"
+                } else if let matchedMarriageYear = match.matchedMarriageYear {
+                    matchDetail = " by marriage year \(matchedMarriageYear)"
+                } else {
+                    matchDetail = ""
+                }
                 let declared = spouseGroups[match.groupIndex].declaredChildCount.map(String.init) ?? "unknown"
                 return FamilySearchCoupleChildrenMatch(
                     coupleIndex: index,
                     spouseGroupIndex: match.groupIndex,
                     children: spouseGroups[match.groupIndex].children,
-                    debugSummary: "FamilySearch spouse group \(match.groupIndex + 1) matched to couple \(index + 1)\(idDetail): declared children \(declared), extracted children \(spouseGroups[match.groupIndex].children.count)"
+                    debugSummary: "FamilySearch spouse group \(match.groupIndex + 1) matched to couple \(index + 1)\(matchDetail): declared children \(declared), extracted children \(spouseGroups[match.groupIndex].children.count)"
                 )
             }
 
@@ -279,7 +287,7 @@ enum TikkanenSixDevelopmentData {
                 coupleIndex: index,
                 spouseGroupIndex: nil,
                 children: [],
-                debugSummary: "FamilySearch spouse group not matched to couple \(index + 1): no unused spouse group contains a couple-specific FamilySearch ID"
+                debugSummary: "FamilySearch spouse group not matched to couple \(index + 1): no unused spouse group contains a couple-specific FamilySearch ID or unique marriage year"
             )
         }
     }
@@ -289,6 +297,7 @@ private extension TikkanenSixDevelopmentData {
     struct SpouseGroupMatch {
         let groupIndex: Int
         let matchedFamilySearchId: String?
+        let matchedMarriageYear: Int?
     }
 
     static func familySearchChildren(
@@ -374,12 +383,35 @@ private extension TikkanenSixDevelopmentData {
     static func bestSpouseGroupMatch(
         spouseGroups: [FamilySearchSpouseGroup],
         candidateParentIds: [String],
+        marriageYear: Int?,
         usedGroupIndexes: Set<Int>
     ) -> SpouseGroupMatch? {
         for (index, group) in spouseGroups.enumerated() where !usedGroupIndexes.contains(index) {
             let spouseIds = Set(group.spouses.compactMap { normalizedFamilySearchId($0.id) })
             if let matchedId = candidateParentIds.first(where: { spouseIds.contains($0) }) {
-                return SpouseGroupMatch(groupIndex: index, matchedFamilySearchId: matchedId)
+                return SpouseGroupMatch(
+                    groupIndex: index,
+                    matchedFamilySearchId: matchedId,
+                    matchedMarriageYear: nil
+                )
+            }
+        }
+
+        if let marriageYear {
+            let marriageYearMatches = spouseGroups.enumerated().compactMap { index, group -> Int? in
+                guard !usedGroupIndexes.contains(index),
+                      extractYear(from: group.marriage?.date) == marriageYear else {
+                    return nil
+                }
+                return index
+            }
+
+            if marriageYearMatches.count == 1, let groupIndex = marriageYearMatches.first {
+                return SpouseGroupMatch(
+                    groupIndex: groupIndex,
+                    matchedFamilySearchId: nil,
+                    matchedMarriageYear: marriageYear
+                )
             }
         }
 

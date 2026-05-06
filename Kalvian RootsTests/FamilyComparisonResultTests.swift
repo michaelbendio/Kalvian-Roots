@@ -1372,6 +1372,55 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
         XCTAssertTrue(text.contains("Child name\tJuuret\tHisKi\tFamilySearch\tStatus"))
         XCTAssertTrue(text.contains("Matti\tYes | 14 Mar 1761\tNo\tYes | <LK4Q-YSX> | 14 Mar 1761\tMissing in HisKi"))
     }
+
+    func testRowsFallBackToDevelopmentComparisonGroups() {
+        let nameManager = NameEquivalenceManager()
+        nameManager.clearAllEquivalences()
+        nameManager.addEquivalence(between: "Mikko", and: "Michel")
+
+        let groupedResult = FamilyComparisonResult(
+            familySearch: [
+                PersonCandidate(
+                    name: "Michel Tikkanen",
+                    identityName: "Michel",
+                    birthDate: date(1757, 3, 5),
+                    source: .familySearch,
+                    nameManager: nameManager,
+                    familySearchId: "FS-MICHEL"
+                )
+            ],
+            juuretKalvialla: [
+                PersonCandidate(
+                    name: "Mikko",
+                    birthDate: date(1757, 3, 5),
+                    source: .juuretKalvialla,
+                    nameManager: nameManager
+                )
+            ],
+            hiski: []
+        )
+        let group = FamilyChildrenComparisonGroup(
+            coupleIndex: 0,
+            couple: Couple(husband: Person(name: "Erik"), wife: Person(name: "Maria")),
+            hiskiSearchRequests: [],
+            result: groupedResult
+        )
+
+        let rows = FamilySearchComparisonClipboardFormatter.rows(
+            result: nil,
+            groups: [group]
+        )
+        let text = FamilySearchComparisonClipboardFormatter.text(
+            debugMessage: "Development Tikkanen 6 comparison ready",
+            debugLines: [],
+            rows: rows,
+            status: { _ in "Missing in HisKi" }
+        )
+
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertFalse(text.contains("(no rows)"))
+        XCTAssertTrue(text.contains("Mikko\tYes | 05 Mar 1757\tNo\tYes | <FS-MICHEL> | 05 Mar 1757\tMissing in HisKi"))
+    }
 }
 
 final class TikkanenSixDevelopmentDataTests: XCTestCase {
@@ -1547,8 +1596,52 @@ final class TikkanenSixDevelopmentDataTests: XCTestCase {
 
         XCTAssertTrue(matches.allSatisfy { $0.children.isEmpty })
         XCTAssertTrue(matches.allSatisfy {
-            $0.debugSummary.contains("no unused spouse group contains a couple-specific FamilySearch ID")
+            $0.debugSummary.contains("no unused spouse group contains a couple-specific FamilySearch ID or unique marriage year")
         })
+    }
+
+    func testFamilySearchSpouseGroupsFallbackToUniqueMarriageYear() throws {
+        var family = makeTikkanenSixFamily()
+        for index in family.couples.indices {
+            family.couples[index].wife.familySearchId = nil
+        }
+
+        var extraction = FamilySearchFamilyExtraction(
+            sourcePersonId: "K2YQ-1ZY",
+            children: []
+        )
+        extraction.status = "success"
+        extraction.spouseGroups = [
+            spouseGroup(
+                wifeId: nil,
+                marriageDate: "27 November 1753",
+                child: FamilySearchChild(id: "MARIA-YEAR", name: "Maria year child", birthDate: "1755")
+            ),
+            spouseGroup(
+                wifeId: nil,
+                marriageDate: "24 June 1746",
+                child: FamilySearchChild(id: "ANNA-YEAR", name: "Anna year child", birthDate: "1747")
+            ),
+            spouseGroup(
+                wifeId: nil,
+                marriageDate: "29 October 1738",
+                child: FamilySearchChild(id: "ANNIKA-YEAR", name: "Annika year child", birthDate: "1739")
+            )
+        ]
+
+        let matches = TikkanenSixDevelopmentData.matchFamilySearchChildrenByCouple(
+            for: family,
+            extraction: extraction
+        )
+
+        XCTAssertEqual(matches.map { $0.children.first?.id }, [
+            "ANNIKA-YEAR",
+            "ANNA-YEAR",
+            "MARIA-YEAR"
+        ])
+        XCTAssertTrue(matches[0].debugSummary.contains("marriage year 1738"))
+        XCTAssertTrue(matches[1].debugSummary.contains("marriage year 1746"))
+        XCTAssertTrue(matches[2].debugSummary.contains("marriage year 1753"))
     }
 
     private func makeMariaHiskiRows(couple: Couple) -> [HiskiService.HiskiFamilyBirthRow] {
@@ -1623,15 +1716,18 @@ final class TikkanenSixDevelopmentDataTests: XCTestCase {
     }
 
     private func spouseGroup(
-        wifeId: String,
+        wifeId: String?,
+        marriageDate: String? = nil,
         child: FamilySearchChild
     ) -> FamilySearchSpouseGroup {
-        FamilySearchSpouseGroup(
-            spouses: [
-                FamilySearchPersonSummary(id: "K2YQ-1ZY", name: "Erik Johansson Tikkanen"),
-                FamilySearchPersonSummary(id: wifeId, name: "Wife")
-            ],
-            marriage: nil,
+        let spouses = [
+            FamilySearchPersonSummary(id: "K2YQ-1ZY", name: "Erik Johansson Tikkanen"),
+            wifeId.map { FamilySearchPersonSummary(id: $0, name: "Wife") }
+        ].compactMap { $0 }
+
+        return FamilySearchSpouseGroup(
+            spouses: spouses,
+            marriage: FamilySearchMarriageSummary(date: marriageDate, place: nil),
             declaredChildCount: 1,
             children: [child],
             isPreferred: false
