@@ -1035,6 +1035,8 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("event.preventDefault()"))
         XCTAssertTrue(script.contains("notes.push('using child panel extraction')"))
         XCTAssertTrue(script.contains("function clickableNameControl(summary)"))
+        XCTAssertTrue(script.contains("return best;"))
+        XCTAssertFalse(script.contains("a[href*=\"/tree/person/details/"))
         XCTAssertTrue(script.contains("function isEditControl(element)"))
         XCTAssertTrue(script.contains("Edit|Pencil"))
         XCTAssertTrue(script.contains("const enrichedSpouseGroups = [];"))

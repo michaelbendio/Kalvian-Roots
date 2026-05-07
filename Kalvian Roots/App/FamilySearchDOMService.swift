@@ -549,20 +549,18 @@ enum FamilySearchDOMService {
 
                 const best = candidates[0];
                 if (!best) return null;
-                return best.closest('a,button,[role="button"],[tabindex]') || best;
+                return best;
             }
 
             function candidateChildControls(id) {
                 const scopedRoot = familyMembersSection() || localDocument;
                 const selectors = [
-                    'a[href*="/tree/person/details/' + id + '"]',
-                    'a[href*="/tree/person/' + id + '"]',
                     'button[aria-label*="' + id + '"]',
                     '[role="button"][aria-label*="' + id + '"]',
                     '[data-testid*="' + id + '"]'
                 ];
                 const direct = selectors.flatMap(selector => Array.from(scopedRoot.querySelectorAll(selector)));
-                const byText = Array.from(scopedRoot.querySelectorAll('a,button,[role="button"],[tabindex]')).filter(element => {
+                const byText = Array.from(scopedRoot.querySelectorAll('button,[role="button"],[tabindex]')).filter(element => {
                     const text = clean(element.getAttribute('aria-label') || element.textContent || '');
                     return text.includes(id) && !isEditControl(element);
                 });
@@ -581,7 +579,7 @@ enum FamilySearchDOMService {
                 }
 
                 const scopedRoot = familyMembersSection() || localDocument;
-                return Array.from(scopedRoot.querySelectorAll('a,button,[role="button"],[tabindex]'))
+                return Array.from(scopedRoot.querySelectorAll('button,[role="button"],[tabindex],span,div'))
                     .find(element => {
                         const text = visibleText(element);
                         return text.includes(summary.name) && text.includes(summary.id) && !isEditControl(element);
