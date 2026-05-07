@@ -732,43 +732,45 @@ enum FamilySearchDOMService {
                 }
             }
 
-            async function extractChildDetailsFromPersonPage(summary) {
-                const notes = [];
-                const person = await visitPerson(summary.id);
-                const birth = { date: person.birthDate || null, place: person.birthPlace || null };
-                const death = { date: person.deathDate || null, place: person.deathPlace || null };
+            async function withBlockedChildNavigation(summary, action) {
+                const originalPushState = window.history.pushState;
+                const originalReplaceState = window.history.replaceState;
 
-                return {
-                    id: summary.id,
-                    name: person.name || summary.name,
-                    sex: summary.sex || null,
-                    summaryYears: summary.summaryYears || summary.lifeSpan || person.lifeSpan || null,
-                    birth,
-                    birthDate: birth.date,
-                    birthPlace: birth.place,
-                    christening: { date: null, place: null },
-                    christeningDate: null,
-                    christeningPlace: null,
-                    death,
-                    deathDate: death.date,
-                    deathPlace: death.place,
-                    burial: { date: null, place: null },
-                    burialDate: null,
-                    burialPlace: null,
-                    lifeSpan: person.lifeSpan || summary.lifeSpan || summary.summaryYears || null,
-                    extractionStatus: 'success',
-                    extractionSource: 'detailsPage',
-                    extractionNotes: notes
+                function isBlockedChildURL(url) {
+                    if (!url) return false;
+                    try {
+                        const parsed = new URL(url, window.location.href);
+                        return parsed.hostname === window.location.hostname &&
+                            new RegExp('/tree/person/(details/)?' + summary.id + '($|[/?#])', 'i').test(parsed.pathname);
+                    } catch (_) {
+                        return false;
+                    }
+                }
+
+                function blockChildLink(event) {
+                    const link = event.target && event.target.closest && event.target.closest('a[href]');
+                    if (link && isBlockedChildURL(link.href)) {
+                        event.preventDefault();
+                    }
+                }
+
+                window.history.pushState = function (state, title, url) {
+                    if (isBlockedChildURL(url)) return;
+                    return originalPushState.apply(window.history, arguments);
                 };
-            }
+                window.history.replaceState = function (state, title, url) {
+                    if (isBlockedChildURL(url)) return;
+                    return originalReplaceState.apply(window.history, arguments);
+                };
+                localDocument.addEventListener('click', blockChildLink, true);
 
-            function childDetailHasVitalDates(detail) {
-                return !!(
-                    clean(detail.birthDate) ||
-                    clean(detail.christeningDate) ||
-                    clean(detail.deathDate) ||
-                    clean(detail.burialDate)
-                );
+                try {
+                    return await action();
+                } finally {
+                    localDocument.removeEventListener('click', blockChildLink, true);
+                    window.history.pushState = originalPushState;
+                    window.history.replaceState = originalReplaceState;
+                }
             }
 
             async function extractChildDetailsFromPanel(summary, notes) {
@@ -778,12 +780,10 @@ enum FamilySearchDOMService {
                     throw new Error('child detail control not found for ' + summary.id);
                 }
 
-                const detailLink = control.closest && control.closest('a[href*="/tree/person/"]');
-                if (detailLink) {
-                    detailLink.addEventListener('click', event => event.preventDefault(), { capture: true, once: true });
-                }
-                control.click();
-                const panel = await waitForChildPanel(summary.id, ignoredPanels);
+                const panel = await withBlockedChildNavigation(summary, async function () {
+                    control.click();
+                    return await waitForChildPanel(summary.id, ignoredPanels);
+                });
                 const birth = vitalFromPanel(panel, 'Birth');
                 const christening = vitalFromPanel(panel, 'Christening');
                 const death = vitalFromPanel(panel, 'Death');
@@ -821,12 +821,7 @@ enum FamilySearchDOMService {
             async function extractChildDetails(summary) {
                 const notes = [];
                 try {
-                    const detail = await extractChildDetailsFromPersonPage(summary);
-                    if (childDetailHasVitalDates(detail)) {
-                        return detail;
-                    }
-
-                    notes.push('details page returned no child vital dates');
+                    notes.push('using child panel extraction');
                     return await extractChildDetailsFromPanel(summary, notes);
                 } catch (error) {
                     notes.push(clean(error && error.message));
