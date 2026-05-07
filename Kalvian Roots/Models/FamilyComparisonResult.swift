@@ -434,6 +434,22 @@ struct FamilyChildrenComparisonGroup {
     var displayRows: [FamilyComparisonDisplayRow] {
         FamilyComparisonReviewDetector.displayRows(for: result.rows)
     }
+
+    static func primaryCoupleFallback(
+        for family: Family,
+        result: FamilyComparisonResult
+    ) -> FamilyChildrenComparisonGroup? {
+        guard let couple = family.primaryCouple else {
+            return nil
+        }
+
+        return FamilyChildrenComparisonGroup(
+            coupleIndex: 0,
+            couple: couple,
+            hiskiSearchRequests: [],
+            result: result
+        )
+    }
 }
 
 struct FamilySearchCoupleChildrenMatch: Equatable {

@@ -1652,6 +1652,55 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
         XCTAssertTrue(text.contains("Mikko\tYes | 05 Mar 1757\tNo\tYes | <FS-MICHEL> | 05 Mar 1757\tMissing in HisKi"))
     }
 
+    func testPrimaryCoupleFallbackGroupWrapsSingleComparisonResult() throws {
+        let nameManager = NameEquivalenceManager()
+        nameManager.clearAllEquivalences()
+
+        let result = FamilyComparisonResult(
+            familySearch: [
+                PersonCandidate(
+                    name: "Matts Kykyri",
+                    identityName: "Matti",
+                    birthDate: date(1802, 6, 25),
+                    source: .familySearch,
+                    nameManager: nameManager,
+                    familySearchId: "K1K9-QQW"
+                )
+            ],
+            juuretKalvialla: [
+                PersonCandidate(
+                    name: "Matti",
+                    birthDate: date(1802, 6, 25),
+                    source: .juuretKalvialla,
+                    nameManager: nameManager
+                )
+            ],
+            hiski: []
+        )
+        let family = Family(
+            familyId: "KYKYRI II 8",
+            pageReferences: [],
+            couples: [
+                Couple(
+                    husband: Person(name: "Elias", patronymic: "Matinp."),
+                    wife: Person(name: "Brita", patronymic: "Jaakont."),
+                    children: [
+                        Person(name: "Matti", birthDate: "25.06.1802")
+                    ]
+                )
+            ]
+        )
+
+        let group = try XCTUnwrap(FamilyChildrenComparisonGroup.primaryCoupleFallback(for: family, result: result))
+
+        XCTAssertEqual(group.coupleIndex, 0)
+        XCTAssertEqual(group.couple.children.map { $0.name }, ["Matti"])
+        XCTAssertEqual(group.hiskiSearchRequests.count, 0)
+        XCTAssertEqual(group.displayRows.count, 1)
+        XCTAssertEqual(group.displayRows.first?.match.juuretKalvialla?.rawName, "Matti")
+        XCTAssertEqual(group.displayRows.first?.match.familySearch?.familySearchId, "K1K9-QQW")
+    }
+
     func testClipboardTextCoalescesReviewNameDiscrepanciesIntoOneDisplayRow() {
         let nameManager = NameEquivalenceManager()
         nameManager.clearAllEquivalences()

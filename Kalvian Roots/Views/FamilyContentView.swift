@@ -784,7 +784,15 @@ struct FamilyContentView: View {
     }
 
     private func comparisonGroup(forCoupleAt index: Int) -> FamilyChildrenComparisonGroup? {
-        juuretApp.familyChildrenComparisonGroups.first { $0.coupleIndex == index }
+        if let group = juuretApp.familyChildrenComparisonGroups.first(where: { $0.coupleIndex == index }) {
+            return group
+        }
+
+        guard index == 0, let result = juuretApp.familySearchComparisonResult, !result.rows.isEmpty else {
+            return nil
+        }
+
+        return FamilyChildrenComparisonGroup.primaryCoupleFallback(for: family, result: result)
     }
 
     private func displayDate(for row: FamilyComparisonResult.Match) -> String {
