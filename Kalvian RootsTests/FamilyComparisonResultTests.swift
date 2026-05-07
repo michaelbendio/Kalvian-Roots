@@ -87,6 +87,44 @@ final class FamilyComparisonResultTests: XCTestCase {
         XCTAssertEqual(match.familySearch?.rawName, "Liisa")
         XCTAssertEqual(match.juuretKalvialla?.rawName, "Liisa")
         XCTAssertEqual(match.hiski?.rawName, "Elisabeta")
+        XCTAssertEqual(
+            FamilyComparisonService(nameManager: nameManager).status(for: match),
+            "Present in all three"
+        )
+    }
+
+    func testEquivalentSourceSpellingsDoNotReportNameMismatchStatus() throws {
+        let result = FamilyComparisonResult(
+            familySearch: [
+                candidate(
+                    name: "Anna Eriksson",
+                    identityName: "Anna",
+                    birth: date(1748, 5, 5),
+                    source: .familySearch,
+                    familySearchId: "ANNA-FS-1748"
+                )
+            ],
+            juuretKalvialla: [
+                candidate(
+                    name: "Anna",
+                    birth: date(1748, 5, 5),
+                    source: .juuretKalvialla
+                )
+            ],
+            hiski: [
+                candidate(
+                    name: "Anna",
+                    birth: date(1748, 5, 5),
+                    source: .hiski
+                )
+            ]
+        )
+
+        let match = try XCTUnwrap(result.matches.first)
+        XCTAssertEqual(
+            FamilyComparisonService(nameManager: nameManager).status(for: match),
+            "Present in all three"
+        )
     }
 
     func testFamilySearchAndHiskiMatchWhenJuuretEntryIsMissingForElias() throws {
@@ -223,6 +261,7 @@ final class FamilyComparisonResultTests: XCTestCase {
 
     private func candidate(
         name: String,
+        identityName: String? = nil,
         birth: Date,
         source: PersonCandidate.SourceType,
         familySearchId: String? = nil,
@@ -230,6 +269,7 @@ final class FamilyComparisonResultTests: XCTestCase {
     ) -> PersonCandidate {
         PersonCandidate(
             name: name,
+            identityName: identityName,
             birthDate: birth,
             source: source,
             nameManager: nameManager,

@@ -281,15 +281,15 @@ private extension FamilyComparisonService {
     }
 
     func hasNameMismatch(_ match: FamilyComparisonResult.Match) -> Bool {
-        let names = [
-            match.juuretKalvialla?.rawName,
-            match.hiski?.rawName,
-            match.familySearch?.rawName
+        let canonicalNames = [
+            match.juuretKalvialla?.identity.canonicalName,
+            match.hiski?.identity.canonicalName,
+            match.familySearch?.identity.canonicalName
         ]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
 
-        return Set(names).count > 1
+        return Set(canonicalNames).count > 1
     }
 
     func renderReportSection(title: String, items: [String]) -> String {

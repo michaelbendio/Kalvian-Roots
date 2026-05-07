@@ -535,14 +535,14 @@ struct HTMLRenderer {
     }
 
     private static func comparisonStatus(for match: FamilyComparisonResult.Match) -> String {
-        let names = [
-            match.juuretKalvialla?.rawName,
-            match.hiski?.rawName,
-            match.familySearch?.rawName
+        let canonicalNames = [
+            match.juuretKalvialla?.identity.canonicalName,
+            match.hiski?.identity.canonicalName,
+            match.familySearch?.identity.canonicalName
         ]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-        let hasNameMismatch = Set(names).count > 1
+        let hasNameMismatch = Set(canonicalNames).count > 1
 
         switch (match.juuretKalvialla, match.hiski, match.familySearch) {
         case (.some, .some, .some):
@@ -553,8 +553,10 @@ struct HTMLRenderer {
             return "Juuret-only"
         case (nil, .some, nil):
             return "HisKi-only"
-        case (nil, nil, .some):
-            return "FamilySearch-only"
+        case (nil, nil, .some(let familySearch)):
+            return familySearch.birthDate == nil
+                ? "FamilySearch date needed"
+                : "FamilySearch-only"
         case (.some, nil, .some):
             return hasNameMismatch ? "Name mismatch" : "Missing in HisKi"
         case (nil, .some, .some):
