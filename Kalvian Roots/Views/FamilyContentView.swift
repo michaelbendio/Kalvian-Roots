@@ -333,29 +333,32 @@ struct FamilyContentView: View {
             .foregroundStyle(.primary)
     }
 
+    private func reviewAsterisk(_ reviewNote: FamilyComparisonReviewNote, size: CGFloat = 13) -> some View {
+        Button {
+            selectedFamilySearchReviewNote = reviewNote
+        } label: {
+            Text("*")
+                .font(.system(size: size, weight: .bold, design: .monospaced))
+                .foregroundStyle(Color(hex: "c62828"))
+        }
+        .buttonStyle(.plain)
+        .help(reviewNote.message)
+        .accessibilityLabel("Review discrepancy")
+    }
+
     @ViewBuilder
     private func comparisonCell(
         _ text: String,
         reviewNote: FamilyComparisonReviewNote? = nil
     ) -> some View {
-        if let reviewNote {
-            Button {
-                selectedFamilySearchReviewNote = reviewNote
-            } label: {
-                Text(text)
-                    .foregroundStyle(Color(hex: "ad1457"))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 3)
-                    .padding(.vertical, 1)
-                    .background(Color(hex: "fce4ec"))
-                    .clipShape(RoundedRectangle(cornerRadius: 3))
-            }
-            .buttonStyle(.plain)
-            .help(reviewNote.message)
-        } else {
+        HStack(alignment: .firstTextBaseline, spacing: 2) {
             Text(text)
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if let reviewNote {
+                reviewAsterisk(reviewNote)
+            }
         }
     }
 
@@ -564,27 +567,29 @@ struct FamilyContentView: View {
     private func comparisonChildLine(displayRow: FamilyComparisonDisplayRow, couple: Couple) -> some View {
         let row = displayRow.match
         let reviewNote = displayRow.reviewNote
+        let date = displayDate(for: row)
 
         return HStack(alignment: .top, spacing: 6) {
             Text("★")
                 .font(.system(size: 16, design: .monospaced))
                 .foregroundColor(.primary)
 
-            Text(displayDate(for: row))
-                .font(.system(size: 16, design: .monospaced))
-                .foregroundColor(dateColor(for: row))
-
-            if let reviewNote {
+            if let hiskiPerson = hiskiLookupPerson(for: row, in: couple), date != "unknown" {
                 Button {
-                    selectedFamilySearchReviewNote = reviewNote
+                    generateHiskiFor(person: hiskiPerson, date: date, eventType: .birth)
                 } label: {
-                    Text(displayName(for: row))
+                    Text(date)
                         .font(.system(size: 16, design: .monospaced))
-                        .foregroundColor(Color(hex: "ad1457"))
+                        .foregroundColor(dateColor(for: row))
                 }
                 .buttonStyle(.plain)
-                .help(reviewNote.message)
-            } else if let child = juuretChild(for: row, in: couple) {
+            } else {
+                Text(date)
+                    .font(.system(size: 16, design: .monospaced))
+                    .foregroundColor(dateColor(for: row))
+            }
+
+            if let child = juuretChild(for: row, in: couple) {
                 Button {
                     generateCitationFor(child)
                 } label: {
@@ -597,6 +602,10 @@ struct FamilyContentView: View {
                 Text(displayName(for: row))
                     .font(.system(size: 16, design: .monospaced))
                     .foregroundColor(.primary)
+            }
+
+            if let reviewNote {
+                reviewAsterisk(reviewNote, size: 16)
             }
 
             if let familySearchId = row.familySearch?.familySearchId {
@@ -750,6 +759,18 @@ struct FamilyContentView: View {
             markers.append("H")
         }
         return markers.joined(separator: ", ")
+    }
+
+    private func hiskiLookupPerson(for row: FamilyComparisonResult.Match, in couple: Couple) -> Person? {
+        if let child = juuretChild(for: row, in: couple) {
+            return child
+        }
+
+        guard let candidate = row.hiski ?? row.juuretKalvialla else {
+            return nil
+        }
+
+        return Person(name: candidate.rawName, birthDate: formatUnionDate(candidate.birthDate))
     }
 
     private func juuretChild(for row: FamilyComparisonResult.Match, in couple: Couple) -> Person? {
