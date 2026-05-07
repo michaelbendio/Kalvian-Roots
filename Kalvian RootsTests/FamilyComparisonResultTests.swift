@@ -199,6 +199,28 @@ final class FamilyComparisonResultTests: XCTestCase {
         XCTAssertEqual(result.juuretOnly.count, 1)
     }
 
+    func testUndatedFamilySearchOnlyRowReportsDateNeededStatus() throws {
+        let result = FamilyComparisonResult(
+            familySearch: [
+                PersonCandidate(
+                    name: "Maria",
+                    birthDate: nil,
+                    source: .familySearch,
+                    nameManager: nameManager,
+                    familySearchId: "MARIA-FS-UNKNOWN"
+                )
+            ],
+            juuretKalvialla: [],
+            hiski: []
+        )
+
+        let row = try XCTUnwrap(result.rows.first)
+        XCTAssertEqual(
+            FamilyComparisonService(nameManager: nameManager).status(for: row),
+            "FamilySearch date needed"
+        )
+    }
+
     private func candidate(
         name: String,
         birth: Date,

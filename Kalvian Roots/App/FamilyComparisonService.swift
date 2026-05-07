@@ -152,8 +152,10 @@ final class FamilyComparisonService {
             return "Juuret-only"
         case (nil, .some, nil):
             return "HisKi-only"
-        case (nil, nil, .some):
-            return "FamilySearch-only"
+        case (nil, nil, .some(let familySearch)):
+            return familySearch.birthDate == nil
+                ? "FamilySearch date needed"
+                : "FamilySearch-only"
         case (.some, nil, .some):
             return hasNameMismatch(match) ? "Name mismatch" : "Missing in HisKi"
         case (nil, .some, .some):
