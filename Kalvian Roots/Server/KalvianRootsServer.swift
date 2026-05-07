@@ -1215,6 +1215,11 @@ final class HTTPHandler: ChannelInboundHandler {
 
         let hiskiService = HiskiService(nameEquivalenceManager: session.nameEquivalenceManager)
         hiskiService.setCurrentFamily(family.familyId)
+        let hiskiEndYear = HiskiService.familyBirthEndYear(
+            marriageYear: marriageYear,
+            husbandDeathDate: couple.husband.deathDate,
+            wifeDeathDate: couple.wife.deathDate
+        )
 
         do {
             let searchRequests = try hiskiService.buildFamilyBirthSearchRequests(
@@ -1222,7 +1227,8 @@ final class HTTPHandler: ChannelInboundHandler {
                 fatherPatronymic: couple.husband.patronymic,
                 motherName: couple.wife.name,
                 motherPatronymic: couple.wife.patronymic,
-                marriageYear: marriageYear
+                marriageYear: marriageYear,
+                endYear: hiskiEndYear
             )
             var rows: [HiskiService.HiskiFamilyBirthRow] = []
             for request in searchRequests {

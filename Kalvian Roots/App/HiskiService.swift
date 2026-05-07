@@ -191,8 +191,7 @@ class HiskiWebViewManager {
 // MARK: - Hiski Service
 
 class HiskiService {
-    static let yearsBeforeMarriage = 1
-    static let childbearingWindowYears = 36
+    static let childbearingWindowYears = 35
     static let maxHiskiResults = 50
 
     struct HiskiFamilyBirthRow: Equatable {
@@ -897,14 +896,16 @@ class HiskiService {
         fatherPatronymic: String?,
         motherName: String,
         motherPatronymic: String?,
-        marriageYear: Int
+        marriageYear: Int,
+        endYear: Int? = nil
     ) throws -> URL {
         try makeFamilyBirthSearchUrl(
             fatherName: normalizeForHiskiQuery(fatherName),
             fatherPatronymic: hiskiPatronymicSearchInput(for: fatherPatronymic),
             motherName: normalizeForHiskiQuery(motherName),
             motherPatronymic: hiskiPatronymicSearchInput(for: motherPatronymic),
-            marriageYear: marriageYear
+            marriageYear: marriageYear,
+            endYear: endYear
         )
     }
 
@@ -913,7 +914,8 @@ class HiskiService {
         fatherPatronymic: String?,
         motherName: String,
         motherPatronymic: String?,
-        marriageYear: Int
+        marriageYear: Int,
+        endYear: Int? = nil
     ) throws -> [FamilyBirthSearchRequest] {
         var requests: [FamilyBirthSearchRequest] = []
         var seenURLs: Set<String> = []
@@ -930,7 +932,8 @@ class HiskiService {
                 fatherPatronymic: fatherSearchPatronymic,
                 motherName: motherSearchName,
                 motherPatronymic: motherSearchPatronymic,
-                marriageYear: marriageYear
+                marriageYear: marriageYear,
+                endYear: endYear
             )
 
             guard seenURLs.insert(url.absoluteString).inserted else {
@@ -964,15 +967,31 @@ class HiskiService {
         return requests
     }
 
+    static func familyBirthEndYear(
+        marriageYear: Int,
+        husbandDeathDate: String?,
+        wifeDeathDate: String?
+    ) -> Int {
+        let earliestSpouseDeathYear = [
+            extractYear(from: husbandDeathDate),
+            extractYear(from: wifeDeathDate)
+        ]
+            .compactMap { $0 }
+            .min()
+
+        return max(marriageYear, earliestSpouseDeathYear ?? marriageYear + childbearingWindowYears)
+    }
+
     private func makeFamilyBirthSearchUrl(
         fatherName: String,
         fatherPatronymic: String?,
         motherName: String,
         motherPatronymic: String?,
-        marriageYear: Int
+        marriageYear: Int,
+        endYear: Int?
     ) throws -> URL {
-        let startYear = marriageYear - Self.yearsBeforeMarriage
-        let endYear = marriageYear + Self.childbearingWindowYears
+        let startYear = marriageYear
+        let boundedEndYear = max(marriageYear, endYear ?? marriageYear + Self.childbearingWindowYears)
 
         let params = [
             "komento": "haku",
@@ -981,7 +1000,7 @@ class HiskiService {
             "kieli": "en",
             "etunimi": "",
             "alkuvuosi": String(startYear),
-            "loppuvuosi": String(endYear),
+            "loppuvuosi": String(boundedEndYear),
             "ikyla": "",
             "maxkpl": String(Self.maxHiskiResults),
             "ietunimi": fatherName,
@@ -999,6 +1018,15 @@ class HiskiService {
         ]
 
         return try buildSearchUrl(params: params)
+    }
+
+    private static func extractYear(from rawDate: String?) -> Int? {
+        guard let rawDate,
+              let yearRange = rawDate.range(of: #"\b\d{3,4}\b"#, options: .regularExpression) else {
+            return nil
+        }
+
+        return Int(rawDate[yearRange])
     }
     
     private func buildDeathSearchUrl(name: String, date: String) throws -> URL {

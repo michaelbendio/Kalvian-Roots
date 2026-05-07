@@ -170,15 +170,25 @@ enum TikkanenSixDevelopmentData {
 
         return family.couples.enumerated().map { index, couple in
             let marriageYear = extractYear(from: couple.fullMarriageDate ?? couple.marriageDate)
-            let requests = marriageYear.flatMap {
-                try? hiskiService.buildFamilyBirthSearchRequests(
+            let requests: [HiskiService.FamilyBirthSearchRequest]
+            if let marriageYear {
+                let hiskiEndYear = HiskiService.familyBirthEndYear(
+                    marriageYear: marriageYear,
+                    husbandDeathDate: couple.husband.deathDate,
+                    wifeDeathDate: couple.wife.deathDate
+                )
+                let searchRequests = try? hiskiService.buildFamilyBirthSearchRequests(
                     fatherName: couple.husband.name,
                     fatherPatronymic: couple.husband.patronymic,
                     motherName: couple.wife.name,
                     motherPatronymic: couple.wife.patronymic,
-                    marriageYear: $0
+                    marriageYear: marriageYear,
+                    endYear: hiskiEndYear
                 )
-            }.map { Array($0.prefix(1)) } ?? []
+                requests = searchRequests.map { Array($0.prefix(1)) } ?? []
+            } else {
+                requests = []
+            }
 
             let result = comparisonService.compareChildren(
                 juuretChildren: couple.children,

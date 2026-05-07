@@ -830,6 +830,11 @@ class JuuretApp {
         appendFamilySearchComparisonDebug("FamilySearch comparison input source: \(familySearchComparisonInputSource)")
         let hiskiService = HiskiService(nameEquivalenceManager: nameEquivalenceManager)
         hiskiService.setCurrentFamily(family.familyId)
+        let hiskiEndYear = HiskiService.familyBirthEndYear(
+            marriageYear: marriageYear,
+            husbandDeathDate: couple.husband.deathDate,
+            wifeDeathDate: couple.wife.deathDate
+        )
 
         do {
             let searchRequests = try hiskiService.buildFamilyBirthSearchRequests(
@@ -837,7 +842,8 @@ class JuuretApp {
                 fatherPatronymic: couple.husband.patronymic,
                 motherName: couple.wife.name,
                 motherPatronymic: couple.wife.patronymic,
-                marriageYear: marriageYear
+                marriageYear: marriageYear,
+                endYear: hiskiEndYear
             )
 
             var rows: [HiskiService.HiskiFamilyBirthRow] = []
@@ -929,13 +935,20 @@ class JuuretApp {
                 continue
             }
 
+            let hiskiEndYear = HiskiService.familyBirthEndYear(
+                marriageYear: marriageYear,
+                husbandDeathDate: couple.husband.deathDate,
+                wifeDeathDate: couple.wife.deathDate
+            )
+
             do {
                 let searchRequests = try hiskiService.buildFamilyBirthSearchRequests(
                     fatherName: couple.husband.name,
                     fatherPatronymic: couple.husband.patronymic,
                     motherName: couple.wife.name,
                     motherPatronymic: couple.wife.patronymic,
-                    marriageYear: marriageYear
+                    marriageYear: marriageYear,
+                    endYear: hiskiEndYear
                 )
 
                 guard let request = searchRequests.first else {
