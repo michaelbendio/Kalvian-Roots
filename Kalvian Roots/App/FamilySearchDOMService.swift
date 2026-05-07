@@ -771,6 +771,26 @@ enum FamilySearchDOMService {
                 }
             }
 
+            async function openChildQuickCard(summary, control, ignoredPanels) {
+                if (control.scrollIntoView) {
+                    control.scrollIntoView({ block: 'center', inline: 'nearest' });
+                    await sleep(100);
+                }
+
+                const pointerEvent = typeof PointerEvent === 'function'
+                    ? new PointerEvent('pointerover', { bubbles: true, cancelable: true, view: window, pointerType: 'mouse' })
+                    : new MouseEvent('mouseover', { bubbles: true, cancelable: true, view: window });
+                control.dispatchEvent(pointerEvent);
+                control.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true, cancelable: true, view: window }));
+                control.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true, view: window }));
+                control.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, view: window }));
+                if (typeof control.focus === 'function') {
+                    control.focus({ preventScroll: true });
+                }
+
+                return await waitForChildPanel(summary.id, ignoredPanels);
+            }
+
             async function extractChildDetailsFromPanel(summary, notes) {
                 const ignoredPanels = new Set(panelCandidatesFor(summary.id));
                 const control = findChildControl(summary);
@@ -779,8 +799,7 @@ enum FamilySearchDOMService {
                 }
 
                 const panel = await withBlockedChildNavigation(summary, async function () {
-                    control.click();
-                    return await waitForChildPanel(summary.id, ignoredPanels);
+                    return await openChildQuickCard(summary, control, ignoredPanels);
                 });
                 const birth = vitalFromPanel(panel, 'Birth');
                 const christening = vitalFromPanel(panel, 'Christening');
