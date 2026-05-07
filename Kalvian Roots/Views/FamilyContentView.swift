@@ -88,7 +88,7 @@ struct FamilyContentView: View {
                         .padding(.top, 4)
                 }
 
-                if !juuretApp.comparisonReport.isEmpty {
+                if juuretApp.isFamilySearchComparisonPanelVisible && !juuretApp.comparisonReport.isEmpty {
                     GroupBox("Juuret + HisKi Report") {
                         Text(juuretApp.comparisonReport)
                             .font(.system(.caption, design: .monospaced))
