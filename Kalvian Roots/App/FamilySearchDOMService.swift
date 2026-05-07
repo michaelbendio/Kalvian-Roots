@@ -150,7 +150,11 @@ enum FamilySearchDOMService {
             let currentDocumentOverride = { value: null };
 
             function extractionDocument() {
-                const doc = currentDocumentOverride.value || localDocument;
+                if (currentDocumentOverride.value) {
+                    return currentDocumentOverride.value;
+                }
+
+                const doc = localDocument;
 
                 if (isFamilySearchDocument(doc)) {
                     return doc;
@@ -257,6 +261,19 @@ enum FamilySearchDOMService {
                     deathPlace: death.place,
                     lifeSpan: null
                 };
+            }
+
+            function extractPersonSummaryFromDocument(doc, fallbackId) {
+                currentDocumentOverride.value = doc;
+                try {
+                    const summary = extractPersonSummary();
+                    return {
+                        ...summary,
+                        id: summary.id || fallbackId
+                    };
+                } finally {
+                    currentDocumentOverride.value = null;
+                }
             }
 
             function familyMembersSection() {
@@ -835,16 +852,59 @@ enum FamilySearchDOMService {
                 }
             }
 
+            async function extractChildDetailsFromFetchedHTML(summary, notes) {
+                const target = detailsBaseURL + summary.id;
+                const response = await fetch(target, {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                if (!response.ok) {
+                    throw new Error('child details HTML fetch failed for ' + summary.id + ': HTTP ' + response.status);
+                }
+
+                const html = await response.text();
+                notes.push('details HTML fetched: ' + html.length + ' bytes, contains Birth: ' + (/\\bBirth\\b/i.test(html) ? 'yes' : 'no') + ', contains Death: ' + (/\\bDeath\\b/i.test(html) ? 'yes' : 'no'));
+                const doc = new DOMParser().parseFromString(html, 'text/html');
+                const person = extractPersonSummaryFromDocument(doc, summary.id);
+                const birth = { date: person.birthDate || null, place: person.birthPlace || null };
+                const death = { date: person.deathDate || null, place: person.deathPlace || null };
+
+                if (!clean(birth.date) && !clean(death.date)) {
+                    throw new Error('child details HTML contained no extracted vital dates for ' + summary.id);
+                }
+
+                return {
+                    id: summary.id,
+                    name: person.name || summary.name,
+                    sex: summary.sex || null,
+                    summaryYears: summary.summaryYears || summary.lifeSpan || person.lifeSpan || null,
+                    birth,
+                    birthDate: birth.date,
+                    birthPlace: birth.place,
+                    christening: { date: null, place: null },
+                    christeningDate: null,
+                    christeningPlace: null,
+                    death,
+                    deathDate: death.date,
+                    deathPlace: death.place,
+                    burial: { date: null, place: null },
+                    burialDate: null,
+                    burialPlace: null,
+                    lifeSpan: person.lifeSpan || summary.lifeSpan || summary.summaryYears || null,
+                    extractionStatus: 'success',
+                    extractionSource: 'detailsHTML',
+                    extractionNotes: notes
+                };
+            }
+
             async function extractChildDetails(summary) {
                 const notes = [];
                 try {
-                    notes.push('using child panel extraction');
-                    return await extractChildDetailsFromPanel(summary, notes);
+                    notes.push('using child details HTML extraction');
+                    return await extractChildDetailsFromFetchedHTML(summary, notes);
                 } catch (error) {
                     notes.push(clean(error && error.message));
                     console.warn('Kalvian Roots FamilySearch child extraction failed for ' + summary.id + ':', error);
-                    closeChildPanel();
-                    await sleep(250);
                     return {
                         id: summary.id,
                         name: summary.name,
@@ -1115,6 +1175,7 @@ enum FamilySearchDOMService {
                     const allBirthDateCount = allEnrichedChildren.filter(child => clean(child.birthDate)).length;
                     const allDeathDateCount = allEnrichedChildren.filter(child => clean(child.deathDate)).length;
                     const detailsPageChildCount = allEnrichedChildren.filter(child => child.extractionSource === 'detailsPage').length;
+                    const detailsHTMLChildCount = allEnrichedChildren.filter(child => child.extractionSource === 'detailsHTML').length;
                     const panelFallbackChildCount = allEnrichedChildren.filter(child => child.extractionSource === 'panelFallback').length;
                     const summaryFallbackChildCount = allEnrichedChildren.filter(child => child.extractionSource === 'summaryFallback').length;
 
@@ -1154,7 +1215,7 @@ enum FamilySearchDOMService {
                             'FamilySearch extraction finished: spouse groups ' + enrichedSpouseGroups.length + ', preferred group children ' + selectedEnrichedGroup.children.length,
                             'FamilySearch selected group child birth dates extracted: ' + selectedBirthDateCount + '/' + children.length + ', death dates extracted: ' + selectedDeathDateCount + '/' + children.length,
                             'FamilySearch all spouse group child birth dates extracted: ' + allBirthDateCount + '/' + allEnrichedChildren.length + ', death dates extracted: ' + allDeathDateCount + '/' + allEnrichedChildren.length,
-                            'FamilySearch child detail sources: details page ' + detailsPageChildCount + ', panel fallback ' + panelFallbackChildCount + ', summary fallback ' + summaryFallbackChildCount
+                            'FamilySearch child detail sources: details page ' + detailsPageChildCount + ', details HTML ' + detailsHTMLChildCount + ', panel fallback ' + panelFallbackChildCount + ', summary fallback ' + summaryFallbackChildCount
                         ]
                     };
 
