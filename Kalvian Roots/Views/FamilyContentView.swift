@@ -51,7 +51,10 @@ struct FamilyContentView: View {
                     }
                     
                     // 4. "Lapset" header + children
-                    if !couple.children.isEmpty {
+                    if let comparisonGroup = comparisonGroup(forCoupleAt: 0), !comparisonGroup.displayRows.isEmpty {
+                        unifiedChildrenSection(group: comparisonGroup)
+                            .padding(.top, 8)
+                    } else if !couple.children.isEmpty {
                         childrenSection(children: couple.children)
                             .padding(.top, 8)
                     }
@@ -524,25 +527,85 @@ struct FamilyContentView: View {
             
             // Child lines
             ForEach(children) { child in
-                PersonLineView(
-                    person: child,
-                    network: juuretApp.familyNetworkWorkflow?.getFamilyNetwork(),
-                    onNameClick: { person in
-                        generateCitationFor(person)
-                    },
-                    onDateClick: { date, eventType in
-                        generateHiskiFor(person: child, date: date, eventType: eventType)
-                    },
-                    onSpouseDateClick: { date, eventType, spouseData in
-                        let spousePerson = Person(name: spouseData.fullName, birthDate: spouseData.birthDate, deathDate: spouseData.deathDate, noteMarkers: [])
-                        generateHiskiFor(person: spousePerson, date: date, eventType: eventType)
-                    },
-                    onFamilyIdClick: { familyId in
-                        juuretApp.navigateToFamily(familyId, updateHistory: false)
-                    }
-                )
+                juuretChildLine(child)
             }
         }
+    }
+
+    private func unifiedChildrenSection(group: FamilyChildrenComparisonGroup) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Lapset")
+                .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                .foregroundColor(.primary)
+                .padding(.bottom, 2)
+
+            ForEach(group.displayRows) { displayRow in
+                if let child = juuretChild(for: displayRow.match, in: group.couple) {
+                    juuretChildLine(
+                        child,
+                        supplementalContent: comparisonSupplement(for: displayRow, juuretChild: child)
+                    )
+                } else {
+                    comparisonChildLine(displayRow: displayRow, couple: group.couple)
+                }
+            }
+        }
+        .popover(item: $selectedFamilySearchReviewNote) { note in
+            reviewNotePopover(note)
+        }
+    }
+
+    private func juuretChildLine(_ child: Person, supplementalContent: AnyView? = nil) -> some View {
+        PersonLineView(
+            person: child,
+            network: juuretApp.familyNetworkWorkflow?.getFamilyNetwork(),
+            onNameClick: { person in
+                generateCitationFor(person)
+            },
+            onDateClick: { date, eventType in
+                generateHiskiFor(person: child, date: date, eventType: eventType)
+            },
+            onSpouseDateClick: { date, eventType, spouseData in
+                let spousePerson = Person(name: spouseData.fullName, birthDate: spouseData.birthDate, deathDate: spouseData.deathDate, noteMarkers: [])
+                generateHiskiFor(person: spousePerson, date: date, eventType: eventType)
+            },
+            onFamilyIdClick: { familyId in
+                juuretApp.navigateToFamily(familyId, updateHistory: false)
+            },
+            supplementalContent: supplementalContent
+        )
+    }
+
+    private func comparisonSupplement(for displayRow: FamilyComparisonDisplayRow, juuretChild child: Person) -> AnyView? {
+        let row = displayRow.match
+        let familySearchId = row.familySearch?.familySearchId
+        let markers = sourceMarkers(for: row)
+        let shouldShowFamilySearchId = familySearchId != nil && child.familySearchId != familySearchId
+        let shouldShowMarkers = row.familySearch != nil || row.hiski != nil
+
+        guard displayRow.reviewNote != nil || shouldShowFamilySearchId || shouldShowMarkers else {
+            return nil
+        }
+
+        return AnyView(
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                if let reviewNote = displayRow.reviewNote {
+                    reviewAsterisk(reviewNote, size: 16)
+                }
+
+                if shouldShowFamilySearchId, let familySearchId {
+                    Text("<\(familySearchId)>")
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+
+                if shouldShowMarkers {
+                    Text(markers)
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+            }
+        )
     }
 
     private func comparisonChildrenSection(group: FamilyChildrenComparisonGroup) -> some View {
@@ -667,7 +730,10 @@ struct FamilyContentView: View {
             }
             
             // Children with this spouse
-            if !couple.children.isEmpty {
+            if let comparisonGroup = comparisonGroup(forCoupleAt: spouseNumber - 1), !comparisonGroup.displayRows.isEmpty {
+                unifiedChildrenSection(group: comparisonGroup)
+                    .padding(.top, 4)
+            } else if !couple.children.isEmpty {
                 childrenSection(children: couple.children)
                     .padding(.top, 4)
             }

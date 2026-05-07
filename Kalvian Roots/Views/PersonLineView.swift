@@ -22,8 +22,27 @@ struct PersonLineView: View {
     let onDateClick: (String, EventType) -> Void
     let onSpouseDateClick: (String, EventType, SpouseEnhancedData) -> Void
     let onFamilyIdClick: (String) -> Void
+    let supplementalContent: AnyView?
     
     @State private var enhancedData: EnhancedPersonData?
+
+    init(
+        person: Person,
+        network: FamilyNetwork?,
+        onNameClick: @escaping (Person) -> Void,
+        onDateClick: @escaping (String, EventType) -> Void,
+        onSpouseDateClick: @escaping (String, EventType, SpouseEnhancedData) -> Void,
+        onFamilyIdClick: @escaping (String) -> Void,
+        supplementalContent: AnyView? = nil
+    ) {
+        self.person = person
+        self.network = network
+        self.onNameClick = onNameClick
+        self.onDateClick = onDateClick
+        self.onSpouseDateClick = onSpouseDateClick
+        self.onFamilyIdClick = onFamilyIdClick
+        self.supplementalContent = supplementalContent
+    }
     
     var body: some View {
         HStack(alignment: .top, spacing: 6) {
@@ -39,6 +58,10 @@ struct PersonLineView: View {
             
             // Name with patronymic (clickable)
             clickableName()
+
+            if let supplementalContent {
+                supplementalContent
+            }
             
             // FamilySearch ID (non-clickable, angle brackets)
             if let fsId = person.familySearchId {
