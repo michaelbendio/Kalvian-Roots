@@ -1053,6 +1053,8 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("all spouse group child birth dates extracted"))
         XCTAssertTrue(script.contains("child detail sources"))
         XCTAssertTrue(script.contains("details HTML"))
+        XCTAssertTrue(script.contains("details HTML fetch diagnostics"))
+        XCTAssertTrue(script.contains("FamilySearch child extraction note"))
         XCTAssertTrue(script.contains("familySection.contains(element) && !isOverlayLike"))
         XCTAssertTrue(script.contains("Spouses and Children section not found"))
         XCTAssertTrue(script.contains("spouse groups not found"))

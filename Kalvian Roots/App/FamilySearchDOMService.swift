@@ -1178,6 +1178,13 @@ enum FamilySearchDOMService {
                     const detailsHTMLChildCount = allEnrichedChildren.filter(child => child.extractionSource === 'detailsHTML').length;
                     const panelFallbackChildCount = allEnrichedChildren.filter(child => child.extractionSource === 'panelFallback').length;
                     const summaryFallbackChildCount = allEnrichedChildren.filter(child => child.extractionSource === 'summaryFallback').length;
+                    const htmlFetchNotes = allEnrichedChildren.flatMap(child => (child.extractionNotes || []).filter(note => /^details HTML fetched:/i.test(note)));
+                    const htmlFetchBirthYesCount = htmlFetchNotes.filter(note => /contains Birth: yes/i.test(note)).length;
+                    const htmlFetchDeathYesCount = htmlFetchNotes.filter(note => /contains Death: yes/i.test(note)).length;
+                    const childExtractionNoteSamples = allEnrichedChildren
+                        .filter(child => Array.isArray(child.extractionNotes) && child.extractionNotes.length > 0)
+                        .slice(0, 8)
+                        .map(child => 'FamilySearch child extraction note ' + child.id + ' ' + child.name + ': ' + child.extractionNotes.join(' | ').slice(0, 360));
 
                     if (personIdFromURL() !== normalizedPersonId) {
                         await sleep(900);
@@ -1215,8 +1222,9 @@ enum FamilySearchDOMService {
                             'FamilySearch extraction finished: spouse groups ' + enrichedSpouseGroups.length + ', preferred group children ' + selectedEnrichedGroup.children.length,
                             'FamilySearch selected group child birth dates extracted: ' + selectedBirthDateCount + '/' + children.length + ', death dates extracted: ' + selectedDeathDateCount + '/' + children.length,
                             'FamilySearch all spouse group child birth dates extracted: ' + allBirthDateCount + '/' + allEnrichedChildren.length + ', death dates extracted: ' + allDeathDateCount + '/' + allEnrichedChildren.length,
-                            'FamilySearch child detail sources: details page ' + detailsPageChildCount + ', details HTML ' + detailsHTMLChildCount + ', panel fallback ' + panelFallbackChildCount + ', summary fallback ' + summaryFallbackChildCount
-                        ]
+                            'FamilySearch child detail sources: details page ' + detailsPageChildCount + ', details HTML ' + detailsHTMLChildCount + ', panel fallback ' + panelFallbackChildCount + ', summary fallback ' + summaryFallbackChildCount,
+                            'FamilySearch details HTML fetch diagnostics: fetched ' + htmlFetchNotes.length + '/' + allEnrichedChildren.length + ', contains Birth ' + htmlFetchBirthYesCount + ', contains Death ' + htmlFetchDeathYesCount
+                        ].concat(childExtractionNoteSamples)
                     };
 
                     if (children.length === 0) {
