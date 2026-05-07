@@ -311,16 +311,20 @@ struct FamilyContentView: View {
         .font(.system(.caption, design: .monospaced))
         .textSelection(.enabled)
         .popover(item: $selectedFamilySearchReviewNote) { note in
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Review match")
-                    .font(.headline)
-                Text(note.message)
-                    .font(.body)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding()
-            .frame(width: 360, alignment: .leading)
+            reviewNotePopover(note)
         }
+    }
+
+    private func reviewNotePopover(_ note: FamilyComparisonReviewNote) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Review match")
+                .font(.headline)
+            Text(note.message)
+                .font(.body)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding()
+        .frame(width: 360, alignment: .leading)
     }
 
     private func comparisonHeader(_ text: String) -> some View {
@@ -548,14 +552,20 @@ struct FamilyContentView: View {
                 .foregroundColor(.primary)
                 .padding(.bottom, 2)
 
-            ForEach(Array(group.result.rows.enumerated()), id: \.offset) { _, row in
-                comparisonChildLine(row: row, couple: group.couple)
+            ForEach(group.displayRows) { displayRow in
+                comparisonChildLine(displayRow: displayRow, couple: group.couple)
             }
+        }
+        .popover(item: $selectedFamilySearchReviewNote) { note in
+            reviewNotePopover(note)
         }
     }
 
-    private func comparisonChildLine(row: FamilyComparisonResult.Match, couple: Couple) -> some View {
-        HStack(alignment: .top, spacing: 6) {
+    private func comparisonChildLine(displayRow: FamilyComparisonDisplayRow, couple: Couple) -> some View {
+        let row = displayRow.match
+        let reviewNote = displayRow.reviewNote
+
+        return HStack(alignment: .top, spacing: 6) {
             Text("★")
                 .font(.system(size: 16, design: .monospaced))
                 .foregroundColor(.primary)
@@ -564,7 +574,17 @@ struct FamilyContentView: View {
                 .font(.system(size: 16, design: .monospaced))
                 .foregroundColor(dateColor(for: row))
 
-            if let child = juuretChild(for: row, in: couple) {
+            if let reviewNote {
+                Button {
+                    selectedFamilySearchReviewNote = reviewNote
+                } label: {
+                    Text(displayName(for: row))
+                        .font(.system(size: 16, design: .monospaced))
+                        .foregroundColor(Color(hex: "ad1457"))
+                }
+                .buttonStyle(.plain)
+                .help(reviewNote.message)
+            } else if let child = juuretChild(for: row, in: couple) {
                 Button {
                     generateCitationFor(child)
                 } label: {

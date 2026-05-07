@@ -430,6 +430,10 @@ struct FamilyChildrenComparisonGroup {
     let couple: Couple
     let hiskiSearchRequests: [HiskiService.FamilyBirthSearchRequest]
     let result: FamilyComparisonResult
+
+    var displayRows: [FamilyComparisonDisplayRow] {
+        FamilyComparisonReviewDetector.displayRows(for: result.rows)
+    }
 }
 
 struct FamilySearchCoupleChildrenMatch: Equatable {

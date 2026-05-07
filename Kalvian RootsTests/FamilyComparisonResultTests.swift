@@ -191,6 +191,49 @@ final class FamilyComparisonResultTests: XCTestCase {
         XCTAssertEqual(displayRow.match.familySearch?.rawName, "Johannes Eriksson")
     }
 
+    func testComparisonGroupDisplayRowsCoalesceReviewNameDiscrepancies() throws {
+        let birthDate = date(1751, 11, 27)
+        let result = FamilyComparisonResult(
+            familySearch: [
+                candidate(
+                    name: "Johannes Eriksson",
+                    identityName: "Johannes",
+                    birth: birthDate,
+                    source: .familySearch,
+                    familySearchId: "FS-JOHANNES"
+                )
+            ],
+            juuretKalvialla: [
+                candidate(
+                    name: "Johannes",
+                    birth: birthDate,
+                    source: .juuretKalvialla
+                )
+            ],
+            hiski: [
+                candidate(
+                    name: "Johanna",
+                    birth: birthDate,
+                    source: .hiski
+                )
+            ]
+        )
+        let group = FamilyChildrenComparisonGroup(
+            coupleIndex: 1,
+            couple: Couple(husband: Person(name: "Erik"), wife: Person(name: "Anna")),
+            hiskiSearchRequests: [],
+            result: result
+        )
+
+        XCTAssertEqual(group.result.rows.count, 2)
+        XCTAssertEqual(group.displayRows.count, 1)
+        let displayRow = try XCTUnwrap(group.displayRows.first)
+        XCTAssertEqual(displayRow.match.juuretKalvialla?.rawName, "Johannes")
+        XCTAssertEqual(displayRow.match.hiski?.rawName, "Johanna")
+        XCTAssertEqual(displayRow.match.familySearch?.rawName, "Johannes Eriksson")
+        XCTAssertNotNil(displayRow.reviewNote)
+    }
+
     func testReviewNotesDoNotFlagUnrelatedNamesWithExactSharedBirthDate() {
         let birthDate = date(1755, 2, 9)
         let result = FamilyComparisonResult(
