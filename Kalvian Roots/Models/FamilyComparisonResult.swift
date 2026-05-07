@@ -142,7 +142,58 @@ struct FamilyComparisonReviewNote: Equatable, Identifiable {
     }
 }
 
+struct FamilyComparisonDisplayRow: Identifiable {
+    let sourceRowIndices: [Int]
+    let match: FamilyComparisonResult.Match
+    let reviewNote: FamilyComparisonReviewNote?
+
+    var id: String {
+        sourceRowIndices.map(String.init).joined(separator: "-")
+    }
+}
+
 enum FamilyComparisonReviewDetector {
+    static func displayRows(for rows: [FamilyComparisonResult.Match]) -> [FamilyComparisonDisplayRow] {
+        var consumedRowIndices: Set<Int> = []
+        var displayRows: [FamilyComparisonDisplayRow] = []
+
+        for (index, row) in rows.enumerated() {
+            guard !consumedRowIndices.contains(index) else {
+                continue
+            }
+
+            if let reviewPair = firstReviewPair(for: index, row: row, rows: rows, consumedRowIndices: consumedRowIndices) {
+                consumedRowIndices.insert(index)
+                consumedRowIndices.insert(reviewPair.index)
+
+                displayRows.append(
+                    FamilyComparisonDisplayRow(
+                        sourceRowIndices: [index, reviewPair.index].sorted(),
+                        match: mergedMatch(row, reviewPair.row),
+                        reviewNote: FamilyComparisonReviewNote(
+                            rowIndex: index,
+                            message: reviewPair.message
+                        )
+                    )
+                )
+            } else {
+                consumedRowIndices.insert(index)
+                displayRows.append(
+                    FamilyComparisonDisplayRow(
+                        sourceRowIndices: [index],
+                        match: row,
+                        reviewNote: nil
+                    )
+                )
+            }
+        }
+
+        return displayRows.sorted {
+            ($0.match.identity.birthDate ?? .distantFuture) <
+            ($1.match.identity.birthDate ?? .distantFuture)
+        }
+    }
+
     static func notes(for rows: [FamilyComparisonResult.Match]) -> [Int: FamilyComparisonReviewNote] {
         let rowsByBirthDate = Dictionary(
             grouping: rows.enumerated().filter { $0.element.identity.birthDate != nil },
@@ -180,6 +231,54 @@ enum FamilyComparisonReviewDetector {
         }
 
         return notes
+    }
+
+    private static func firstReviewPair(
+        for index: Int,
+        row: FamilyComparisonResult.Match,
+        rows: [FamilyComparisonResult.Match],
+        consumedRowIndices: Set<Int>
+    ) -> (index: Int, row: FamilyComparisonResult.Match, message: String)? {
+        guard let birthDate = row.identity.birthDate else {
+            return nil
+        }
+
+        for candidateIndex in rows.indices where candidateIndex != index && !consumedRowIndices.contains(candidateIndex) {
+            let candidate = rows[candidateIndex]
+
+            guard candidate.identity.birthDate == birthDate,
+                  shouldReview(row, candidate) else {
+                continue
+            }
+
+            return (
+                candidateIndex,
+                candidate,
+                reviewMessage(left: row, right: candidate, birthDate: birthDate)
+            )
+        }
+
+        return nil
+    }
+
+    private static func mergedMatch(
+        _ left: FamilyComparisonResult.Match,
+        _ right: FamilyComparisonResult.Match
+    ) -> FamilyComparisonResult.Match {
+        let mergedIdentity = left.juuretKalvialla?.identity
+            ?? right.juuretKalvialla?.identity
+            ?? left.familySearch?.identity
+            ?? right.familySearch?.identity
+            ?? left.hiski?.identity
+            ?? right.hiski?.identity
+            ?? right.identity
+
+        return FamilyComparisonResult.Match(
+            identity: mergedIdentity,
+            familySearch: left.familySearch ?? right.familySearch,
+            juuretKalvialla: left.juuretKalvialla ?? right.juuretKalvialla,
+            hiski: left.hiski ?? right.hiski
+        )
     }
 
     private static func shouldReview(

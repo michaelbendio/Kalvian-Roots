@@ -280,7 +280,7 @@ struct FamilyContentView: View {
     }
 
     private func familySearchComparisonTable(rows: [FamilyComparisonResult.Match]) -> some View {
-        let reviewNotes = FamilyComparisonReviewDetector.notes(for: rows)
+        let displayRows = FamilyComparisonReviewDetector.displayRows(for: rows)
 
         return Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
             GridRow {
@@ -294,15 +294,16 @@ struct FamilyContentView: View {
             Divider()
                 .gridCellColumns(5)
 
-            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                let reviewNote = reviewNotes[index]
+            ForEach(displayRows) { displayRow in
+                let row = displayRow.match
+                let reviewNote = displayRow.reviewNote
 
                 GridRow {
                     comparisonCell(displayName(for: row), reviewNote: reviewNote)
-                    comparisonCell(sourceCell(row.juuretKalvialla), reviewNote: reviewNote)
-                    comparisonCell(sourceCell(row.hiski), reviewNote: reviewNote)
-                    comparisonCell(sourceCell(row.familySearch), reviewNote: reviewNote)
-                    comparisonCell(juuretApp.familySearchComparisonStatus(for: row), reviewNote: reviewNote)
+                    comparisonCell(sourceCell(row.juuretKalvialla))
+                    comparisonCell(sourceCell(row.hiski))
+                    comparisonCell(sourceCell(row.familySearch))
+                    comparisonCell(comparisonStatus(for: displayRow))
                 }
             }
         }
@@ -351,6 +352,14 @@ struct FamilyContentView: View {
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private func comparisonStatus(for row: FamilyComparisonDisplayRow) -> String {
+        if row.reviewNote != nil {
+            return "Review name discrepancy"
+        }
+
+        return juuretApp.familySearchComparisonStatus(for: row.match)
     }
 
     private func displayName(for row: FamilyComparisonResult.Match) -> String {
@@ -802,13 +811,18 @@ enum FamilySearchComparisonClipboardFormatter {
         if rows.isEmpty {
             lines.append("(no rows)\t\t\t\t\(debugMessage.isEmpty ? "Comparison not triggered" : debugMessage)")
         } else {
-            lines.append(contentsOf: rows.map { row in
-                [
+            lines.append(contentsOf: FamilyComparisonReviewDetector.displayRows(for: rows).map { displayRow in
+                let row = displayRow.match
+                let statusText = displayRow.reviewNote == nil
+                    ? status(row)
+                    : "Review name discrepancy"
+
+                return [
                     displayName(for: row),
                     sourceCell(row.juuretKalvialla),
                     sourceCell(row.hiski),
                     sourceCell(row.familySearch),
-                    status(row)
+                    statusText
                 ].map(sanitizeCell).joined(separator: "\t")
             })
         }

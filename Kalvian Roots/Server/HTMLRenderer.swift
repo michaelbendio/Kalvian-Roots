@@ -464,23 +464,26 @@ struct HTMLRenderer {
 
         let rowsHTML: String
         if let comparisonResult {
-            let reviewNotes = FamilyComparisonReviewDetector.notes(for: comparisonResult.rows)
-            let rows = comparisonResult.rows.enumerated().map { index, match in
+            let rows = FamilyComparisonReviewDetector.displayRows(for: comparisonResult.rows).map { displayRow in
+                let match = displayRow.match
                 let displayName = match.juuretKalvialla?.rawName
                     ?? match.hiski?.rawName
                     ?? match.familySearch?.rawName
                     ?? "(unknown)"
-                let reviewNote = reviewNotes[index]
-                let rowClass = reviewNote == nil ? "" : " class=\"comparison-review\""
-                let rowTitle = reviewNote.map { " title=\"\(escapeHTML($0.message))\"" } ?? ""
+                let reviewNote = displayRow.reviewNote
+                let nameClass = reviewNote == nil ? "" : " class=\"comparison-review-name\""
+                let nameTitle = reviewNote.map { " title=\"\(escapeHTML($0.message))\"" } ?? ""
+                let status = reviewNote == nil
+                    ? comparisonStatus(for: match)
+                    : "Review name discrepancy"
 
                 return """
-                <tr\(rowClass)\(rowTitle)>
-                    <td>\(escapeHTML(displayName))</td>
+                <tr>
+                    <td\(nameClass)\(nameTitle)>\(escapeHTML(displayName))</td>
                     <td>\(renderCandidateCell(match.juuretKalvialla))</td>
                     <td>\(renderCandidateCell(match.hiski))</td>
                     <td>\(renderCandidateCell(match.familySearch))</td>
-                    <td>\(escapeHTML(comparisonStatus(for: match)))</td>
+                    <td>\(escapeHTML(status))</td>
                 </tr>
                 """
             }.joined(separator: "\n")
@@ -920,7 +923,7 @@ struct HTMLRenderer {
             background: #f5f5f5;
             font-weight: 700;
         }
-        .comparison-table tr.comparison-review td {
+        .comparison-table td.comparison-review-name {
             background: #fce4ec;
             color: #ad1457;
         }

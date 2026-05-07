@@ -166,6 +166,15 @@ final class FamilyComparisonResultTests: XCTestCase {
         XCTAssertTrue(combinedMessages.contains("Juuret has Johannes"))
         XCTAssertTrue(combinedMessages.contains("FamilySearch has Johannes Eriksson"))
         XCTAssertTrue(combinedMessages.contains("HisKi has Johanna"))
+
+        let displayRows = FamilyComparisonReviewDetector.displayRows(for: result.rows)
+        XCTAssertEqual(displayRows.count, 1)
+
+        let displayRow = try XCTUnwrap(displayRows.first)
+        XCTAssertNotNil(displayRow.reviewNote)
+        XCTAssertEqual(displayRow.match.juuretKalvialla?.rawName, "Johannes")
+        XCTAssertEqual(displayRow.match.hiski?.rawName, "Johanna")
+        XCTAssertEqual(displayRow.match.familySearch?.rawName, "Johannes Eriksson")
     }
 
     func testReviewNotesDoNotFlagUnrelatedNamesWithExactSharedBirthDate() {
@@ -192,6 +201,7 @@ final class FamilyComparisonResultTests: XCTestCase {
 
         XCTAssertEqual(result.rows.count, 2)
         XCTAssertTrue(FamilyComparisonReviewDetector.notes(for: result.rows).isEmpty)
+        XCTAssertEqual(FamilyComparisonReviewDetector.displayRows(for: result.rows).count, 2)
     }
 
     func testFamilySearchAndHiskiMatchWhenJuuretEntryIsMissingForElias() throws {
@@ -1580,6 +1590,55 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
         XCTAssertEqual(rows.count, 1)
         XCTAssertFalse(text.contains("(no rows)"))
         XCTAssertTrue(text.contains("Mikko\tYes | 05 Mar 1757\tNo\tYes | <FS-MICHEL> | 05 Mar 1757\tMissing in HisKi"))
+    }
+
+    func testClipboardTextCoalescesReviewNameDiscrepanciesIntoOneDisplayRow() {
+        let nameManager = NameEquivalenceManager()
+        nameManager.clearAllEquivalences()
+
+        let birthDate = date(1751, 11, 27)
+        let result = FamilyComparisonResult(
+            familySearch: [
+                PersonCandidate(
+                    name: "Johannes Eriksson",
+                    identityName: "Johannes",
+                    birthDate: birthDate,
+                    source: .familySearch,
+                    nameManager: nameManager,
+                    familySearchId: "FS-JOHANNES"
+                )
+            ],
+            juuretKalvialla: [
+                PersonCandidate(
+                    name: "Johannes",
+                    birthDate: birthDate,
+                    source: .juuretKalvialla,
+                    nameManager: nameManager
+                )
+            ],
+            hiski: [
+                PersonCandidate(
+                    name: "Johanna",
+                    birthDate: birthDate,
+                    source: .hiski,
+                    nameManager: nameManager
+                )
+            ]
+        )
+
+        let text = FamilySearchComparisonClipboardFormatter.text(
+            debugMessage: "Development Tikkanen 6 comparison ready",
+            debugLines: [],
+            rows: result.rows,
+            status: { _ in "unused" }
+        )
+
+        let johannesRows = text
+            .split(separator: "\n")
+            .filter { $0.contains("Johannes") || $0.contains("Johanna") }
+
+        XCTAssertEqual(johannesRows.count, 1)
+        XCTAssertTrue(text.contains("Johannes\tYes | 27 Nov 1751\tYes | 27 Nov 1751\tYes | <FS-JOHANNES> | 27 Nov 1751\tReview name discrepancy"))
     }
 }
 
