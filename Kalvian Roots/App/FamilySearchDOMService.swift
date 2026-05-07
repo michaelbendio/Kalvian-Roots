@@ -750,6 +750,8 @@ enum FamilySearchDOMService {
             async function withBlockedChildNavigation(summary, action) {
                 const originalPushState = window.history.pushState;
                 const originalReplaceState = window.history.replaceState;
+                let blockedNavigationCount = 0;
+                let blockedNavigationURL = null;
 
                 function isBlockedChildURL(url) {
                     if (!url) return false;
@@ -765,22 +767,33 @@ enum FamilySearchDOMService {
                 function blockChildLink(event) {
                     const link = event.target && event.target.closest && event.target.closest('a[href]');
                     if (link && isBlockedChildURL(link.href)) {
+                        blockedNavigationCount += 1;
+                        blockedNavigationURL = link.href;
                         event.preventDefault();
                     }
                 }
 
                 window.history.pushState = function (state, title, url) {
-                    if (isBlockedChildURL(url)) return;
+                    if (isBlockedChildURL(url)) {
+                        blockedNavigationCount += 1;
+                        blockedNavigationURL = url;
+                        return;
+                    }
                     return originalPushState.apply(window.history, arguments);
                 };
                 window.history.replaceState = function (state, title, url) {
-                    if (isBlockedChildURL(url)) return;
+                    if (isBlockedChildURL(url)) {
+                        blockedNavigationCount += 1;
+                        blockedNavigationURL = url;
+                        return;
+                    }
                     return originalReplaceState.apply(window.history, arguments);
                 };
                 localDocument.addEventListener('click', blockChildLink, true);
 
                 try {
-                    return await action();
+                    const value = await action();
+                    return { value, blockedNavigationCount, blockedNavigationURL };
                 } finally {
                     localDocument.removeEventListener('click', blockChildLink, true);
                     window.history.pushState = originalPushState;
@@ -804,6 +817,9 @@ enum FamilySearchDOMService {
                 if (typeof control.focus === 'function') {
                     control.focus({ preventScroll: true });
                 }
+                control.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                control.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+                control.click();
 
                 return await waitForChildPanel(summary.id, ignoredPanels);
             }
@@ -815,15 +831,23 @@ enum FamilySearchDOMService {
                     throw new Error('child detail control not found for ' + summary.id);
                 }
 
-                const panel = await withBlockedChildNavigation(summary, async function () {
+                notes.push('using child quick-card click extraction');
+                const panelResult = await withBlockedChildNavigation(summary, async function () {
                     return await openChildQuickCard(summary, control, ignoredPanels);
                 });
-                const birth = vitalFromPanel(panel, 'Birth');
-                const christening = vitalFromPanel(panel, 'Christening');
-                const death = vitalFromPanel(panel, 'Death');
-                const burial = vitalFromPanel(panel, 'Burial');
-
+                const panel = panelResult.value;
+                if (panelResult.blockedNavigationCount > 0) {
+                    notes.push('blocked child detail navigation ' + panelResult.blockedNavigationCount + ' time(s)' + (panelResult.blockedNavigationURL ? ': ' + panelResult.blockedNavigationURL : ''));
+                }
                 try {
+                    const birth = vitalFromPanel(panel, 'Birth');
+                    const christening = vitalFromPanel(panel, 'Christening');
+                    const death = vitalFromPanel(panel, 'Death');
+                    const burial = vitalFromPanel(panel, 'Burial');
+                    if (!clean(birth.date) && !clean(christening.date) && !clean(death.date) && !clean(burial.date)) {
+                        throw new Error('child quick-card contained no extracted vital dates for ' + summary.id);
+                    }
+
                     return {
                         id: summary.id,
                         name: summary.name,
@@ -899,6 +923,11 @@ enum FamilySearchDOMService {
 
             async function extractChildDetails(summary) {
                 const notes = [];
+                try {
+                    return await extractChildDetailsFromPanel(summary, notes);
+                } catch (error) {
+                    notes.push(clean(error && error.message));
+                }
                 try {
                     notes.push('using child details HTML extraction');
                     return await extractChildDetailsFromFetchedHTML(summary, notes);
