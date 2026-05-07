@@ -297,12 +297,13 @@ struct FamilyContentView: View {
             ForEach(displayRows) { displayRow in
                 let row = displayRow.match
                 let reviewNote = displayRow.reviewNote
+                let includeSourceNames = reviewNote != nil
 
                 GridRow {
                     comparisonCell(displayName(for: row), reviewNote: reviewNote)
-                    comparisonCell(sourceCell(row.juuretKalvialla))
-                    comparisonCell(sourceCell(row.hiski))
-                    comparisonCell(sourceCell(row.familySearch))
+                    comparisonCell(sourceCell(row.juuretKalvialla, includeName: includeSourceNames))
+                    comparisonCell(sourceCell(row.hiski, includeName: includeSourceNames))
+                    comparisonCell(sourceCell(row.familySearch, includeName: includeSourceNames))
                     comparisonCell(comparisonStatus(for: displayRow))
                 }
             }
@@ -369,12 +370,15 @@ struct FamilyContentView: View {
             ?? "(unknown)"
     }
 
-    private func sourceCell(_ candidate: PersonCandidate?) -> String {
+    private func sourceCell(_ candidate: PersonCandidate?, includeName: Bool = false) -> String {
         guard let candidate else {
             return "No"
         }
 
         var parts = ["Yes"]
+        if includeName {
+            parts.append(candidate.rawName)
+        }
         if let familySearchId = candidate.familySearchId {
             parts.append("<\(familySearchId)>")
         }
@@ -819,9 +823,9 @@ enum FamilySearchComparisonClipboardFormatter {
 
                 return [
                     displayName(for: row),
-                    sourceCell(row.juuretKalvialla),
-                    sourceCell(row.hiski),
-                    sourceCell(row.familySearch),
+                    sourceCell(row.juuretKalvialla, includeName: displayRow.reviewNote != nil),
+                    sourceCell(row.hiski, includeName: displayRow.reviewNote != nil),
+                    sourceCell(row.familySearch, includeName: displayRow.reviewNote != nil),
                     statusText
                 ].map(sanitizeCell).joined(separator: "\t")
             })
@@ -837,12 +841,15 @@ enum FamilySearchComparisonClipboardFormatter {
             ?? "(unknown)"
     }
 
-    private static func sourceCell(_ candidate: PersonCandidate?) -> String {
+    private static func sourceCell(_ candidate: PersonCandidate?, includeName: Bool = false) -> String {
         guard let candidate else {
             return "No"
         }
 
         var parts = ["Yes"]
+        if includeName {
+            parts.append(candidate.rawName)
+        }
         if let familySearchId = candidate.familySearchId {
             parts.append("<\(familySearchId)>")
         }

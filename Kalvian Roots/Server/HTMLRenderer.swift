@@ -471,6 +471,7 @@ struct HTMLRenderer {
                     ?? match.familySearch?.rawName
                     ?? "(unknown)"
                 let reviewNote = displayRow.reviewNote
+                let includeSourceNames = reviewNote != nil
                 let nameClass = reviewNote == nil ? "" : " class=\"comparison-review-name\""
                 let nameTitle = reviewNote.map { " title=\"\(escapeHTML($0.message))\"" } ?? ""
                 let status = reviewNote == nil
@@ -480,9 +481,9 @@ struct HTMLRenderer {
                 return """
                 <tr>
                     <td\(nameClass)\(nameTitle)>\(escapeHTML(displayName))</td>
-                    <td>\(renderCandidateCell(match.juuretKalvialla))</td>
-                    <td>\(renderCandidateCell(match.hiski))</td>
-                    <td>\(renderCandidateCell(match.familySearch))</td>
+                    <td>\(renderCandidateCell(match.juuretKalvialla, includeName: includeSourceNames))</td>
+                    <td>\(renderCandidateCell(match.hiski, includeName: includeSourceNames))</td>
+                    <td>\(renderCandidateCell(match.familySearch, includeName: includeSourceNames))</td>
                     <td>\(escapeHTML(status))</td>
                 </tr>
                 """
@@ -522,12 +523,15 @@ struct HTMLRenderer {
         """
     }
 
-    private static func renderCandidateCell(_ candidate: PersonCandidate?) -> String {
+    private static func renderCandidateCell(_ candidate: PersonCandidate?, includeName: Bool = false) -> String {
         guard let candidate else {
             return "No"
         }
 
         var parts = ["Yes"]
+        if includeName {
+            parts.append(escapeHTML(candidate.rawName))
+        }
         if let familySearchId = candidate.familySearchId {
             parts.append("&lt;\(escapeHTML(familySearchId))&gt;")
         }

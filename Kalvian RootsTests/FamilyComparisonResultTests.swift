@@ -1655,7 +1655,72 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
             .filter { $0.contains("Johannes") || $0.contains("Johanna") }
 
         XCTAssertEqual(johannesRows.count, 1)
-        XCTAssertTrue(text.contains("Johannes\tYes | 27 Nov 1751\tYes | 27 Nov 1751\tYes | <FS-JOHANNES> | 27 Nov 1751\tReview name discrepancy"))
+        XCTAssertTrue(text.contains("Johannes\tYes | Johannes | 27 Nov 1751\tYes | Johanna | 27 Nov 1751\tYes | Johannes Eriksson | <FS-JOHANNES> | 27 Nov 1751\tReview name discrepancy"))
+    }
+
+    func testServerComparisonTableCoalescesReviewNameDiscrepanciesIntoOneDisplayRow() {
+        let nameManager = NameEquivalenceManager()
+        nameManager.clearAllEquivalences()
+
+        let birthDate = date(1751, 11, 27)
+        let result = FamilyComparisonResult(
+            familySearch: [
+                PersonCandidate(
+                    name: "Johannes Eriksson",
+                    identityName: "Johannes",
+                    birthDate: birthDate,
+                    source: .familySearch,
+                    nameManager: nameManager,
+                    familySearchId: "FS-JOHANNES"
+                )
+            ],
+            juuretKalvialla: [
+                PersonCandidate(
+                    name: "Johannes",
+                    birthDate: birthDate,
+                    source: .juuretKalvialla,
+                    nameManager: nameManager
+                )
+            ],
+            hiski: [
+                PersonCandidate(
+                    name: "Johanna",
+                    birthDate: birthDate,
+                    source: .hiski,
+                    nameManager: nameManager
+                )
+            ]
+        )
+        let family = Family(
+            familyId: "TIKKANEN 6",
+            pageReferences: ["240"],
+            husband: Person(name: "Erik"),
+            wife: Person(name: "Anna"),
+            children: []
+        )
+
+        let html = HTMLRenderer.renderFamily(
+            family: family,
+            network: nil,
+            comparisonResult: result,
+            familySearchExtraction: nil,
+            familySearchPersonId: nil,
+            familySearchCallbackURL: nil,
+            autoExtractFamilySearch: false
+        )
+
+        let johannesLines = html
+            .split(separator: "\n")
+            .filter { $0.contains("Johannes") || $0.contains("Johanna") }
+
+        XCTAssertEqual(johannesLines.filter { $0.contains("<td") }.count, 4)
+        XCTAssertTrue(html.contains("<td class=\"comparison-review-name\""))
+        XCTAssertTrue(html.contains("Yes<br>Johannes<br>27 Nov 1751"))
+        XCTAssertTrue(html.contains("Yes<br>Johanna<br>27 Nov 1751"))
+        XCTAssertTrue(html.contains("Yes<br>Johannes Eriksson<br>&lt;FS-JOHANNES&gt;<br>27 Nov 1751"))
+        XCTAssertTrue(html.contains("Review name discrepancy"))
+        XCTAssertFalse(html.contains("HisKi-only"))
+        XCTAssertFalse(html.contains("Missing in HisKi"))
     }
 }
 
