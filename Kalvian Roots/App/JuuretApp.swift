@@ -51,6 +51,7 @@ class JuuretApp {
     var familyChildrenComparisonGroups: [FamilyChildrenComparisonGroup] = []
     var familySearchComparisonDebugMessage = "Comparison not triggered"
     var familySearchComparisonDebugLines: [String] = []
+    var isFamilySearchComparisonPanelVisible = false
     var hiskiCitationProposals: [HiskiCitationProposal] = []
     private var familySearchExtractions: [String: FamilySearchFamilyExtraction] = [:]
 

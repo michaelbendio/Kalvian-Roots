@@ -51,10 +51,7 @@ struct FamilyContentView: View {
                     }
                     
                     // 4. "Lapset" header + children
-                    if let comparisonGroup = comparisonGroup(forCoupleAt: 0) {
-                        comparisonChildrenSection(group: comparisonGroup)
-                            .padding(.top, 8)
-                    } else if !couple.children.isEmpty {
+                    if !couple.children.isEmpty {
                         childrenSection(children: couple.children)
                             .padding(.top, 8)
                     }
@@ -128,7 +125,7 @@ struct FamilyContentView: View {
                     .padding(.top, 12)
                 }
 
-                if shouldRenderFamilySearchComparisonUI {
+                if shouldRenderFamilySearchComparisonUI && juuretApp.isFamilySearchComparisonPanelVisible {
                     familySearchComparisonPanel
                         .padding(.top, 12)
                 }
@@ -670,10 +667,7 @@ struct FamilyContentView: View {
             }
             
             // Children with this spouse
-            if let comparisonGroup = comparisonGroup(forCoupleAt: spouseNumber - 1) {
-                comparisonChildrenSection(group: comparisonGroup)
-                    .padding(.top, 4)
-            } else if !couple.children.isEmpty {
+            if !couple.children.isEmpty {
                 childrenSection(children: couple.children)
                     .padding(.top, 4)
             }

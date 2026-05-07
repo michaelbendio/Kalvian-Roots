@@ -6,7 +6,6 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(JuuretApp.self) private var app
-    @State private var hasLoadedStartupFamily = false
 
     var body: some View {
         Group {
@@ -24,48 +23,6 @@ struct ContentView: View {
             }
             .environment(app)
 #endif
-        }
-        .task {
-            await loadStartupFamily()
-        }
-    }
-
-    /// Load the development target family on startup
-    private func loadStartupFamily() async {
-        let startTime = Date()
-        
-        // Only run once
-        guard !hasLoadedStartupFamily else { return }
-        hasLoadedStartupFamily = true
-        
-        let firstFamilyId = TikkanenSixDevelopmentData.familyId
-
-        // Check if we have any cached families
-        guard app.familyNetworkCache.hasCachedFamilies else {
-            logInfo(.app, "📱 No cached families found at startup")
-            return
-        }
-        
-        logInfo(.app, "⏱️ T+0.000s: Starting cache load for \(firstFamilyId)")
-        
-        // Check if we're already displaying this family
-        if app.currentFamily?.familyId == firstFamilyId {
-            logInfo(.app, "✅ Already displaying \(firstFamilyId)")
-            return
-        }
-        
-        // Load from cache
-        if let cachedNetwork = app.familyNetworkCache.getCachedNetwork(familyId: firstFamilyId) {
-            let loadTime = Date().timeIntervalSince(startTime)
-            logInfo(.app, "⏱️ T+\(String(format: "%.3f", loadTime))s: Loaded \(firstFamilyId) from cache instantly")
-            
-            await MainActor.run {
-                app.showFamilyFromCache(cachedNetwork)
-            }
-            
-            logInfo(.app, "✅ Startup family loaded: \(firstFamilyId)")
-        } else {
-            logWarn(.app, "⚠️ Cache entry exists but couldn't load network for \(firstFamilyId)")
         }
     }
 }

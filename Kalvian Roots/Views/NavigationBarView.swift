@@ -12,121 +12,126 @@ struct NavigationBarView: View {
     @ObservedObject var prefetchManager: PrefetchManager
     @State private var familyIdInput: String = ""
     @State private var showingClanBrowser: Bool = false
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            // Back button - NOW navigates to PREVIOUS FAMILY IN FILE
-            Button(action: {
-                juuretApp.navigateToPreviousFamily()  // Changed from navigateBack()
-            }) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 14, weight: .semibold))
-            }
-            .buttonStyle(NavigationButtonStyle())
-            .disabled(!juuretApp.canNavigateToPreviousFamily)  // Changed from canNavigateBack
 
-            // Forward button - NOW navigates to NEXT FAMILY IN FILE
-            Button(action: {
-                juuretApp.navigateToNextFamily()  // Changed from navigateForward()
-            }) {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .semibold))
-            }
-            .buttonStyle(NavigationButtonStyle())
-            .disabled(!juuretApp.canNavigateToNextFamily)  // Changed from canNavigateForward
-            
-            // Reload/Load button
-            Button(action: {
-                if let familyId = juuretApp.currentFamily?.familyId {
-                    Task {
-                        await juuretApp.regenerateCachedFamily(familyId: familyId)
-                    }
-                }
-            }) {
-                Text(isCurrentFamilyCached ? "Reload" : "Load")
-                    .font(.system(size: 14, weight: .medium))
-            }
-            .buttonStyle(NavigationButtonStyle())
-            .disabled(juuretApp.currentFamily == nil)
-            
-            // Family ID input with clear button and dropdown
-            HStack(spacing: 4) {
-                HStack(spacing: 0) {
-                    TextField("Enter family ID...", text: $familyIdInput)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.primary)
-                        .padding(.leading, 12)
-                        .padding(.vertical, 8)
-                        .onSubmit {
-                            navigateToInputFamily()
-                        }
-                    
-                    // Clear button
-                    if !familyIdInput.isEmpty {
-                        Button {
-                            familyIdInput = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.secondary)
-                                .imageScale(.medium)
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.trailing, 8)
-                    }
-                }
-                .background(Color.white.opacity(0.9))
-                .cornerRadius(6)
-                .frame(minWidth: 150, idealWidth: 250, maxWidth: 400)
-                // Keep all the .onChange and .onAppear modifiers here...
-                
-                // Dropdown button
-                Button(action: {
-                    showingClanBrowser.toggle()
-                }) {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.primary)
-                        .padding(8)
-                        .background(Color.white.opacity(0.9))
-                        .cornerRadius(6)
-                }
-                .buttonStyle(.plain)
-            }
-            .frame(maxWidth: .infinity)
-            
-            if prefetchManager.isPrefetching, let familyId = prefetchManager.currentFamilyId {
-                Text("Loading \(familyId)")
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .lineLimit(1)
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
-        .background(
+    var body: some View {
+        ZStack {
             LinearGradient(
                 colors: [Color(hex: "667eea"), Color(hex: "764ba2")],
                 startPoint: .leading,
                 endPoint: .trailing
             )
-        )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                juuretApp.isFamilySearchComparisonPanelVisible.toggle()
+            }
+
+            HStack(spacing: 12) {
+                // Back button - NOW navigates to PREVIOUS FAMILY IN FILE
+                Button(action: {
+                    juuretApp.navigateToPreviousFamily()  // Changed from navigateBack()
+                }) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .buttonStyle(NavigationButtonStyle())
+                .disabled(!juuretApp.canNavigateToPreviousFamily)  // Changed from canNavigateBack
+
+                // Forward button - NOW navigates to NEXT FAMILY IN FILE
+                Button(action: {
+                    juuretApp.navigateToNextFamily()  // Changed from navigateForward()
+                }) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .buttonStyle(NavigationButtonStyle())
+                .disabled(!juuretApp.canNavigateToNextFamily)  // Changed from canNavigateForward
+
+                // Reload/Load button
+                Button(action: {
+                    if let familyId = juuretApp.currentFamily?.familyId {
+                        Task {
+                            await juuretApp.regenerateCachedFamily(familyId: familyId)
+                        }
+                    }
+                }) {
+                    Text(isCurrentFamilyCached ? "Reload" : "Load")
+                        .font(.system(size: 14, weight: .medium))
+                }
+                .buttonStyle(NavigationButtonStyle())
+                .disabled(juuretApp.currentFamily == nil)
+
+                // Family ID input with clear button and dropdown
+                HStack(spacing: 4) {
+                    HStack(spacing: 0) {
+                        TextField("Enter family ID...", text: $familyIdInput)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.primary)
+                            .padding(.leading, 12)
+                            .padding(.vertical, 8)
+                            .onSubmit {
+                                navigateToInputFamily()
+                            }
+
+                        // Clear button
+                        if !familyIdInput.isEmpty {
+                            Button {
+                                familyIdInput = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                                    .imageScale(.medium)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.trailing, 8)
+                        }
+                    }
+                    .background(Color.white.opacity(0.9))
+                    .cornerRadius(6)
+                    .frame(minWidth: 150, idealWidth: 250, maxWidth: 400)
+                    // Keep all the .onChange and .onAppear modifiers here...
+
+                    // Dropdown button
+                    Button(action: {
+                        showingClanBrowser.toggle()
+                    }) {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.primary)
+                            .padding(8)
+                            .background(Color.white.opacity(0.9))
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .frame(maxWidth: .infinity)
+
+                if prefetchManager.isPrefetching, let familyId = prefetchManager.currentFamilyId {
+                    Text("Loading \(familyId)")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .lineLimit(1)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+        }
         .sheet(isPresented: $showingClanBrowser) {
             ClanBrowserView(isPresented: $showingClanBrowser)
         }
     }
-    
+
     // MARK: - Helpers
-    
+
     private var isCurrentFamilyCached: Bool {
         guard let familyId = juuretApp.currentFamily?.familyId else { return false }
         return juuretApp.familyNetworkCache.getCachedNetwork(familyId: familyId) != nil
     }
-    
+
     private func navigateToInputFamily() {
         let trimmedId = familyIdInput.trimmingCharacters(in: .whitespaces)
         guard !trimmedId.isEmpty else { return }
-        
+
         // Navigate with history update (sets as home)
         juuretApp.navigateToFamily(trimmedId, updateHistory: true)
     }
@@ -153,7 +158,7 @@ struct NavigationButtonStyle: ButtonStyle {
 
 struct PDFToggleButtonStyle: ButtonStyle {
     let isActive: Bool
-    
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundColor(isActive ? Color(hex: "667eea") : .white)
