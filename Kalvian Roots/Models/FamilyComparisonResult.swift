@@ -133,6 +133,199 @@ struct FamilyComparisonResult {
     }
 }
 
+struct FamilyComparisonReviewNote: Equatable, Identifiable {
+    let rowIndex: Int
+    let message: String
+
+    var id: Int {
+        rowIndex
+    }
+}
+
+enum FamilyComparisonReviewDetector {
+    static func notes(for rows: [FamilyComparisonResult.Match]) -> [Int: FamilyComparisonReviewNote] {
+        let rowsByBirthDate = Dictionary(
+            grouping: rows.enumerated().filter { $0.element.identity.birthDate != nil },
+            by: { $0.element.identity.birthDate! }
+        )
+
+        var notes: [Int: FamilyComparisonReviewNote] = [:]
+
+        for (birthDate, datedRows) in rowsByBirthDate where datedRows.count > 1 {
+            for leftOffset in datedRows.indices {
+                for rightOffset in datedRows.indices where rightOffset > leftOffset {
+                    let left = datedRows[leftOffset]
+                    let right = datedRows[rightOffset]
+
+                    guard shouldReview(left.element, right.element) else {
+                        continue
+                    }
+
+                    let message = reviewMessage(
+                        left: left.element,
+                        right: right.element,
+                        birthDate: birthDate
+                    )
+
+                    notes[left.offset] = notes[left.offset] ?? FamilyComparisonReviewNote(
+                        rowIndex: left.offset,
+                        message: message
+                    )
+                    notes[right.offset] = notes[right.offset] ?? FamilyComparisonReviewNote(
+                        rowIndex: right.offset,
+                        message: message
+                    )
+                }
+            }
+        }
+
+        return notes
+    }
+
+    private static func shouldReview(
+        _ left: FamilyComparisonResult.Match,
+        _ right: FamilyComparisonResult.Match
+    ) -> Bool {
+        let leftSources = sources(for: left)
+        let rightSources = sources(for: right)
+
+        guard !leftSources.isEmpty,
+              !rightSources.isEmpty,
+              leftSources.isDisjoint(with: rightSources) else {
+            return false
+        }
+
+        return candidateNames(for: left).contains { leftName in
+            candidateNames(for: right).contains { rightName in
+                namesAreNear(leftName, rightName)
+            }
+        }
+    }
+
+    private static func sources(for row: FamilyComparisonResult.Match) -> Set<String> {
+        var sources: Set<String> = []
+        if row.juuretKalvialla != nil {
+            sources.insert("Juuret")
+        }
+        if row.familySearch != nil {
+            sources.insert("FamilySearch")
+        }
+        if row.hiski != nil {
+            sources.insert("HisKi")
+        }
+        return sources
+    }
+
+    private static func candidateNames(for row: FamilyComparisonResult.Match) -> [String] {
+        [
+            row.juuretKalvialla?.rawName,
+            row.familySearch?.rawName,
+            row.hiski?.rawName
+        ].compactMap { $0 }
+    }
+
+    private static func namesAreNear(_ left: String, _ right: String) -> Bool {
+        guard let leftToken = comparableGivenToken(from: left),
+              let rightToken = comparableGivenToken(from: right) else {
+            return false
+        }
+
+        if leftToken == rightToken {
+            return true
+        }
+
+        let shorterCount = min(leftToken.count, rightToken.count)
+        guard shorterCount >= 4 else {
+            return false
+        }
+
+        if leftToken.hasPrefix(rightToken) || rightToken.hasPrefix(leftToken) {
+            return true
+        }
+
+        return commonPrefixCount(leftToken, rightToken) >= 5
+    }
+
+    private static func comparableGivenToken(from name: String) -> String? {
+        let token = name
+            .split { !$0.isLetter }
+            .first
+            .map(String.init)?
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "fi_FI"))
+            .filter(\.isLetter)
+
+        guard let token, !token.isEmpty else {
+            return nil
+        }
+
+        return token
+    }
+
+    private static func commonPrefixCount(_ left: String, _ right: String) -> Int {
+        var count = 0
+        for (leftCharacter, rightCharacter) in zip(left, right) {
+            guard leftCharacter == rightCharacter else {
+                break
+            }
+            count += 1
+        }
+        return count
+    }
+
+    private static func reviewMessage(
+        left: FamilyComparisonResult.Match,
+        right: FamilyComparisonResult.Match,
+        birthDate: Date
+    ) -> String {
+        let orderedRows = [left, right].sorted { first, second in
+            let firstHasHiski = first.hiski != nil
+            let secondHasHiski = second.hiski != nil
+            return firstHasHiski == secondHasHiski ? false : !firstHasHiski
+        }
+
+        let sourceDetails = orderedRows
+            .map(sourcePhrase(for:))
+            .filter { !$0.isEmpty }
+            .joined(separator: "; ")
+
+        return "Possible same child on \(formatDate(birthDate)): \(sourceDetails)."
+    }
+
+    private static func sourcePhrase(for row: FamilyComparisonResult.Match) -> String {
+        if let juuret = row.juuretKalvialla,
+           let familySearch = row.familySearch,
+           juuret.rawName == familySearch.rawName,
+           row.hiski == nil {
+            return "Juuret and FamilySearch have \(juuret.rawName)"
+        }
+
+        let phrases = [
+            sourcePhrase(label: "Juuret", candidate: row.juuretKalvialla),
+            sourcePhrase(label: "FamilySearch", candidate: row.familySearch),
+            sourcePhrase(label: "HisKi", candidate: row.hiski)
+        ].compactMap { $0 }
+
+        return phrases.joined(separator: "; ")
+    }
+
+    private static func sourcePhrase(label: String, candidate: PersonCandidate?) -> String? {
+        guard let candidate else {
+            return nil
+        }
+
+        return "\(label) has \(candidate.rawName)"
+    }
+
+    private static func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "dd MMM yyyy"
+        return formatter.string(from: date)
+    }
+}
+
 struct FamilyChildrenComparisonGroup {
     let coupleIndex: Int
     let couple: Couple

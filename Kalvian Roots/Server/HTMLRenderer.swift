@@ -464,14 +464,18 @@ struct HTMLRenderer {
 
         let rowsHTML: String
         if let comparisonResult {
-            let rows = comparisonResult.rows.map { match in
+            let reviewNotes = FamilyComparisonReviewDetector.notes(for: comparisonResult.rows)
+            let rows = comparisonResult.rows.enumerated().map { index, match in
                 let displayName = match.juuretKalvialla?.rawName
                     ?? match.hiski?.rawName
                     ?? match.familySearch?.rawName
                     ?? "(unknown)"
+                let reviewNote = reviewNotes[index]
+                let rowClass = reviewNote == nil ? "" : " class=\"comparison-review\""
+                let rowTitle = reviewNote.map { " title=\"\(escapeHTML($0.message))\"" } ?? ""
 
                 return """
-                <tr>
+                <tr\(rowClass)\(rowTitle)>
                     <td>\(escapeHTML(displayName))</td>
                     <td>\(renderCandidateCell(match.juuretKalvialla))</td>
                     <td>\(renderCandidateCell(match.hiski))</td>
@@ -915,6 +919,10 @@ struct HTMLRenderer {
         .comparison-table th {
             background: #f5f5f5;
             font-weight: 700;
+        }
+        .comparison-table tr.comparison-review td {
+            background: #fce4ec;
+            color: #ad1457;
         }
         """
     }

@@ -26,6 +26,7 @@ import UIKit
 struct FamilyContentView: View {
     @Environment(JuuretApp.self) private var juuretApp
     @State private var familySearchBookmarkletCopied = false
+    @State private var selectedFamilySearchReviewNote: FamilyComparisonReviewNote?
     let family: Family
     
     // Citation and Hiski handlers
@@ -279,7 +280,9 @@ struct FamilyContentView: View {
     }
 
     private func familySearchComparisonTable(rows: [FamilyComparisonResult.Match]) -> some View {
-        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
+        let reviewNotes = FamilyComparisonReviewDetector.notes(for: rows)
+
+        return Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
             GridRow {
                 comparisonHeader("Child name")
                 comparisonHeader("Juuret")
@@ -291,18 +294,31 @@ struct FamilyContentView: View {
             Divider()
                 .gridCellColumns(5)
 
-            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                let reviewNote = reviewNotes[index]
+
                 GridRow {
-                    comparisonCell(displayName(for: row))
-                    comparisonCell(sourceCell(row.juuretKalvialla))
-                    comparisonCell(sourceCell(row.hiski))
-                    comparisonCell(sourceCell(row.familySearch))
-                    comparisonCell(juuretApp.familySearchComparisonStatus(for: row))
+                    comparisonCell(displayName(for: row), reviewNote: reviewNote)
+                    comparisonCell(sourceCell(row.juuretKalvialla), reviewNote: reviewNote)
+                    comparisonCell(sourceCell(row.hiski), reviewNote: reviewNote)
+                    comparisonCell(sourceCell(row.familySearch), reviewNote: reviewNote)
+                    comparisonCell(juuretApp.familySearchComparisonStatus(for: row), reviewNote: reviewNote)
                 }
             }
         }
         .font(.system(.caption, design: .monospaced))
         .textSelection(.enabled)
+        .popover(item: $selectedFamilySearchReviewNote) { note in
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Review match")
+                    .font(.headline)
+                Text(note.message)
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding()
+            .frame(width: 360, alignment: .leading)
+        }
     }
 
     private func comparisonHeader(_ text: String) -> some View {
@@ -311,10 +327,30 @@ struct FamilyContentView: View {
             .foregroundStyle(.primary)
     }
 
-    private func comparisonCell(_ text: String) -> some View {
-        Text(text)
-            .foregroundStyle(.primary)
-            .fixedSize(horizontal: false, vertical: true)
+    @ViewBuilder
+    private func comparisonCell(
+        _ text: String,
+        reviewNote: FamilyComparisonReviewNote? = nil
+    ) -> some View {
+        if let reviewNote {
+            Button {
+                selectedFamilySearchReviewNote = reviewNote
+            } label: {
+                Text(text)
+                    .foregroundStyle(Color(hex: "ad1457"))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 3)
+                    .padding(.vertical, 1)
+                    .background(Color(hex: "fce4ec"))
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+            }
+            .buttonStyle(.plain)
+            .help(reviewNote.message)
+        } else {
+            Text(text)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private func displayName(for row: FamilyComparisonResult.Match) -> String {

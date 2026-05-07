@@ -127,6 +127,73 @@ final class FamilyComparisonResultTests: XCTestCase {
         )
     }
 
+    func testReviewNotesFlagNearNameRowsWithExactSharedBirthDate() throws {
+        let birthDate = date(1751, 11, 27)
+        let result = FamilyComparisonResult(
+            familySearch: [
+                candidate(
+                    name: "Johannes Eriksson",
+                    identityName: "Johannes",
+                    birth: birthDate,
+                    source: .familySearch,
+                    familySearchId: "FS-JOHANNES"
+                )
+            ],
+            juuretKalvialla: [
+                candidate(
+                    name: "Johannes",
+                    birth: birthDate,
+                    source: .juuretKalvialla
+                )
+            ],
+            hiski: [
+                candidate(
+                    name: "Johanna",
+                    birth: birthDate,
+                    source: .hiski
+                )
+            ]
+        )
+
+        XCTAssertEqual(result.rows.count, 2)
+        XCTAssertEqual(result.matches.count, 1)
+
+        let notes = FamilyComparisonReviewDetector.notes(for: result.rows)
+        XCTAssertEqual(notes.count, 2)
+
+        let combinedMessages = notes.values.map(\.message).joined(separator: "\n")
+        XCTAssertTrue(combinedMessages.contains("Possible same child on 27 Nov 1751"))
+        XCTAssertTrue(combinedMessages.contains("Juuret has Johannes"))
+        XCTAssertTrue(combinedMessages.contains("FamilySearch has Johannes Eriksson"))
+        XCTAssertTrue(combinedMessages.contains("HisKi has Johanna"))
+    }
+
+    func testReviewNotesDoNotFlagUnrelatedNamesWithExactSharedBirthDate() {
+        let birthDate = date(1755, 2, 9)
+        let result = FamilyComparisonResult(
+            familySearch: [
+                candidate(
+                    name: "Elias Tikkanen",
+                    identityName: "Elias",
+                    birth: birthDate,
+                    source: .familySearch,
+                    familySearchId: "FS-ELIAS"
+                )
+            ],
+            juuretKalvialla: [],
+            hiski: [
+                candidate(
+                    name: "Matthias",
+                    birth: birthDate,
+                    source: .hiski
+                )
+            ]
+        )
+
+        XCTAssertEqual(result.rows.count, 2)
+        XCTAssertTrue(FamilyComparisonReviewDetector.notes(for: result.rows).isEmpty)
+    }
+
     func testFamilySearchAndHiskiMatchWhenJuuretEntryIsMissingForElias() throws {
         let result = FamilyComparisonResult(
             familySearch: [
