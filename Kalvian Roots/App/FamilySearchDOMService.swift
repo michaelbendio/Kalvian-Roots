@@ -545,28 +545,48 @@ enum FamilySearchDOMService {
 
             function childCardFor(element, id) {
                 let current = element;
+                let best = null;
                 while (current && current !== localDocument.body) {
-                    if (visibleText(current).includes(id)) {
-                        return current;
+                    const text = visibleText(current);
+                    if (!text.includes(id)) {
+                        break;
                     }
+                    const ids = text.match(/\\b[A-Z0-9]{4}-[A-Z0-9]{3}\\b/g) || [];
+                    if (ids.length > 1) {
+                        break;
+                    }
+                    best = current;
                     current = current.parentElement;
                 }
-                return null;
+                return best;
+            }
+
+            function childCardById(id) {
+                const scopedRoot = familyMembersSection() || localDocument;
+                const cards = Array.from(scopedRoot.querySelectorAll('a,button,[role="button"],[tabindex],span,div,li,article,section'))
+                    .filter(element => visibleText(element).includes(id) && !isEditControl(element))
+                    .map(element => childCardFor(element, id))
+                    .filter(Boolean)
+                    .sort((a, b) => visibleText(a).length - visibleText(b).length);
+                return Array.from(new Set(cards))[0] || null;
             }
 
             function clickableNameControl(summary) {
-                const scopedRoot = familyMembersSection() || localDocument;
+                const idCard = childCardById(summary.id);
+                const scopedRoot = idCard || familyMembersSection() || localDocument;
                 const candidates = Array.from(scopedRoot.querySelectorAll('a,button,[role="button"],[tabindex],span,div'))
                     .filter(element => {
-                        if (!visibleText(element).includes(summary.name)) return false;
+                        const text = visibleText(element);
                         if (isEditControl(element)) return false;
-                        return !!childCardFor(element, summary.id);
+                        if (idCard) {
+                            return text.includes(summary.name) || text.includes(summary.id);
+                        }
+                        return text.includes(summary.name) && !!childCardFor(element, summary.id);
                     })
                     .sort((a, b) => visibleText(a).length - visibleText(b).length);
 
                 const best = candidates[0];
-                if (!best) return null;
-                return best;
+                return best || idCard || null;
             }
 
             function candidateChildControls(id) {
@@ -720,8 +740,13 @@ enum FamilySearchDOMService {
                     values.push(lines[i]);
                 }
 
+                const date = dateLikeFromText(values[0]);
+                if (!date) {
+                    return { date: null, place: null };
+                }
+
                 return {
-                    date: values[0] || null,
+                    date,
                     place: values[1] || null
                 };
             }

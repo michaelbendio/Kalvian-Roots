@@ -127,6 +127,20 @@ final class FamilyComparisonResultTests: XCTestCase {
         )
     }
 
+    func testFamilySearchUppercaseMonthDatesBecomeCandidateBirthDates() throws {
+        let service = FamilyComparisonService(nameManager: nameManager)
+        let candidates = service.makeFamilySearchCandidates(from: [
+            FamilySearchChild(
+                id: "M88Z-4SX",
+                name: "Jacob Eriksson",
+                birthDate: "24 MAR 1769"
+            )
+        ])
+
+        let candidate = try XCTUnwrap(candidates.first)
+        XCTAssertEqual(candidate.birthDate, date(1769, 3, 24))
+    }
+
     func testReviewNotesFlagNearNameRowsWithExactSharedBirthDate() throws {
         let birthDate = date(1751, 11, 27)
         let result = FamilyComparisonResult(
@@ -1175,11 +1189,14 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("function withBlockedChildNavigation(summary, action)"))
         XCTAssertTrue(script.contains("window.history.pushState = function"))
         XCTAssertTrue(script.contains("event.preventDefault()"))
+        XCTAssertTrue(script.contains("function childCardById(id)"))
         XCTAssertTrue(script.contains("function openChildQuickCard(summary, control, ignoredPanels)"))
         XCTAssertTrue(script.contains("new PointerEvent('pointerover'"))
         XCTAssertTrue(script.contains("control.dispatchEvent(new MouseEvent('mouseenter'"))
         XCTAssertTrue(script.contains("control.dispatchEvent(new MouseEvent('mousedown'"))
         XCTAssertTrue(script.contains("control.click();"))
+        XCTAssertTrue(script.contains("const date = dateLikeFromText(values[0]);"))
+        XCTAssertTrue(script.contains("return { date: null, place: null };"))
         XCTAssertTrue(script.contains("notes.push('using child quick-card click extraction')"))
         XCTAssertTrue(script.contains("blocked child detail navigation"))
         XCTAssertTrue(script.contains("notes.push('using child details HTML extraction')"))
