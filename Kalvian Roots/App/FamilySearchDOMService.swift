@@ -757,14 +757,77 @@ enum FamilySearchDOMService {
                     burialPlace: null,
                     lifeSpan: person.lifeSpan || summary.lifeSpan || summary.summaryYears || null,
                     extractionStatus: 'success',
+                    extractionSource: 'detailsPage',
                     extractionNotes: notes
                 };
+            }
+
+            function childDetailHasVitalDates(detail) {
+                return !!(
+                    clean(detail.birthDate) ||
+                    clean(detail.christeningDate) ||
+                    clean(detail.deathDate) ||
+                    clean(detail.burialDate)
+                );
+            }
+
+            async function extractChildDetailsFromPanel(summary, notes) {
+                const ignoredPanels = new Set(panelCandidatesFor(summary.id));
+                const control = findChildControl(summary);
+                if (!control) {
+                    throw new Error('child detail control not found for ' + summary.id);
+                }
+
+                const detailLink = control.closest && control.closest('a[href*="/tree/person/"]');
+                if (detailLink) {
+                    detailLink.addEventListener('click', event => event.preventDefault(), { capture: true, once: true });
+                }
+                control.click();
+                const panel = await waitForChildPanel(summary.id, ignoredPanels);
+                const birth = vitalFromPanel(panel, 'Birth');
+                const christening = vitalFromPanel(panel, 'Christening');
+                const death = vitalFromPanel(panel, 'Death');
+                const burial = vitalFromPanel(panel, 'Burial');
+
+                try {
+                    return {
+                        id: summary.id,
+                        name: summary.name,
+                        sex: sexFromPanel(panel) || summary.sex || null,
+                        summaryYears: summary.summaryYears || summary.lifeSpan || null,
+                        birth,
+                        birthDate: birth.date,
+                        birthPlace: birth.place,
+                        christening,
+                        christeningDate: christening.date,
+                        christeningPlace: christening.place,
+                        death,
+                        deathDate: death.date,
+                        deathPlace: death.place,
+                        burial,
+                        burialDate: burial.date,
+                        burialPlace: burial.place,
+                        lifeSpan: summary.lifeSpan || summary.summaryYears || null,
+                        extractionStatus: 'success',
+                        extractionSource: 'panelFallback',
+                        extractionNotes: notes
+                    };
+                } finally {
+                    closeChildPanel();
+                    await sleep(250);
+                }
             }
 
             async function extractChildDetails(summary) {
                 const notes = [];
                 try {
-                    return await extractChildDetailsFromPersonPage(summary);
+                    const detail = await extractChildDetailsFromPersonPage(summary);
+                    if (childDetailHasVitalDates(detail)) {
+                        return detail;
+                    }
+
+                    notes.push('details page returned no child vital dates');
+                    return await extractChildDetailsFromPanel(summary, notes);
                 } catch (error) {
                     notes.push(clean(error && error.message));
                     console.warn('Kalvian Roots FamilySearch child extraction failed for ' + summary.id + ':', error);
@@ -789,6 +852,7 @@ enum FamilySearchDOMService {
                         burialPlace: null,
                         lifeSpan: summary.lifeSpan || summary.summaryYears || null,
                         extractionStatus: 'partial',
+                        extractionSource: 'summaryFallback',
                         extractionNotes: notes
                     };
                 }
@@ -1038,6 +1102,9 @@ enum FamilySearchDOMService {
                     const selectedDeathDateCount = children.filter(child => clean(child.deathDate)).length;
                     const allBirthDateCount = allEnrichedChildren.filter(child => clean(child.birthDate)).length;
                     const allDeathDateCount = allEnrichedChildren.filter(child => clean(child.deathDate)).length;
+                    const detailsPageChildCount = allEnrichedChildren.filter(child => child.extractionSource === 'detailsPage').length;
+                    const panelFallbackChildCount = allEnrichedChildren.filter(child => child.extractionSource === 'panelFallback').length;
+                    const summaryFallbackChildCount = allEnrichedChildren.filter(child => child.extractionSource === 'summaryFallback').length;
 
                     if (personIdFromURL() !== normalizedPersonId) {
                         await sleep(900);
@@ -1074,7 +1141,8 @@ enum FamilySearchDOMService {
                         debugNotes: [
                             'FamilySearch extraction finished: spouse groups ' + enrichedSpouseGroups.length + ', preferred group children ' + selectedEnrichedGroup.children.length,
                             'FamilySearch selected group child birth dates extracted: ' + selectedBirthDateCount + '/' + children.length + ', death dates extracted: ' + selectedDeathDateCount + '/' + children.length,
-                            'FamilySearch all spouse group child birth dates extracted: ' + allBirthDateCount + '/' + allEnrichedChildren.length + ', death dates extracted: ' + allDeathDateCount + '/' + allEnrichedChildren.length
+                            'FamilySearch all spouse group child birth dates extracted: ' + allBirthDateCount + '/' + allEnrichedChildren.length + ', death dates extracted: ' + allDeathDateCount + '/' + allEnrichedChildren.length,
+                            'FamilySearch child detail sources: details page ' + detailsPageChildCount + ', panel fallback ' + panelFallbackChildCount + ', summary fallback ' + summaryFallbackChildCount
                         ]
                     };
 
