@@ -163,6 +163,30 @@ final class FamilyContentViewTests: XCTestCase {
         XCTAssertEqual(family.notes.count, 1, "One note")
         XCTAssertTrue(family.notes[0].contains("moved"), "Note content correct")
     }
+
+    func testFootnoteMarkersUseVerbatimTextRendering() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        let familyContentView = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/Views/FamilyContentView.swift"),
+            encoding: .utf8
+        )
+        let personLineView = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/Views/PersonLineView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(
+            familyContentView.contains(#"Text(verbatim: "\(key) \(text)")"#),
+            "Note definitions must render **) as literal asterisks, not SwiftUI Markdown."
+        )
+        XCTAssertTrue(
+            personLineView.contains(#"Text(verbatim: person.noteMarkers.joined(separator: " "))"#),
+            "Person note markers must render ** as literal asterisks, not SwiftUI Markdown."
+        )
+    }
     
     // MARK: - PersonLineView Data Tests
     

@@ -411,7 +411,7 @@ struct FamilyContentView: View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(Array(family.noteDefinitions.keys.sorted()), id: \.self) { key in
                 if let text = family.noteDefinitions[key] {
-                    Text("\(key) \(text)")
+                    Text(verbatim: "\(key) \(text)")
                         .applyFamilyLineStyle()
                         .foregroundColor(.secondary)
                         .italic()
