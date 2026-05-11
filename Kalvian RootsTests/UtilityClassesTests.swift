@@ -244,6 +244,29 @@ final class HiskiServiceTests: XCTestCase {
     func testServiceInitialization() {
         XCTAssertNotNil(service, "Service should initialize")
     }
+
+    #if os(macOS)
+    func testHiskiWebViewManagerRecreatesRecordWindowAfterUserClose() async throws {
+        let manager = HiskiWebViewManager.shared
+
+        manager.closeAllWindows()
+        manager.debugPrepareRecordWindowForTests()
+        XCTAssertTrue(manager.debugHasRecordWindowForTests)
+        let contentSize = try XCTUnwrap(manager.debugRecordWindowContentSizeForTests)
+        XCTAssertEqual(contentSize.width, 650, accuracy: 0.5)
+        XCTAssertEqual(contentSize.height, 430, accuracy: 0.5)
+
+        manager.debugSimulateUserClosingRecordWindowForTests()
+        await Task.yield()
+        XCTAssertFalse(manager.debugHasRecordWindowForTests)
+
+        manager.debugPrepareRecordWindowForTests()
+        XCTAssertTrue(manager.debugHasRecordWindowForTests)
+
+        manager.closeAllWindows()
+        XCTAssertFalse(manager.debugHasRecordWindowForTests)
+    }
+    #endif
     
     func testSetCurrentFamily() {
         // When: Setting current family

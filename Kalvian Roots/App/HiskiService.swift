@@ -37,17 +37,17 @@ enum HiskiExtractionMode {
 // MARK: - WebView Window Manager with JavaScript Citation Extraction
 
 #if os(macOS)
-class HiskiWebViewManager: NSObject, WKNavigationDelegate {
+class HiskiWebViewManager: NSObject, WKNavigationDelegate, NSWindowDelegate {
     @MainActor static let shared = HiskiWebViewManager()
     
-    @MainActor private var recordWindow: NSWindow?  // ← Back to strong reference, no delegate
+    @MainActor private var recordWindow: NSWindow?
     @MainActor private var recordWebView: WKWebView?
     @MainActor private var citationContinuation: CheckedContinuation<String, Error>?
     
     private let recordWindowX: CGFloat = 1300
     private let recordWindowY: CGFloat = 250
-    private let recordWindowWidth: CGFloat = 1200
-    private let recordWindowHeight: CGFloat = 450
+    private let recordWindowWidth: CGFloat = 650
+    private let recordWindowHeight: CGFloat = 430
     
     @MainActor private override init() {
         super.init()
@@ -56,38 +56,51 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
     /// Load record page and extract citation URL using JavaScript
     @MainActor func loadRecordAndExtractCitation(url: URL) async throws -> String {
         return try await withCheckedThrowingContinuation { continuation in
+            self.citationContinuation?.resume(throwing: HiskiServiceError.citationExtractionFailed)
             self.citationContinuation = continuation
 
-            // Create webView + window only once; reuse for subsequent queries
-            if recordWebView == nil {
-                let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: recordWindowWidth, height: recordWindowHeight))
-                webView.navigationDelegate = self
-                webView.allowsBackForwardNavigationGestures = true
-                self.recordWebView = webView
-
-                let window = NSWindow(
-                    contentRect: NSRect(x: recordWindowX, y: recordWindowY, width: recordWindowWidth, height: recordWindowHeight),
-                    styleMask: [.titled, .closable, .resizable],
-                    backing: .buffered,
-                    defer: false
-                )
-                window.title = "Hiski Record"
-                window.contentView = webView
-                window.level = .floating
-                self.recordWindow = window
-            }
+            let webView = ensureRecordWindow()
 
             // Bring window forward and load new URL into existing webView
             recordWindow?.makeKeyAndOrderFront(nil)
-            recordWebView?.load(URLRequest(url: url))
+            webView.load(URLRequest(url: url))
             logInfo(.app, "🪟 Opened Hiski record window")
         }
     }
+
+    @MainActor
+    @discardableResult
+    private func ensureRecordWindow() -> WKWebView {
+        if let recordWebView, let recordWindow, recordWindow.isVisible {
+            return recordWebView
+        }
+
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: recordWindowWidth, height: recordWindowHeight))
+        webView.navigationDelegate = self
+        webView.allowsBackForwardNavigationGestures = true
+        self.recordWebView = webView
+
+        let window = NSWindow(
+            contentRect: NSRect(x: recordWindowX, y: recordWindowY, width: recordWindowWidth, height: recordWindowHeight),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Hiski Record"
+        window.contentView = webView
+        window.level = .floating
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        self.recordWindow = window
+
+        return webView
+    }
     
     @MainActor func closeRecordWindow() {
-        recordWebView?.navigationDelegate = nil
-        recordWebView = nil
-        recordWindow?.close()
+        let window = recordWindow
+        clearRecordWindowState(resumePendingContinuation: true)
+        window?.delegate = nil
+        window?.close()
         recordWindow = nil
         logInfo(.app, "🪟 Closed Hiski record window")
     }
@@ -95,6 +108,47 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate {
     @MainActor func closeAllWindows() {
         closeRecordWindow()
     }
+
+    nonisolated func windowWillClose(_ notification: Notification) {
+        Task { @MainActor in
+            guard notification.object as? NSWindow === recordWindow else {
+                return
+            }
+
+            clearRecordWindowState(resumePendingContinuation: true)
+            recordWindow = nil
+            logInfo(.app, "🪟 Hiski record window closed by user")
+        }
+    }
+
+    @MainActor
+    private func clearRecordWindowState(resumePendingContinuation: Bool) {
+        recordWebView?.navigationDelegate = nil
+        recordWebView = nil
+
+        if resumePendingContinuation {
+            citationContinuation?.resume(throwing: HiskiServiceError.citationExtractionFailed)
+            citationContinuation = nil
+        }
+    }
+
+    #if DEBUG
+    @MainActor func debugPrepareRecordWindowForTests() {
+        _ = ensureRecordWindow()
+    }
+
+    @MainActor func debugSimulateUserClosingRecordWindowForTests() {
+        recordWindow?.close()
+    }
+
+    @MainActor var debugHasRecordWindowForTests: Bool {
+        recordWindow != nil && recordWebView != nil
+    }
+
+    @MainActor var debugRecordWindowContentSizeForTests: CGSize? {
+        recordWindow?.contentView?.frame.size
+    }
+    #endif
     
     // Called when page finishes loading
     nonisolated func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
