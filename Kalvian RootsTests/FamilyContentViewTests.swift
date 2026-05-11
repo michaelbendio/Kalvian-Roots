@@ -183,6 +183,10 @@ final class FamilyContentViewTests: XCTestCase {
             "Note definitions must render **) as literal asterisks, not SwiftUI Markdown."
         )
         XCTAssertTrue(
+            familyContentView.contains(#"Text(verbatim: note)"#),
+            "Family notes must render **) as literal asterisks, not SwiftUI Markdown."
+        )
+        XCTAssertTrue(
             personLineView.contains(#"Text(verbatim: person.noteMarkers.joined(separator: " "))"#),
             "Person note markers must render ** as literal asterisks, not SwiftUI Markdown."
         )

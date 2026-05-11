@@ -754,7 +754,7 @@ struct FamilyContentView: View {
     private func notesSection() -> some View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(Array(family.notes.enumerated()), id: \.offset) { _, note in
-                Text(note)
+                Text(verbatim: note)
                     .applyFamilyLineStyle()
                     .foregroundColor(.secondary)
                     .italic()
