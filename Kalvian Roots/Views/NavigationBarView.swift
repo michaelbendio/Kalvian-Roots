@@ -51,33 +51,52 @@ struct NavigationBarView: View {
 
             // Family ID input with clear button and dropdown
             HStack(spacing: 4) {
-                HStack(spacing: 0) {
-                    TextField("Enter family ID...", text: $familyIdInput)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.primary)
-                        .padding(.leading, 12)
-                        .padding(.vertical, 8)
-                        .onSubmit {
-                            navigateToInputFamily()
-                        }
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 0) {
+                        TextField("Enter family ID...", text: $familyIdInput)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.primary)
+                            .padding(.leading, 12)
+                            .padding(.vertical, 8)
+                            .onChange(of: familyIdInput) { _, _ in
+                                if juuretApp.errorMessage?.hasPrefix("Invalid family ID:") == true {
+                                    juuretApp.errorMessage = nil
+                                }
+                            }
+                            .onSubmit {
+                                navigateToInputFamily()
+                            }
 
-                    // Clear button
-                    if !familyIdInput.isEmpty {
-                        Button {
-                            familyIdInput = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.secondary)
-                                .imageScale(.medium)
+                        // Clear button
+                        if !familyIdInput.isEmpty {
+                            Button {
+                                familyIdInput = ""
+                                if juuretApp.errorMessage?.hasPrefix("Invalid family ID:") == true {
+                                    juuretApp.errorMessage = nil
+                                }
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                                    .imageScale(.medium)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.trailing, 8)
                         }
-                        .buttonStyle(.plain)
-                        .padding(.trailing, 8)
+                    }
+                    .background(Color.white.opacity(0.9))
+                    .cornerRadius(6)
+                    .frame(minWidth: 150, idealWidth: 250, maxWidth: 400)
+
+                    if let errorMessage = juuretApp.errorMessage,
+                       errorMessage.hasPrefix("Invalid family ID:") {
+                        Text(errorMessage)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .padding(.leading, 4)
                     }
                 }
-                .background(Color.white.opacity(0.9))
-                .cornerRadius(6)
-                .frame(minWidth: 150, idealWidth: 250, maxWidth: 400)
                 // Keep all the .onChange and .onAppear modifiers here...
 
                 // Dropdown button

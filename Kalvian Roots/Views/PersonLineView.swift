@@ -109,7 +109,7 @@ struct PersonLineView: View {
             
             // Note markers (* ** etc.)
             if !person.noteMarkers.isEmpty {
-                Text(verbatim: person.noteMarkers.joined(separator: " "))
+                Text(verbatim: person.noteMarkers.map(displayFootnoteMarker).joined(separator: " "))
                     .font(.system(size: 16, design: .monospaced))
                     .foregroundColor(.secondary)
             }

@@ -411,7 +411,7 @@ struct FamilyContentView: View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(Array(family.noteDefinitions.keys.sorted()), id: \.self) { key in
                 if let text = family.noteDefinitions[key] {
-                    Text(verbatim: "\(key) \(text)")
+                    Text(verbatim: "\(displayFootnoteMarker(key)) \(text)")
                         .applyFamilyLineStyle()
                         .foregroundColor(.secondary)
                         .italic()
@@ -754,7 +754,7 @@ struct FamilyContentView: View {
     private func notesSection() -> some View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(Array(family.notes.enumerated()), id: \.offset) { _, note in
-                Text(verbatim: note)
+                Text(verbatim: displayFootnoteText(note))
                     .applyFamilyLineStyle()
                     .foregroundColor(.secondary)
                     .italic()
@@ -985,6 +985,27 @@ enum FamilySearchComparisonClipboardFormatter {
         formatter.dateFormat = "dd MMM yyyy"
         return formatter.string(from: date)
     }
+}
+
+func displayFootnoteMarker(_ marker: String) -> String {
+    marker.map { $0 == "★" ? "*" : $0 }.map(String.init).joined()
+}
+
+func displayFootnoteText(_ text: String) -> String {
+    var markerEnd = text.startIndex
+    while markerEnd < text.endIndex {
+        let character = text[markerEnd]
+        guard character == "★" || character == "*" else { break }
+        markerEnd = text.index(after: markerEnd)
+    }
+
+    guard markerEnd > text.startIndex else {
+        return text
+    }
+
+    let marker = String(text[..<markerEnd])
+    let suffix = String(text[markerEnd...])
+    return displayFootnoteMarker(marker) + suffix
 }
 
 // MARK: - View Modifiers

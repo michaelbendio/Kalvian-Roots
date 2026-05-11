@@ -179,17 +179,25 @@ final class FamilyContentViewTests: XCTestCase {
         )
 
         XCTAssertTrue(
-            familyContentView.contains(#"Text(verbatim: "\(key) \(text)")"#),
-            "Note definitions must render **) as literal asterisks, not SwiftUI Markdown."
+            familyContentView.contains(#"Text(verbatim: "\(displayFootnoteMarker(key)) \(text)")"#),
+            "Note definitions must render stored star markers as literal asterisks."
         )
         XCTAssertTrue(
-            familyContentView.contains(#"Text(verbatim: note)"#),
-            "Family notes must render **) as literal asterisks, not SwiftUI Markdown."
+            familyContentView.contains(#"Text(verbatim: displayFootnoteText(note))"#),
+            "Family notes must render stored star markers as literal asterisks."
         )
         XCTAssertTrue(
-            personLineView.contains(#"Text(verbatim: person.noteMarkers.joined(separator: " "))"#),
-            "Person note markers must render ** as literal asterisks, not SwiftUI Markdown."
+            personLineView.contains(#"Text(verbatim: person.noteMarkers.map(displayFootnoteMarker).joined(separator: " "))"#),
+            "Person note markers must render stored star markers as literal asterisks."
         )
+    }
+
+    func testStoredStarFootnoteMarkersDisplayAsAsterisks() {
+        XCTAssertEqual(displayFootnoteMarker("★★"), "**")
+        XCTAssertEqual(displayFootnoteMarker("*"), "*")
+        XCTAssertEqual(displayFootnoteText("★★ 22.03.-50 Pidisjärvi"), "** 22.03.-50 Pidisjärvi")
+        XCTAssertEqual(displayFootnoteText("*) Poika Abraham"), "*) Poika Abraham")
+        XCTAssertEqual(displayFootnoteText("No marker ★ in body"), "No marker ★ in body")
     }
     
     // MARK: - PersonLineView Data Tests
