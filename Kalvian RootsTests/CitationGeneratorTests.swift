@@ -110,6 +110,28 @@ final class CitationGeneratorTests: XCTestCase {
         XCTAssertTrue(citation.contains("Children"), "Should have children section")
         XCTAssertTrue(citation.contains("Liisa"), "Should have child name")
     }
+
+    func testMainFamilyCitationDisplaysStoredStarFootnotesAsAsterisks() {
+        let husband = Person(name: "Elias", birthDate: "07.12.1781", noteMarkers: ["★"])
+        let wife = Person(name: "Maria", birthDate: "04.06.1779", noteMarkers: [])
+        let child = Person(name: "Briita Kaisa", birthDate: "15.07.1819", noteMarkers: ["★★"])
+        let couple = Couple(husband: husband, wife: wife, children: [child])
+        let family = Family(
+            familyId: "FOOTNOTE 1",
+            pageReferences: ["264"],
+            couples: [couple],
+            notes: ["★ Poika Abraham"],
+            noteDefinitions: ["★★": "22.03.-50 Pidisjärvi"]
+        )
+
+        let citation = CitationGenerator.generateMainFamilyCitation(family: family)
+
+        XCTAssertTrue(citation.contains("Elias, b. 7 December 1781 *"))
+        XCTAssertTrue(citation.contains("Briita Kaisa, b. 15 July 1819 **"))
+        XCTAssertTrue(citation.contains("* Poika Abraham"))
+        XCTAssertTrue(citation.contains("** 22.03.-50 Pidisjärvi"))
+        XCTAssertFalse(citation.contains("★"))
+    }
     
     // MARK: - AsChild Citation Tests
     
