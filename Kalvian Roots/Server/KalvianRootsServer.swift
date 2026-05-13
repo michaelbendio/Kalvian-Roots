@@ -547,6 +547,10 @@ final class HTTPHandler: ChannelInboundHandler {
                 family: network.mainFamily,
                 session: sessionResult.session
             )
+            let hiskiChildSearchRequestsByCouple = makeHiskiChildSearchRequestsByCouple(
+                family: network.mainFamily,
+                session: sessionResult.session
+            )
             let familySearchPersonId = network.mainFamily.primaryCouple?.husband.familySearchId
                 ?? network.mainFamily.primaryCouple?.wife.familySearchId
             let familySearchCallbackURL = makeFamilySearchCallbackURL(
@@ -564,7 +568,8 @@ final class HTTPHandler: ChannelInboundHandler {
                 familySearchExtraction: sessionResult.session.familySearchExtraction(for: canonicalID),
                 familySearchPersonId: familySearchPersonId,
                 familySearchCallbackURL: familySearchCallbackURL,
-                autoExtractFamilySearch: autoExtractFamilySearch
+                autoExtractFamilySearch: autoExtractFamilySearch,
+                hiskiChildSearchRequestsByCouple: hiskiChildSearchRequestsByCouple
             )
 
             var responseHeaders = HTTPHeaders()
@@ -1268,6 +1273,52 @@ final class HTTPHandler: ChannelInboundHandler {
 
         let encodedFamilyId = familyId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? familyId
         return "http://\(host)/family/\(encodedFamilyId)/familysearch?session=\(sessionId)"
+    }
+
+    private func makeHiskiChildSearchRequestsByCouple(
+        family: Family,
+        session: BrowserSession
+    ) -> [Int: HiskiService.FamilyBirthSearchRequest] {
+        let hiskiService = HiskiService(nameEquivalenceManager: session.nameEquivalenceManager)
+        hiskiService.setCurrentFamily(family.familyId)
+        var requestsByCouple: [Int: HiskiService.FamilyBirthSearchRequest] = [:]
+
+        for (index, couple) in family.couples.enumerated() where !couple.children.isEmpty {
+            guard !couple.husband.name.isEmpty,
+                  !couple.wife.name.isEmpty,
+                  let marriageDate = couple.fullMarriageDate ?? couple.marriageDate,
+                  let marriageYear = extractYear(from: marriageDate).flatMap(Int.init) else {
+                continue
+            }
+
+            let hiskiEndYear = HiskiService.familyBirthEndYear(
+                marriageYear: marriageYear,
+                husbandDeathDate: couple.husband.deathDate,
+                wifeDeathDate: couple.wife.deathDate
+            )
+
+            do {
+                let searchRequests = try hiskiService.buildFamilyBirthSearchRequests(
+                    fatherName: couple.husband.name,
+                    fatherPatronymic: couple.husband.patronymic,
+                    motherName: couple.wife.name,
+                    motherPatronymic: couple.wife.patronymic,
+                    marriageYear: marriageYear,
+                    endYear: hiskiEndYear
+                )
+
+                if let request = searchRequests.first {
+                    requestsByCouple[index] = request
+                }
+            } catch {
+                logger.warning(
+                    "[\(requestID!)] HisKi child result popup URL unavailable",
+                    metadata: ["couple": "\(index + 1)", "error": "\(error.localizedDescription)"]
+                )
+            }
+        }
+
+        return requestsByCouple
     }
 
     private func corsHeaders() -> HTTPHeaders {

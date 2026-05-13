@@ -246,12 +246,14 @@ final class HiskiServiceTests: XCTestCase {
     }
 
     #if os(macOS)
-    func testHiskiWebViewManagerRecreatesRecordWindowAfterUserClose() async throws {
+    @MainActor func testHiskiWebViewManagerRecreatesRecordWindowAfterUserClose() async throws {
         let manager = HiskiWebViewManager.shared
 
         manager.closeAllWindows()
         manager.debugPrepareRecordWindowForTests()
         XCTAssertTrue(manager.debugHasRecordWindowForTests)
+        XCTAssertFalse(manager.debugHasSearchResultsWindowForTests)
+        XCTAssertEqual(manager.debugRecordWindowTitleForTests, "HisKi Record")
         let contentSize = try XCTUnwrap(manager.debugRecordWindowContentSizeForTests)
         XCTAssertEqual(contentSize.width, 650, accuracy: 0.5)
         XCTAssertEqual(contentSize.height, 430, accuracy: 0.5)
@@ -264,6 +266,44 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertTrue(manager.debugHasRecordWindowForTests)
 
         manager.closeAllWindows()
+        XCTAssertFalse(manager.debugHasRecordWindowForTests)
+    }
+
+    @MainActor func testHiskiWebViewManagerLoadsSearchResultsWithoutExternalBrowser() async throws {
+        let manager = HiskiWebViewManager.shared
+
+        manager.closeAllWindows()
+        let url = try XCTUnwrap(URL(string: "about:blank"))
+        manager.debugLoadSearchResultsForTests(url: url)
+
+        XCTAssertFalse(manager.debugHasRecordWindowForTests)
+        XCTAssertTrue(manager.debugHasSearchResultsWindowForTests)
+        XCTAssertEqual(manager.debugSearchResultsWindowTitleForTests, "HisKi Results")
+
+        manager.closeAllWindows()
+        XCTAssertFalse(manager.debugHasRecordWindowForTests)
+        XCTAssertFalse(manager.debugHasSearchResultsWindowForTests)
+    }
+
+    @MainActor func testHiskiWebViewManagerKeepsSearchResultsOpenWithRecordWindow() async throws {
+        let manager = HiskiWebViewManager.shared
+
+        manager.closeAllWindows()
+        let url = try XCTUnwrap(URL(string: "about:blank"))
+        manager.debugLoadSearchResultsForTests(url: url)
+        manager.debugPrepareRecordWindowForTests()
+
+        XCTAssertTrue(manager.debugHasSearchResultsWindowForTests)
+        XCTAssertEqual(manager.debugSearchResultsWindowTitleForTests, "HisKi Results")
+        XCTAssertTrue(manager.debugHasRecordWindowForTests)
+        XCTAssertEqual(manager.debugRecordWindowTitleForTests, "HisKi Record")
+
+        manager.closeRecordWindow()
+        XCTAssertTrue(manager.debugHasSearchResultsWindowForTests)
+        XCTAssertFalse(manager.debugHasRecordWindowForTests)
+
+        manager.closeAllWindows()
+        XCTAssertFalse(manager.debugHasSearchResultsWindowForTests)
         XCTAssertFalse(manager.debugHasRecordWindowForTests)
     }
     #endif
@@ -289,7 +329,7 @@ final class HiskiServiceTests: XCTestCase {
         let values = Dictionary(uniqueKeysWithValues: queryItems.map { ($0.name, $0.value ?? "") })
 
         XCTAssertEqual(values["etunimi"], "")
-        XCTAssertEqual(values["alkuvuosi"], "1800")
+        XCTAssertEqual(values["alkuvuosi"], "1799")
         XCTAssertEqual(values["loppuvuosi"], "1835")
         XCTAssertEqual(values["ietunimi"], "Elias")
         XCTAssertEqual(values["ipatronyymi"], "Matinp")
@@ -312,7 +352,7 @@ final class HiskiServiceTests: XCTestCase {
         let queryItems = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
         let values = Dictionary(uniqueKeysWithValues: queryItems.map { ($0.name, $0.value ?? "") })
 
-        XCTAssertEqual(values["alkuvuosi"], "1800")
+        XCTAssertEqual(values["alkuvuosi"], "1799")
         XCTAssertEqual(values["loppuvuosi"], "1807")
     }
 
@@ -332,7 +372,16 @@ final class HiskiServiceTests: XCTestCase {
                 husbandDeathDate: "27.02.1797",
                 wifeDeathDate: nil
             ),
-            1797
+            1788
+        )
+
+        XCTAssertEqual(
+            HiskiService.familyBirthEndYear(
+                marriageYear: 1779,
+                husbandDeathDate: "18.08.1829",
+                wifeDeathDate: "28.08.1831"
+            ),
+            1814
         )
 
         XCTAssertEqual(
@@ -343,6 +392,46 @@ final class HiskiServiceTests: XCTestCase {
             ),
             1835
         )
+    }
+
+    func testFamilyBirthSearchWindowIsPerMarriageForAdditionalSpouses() throws {
+        let firstEndYear = HiskiService.familyBirthEndYear(
+            marriageYear: 1779,
+            husbandDeathDate: "18.08.1829",
+            wifeDeathDate: "28.08.1785"
+        )
+        let secondEndYear = HiskiService.familyBirthEndYear(
+            marriageYear: 1786,
+            husbandDeathDate: "18.08.1829",
+            wifeDeathDate: "28.08.1831"
+        )
+
+        let firstUrl = try service.buildFamilyBirthSearchUrl(
+            fatherName: "Matti",
+            fatherPatronymic: "Erikinp.",
+            motherName: "Kaarin",
+            motherPatronymic: "Matint.",
+            marriageYear: 1779,
+            endYear: firstEndYear
+        )
+        let secondUrl = try service.buildFamilyBirthSearchUrl(
+            fatherName: "Matti",
+            fatherPatronymic: "Erikinp.",
+            motherName: "Anna",
+            motherPatronymic: "Johant.",
+            marriageYear: 1786,
+            endYear: secondEndYear
+        )
+
+        let firstValues = try queryValues(in: firstUrl)
+        let secondValues = try queryValues(in: secondUrl)
+
+        XCTAssertEqual(firstValues["alkuvuosi"], "1778")
+        XCTAssertEqual(firstValues["loppuvuosi"], "1785")
+        XCTAssertEqual(firstValues["aetunimi"], "Kaarin")
+        XCTAssertEqual(secondValues["alkuvuosi"], "1785")
+        XCTAssertEqual(secondValues["loppuvuosi"], "1821")
+        XCTAssertEqual(secondValues["aetunimi"], "Anna")
     }
 
     func testBuildFamilyBirthSearchUrlUsesOnlyHiskiGivenNameExceptions() throws {
@@ -411,7 +500,7 @@ final class HiskiServiceTests: XCTestCase {
         )
         let finalValues = Dictionary(uniqueKeysWithValues: finalQueryItems.map { ($0.name, $0.value ?? "") })
 
-        XCTAssertEqual(finalValues["alkuvuosi"], "1760")
+        XCTAssertEqual(finalValues["alkuvuosi"], "1759")
         XCTAssertEqual(finalValues["loppuvuosi"], "1795")
         XCTAssertEqual(finalValues["ietunimi"], "Tuomas")
         XCTAssertEqual(finalValues["ipatronyymi"], "Juhonp")
@@ -567,6 +656,11 @@ final class HiskiServiceTests: XCTestCase {
     func testNameNormalization() {
         // Test name normalization for Hiski queries
         // Handle patronymics, special characters, etc.
+    }
+
+    private func queryValues(in url: URL) throws -> [String: String] {
+        let queryItems = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+        return Dictionary(uniqueKeysWithValues: queryItems.map { ($0.name, $0.value ?? "") })
     }
 }
 

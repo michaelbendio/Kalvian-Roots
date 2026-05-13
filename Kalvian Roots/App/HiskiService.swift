@@ -42,12 +42,18 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate, NSWindowDelegate {
     
     @MainActor private var recordWindow: NSWindow?
     @MainActor private var recordWebView: WKWebView?
+    @MainActor private var searchResultsWindow: NSWindow?
+    @MainActor private var searchResultsWebView: WKWebView?
     @MainActor private var citationContinuation: CheckedContinuation<String, Error>?
     
     private let recordWindowX: CGFloat = 1300
     private let recordWindowY: CGFloat = 250
     private let recordWindowWidth: CGFloat = 650
     private let recordWindowHeight: CGFloat = 430
+    private let searchResultsWindowX: CGFloat = 500
+    private let searchResultsWindowY: CGFloat = 180
+    private let searchResultsWindowWidth: CGFloat = 900
+    private let searchResultsWindowHeight: CGFloat = 650
     
     @MainActor private override init() {
         super.init()
@@ -59,7 +65,7 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate, NSWindowDelegate {
             self.citationContinuation?.resume(throwing: HiskiServiceError.citationExtractionFailed)
             self.citationContinuation = continuation
 
-            let webView = ensureRecordWindow()
+            let webView = ensureRecordWindow(title: "HisKi Record")
 
             // Bring window forward and load new URL into existing webView
             recordWindow?.makeKeyAndOrderFront(nil)
@@ -68,10 +74,19 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate, NSWindowDelegate {
         }
     }
 
+    /// Load a HisKi page for manual review without attempting citation extraction.
+    @MainActor func loadSearchResults(url: URL) {
+        let webView = ensureSearchResultsWindow()
+        searchResultsWindow?.makeKeyAndOrderFront(nil)
+        webView.load(URLRequest(url: url))
+        logInfo(.app, "🪟 Opened Hiski results window")
+    }
+
     @MainActor
     @discardableResult
-    private func ensureRecordWindow() -> WKWebView {
+    private func ensureRecordWindow(title: String = "HisKi Record") -> WKWebView {
         if let recordWebView, let recordWindow, recordWindow.isVisible {
+            recordWindow.title = title
             return recordWebView
         }
 
@@ -86,12 +101,45 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "Hiski Record"
+        window.title = title
         window.contentView = webView
         window.level = .floating
         window.isReleasedWhenClosed = false
         window.delegate = self
         self.recordWindow = window
+
+        return webView
+    }
+
+    @MainActor
+    @discardableResult
+    private func ensureSearchResultsWindow() -> WKWebView {
+        if let searchResultsWebView, let searchResultsWindow, searchResultsWindow.isVisible {
+            return searchResultsWebView
+        }
+
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: searchResultsWindowWidth, height: searchResultsWindowHeight))
+        webView.navigationDelegate = self
+        webView.allowsBackForwardNavigationGestures = true
+        self.searchResultsWebView = webView
+
+        let window = NSWindow(
+            contentRect: NSRect(
+                x: searchResultsWindowX,
+                y: searchResultsWindowY,
+                width: searchResultsWindowWidth,
+                height: searchResultsWindowHeight
+            ),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "HisKi Results"
+        window.contentView = webView
+        window.level = .floating
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        self.searchResultsWindow = window
 
         return webView
     }
@@ -104,20 +152,30 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate, NSWindowDelegate {
         recordWindow = nil
         logInfo(.app, "🪟 Closed Hiski record window")
     }
+
+    @MainActor func closeSearchResultsWindow() {
+        let window = searchResultsWindow
+        clearSearchResultsWindowState()
+        window?.delegate = nil
+        window?.close()
+        searchResultsWindow = nil
+        logInfo(.app, "🪟 Closed Hiski results window")
+    }
     
     @MainActor func closeAllWindows() {
         closeRecordWindow()
+        closeSearchResultsWindow()
     }
 
-    nonisolated func windowWillClose(_ notification: Notification) {
-        Task { @MainActor in
-            guard notification.object as? NSWindow === recordWindow else {
-                return
-            }
-
+    @MainActor func windowWillClose(_ notification: Notification) {
+        if notification.object as? NSWindow === recordWindow {
             clearRecordWindowState(resumePendingContinuation: true)
             recordWindow = nil
             logInfo(.app, "🪟 Hiski record window closed by user")
+        } else if notification.object as? NSWindow === searchResultsWindow {
+            clearSearchResultsWindowState()
+            searchResultsWindow = nil
+            logInfo(.app, "🪟 Hiski results window closed by user")
         }
     }
 
@@ -132,9 +190,19 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate, NSWindowDelegate {
         }
     }
 
+    @MainActor
+    private func clearSearchResultsWindowState() {
+        searchResultsWebView?.navigationDelegate = nil
+        searchResultsWebView = nil
+    }
+
     #if DEBUG
     @MainActor func debugPrepareRecordWindowForTests() {
         _ = ensureRecordWindow()
+    }
+
+    @MainActor func debugLoadSearchResultsForTests(url: URL) {
+        loadSearchResults(url: url)
     }
 
     @MainActor func debugSimulateUserClosingRecordWindowForTests() {
@@ -145,14 +213,31 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate, NSWindowDelegate {
         recordWindow != nil && recordWebView != nil
     }
 
+    @MainActor var debugHasSearchResultsWindowForTests: Bool {
+        searchResultsWindow != nil && searchResultsWebView != nil
+    }
+
     @MainActor var debugRecordWindowContentSizeForTests: CGSize? {
         recordWindow?.contentView?.frame.size
+    }
+
+    @MainActor var debugRecordWindowTitleForTests: String? {
+        recordWindow?.title
+    }
+
+    @MainActor var debugSearchResultsWindowTitleForTests: String? {
+        searchResultsWindow?.title
     }
     #endif
     
     // Called when page finishes loading
     nonisolated func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         Task { @MainActor in
+            guard webView === recordWebView, citationContinuation != nil else {
+                logInfo(.app, "✅ Hiski page loaded")
+                return
+            }
+
             logInfo(.app, "✅ Hiski record page loaded")
             
             // Extract citation URL using JavaScript
@@ -198,8 +283,10 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate, NSWindowDelegate {
     nonisolated func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         Task { @MainActor in
             logError(.app, "❌ WebView failed to load: \(error.localizedDescription)")
-            citationContinuation?.resume(throwing: error)
-            citationContinuation = nil
+            if webView === recordWebView, citationContinuation != nil {
+                citationContinuation?.resume(throwing: error)
+                citationContinuation = nil
+            }
         }
     }
 }
@@ -231,6 +318,16 @@ class HiskiWebViewManager {
         // Return a placeholder that indicates manual extraction needed
         throw HiskiServiceError.citationExtractionFailed
     }
+
+    func loadSearchResults(url: URL) {
+        UIApplication.shared.open(url, options: [:]) { success in
+            if success {
+                logInfo(.app, "📱 Opened Hiski results in Safari")
+            } else {
+                logError(.app, "Failed to open Hiski results URL in Safari")
+            }
+        }
+    }
     
     func closeRecordWindow() {
         // Safari manages its own tabs - nothing to do
@@ -245,6 +342,7 @@ class HiskiWebViewManager {
 // MARK: - Hiski Service
 
 class HiskiService {
+    static let yearsBeforeMarriage = 1
     static let childbearingWindowYears = 35
     static let maxHiskiResults = 50
 
@@ -1026,6 +1124,7 @@ class HiskiService {
         husbandDeathDate: String?,
         wifeDeathDate: String?
     ) -> Int {
+        let defaultEndYear = marriageYear + childbearingWindowYears
         let earliestSpouseDeathYear = [
             extractYear(from: husbandDeathDate),
             extractYear(from: wifeDeathDate)
@@ -1033,7 +1132,7 @@ class HiskiService {
             .compactMap { $0 }
             .min()
 
-        return max(marriageYear, earliestSpouseDeathYear ?? marriageYear + childbearingWindowYears)
+        return max(marriageYear, min(earliestSpouseDeathYear ?? defaultEndYear, defaultEndYear))
     }
 
     private func makeFamilyBirthSearchUrl(
@@ -1044,8 +1143,8 @@ class HiskiService {
         marriageYear: Int,
         endYear: Int?
     ) throws -> URL {
-        let startYear = marriageYear
-        let boundedEndYear = max(marriageYear, endYear ?? marriageYear + Self.childbearingWindowYears)
+        let startYear = marriageYear - Self.yearsBeforeMarriage
+        let boundedEndYear = max(startYear, endYear ?? marriageYear + Self.childbearingWindowYears)
 
         let params = [
             "komento": "haku",

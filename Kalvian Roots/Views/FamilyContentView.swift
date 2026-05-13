@@ -55,7 +55,7 @@ struct FamilyContentView: View {
                         unifiedChildrenSection(group: comparisonGroup)
                             .padding(.top, 8)
                     } else if !couple.children.isEmpty {
-                        childrenSection(children: couple.children)
+                        childrenSection(couple: couple)
                             .padding(.top, 8)
                     }
                     
@@ -517,16 +517,12 @@ struct FamilyContentView: View {
     
     // MARK: - Children Section
     
-    private func childrenSection(children: [Person]) -> some View {
+    private func childrenSection(couple: Couple) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            // "Lapset" header
-            Text("Lapset")
-                .font(.system(size: 16, weight: .semibold, design: .monospaced))
-                .foregroundColor(.primary)
-                .padding(.bottom, 2)
+            lapsetHeader(for: couple)
             
             // Child lines
-            ForEach(children) { child in
+            ForEach(couple.children) { child in
                 juuretChildLine(child)
             }
         }
@@ -534,10 +530,7 @@ struct FamilyContentView: View {
 
     private func unifiedChildrenSection(group: FamilyChildrenComparisonGroup) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("Lapset")
-                .font(.system(size: 16, weight: .semibold, design: .monospaced))
-                .foregroundColor(.primary)
-                .padding(.bottom, 2)
+            lapsetHeader(for: group.couple)
 
             ForEach(group.displayRows) { displayRow in
                 if let child = juuretChild(for: displayRow.match, in: group.couple) {
@@ -610,10 +603,7 @@ struct FamilyContentView: View {
 
     private func comparisonChildrenSection(group: FamilyChildrenComparisonGroup) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("Lapset")
-                .font(.system(size: 16, weight: .semibold, design: .monospaced))
-                .foregroundColor(.primary)
-                .padding(.bottom, 2)
+            lapsetHeader(for: group.couple)
 
             ForEach(group.displayRows) { displayRow in
                 comparisonChildLine(displayRow: displayRow, couple: group.couple)
@@ -622,6 +612,19 @@ struct FamilyContentView: View {
         .popover(item: $selectedFamilySearchReviewNote) { note in
             reviewNotePopover(note)
         }
+    }
+
+    private func lapsetHeader(for couple: Couple) -> some View {
+        Button {
+            openHiskiChildResults(for: couple)
+        } label: {
+            Text("Lapset")
+                .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                .foregroundColor(Color(hex: "0066cc"))
+                .underline()
+                .padding(.bottom, 2)
+        }
+        .buttonStyle(.plain)
     }
 
     private func comparisonChildLine(displayRow: FamilyComparisonDisplayRow, couple: Couple) -> some View {
@@ -734,7 +737,7 @@ struct FamilyContentView: View {
                 unifiedChildrenSection(group: comparisonGroup)
                     .padding(.top, 4)
             } else if !couple.children.isEmpty {
-                childrenSection(children: couple.children)
+                childrenSection(couple: couple)
                     .padding(.top, 4)
             }
             
@@ -781,6 +784,53 @@ struct FamilyContentView: View {
             )
             onShowHiski(result)
         }
+    }
+
+    private func openHiskiChildResults(for couple: Couple) {
+        guard let url = hiskiChildSearchURL(for: couple) else {
+            onShowHiski("HisKi child query unavailable: missing parent names or marriage year")
+            return
+        }
+
+        #if os(macOS)
+        HiskiWebViewManager.shared.loadSearchResults(url: url)
+        #elseif os(iOS)
+        HiskiWebViewManager.shared.loadSearchResults(url: url)
+        #endif
+    }
+
+    private func hiskiChildSearchURL(for couple: Couple) -> URL? {
+        guard !couple.husband.name.isEmpty,
+              !couple.wife.name.isEmpty,
+              let marriageDate = couple.fullMarriageDate ?? couple.marriageDate,
+              let marriageYear = extractYear(from: marriageDate) else {
+            return nil
+        }
+
+        let hiskiService = HiskiService(nameEquivalenceManager: juuretApp.nameEquivalenceManager)
+        hiskiService.setCurrentFamily(family.familyId)
+        let hiskiEndYear = HiskiService.familyBirthEndYear(
+            marriageYear: marriageYear,
+            husbandDeathDate: couple.husband.deathDate,
+            wifeDeathDate: couple.wife.deathDate
+        )
+
+        return try? hiskiService.buildFamilyBirthSearchRequests(
+            fatherName: couple.husband.name,
+            fatherPatronymic: couple.husband.patronymic,
+            motherName: couple.wife.name,
+            motherPatronymic: couple.wife.patronymic,
+            marriageYear: marriageYear,
+            endYear: hiskiEndYear
+        ).first?.url
+    }
+
+    private func extractYear(from rawDate: String) -> Int? {
+        guard let yearRange = rawDate.range(of: #"\b\d{4}\b"#, options: .regularExpression) else {
+            return nil
+        }
+
+        return Int(rawDate[yearRange])
     }
 
     private func comparisonGroup(forCoupleAt index: Int) -> FamilyChildrenComparisonGroup? {

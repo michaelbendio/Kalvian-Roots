@@ -1316,6 +1316,76 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertFalse(html.contains("const personId = 'KJJH-2QK'"))
     }
 
+    func testServerRenderedLapsetOpensHiskiChildResultsPopup() throws {
+        let family = Family(
+            familyId: "KYKYRI II 7",
+            pageReferences: ["263", "264"],
+            husband: Person(name: "Matti", patronymic: "Erikinp."),
+            wife: Person(name: "Kaarin", patronymic: "Matint."),
+            marriageDate: "12.11.1779",
+            children: [
+                Person(name: "Elias", birthDate: "07.12.1781")
+            ]
+        )
+        let requestURL = try XCTUnwrap(URL(string: "https://hiski.genealogia.fi/hiski?en&alkuvuosi=1778&loppuvuosi=1814"))
+
+        let html = HTMLRenderer.renderFamily(
+            family: family,
+            network: nil,
+            hiskiChildSearchRequestsByCouple: [
+                0: HiskiService.FamilyBirthSearchRequest(
+                    label: "primary HisKi parent query",
+                    url: requestURL
+                )
+            ]
+        )
+
+        XCTAssertTrue(html.contains("class=\"section-header hiski-child-results-link\""))
+        XCTAssertTrue(html.contains("target=\"hiskiChildResults\""))
+        XCTAssertTrue(html.contains("onclick=\"return openHiskiChildResults(this.href)\""))
+        XCTAssertTrue(html.contains("https://hiski.genealogia.fi/hiski?en&amp;alkuvuosi=1778&amp;loppuvuosi=1814"))
+        XCTAssertTrue(html.contains("function openHiskiChildResults(url)"))
+    }
+
+    func testServerRenderedLapsetLinksArePerCoupleForAdditionalSpouses() throws {
+        let firstCouple = Couple(
+            husband: Person(name: "Matti", patronymic: "Erikinp."),
+            wife: Person(name: "Kaarin", patronymic: "Matint.", deathDate: "28.08.1785"),
+            marriageDate: "12.11.1779",
+            children: [
+                Person(name: "Elias", birthDate: "07.12.1781")
+            ]
+        )
+        let secondCouple = Couple(
+            husband: Person(name: "Matti", patronymic: "Erikinp."),
+            wife: Person(name: "Anna", patronymic: "Johant."),
+            marriageDate: "04.06.1786",
+            children: [
+                Person(name: "Maria", birthDate: "01.05.1788")
+            ]
+        )
+        let family = Family(
+            familyId: "REMARRIED 1",
+            pageReferences: ["1"],
+            couples: [firstCouple, secondCouple]
+        )
+        let firstURL = try XCTUnwrap(URL(string: "https://hiski.genealogia.fi/hiski?en&alkuvuosi=1778&loppuvuosi=1785"))
+        let secondURL = try XCTUnwrap(URL(string: "https://hiski.genealogia.fi/hiski?en&alkuvuosi=1785&loppuvuosi=1821"))
+
+        let html = HTMLRenderer.renderFamily(
+            family: family,
+            network: nil,
+            hiskiChildSearchRequestsByCouple: [
+                0: HiskiService.FamilyBirthSearchRequest(label: "first spouse", url: firstURL),
+                1: HiskiService.FamilyBirthSearchRequest(label: "second spouse", url: secondURL)
+            ]
+        )
+
+        XCTAssertTrue(html.contains("https://hiski.genealogia.fi/hiski?en&amp;alkuvuosi=1778&amp;loppuvuosi=1785"))
+        XCTAssertTrue(html.contains("https://hiski.genealogia.fi/hiski?en&amp;alkuvuosi=1785&amp;loppuvuosi=1821"))
+        XCTAssertEqual(html.components(separatedBy: "class=\"section-header hiski-child-results-link\"").count - 1, 2)
+    }
+
     func testBookmarkletInjectsExtractorAndDetectsPersonIdFromURL() {
         let bookmarklet = FamilySearchDOMService.makeBookmarklet()
 
@@ -1857,12 +1927,12 @@ final class TikkanenSixDevelopmentDataTests: XCTestCase {
         XCTAssertEqual(groups.map { $0.result.rows.count }, [2, 5, 18])
         XCTAssertEqual(groups.map { $0.hiskiSearchRequests.count }, [1, 1, 1])
 
-        XCTAssertEqual(queryValue("alkuvuosi", in: groups[0].hiskiSearchRequests[0].url), "1738")
+        XCTAssertEqual(queryValue("alkuvuosi", in: groups[0].hiskiSearchRequests[0].url), "1737")
         XCTAssertEqual(queryValue("loppuvuosi", in: groups[0].hiskiSearchRequests[0].url), "1740")
-        XCTAssertEqual(queryValue("alkuvuosi", in: groups[1].hiskiSearchRequests[0].url), "1746")
+        XCTAssertEqual(queryValue("alkuvuosi", in: groups[1].hiskiSearchRequests[0].url), "1745")
         XCTAssertEqual(queryValue("loppuvuosi", in: groups[1].hiskiSearchRequests[0].url), "1753")
-        XCTAssertEqual(queryValue("alkuvuosi", in: groups[2].hiskiSearchRequests[0].url), "1753")
-        XCTAssertEqual(queryValue("loppuvuosi", in: groups[2].hiskiSearchRequests[0].url), "1797")
+        XCTAssertEqual(queryValue("alkuvuosi", in: groups[2].hiskiSearchRequests[0].url), "1752")
+        XCTAssertEqual(queryValue("loppuvuosi", in: groups[2].hiskiSearchRequests[0].url), "1788")
     }
 
     func testTikkanenSixDevelopmentDisplayFavorsJuuretNames() throws {

@@ -116,7 +116,8 @@ struct HTMLRenderer {
         familySearchExtraction: FamilySearchFamilyExtraction? = nil,
         familySearchPersonId: String? = nil,
         familySearchCallbackURL: String? = nil,
-        autoExtractFamilySearch: Bool = false
+        autoExtractFamilySearch: Bool = false,
+        hiskiChildSearchRequestsByCouple: [Int: HiskiService.FamilyBirthSearchRequest] = [:]
     ) -> String {
         let tokenizer = FamilyTokenizer()
         let tokens = tokenizer.tokenizeFamily(family: family, network: network)
@@ -129,7 +130,12 @@ struct HTMLRenderer {
         let navBar = renderNavigationBar(homeId: actualHomeId, displayedId: displayedId)
         
         // Generate family content with home parameter for links
-        let familyHTML = renderTokens(tokens, familyId: displayedId, homeId: actualHomeId)
+        let familyHTML = renderTokens(
+            tokens,
+            familyId: displayedId,
+            homeId: actualHomeId,
+            hiskiChildSearchRequestsByCouple: hiskiChildSearchRequestsByCouple
+        )
         let citationPanel = renderCitationPanel(citationText: citationText, errorMessage: errorMessage)
         let sourcePanel = renderSourcePanel(sourceText: sourceText)
         let comparisonPanel = renderComparisonPanel(
@@ -211,8 +217,14 @@ struct HTMLRenderer {
 
     // MARK: - Token Rendering
 
-    private static func renderTokens(_ tokens: [FamilyToken], familyId: String, homeId: String) -> String {
+    private static func renderTokens(
+        _ tokens: [FamilyToken],
+        familyId: String,
+        homeId: String,
+        hiskiChildSearchRequestsByCouple: [Int: HiskiService.FamilyBirthSearchRequest]
+    ) -> String {
         var html = ""
+        var lapsetSectionIndex = 0
 
         for token in tokens {
             switch token {
@@ -296,9 +308,28 @@ struct HTMLRenderer {
                 html += "<br>"
 
             case .sectionHeader(let title):
-                html += """
-                        <div class="section-header">\(escapeHTML(title))</div>
-                        """
+                if title == "Lapset" {
+                    let request = hiskiChildSearchRequestsByCouple[lapsetSectionIndex]
+                    lapsetSectionIndex += 1
+
+                    if let request {
+                        html += """
+                                <a href="\(escapeHTML(request.url.absoluteString))"
+                                   class="section-header hiski-child-results-link"
+                                   target="hiskiChildResults"
+                                   title="Open complete HisKi child query results"
+                                   onclick="return openHiskiChildResults(this.href)">\(escapeHTML(title))</a>
+                                """
+                    } else {
+                        html += """
+                                <div class="section-header">\(escapeHTML(title))</div>
+                                """
+                    }
+                } else {
+                    html += """
+                            <div class="section-header">\(escapeHTML(title))</div>
+                            """
+                }
             }
         }
 
@@ -743,6 +774,15 @@ struct HTMLRenderer {
             outline: 2px solid #0066cc;
             outline-offset: 2px;
         }
+        .hiski-child-results-link {
+            display: block;
+            color: #0066cc;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+        .hiski-child-results-link:hover {
+            color: #0052a3;
+        }
         .enhanced {
             color: #8b4513;
         }
@@ -1000,6 +1040,15 @@ struct HTMLRenderer {
                 form.style.display = 'none';
                 loadingIndicator.style.display = 'flex';
             }
+        }
+
+        function openHiskiChildResults(url) {
+            const popup = window.open(url, 'hiskiChildResults', 'width=1200,height=900,scrollbars=yes,resizable=yes');
+            if (popup) {
+                popup.focus();
+                return false;
+            }
+            return true;
         }
         
         // Show loading when clicking navigation buttons

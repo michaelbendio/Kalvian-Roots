@@ -192,6 +192,27 @@ final class FamilyContentViewTests: XCTestCase {
         )
     }
 
+    func testLapsetHeaderUsesHiskiChildResultsAction() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        let familyContentView = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/Views/FamilyContentView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(familyContentView.contains("private func lapsetHeader(for couple: Couple) -> some View"))
+        XCTAssertTrue(familyContentView.contains("openHiskiChildResults(for: couple)"))
+        XCTAssertTrue(familyContentView.contains("HiskiWebViewManager.shared.loadSearchResults(url: url)"))
+        XCTAssertTrue(familyContentView.contains("buildFamilyBirthSearchRequests("))
+        XCTAssertTrue(familyContentView.contains("HiskiService.familyBirthEndYear("))
+        XCTAssertTrue(
+            familyContentView.contains("childrenSection(couple: couple)"),
+            "Additional spouse Lapset sections must pass the local couple, not only child arrays."
+        )
+    }
+
     func testStoredStarFootnoteMarkersDisplayAsAsterisks() {
         XCTAssertEqual(displayFootnoteMarker("★★"), "**")
         XCTAssertEqual(displayFootnoteMarker("*"), "*")
