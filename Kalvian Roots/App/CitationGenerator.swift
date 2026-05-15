@@ -309,6 +309,10 @@ struct CitationGenerator {
         targetChild: Person,
         network: FamilyNetwork?
     ) -> String {
+        guard hasExplicitAsParentReference(targetChild) else {
+            return ""
+        }
+
         guard let network = network,
               let asParentFamily = network.getAsParentFamily(for: person) else {
             return ""
@@ -388,10 +392,10 @@ struct CitationGenerator {
         if let spouse = child.spouse, !spouse.isEmpty {
             line += ", m. \(spouse)"
             if let marriageDate = child.bestMarriageDate {
+                let birthYear = extractBirthYear(from: child)
                 if marriageDate.contains(".") {
-                    line += " \(formatDate(marriageDate))"
+                    line += " \(formatDate(marriageDate, parentBirthYear: birthYear))"
                 } else {
-                    let birthYear = extractBirthYear(from: child)
                     line += " \(extractMarriageYear(marriageDate, parentBirthYear: birthYear))"
                 }
             }
@@ -520,15 +524,7 @@ struct CitationGenerator {
     }
     
     private static func findPersonInAsParentFamily(_ person: Person, in asParentFamily: Family) -> Person? {
-        // Try exact name matching
-        if let match = asParentFamily.allParents.first(where: {
-            $0.name.lowercased() == person.name.lowercased() ||
-            $0.displayName.lowercased() == person.displayName.lowercased()
-        }) {
-            return match
-        }
-        
-        // Fallback to birth date matching
+        // Birth date disambiguates repeated given names within the same family.
         if let targetBirth = person.birthDate?.trimmingCharacters(in: .whitespaces),
            !targetBirth.isEmpty {
             return asParentFamily.allParents.first { parent in
@@ -539,7 +535,15 @@ struct CitationGenerator {
                 return false
             }
         }
-        
+
+        // Try exact name matching
+        if let match = asParentFamily.allParents.first(where: {
+            $0.name.lowercased() == person.name.lowercased() ||
+            $0.displayName.lowercased() == person.displayName.lowercased()
+        }) {
+            return match
+        }
+
         return nil
     }
     
@@ -579,10 +583,18 @@ struct CitationGenerator {
         guard isTarget,
               let network = network,
               let spouse = child.spouse,
-              !spouse.isEmpty else {
+              !spouse.isEmpty,
+              hasExplicitAsParentReference(child) else {
             return false
         }
         return network.getAsParentFamily(for: person) != nil
+    }
+
+    private static func hasExplicitAsParentReference(_ person: Person) -> Bool {
+        guard let asParent = person.asParent?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            return false
+        }
+        return !asParent.isEmpty
     }
     
     private static func isTargetPerson(

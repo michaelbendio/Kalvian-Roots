@@ -132,6 +132,58 @@ final class CitationGeneratorTests: XCTestCase {
         XCTAssertTrue(citation.contains("** 22.03.-50 Pidisjärvi"))
         XCTAssertFalse(citation.contains("★"))
     }
+
+    func testMainFamilyCitationDoesNotEnhanceChildWithoutAsParentReference() {
+        let father = Person(
+            name: "Elias",
+            patronymic: "Matinp.",
+            birthDate: "07.12.1781",
+            deathDate: "22.04.1861",
+            noteMarkers: []
+        )
+        let mother = Person(
+            name: "Maria",
+            patronymic: "Antint.",
+            birthDate: "04.06.1779",
+            deathDate: "04.10.1842",
+            noteMarkers: []
+        )
+        let childElias = Person(
+            name: "Elias",
+            birthDate: "01.11.1815",
+            marriageDate: "22.06.45",
+            spouse: "Liisa Matinjussi",
+            asParent: nil,
+            noteMarkers: []
+        )
+        let family = Family(
+            familyId: "KYKYRI II 8",
+            pageReferences: ["264"],
+            couples: [
+                Couple(
+                    husband: father,
+                    wife: mother,
+                    fullMarriageDate: "27.05.1800",
+                    children: [childElias]
+                )
+            ],
+            notes: [],
+            noteDefinitions: [:]
+        )
+        var network = FamilyNetwork(mainFamily: family)
+        network.asParentFamilies["Elias"] = family
+
+        let citation = CitationGenerator.generateMainFamilyCitation(
+            family: family,
+            targetPerson: childElias,
+            network: network
+        )
+
+        XCTAssertTrue(citation.contains("→ Elias, b. 1 November 1815, m. Liisa Matinjussi 22 June 1845"))
+        XCTAssertFalse(citation.contains("Additional information"))
+        XCTAssertFalse(citation.contains("Elias's marriage"))
+        XCTAssertFalse(citation.contains("1745"))
+    }
     
     // MARK: - AsChild Citation Tests
     
