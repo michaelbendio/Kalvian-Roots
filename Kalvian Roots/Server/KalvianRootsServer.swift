@@ -682,7 +682,9 @@ final class HTTPHandler: ChannelInboundHandler {
             return .error(.badRequest, "Missing FamilySearch parent ID", headers: corsHeaders())
         }
 
-        guard let familyId = juuretApp?.storeFamilySearchExtractionForCurrentFamily(extraction) else {
+        let matchedSession = sessionManager.loadedSession(matchingFamilySearchParentId: parentId)
+        let appFamilyId = juuretApp?.storeFamilySearchExtractionForCurrentFamily(extraction)
+        guard let familyId = appFamilyId ?? matchedSession?.familyId else {
             logger.warning(
                 "[\(requestID!)] ⚠️ Generic FamilySearch extraction could not be associated",
                 metadata: [
@@ -700,7 +702,12 @@ final class HTTPHandler: ChannelInboundHandler {
 
         let headers = requestHeaders ?? HTTPHeaders()
         let sessionResult = sessionManager.session(for: headers)
-        sessionResult.session.storeFamilySearchExtraction(extraction, for: familyId)
+        let storageSession = matchedSession?.session ?? sessionResult.session
+        storageSession.storeFamilySearchExtraction(extraction, for: familyId)
+
+        if appFamilyId == nil {
+            await juuretApp?.storeFamilySearchExtraction(extraction, for: familyId)
+        }
 
         logger.info(
             "[\(requestID!)] ✅ Generic FamilySearch extraction received",

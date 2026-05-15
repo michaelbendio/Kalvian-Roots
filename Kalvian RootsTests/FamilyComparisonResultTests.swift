@@ -1,6 +1,9 @@
 import Foundation
 import XCTest
 @testable import Kalvian_Roots
+#if os(macOS)
+import NIOHTTP1
+#endif
 
 final class FamilyComparisonResultTests: XCTestCase {
 
@@ -1203,6 +1206,70 @@ final class FamilyComparisonServiceTests: XCTestCase {
         return url
     }
 }
+
+#if os(macOS)
+@MainActor
+final class BrowserSessionManagerTests: XCTestCase {
+
+    private var temporaryDirectories: [URL] = []
+
+    override func tearDownWithError() throws {
+        for directory in temporaryDirectories {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        temporaryDirectories = []
+        try super.tearDownWithError()
+    }
+
+    func testLoadedSessionCanBeMatchedByFamilySearchParentIdWithoutCookie() async throws {
+        let cache = makeTestCache()
+        let family = Family(
+            familyId: "KYKYRI II 8",
+            pageReferences: ["264"],
+            husband: Person(name: "Elias", familySearchId: "K1K9-QMK"),
+            wife: Person(name: "Maria", familySearchId: "LHH6-WMZ"),
+            marriageDate: "27.05.1800",
+            children: [
+                Person(name: "Elias", birthDate: "01.11.1815")
+            ]
+        )
+        cache.storeNetwork(FamilyNetwork(mainFamily: family))
+
+        let fileManager = RootsFileManager()
+        let aiParsingService = AIParsingService()
+        let nameEquivalenceManager = NameEquivalenceManager()
+        let familyResolver = FamilyResolver(
+            aiParsingService: aiParsingService,
+            nameEquivalenceManager: nameEquivalenceManager,
+            fileManager: fileManager,
+            familyNetworkCache: cache
+        )
+        let manager = BrowserSessionManager(
+            cache: cache,
+            fileManager: fileManager,
+            aiParsingService: aiParsingService,
+            familyResolver: familyResolver,
+            nameEquivalenceManager: nameEquivalenceManager
+        )
+
+        let sessionResult = manager.session(for: HTTPHeaders())
+        _ = try await sessionResult.session.loadFamily(familyId: "KYKYRI II 8")
+
+        let match = manager.loadedSession(matchingFamilySearchParentId: "k1k9-qmk")
+        XCTAssertEqual(match?.familyId, "KYKYRI II 8")
+        XCTAssertTrue(match?.session === sessionResult.session)
+    }
+
+    private func makeTestCache() -> FamilyNetworkCache {
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("KalvianRootsTests-\(UUID().uuidString)", isDirectory: true)
+        temporaryDirectories.append(temporaryDirectory)
+        let cacheFileURL = temporaryDirectory.appendingPathComponent("families.json")
+        let store = PersistentFamilyNetworkStore(cacheFileURL: cacheFileURL)
+        return FamilyNetworkCache(persistenceStore: store)
+    }
+}
+#endif
 
 final class FamilySearchDOMServiceTests: XCTestCase {
 

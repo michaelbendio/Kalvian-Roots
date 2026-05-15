@@ -141,6 +141,25 @@ final class BrowserSession {
         let normalizedId = familyId.uppercased().trimmingCharacters(in: .whitespaces)
         return familySearchExtractions[normalizedId]
     }
+
+    func loadedFamilyId(matchingFamilySearchParentId parentId: String) -> String? {
+        let normalizedParentId = parentId
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+
+        guard !normalizedParentId.isEmpty,
+              let family = loadedNetwork?.mainFamily,
+              let familySearchParentId = family.primaryCouple?.husband.familySearchId
+                ?? family.primaryCouple?.wife.familySearchId else {
+            return nil
+        }
+
+        return familySearchParentId
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased() == normalizedParentId
+            ? family.familyId
+            : nil
+    }
 }
 
 @MainActor
@@ -208,6 +227,16 @@ final class BrowserSessionManager {
 
     func existingSession(id sessionId: String) -> BrowserSession? {
         sessions[sessionId]
+    }
+
+    func loadedSession(matchingFamilySearchParentId parentId: String) -> (session: BrowserSession, familyId: String)? {
+        for session in sessions.values {
+            if let familyId = session.loadedFamilyId(matchingFamilySearchParentId: parentId) {
+                return (session, familyId)
+            }
+        }
+
+        return nil
     }
 
     func makeSessionCookieHeader(for sessionId: String) -> String {
