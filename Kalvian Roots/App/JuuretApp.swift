@@ -610,6 +610,76 @@ class JuuretApp {
         return couple.husband.familySearchId ?? couple.wife.familySearchId
     }
 
+    func familyIdMatchingPrimaryFamilySearchParentIdInSourceText(_ parentId: String) -> String? {
+        let normalizedParentId = parentId
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+
+        guard !normalizedParentId.isEmpty else {
+            return nil
+        }
+
+        let matchingFamilyIds = fileManager.getAllFamilyIds().compactMap { familyId -> String? in
+            guard let familyText = fileManager.extractFamilyText(familyId: familyId),
+                  let sourceParentId = Self.primaryFamilySearchParentId(inFamilyText: familyText) else {
+                return nil
+            }
+
+            return sourceParentId == normalizedParentId ? familyId : nil
+        }
+
+        let uniqueFamilyIds = Set(matchingFamilyIds)
+        guard uniqueFamilyIds.count == 1 else {
+            if uniqueFamilyIds.count > 1 {
+                logWarn(.ui, "⚠️ FamilySearch parent ID \(normalizedParentId) matched multiple source families: \(uniqueFamilyIds.sorted().joined(separator: ", "))")
+            }
+            return nil
+        }
+
+        return uniqueFamilyIds.first
+    }
+
+    func primaryFamilySearchParentIdInSourceText(for familyId: String) -> String? {
+        guard let familyText = fileManager.extractFamilyText(familyId: familyId) else {
+            return nil
+        }
+
+        return Self.primaryFamilySearchParentId(inFamilyText: familyText)
+    }
+
+    nonisolated static func primaryFamilySearchParentId(inFamilyText familyText: String) -> String? {
+        for line in familyText.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.hasPrefix("∞") || trimmed.lowercased().hasPrefix("lapset") {
+                return nil
+            }
+
+            guard trimmed.hasPrefix("★") else {
+                continue
+            }
+
+            if let familySearchId = firstFamilySearchId(in: trimmed) {
+                return familySearchId
+            }
+        }
+
+        return nil
+    }
+
+    private nonisolated static func firstFamilySearchId(in line: String) -> String? {
+        let pattern = #"<([A-Z0-9]{4}-[A-Z0-9]{3,})>"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(
+                in: line,
+                range: NSRange(line.startIndex..<line.endIndex, in: line)
+              ),
+              let range = Range(match.range(at: 1), in: line) else {
+            return nil
+        }
+
+        return String(line[range]).uppercased()
+    }
+
     func storeFamilySearchExtraction(_ extraction: FamilySearchFamilyExtraction, for familyId: String) {
         let normalizedFamilyId = normalizedFamilySearchExtractionKey(familyId)
         familySearchExtractions[normalizedFamilyId] = extraction

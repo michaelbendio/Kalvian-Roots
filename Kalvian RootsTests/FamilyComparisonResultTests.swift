@@ -1713,6 +1713,54 @@ final class FamilySearchDOMServiceTests: XCTestCase {
     }
 }
 
+final class JuuretAppFamilySearchSourceTextTests: XCTestCase {
+
+    func testPrimaryFamilySearchParentIdReadsFirstParentIdFromSourceText() {
+        let familyText = """
+        KYKYRI II 9, page 265
+        ★ 31.07.1786 Juho Juhonp. <M8ZJ-HR6> {Vuolle II 3}
+        ★ 08.05.1784 Maria Matint. <G19D-7W7> {Kykyri II 7} † 19.10.1810
+        ∞ 08.06.1804
+        Lapset
+        ★ 07.07.1805 Matti <G6JH-PBW>
+        """
+
+        XCTAssertEqual(
+            JuuretApp.primaryFamilySearchParentId(inFamilyText: familyText),
+            "M8ZJ-HR6"
+        )
+    }
+
+    func testPrimaryFamilySearchParentIdFallsBackToSecondParentOnlyWhenFirstHasNoId() {
+        let familyText = """
+        KYKYRI II 9, page 265
+        ★ 31.07.1786 Juho Juhonp. {Vuolle II 3}
+        ★ 08.05.1784 Maria Matint. <G19D-7W7> {Kykyri II 7} † 19.10.1810
+        ∞ 08.06.1804
+        Lapset
+        ★ 07.07.1805 Matti <G6JH-PBW>
+        """
+
+        XCTAssertEqual(
+            JuuretApp.primaryFamilySearchParentId(inFamilyText: familyText),
+            "G19D-7W7"
+        )
+    }
+
+    func testPrimaryFamilySearchParentIdDoesNotReadChildIds() {
+        let familyText = """
+        KYKYRI II 9, page 265
+        ★ 31.07.1786 Juho Juhonp. {Vuolle II 3}
+        ★ 08.05.1784 Maria Matint. {Kykyri II 7} † 19.10.1810
+        ∞ 08.06.1804
+        Lapset
+        ★ 07.07.1805 Matti <M8ZJ-HR6>
+        """
+
+        XCTAssertNil(JuuretApp.primaryFamilySearchParentId(inFamilyText: familyText))
+    }
+}
+
 final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
 
     func testClipboardTextIncludesDebugAndTabSeparatedRows() {

@@ -556,6 +556,7 @@ final class HTTPHandler: ChannelInboundHandler {
             )
             let familySearchPersonId = network.mainFamily.primaryCouple?.husband.familySearchId
                 ?? network.mainFamily.primaryCouple?.wife.familySearchId
+                ?? juuretApp?.primaryFamilySearchParentIdInSourceText(for: canonicalID)
             let familySearchCallbackURL = makeFamilySearchCallbackURL(
                 familyId: canonicalID,
                 sessionId: sessionResult.sessionId
@@ -688,7 +689,8 @@ final class HTTPHandler: ChannelInboundHandler {
         let matchedSession = sessionManager.loadedSession(matchingFamilySearchParentId: parentId)
         let appFamilyId = juuretApp?.storeFamilySearchExtractionForCurrentFamily(extraction)
         let cachedFamilyId = juuretApp?.familyNetworkCache.uniqueFamilyId(matchingFamilySearchParentId: parentId)
-        guard let familyId = appFamilyId ?? matchedSession?.familyId ?? cachedFamilyId else {
+        let sourceTextFamilyId = juuretApp?.familyIdMatchingPrimaryFamilySearchParentIdInSourceText(parentId)
+        guard let familyId = appFamilyId ?? matchedSession?.familyId ?? cachedFamilyId ?? sourceTextFamilyId else {
             logger.warning(
                 "[\(requestID!)] ⚠️ Generic FamilySearch extraction could not be associated",
                 metadata: [
