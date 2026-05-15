@@ -1260,6 +1260,24 @@ final class BrowserSessionManagerTests: XCTestCase {
         XCTAssertTrue(match?.session === sessionResult.session)
     }
 
+    func testCachedFamilyCanBeMatchedByPrimaryFamilySearchParentId() {
+        let cache = makeTestCache()
+        let family = Family(
+            familyId: "KYKYRI II 18",
+            pageReferences: ["266"],
+            husband: Person(name: "Johan", familySearchId: "M8ZJ-HR6"),
+            wife: Person(name: "Brita", familySearchId: "G19D-7W7"),
+            marriageDate: "01.01.1804",
+            children: [
+                Person(name: "Matti", birthDate: "07.07.1805")
+            ]
+        )
+        cache.storeNetwork(FamilyNetwork(mainFamily: family))
+
+        XCTAssertEqual(cache.uniqueFamilyId(matchingFamilySearchParentId: "m8zj-hr6"), "KYKYRI II 18")
+        XCTAssertNil(cache.uniqueFamilyId(matchingFamilySearchParentId: "G19D-7W7"))
+    }
+
     private func makeTestCache() -> FamilyNetworkCache {
         let temporaryDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("KalvianRootsTests-\(UUID().uuidString)", isDirectory: true)
@@ -1305,6 +1323,8 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("control.dispatchEvent(new MouseEvent('mouseenter'"))
         XCTAssertTrue(script.contains("control.dispatchEvent(new MouseEvent('mousedown'"))
         XCTAssertTrue(script.contains("control.click();"))
+        XCTAssertTrue(script.contains("active.blur();"))
+        XCTAssertTrue(script.contains("window.dispatchEvent(new KeyboardEvent('keydown'"))
         XCTAssertTrue(script.contains("const date = dateLikeFromText(values[0]);"))
         XCTAssertTrue(script.contains("return { date: null, place: null };"))
         XCTAssertTrue(script.contains("notes.push('using child quick-card click extraction')"))

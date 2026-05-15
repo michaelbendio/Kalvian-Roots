@@ -767,8 +767,18 @@ enum FamilySearchDOMService {
                     .find(element => /close/i.test(clean(element.getAttribute('aria-label') || element.textContent || '')));
                 if (closeButton) {
                     closeButton.click();
-                } else {
-                    localDocument.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+                }
+                const active = localDocument.activeElement;
+                if (active && typeof active.blur === 'function') {
+                    active.blur();
+                }
+                localDocument.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+                window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+                const body = localDocument.body;
+                if (body) {
+                    body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                    body.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+                    body.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
                 }
             }
 
@@ -1287,9 +1297,11 @@ enum FamilySearchDOMService {
 
                     try {
                         await postResult(result);
+                        closeChildPanel();
                         console.info('Kalvian Roots FamilySearch extraction succeeded: ' + children.length + ' children.');
                         alert('Kalvian Roots received FamilySearch extraction for ' + normalizedPersonId + ': ' + children.length + ' children. Return to the local family page.');
                     } catch (postError) {
+                        closeChildPanel();
                         result.status = 'callbackPostFailed';
                         result.failureReason = clean(postError && postError.message);
                         result.debugNotes = result.debugNotes.concat(['FamilySearch callback POST failed: ' + result.failureReason]);

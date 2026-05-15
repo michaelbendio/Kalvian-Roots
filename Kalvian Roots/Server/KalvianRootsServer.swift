@@ -543,8 +543,11 @@ final class HTTPHandler: ChannelInboundHandler {
             
         case nil:
             logger.info("[\(requestID!)] 🏠 Rendering family display (no sub-route)")
+            let familySearchExtraction = sessionResult.session.familySearchExtraction(for: canonicalID)
+                ?? juuretApp?.familySearchExtraction(for: canonicalID)
             let comparisonResult = await makeChildrenComparisonResult(
                 family: network.mainFamily,
+                familySearchExtraction: familySearchExtraction,
                 session: sessionResult.session
             )
             let hiskiChildSearchRequestsByCouple = makeHiskiChildSearchRequestsByCouple(
@@ -565,7 +568,7 @@ final class HTTPHandler: ChannelInboundHandler {
                 network: network,
                 homeId: homeId,
                 comparisonResult: comparisonResult,
-                familySearchExtraction: sessionResult.session.familySearchExtraction(for: canonicalID),
+                familySearchExtraction: familySearchExtraction,
                 familySearchPersonId: familySearchPersonId,
                 familySearchCallbackURL: familySearchCallbackURL,
                 autoExtractFamilySearch: autoExtractFamilySearch,
@@ -684,7 +687,8 @@ final class HTTPHandler: ChannelInboundHandler {
 
         let matchedSession = sessionManager.loadedSession(matchingFamilySearchParentId: parentId)
         let appFamilyId = juuretApp?.storeFamilySearchExtractionForCurrentFamily(extraction)
-        guard let familyId = appFamilyId ?? matchedSession?.familyId else {
+        let cachedFamilyId = juuretApp?.familyNetworkCache.uniqueFamilyId(matchingFamilySearchParentId: parentId)
+        guard let familyId = appFamilyId ?? matchedSession?.familyId ?? cachedFamilyId else {
             logger.warning(
                 "[\(requestID!)] ⚠️ Generic FamilySearch extraction could not be associated",
                 metadata: [
@@ -1207,6 +1211,7 @@ final class HTTPHandler: ChannelInboundHandler {
     @MainActor
     private func makeChildrenComparisonResult(
         family: Family,
+        familySearchExtraction: FamilySearchFamilyExtraction?,
         session: BrowserSession
     ) async -> FamilyComparisonResult? {
         guard let couple = family.primaryCouple else {
@@ -1214,7 +1219,7 @@ final class HTTPHandler: ChannelInboundHandler {
         }
 
         let comparisonService = FamilyComparisonService(nameManager: session.nameEquivalenceManager)
-        let familySearchChildren = session.familySearchExtraction(for: family.familyId)?.children ?? []
+        let familySearchChildren = familySearchExtraction?.children ?? []
 
         guard let marriageDate = couple.fullMarriageDate ?? couple.marriageDate,
               let marriageYear = extractYear(from: marriageDate).flatMap(Int.init) else {

@@ -97,6 +97,36 @@ class FamilyNetworkCache: FamilyNetworkCaching {
         getCachedNetwork(familyId: familyId)
     }
 
+    func uniqueFamilyId(matchingFamilySearchParentId parentId: String) -> String? {
+        let normalizedParentId = parentId
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+
+        guard !normalizedParentId.isEmpty else {
+            return nil
+        }
+
+        let matchingFamilyIds = cachedNetworks.compactMap { familyId, cached -> String? in
+            guard let familySearchParentId = cached.network.mainFamily.primaryCouple?.husband.familySearchId
+                ?? cached.network.mainFamily.primaryCouple?.wife.familySearchId else {
+                return nil
+            }
+
+            return familySearchParentId
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .uppercased() == normalizedParentId
+                ? familyId
+                : nil
+        }
+
+        let uniqueFamilyIds = Set(matchingFamilyIds)
+        guard uniqueFamilyIds.count == 1 else {
+            return nil
+        }
+
+        return uniqueFamilyIds.first
+    }
+
     func storeNetwork(_ network: FamilyNetwork) {
         let normalized = network.mainFamily.familyId.uppercased().trimmingCharacters(in: .whitespaces)
         let extractionTime = cachedNetworks[normalized]?.extractionTime ?? 0

@@ -646,7 +646,7 @@ class JuuretApp {
         return currentFamily.familyId
     }
 
-    private func familySearchExtraction(for familyId: String) -> FamilySearchFamilyExtraction? {
+    func familySearchExtraction(for familyId: String) -> FamilySearchFamilyExtraction? {
         familySearchExtractions[normalizedFamilySearchExtractionKey(familyId)]
     }
 
