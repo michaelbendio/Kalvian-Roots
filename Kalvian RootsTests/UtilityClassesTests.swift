@@ -555,6 +555,67 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertEqual(rows[0].motherName, "Maria Andersdr. 40-45")
     }
 
+    func testBirthSpanRowsAreFilteredToParishCoupleGroupAnchoredByJuuretBirthDates() {
+        let html = """
+        <TABLE>
+            <TR><TH>Born<TH>Bapt.<TH>Parish<TH>Village/Farm<TH>Father<TH>Mother<TH>Child
+            <TR><TD><a href="/hiski?en+0265+kastetut+9001"><img src="/historia/sl.gif"></a>7.7.1805 <TD>8.7.1805 <TD>Kälviä <TD>Kykyri <TD>Juho Juhonp. <TD>Maria Matint. <TD>Matts<BR>
+            <TR><TD><a href="/hiski?en+0265+kastetut+9002"><img src="/historia/sl.gif"></a>12.12.1806 <TD>13.12.1806 <TD>Kälviä <TD>Kykyri <TD>Juho Juhonp. <TD>Maria Matint. <TD>Catharina<BR>
+            <TR><TD><a href="/hiski?en+0165+kastetut+9003"><img src="/historia/sl.gif"></a>4.5.1803 <TD>5.5.1803 <TD>Lohtaja <TD>Wargström <TD>Juho Juhonp. <TD>Maria Matint. <TD>Jacob<BR>
+            <TR><TD><a href="/hiski?en+0165+kastetut+9004"><img src="/historia/sl.gif"></a>4.5.1803 <TD>5.5.1803 <TD>Lohtaja <TD>Wargström <TD>Juho Juhonp. <TD>Maria Matint. <TD>Brita<BR>
+            <TR><TD><a href="/hiski?en+0165+kastetut+9005"><img src="/historia/sl.gif"></a>13.6.1803 <TD>14.6.1803 <TD>Lohtaja <TD>Seikkula <TD>Juho Juhonp. <TD>Maria Matint. <TD>Eva<BR>
+            <TR><TD><a href="/hiski?en+0165+kastetut+9006"><img src="/historia/sl.gif"></a>15.4.1805 <TD>16.4.1805 <TD>Lohtaja <TD>Seikkula <TD>Juho Juhonp. <TD>Maria Matint. <TD>Mathias<BR>
+            <TR><TD><a href="/hiski?en+0165+kastetut+9007"><img src="/historia/sl.gif"></a>9.2.1808 <TD>10.2.1808 <TD>Lohtaja <TD>Seikkula <TD>Juho Juhonp. <TD>Maria Matint. <TD>Adam<BR>
+            <TR><TD><a href="/hiski?en+0165+kastetut+9008"><img src="/historia/sl.gif"></a>9.2.1808 <TD>10.2.1808 <TD>Lohtaja <TD>Seikkula <TD>Juho Juhonp. <TD>Maria Matint. <TD>Eva<BR>
+        </TABLE>
+        """
+
+        let rows = service.parseFamilyBirthResultsTable(html)
+        let result = service.filterFamilyBirthRowsAnchoredToJuuretChildren(
+            rows,
+            juuretChildren: [
+                Person(name: "Matti", birthDate: "07.07.1805"),
+                Person(name: "Kaarin", birthDate: "12.12.1806")
+            ]
+        )
+
+        XCTAssertEqual(rows.count, 8)
+        XCTAssertEqual(rows[0].parish, "Kälviä")
+        XCTAssertEqual(rows[0].villageFarm, "Kykyri")
+        XCTAssertTrue(result.isAnchored)
+        XCTAssertEqual(result.originalRowCount, 8)
+        XCTAssertEqual(result.retainedGroupCount, 1)
+        XCTAssertEqual(result.rows.map(\.birthDate), ["7.7.1805", "12.12.1806"])
+        XCTAssertEqual(result.rows.map(\.childName), ["Matts", "Catharina"])
+        XCTAssertEqual(Set(result.rows.compactMap(\.parish)), Set(["Kälviä"]))
+        XCTAssertFalse(result.rows.contains { $0.parish == "Lohtaja" })
+    }
+
+    func testBirthSpanRowsFallBackAsUnanchoredWhenNoJuuretBirthDateMatches() {
+        let rows = [
+            HiskiService.HiskiFamilyBirthRow(
+                birthDate: "4.5.1803",
+                childName: "Jacob",
+                fatherName: "Juho Juhonp.",
+                motherName: "Maria Matint.",
+                recordPath: "/hiski?en+0165+kastetut+9003",
+                parish: "Lohtaja",
+                villageFarm: "Wargström"
+            )
+        ]
+
+        let result = service.filterFamilyBirthRowsAnchoredToJuuretChildren(
+            rows,
+            juuretChildren: [
+                Person(name: "Matti", birthDate: "07.07.1805")
+            ]
+        )
+
+        XCTAssertFalse(result.isAnchored)
+        XCTAssertEqual(result.confidenceLabel, "unanchored low-confidence")
+        XCTAssertEqual(result.rows, rows)
+    }
+
     func testFetchCitationsForFamilyBirthRowsBuildsOrderedEvents() async throws {
         let rows = [
             HiskiService.HiskiFamilyBirthRow(

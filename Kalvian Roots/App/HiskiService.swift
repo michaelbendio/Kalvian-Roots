@@ -352,6 +352,26 @@ class HiskiService {
         let fatherName: String
         let motherName: String
         let recordPath: String
+        let parish: String?
+        let villageFarm: String?
+
+        init(
+            birthDate: String,
+            childName: String,
+            fatherName: String,
+            motherName: String,
+            recordPath: String,
+            parish: String? = nil,
+            villageFarm: String? = nil
+        ) {
+            self.birthDate = birthDate
+            self.childName = childName
+            self.fatherName = fatherName
+            self.motherName = motherName
+            self.recordPath = recordPath
+            self.parish = parish
+            self.villageFarm = villageFarm
+        }
     }
 
     struct FamilyBirthSearchRequest: Equatable {
@@ -366,6 +386,46 @@ class HiskiService {
         let motherName: String
         let recordURL: String
         let citationURL: String
+        let parish: String?
+        let villageFarm: String?
+
+        init(
+            birthDate: String,
+            childName: String,
+            fatherName: String,
+            motherName: String,
+            recordURL: String,
+            citationURL: String,
+            parish: String? = nil,
+            villageFarm: String? = nil
+        ) {
+            self.birthDate = birthDate
+            self.childName = childName
+            self.fatherName = fatherName
+            self.motherName = motherName
+            self.recordURL = recordURL
+            self.citationURL = citationURL
+            self.parish = parish
+            self.villageFarm = villageFarm
+        }
+    }
+
+    struct HiskiParentCoupleGroupKey: Hashable, Equatable {
+        let parish: String
+        let villageFarm: String
+        let fatherNormalizedDisplayName: String
+        let motherNormalizedDisplayName: String
+    }
+
+    struct HiskiFamilyBirthRowsFilterResult: Equatable {
+        let rows: [HiskiFamilyBirthRow]
+        let isAnchored: Bool
+        let originalRowCount: Int
+        let retainedGroupCount: Int
+
+        var confidenceLabel: String {
+            isAnchored ? "anchored" : "unanchored low-confidence"
+        }
     }
 
     private let nameEquivalenceManager: NameEquivalenceManager
@@ -771,6 +831,57 @@ class HiskiService {
         extractTableRows(from: html).compactMap(parseFamilyBirthRow)
     }
 
+    func filterFamilyBirthRowsAnchoredToJuuretChildren(
+        _ rows: [HiskiFamilyBirthRow],
+        juuretChildren: [Person]
+    ) -> HiskiFamilyBirthRowsFilterResult {
+        let juuretBirthDates = Set(
+            juuretChildren.compactMap { normalizedBirthDateKey($0.birthDate) }
+        )
+
+        guard !rows.isEmpty, !juuretBirthDates.isEmpty else {
+            return HiskiFamilyBirthRowsFilterResult(
+                rows: rows,
+                isAnchored: false,
+                originalRowCount: rows.count,
+                retainedGroupCount: 0
+            )
+        }
+
+        let groupedRows = Dictionary(grouping: rows, by: parentCoupleGroupKey(for:))
+        let anchoredGroupKeys = Set(
+            groupedRows.compactMap { key, groupRows in
+                groupRows.contains { row in
+                    guard let birthDate = normalizedBirthDateKey(row.birthDate) else {
+                        return false
+                    }
+
+                    return juuretBirthDates.contains(birthDate)
+                } ? key : nil
+            }
+        )
+
+        guard !anchoredGroupKeys.isEmpty else {
+            return HiskiFamilyBirthRowsFilterResult(
+                rows: rows,
+                isAnchored: false,
+                originalRowCount: rows.count,
+                retainedGroupCount: 0
+            )
+        }
+
+        let filteredRows = rows.filter { row in
+            anchoredGroupKeys.contains(parentCoupleGroupKey(for: row))
+        }
+
+        return HiskiFamilyBirthRowsFilterResult(
+            rows: filteredRows,
+            isAnchored: true,
+            originalRowCount: rows.count,
+            retainedGroupCount: anchoredGroupKeys.count
+        )
+    }
+
     func fetchCitationsForFamilyBirthRows(_ rows: [HiskiFamilyBirthRow]) async throws -> [HiskiFamilyBirthEvent] {
         try await fetchCitationsForFamilyBirthRows(rows) { recordUrl in
             try await self.loadRecordAndExtractCitationHTTP(recordUrl: recordUrl)
@@ -799,7 +910,9 @@ class HiskiService {
                     fatherName: row.fatherName,
                     motherName: row.motherName,
                     recordURL: recordURL,
-                    citationURL: citationURL
+                    citationURL: citationURL,
+                    parish: row.parish,
+                    villageFarm: row.villageFarm
                 )
             )
         }
@@ -869,15 +982,26 @@ class HiskiService {
             return nil
         }
 
-        let trailingValues = cleanedCellTexts.filter { !$0.isEmpty }.suffix(3)
+        let trailingValues = cleanedCellTexts.enumerated()
+            .filter { !$0.element.isEmpty }
+            .suffix(3)
         guard trailingValues.count == 3 else {
             return nil
         }
 
         let names = Array(trailingValues)
-        let fatherName = names[0]
-        let motherName = names[1]
-        let childName = names[2]
+        let fatherName = names[0].element
+        let motherName = names[1].element
+        let childName = names[2].element
+        let fatherIndex = names[0].offset
+        let locationValues = cleanedCellTexts.enumerated()
+            .filter { index, value in
+                index > 1 && index < fatherIndex && !value.isEmpty
+            }
+            .map(\.element)
+        let parish = locationValues.first
+        let joinedVillageFarm = locationValues.dropFirst().joined(separator: " / ")
+        let villageFarm = joinedVillageFarm.isEmpty ? nil : joinedVillageFarm
 
         guard !fatherName.isEmpty, !motherName.isEmpty, !childName.isEmpty else {
             return nil
@@ -888,8 +1012,48 @@ class HiskiService {
             childName: childName,
             fatherName: fatherName,
             motherName: motherName,
-            recordPath: recordPath
+            recordPath: recordPath,
+            parish: parish,
+            villageFarm: villageFarm
         )
+    }
+
+    private func parentCoupleGroupKey(for row: HiskiFamilyBirthRow) -> HiskiParentCoupleGroupKey {
+        HiskiParentCoupleGroupKey(
+            parish: normalizedDisplayValue(row.parish),
+            villageFarm: normalizedDisplayValue(row.villageFarm),
+            fatherNormalizedDisplayName: normalizedParentDisplayName(row.fatherName),
+            motherNormalizedDisplayName: normalizedParentDisplayName(row.motherName)
+        )
+    }
+
+    private func normalizedBirthDateKey(_ rawDate: String?) -> String? {
+        guard let rawDate else {
+            return nil
+        }
+
+        let normalized = formatDateForHiski(rawDate)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return normalized.isEmpty ? nil : normalized
+    }
+
+    private func normalizedDisplayValue(_ rawValue: String?) -> String {
+        rawValue?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .lowercased()
+            .folding(options: .diacriticInsensitive, locale: .current) ?? ""
+    }
+
+    private func normalizedParentDisplayName(_ rawName: String) -> String {
+        let withoutTrailingAge = rawName.replacingOccurrences(
+            of: "\\s+\\d{1,3}(?:-\\d{1,3})?$",
+            with: "",
+            options: .regularExpression
+        )
+
+        return normalizedDisplayValue(withoutTrailingAge)
     }
 
     private func extractTableRows(from html: String) -> [String] {

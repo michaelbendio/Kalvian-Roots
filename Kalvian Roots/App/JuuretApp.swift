@@ -917,30 +917,38 @@ class JuuretApp {
                 endYear: hiskiEndYear
             )
 
-            var rows: [HiskiService.HiskiFamilyBirthRow] = []
+            var rawRows: [HiskiService.HiskiFamilyBirthRow] = []
             for request in searchRequests {
                 appendFamilySearchComparisonDebug("HisKi family-child search started: \(request.label)")
                 let searchHtml = try await loadHiskiSearchHtml(from: request.url)
-                rows = hiskiService.parseFamilyBirthResultsTable(searchHtml)
-                appendFamilySearchComparisonDebug("HisKi family-child rows parsed: \(rows.count)")
+                rawRows = hiskiService.parseFamilyBirthResultsTable(searchHtml)
+                appendFamilySearchComparisonDebug("HisKi raw family-child rows parsed: \(rawRows.count)")
 
-                if !rows.isEmpty {
+                if !rawRows.isEmpty {
                     appendFamilySearchComparisonDebug("HisKi family-child search matched: \(request.label)")
                     break
                 }
             }
 
-            appendFamilySearchComparisonDebug("HisKi family-child rows parsed: \(rows.count)")
+            let structuredRowsResult = hiskiService.filterFamilyBirthRowsAnchoredToJuuretChildren(
+                rawRows,
+                juuretChildren: couple.children
+            )
+            let structuredRows = structuredRowsResult.rows
+            appendFamilySearchComparisonDebug("HisKi raw family-child rows parsed: \(structuredRowsResult.originalRowCount)")
+            appendFamilySearchComparisonDebug(
+                "HisKi structured family-child rows \(structuredRowsResult.confidenceLabel): \(structuredRows.count)"
+            )
             appendFamilySearchComparisonDebug("FamilyComparisonService invoked")
             let result = comparisonService.compare(
                 juuretCandidates: juuretCandidates,
-                hiskiCandidates: comparisonService.makeHiskiCandidates(from: rows),
+                hiskiCandidates: comparisonService.makeHiskiCandidates(from: structuredRows),
                 familySearchCandidates: familySearchCandidates
             )
 
             let proposals: [HiskiCitationProposal]
             do {
-                let hiskiEvents = try await hiskiService.fetchCitationsForFamilyBirthRows(rows)
+                let hiskiEvents = try await hiskiService.fetchCitationsForFamilyBirthRows(structuredRows)
                 appendFamilySearchComparisonDebug("HisKi citation events loaded: \(hiskiEvents.count)")
                 let citationResult = comparisonService.compare(
                     juuretCandidates: juuretCandidates,
@@ -1031,11 +1039,18 @@ class JuuretApp {
                     "HisKi live child query started for couple \(index + 1): \(request.url.absoluteString)"
                 )
                 let searchHtml = try await loadHiskiSearchHtml(from: request.url)
-                let rows = hiskiService.parseFamilyBirthResultsTable(searchHtml)
-                appendFamilySearchComparisonDebug(
-                    "HisKi live child rows parsed for couple \(index + 1): \(rows.count)"
+                let rawRows = hiskiService.parseFamilyBirthResultsTable(searchHtml)
+                let structuredRowsResult = hiskiService.filterFamilyBirthRowsAnchoredToJuuretChildren(
+                    rawRows,
+                    juuretChildren: couple.children
                 )
-                rowsByCouple[index] = rows
+                appendFamilySearchComparisonDebug(
+                    "HisKi live child raw rows parsed for couple \(index + 1): \(rawRows.count)"
+                )
+                appendFamilySearchComparisonDebug(
+                    "HisKi live child structured rows \(structuredRowsResult.confidenceLabel) for couple \(index + 1): \(structuredRowsResult.rows.count)"
+                )
+                rowsByCouple[index] = structuredRowsResult.rows
             } catch {
                 appendFamilySearchComparisonDebug(
                     "HisKi live child query failed for couple \(index + 1): \(error.localizedDescription)"
