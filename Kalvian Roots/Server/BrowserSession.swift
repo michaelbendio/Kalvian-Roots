@@ -239,6 +239,27 @@ final class BrowserSessionManager {
         return nil
     }
 
+    nonisolated static func resolveGenericFamilySearchExtractionFamilyId(
+        appFamilyId: String?,
+        matchedSessionFamilyId: () -> String?,
+        cachedFamilyId: () -> String?,
+        sourceTextFamilyId: () -> String?
+    ) -> String? {
+        if let appFamilyId {
+            return appFamilyId
+        }
+
+        if let matchedSessionFamilyId = matchedSessionFamilyId() {
+            return matchedSessionFamilyId
+        }
+
+        if let cachedFamilyId = cachedFamilyId() {
+            return cachedFamilyId
+        }
+
+        return sourceTextFamilyId()
+    }
+
     func makeSessionCookieHeader(for sessionId: String) -> String {
         let header = "\(SessionCookie.name)=\(sessionId); Path=/; SameSite=\(SessionCookie.sameSite); HttpOnly"
         logInfo(.network, "🍪 Generated cookie header: \(header.prefix(50))...")

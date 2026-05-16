@@ -1278,6 +1278,33 @@ final class BrowserSessionManagerTests: XCTestCase {
         XCTAssertNil(cache.uniqueFamilyId(matchingFamilySearchParentId: "G19D-7W7"))
     }
 
+    func testGenericFamilySearchExtractionAssociationDoesNotScanSourceTextAfterAppMatch() {
+        var matchedSessionEvaluated = false
+        var cachedFamilyEvaluated = false
+        var sourceTextEvaluated = false
+
+        let familyId = BrowserSessionManager.resolveGenericFamilySearchExtractionFamilyId(
+            appFamilyId: "KYKYRI II 9",
+            matchedSessionFamilyId: {
+                matchedSessionEvaluated = true
+                return "KYKYRI II 8"
+            },
+            cachedFamilyId: {
+                cachedFamilyEvaluated = true
+                return "KYKYRI II 7"
+            },
+            sourceTextFamilyId: {
+                sourceTextEvaluated = true
+                return "KYKYRI II 6"
+            }
+        )
+
+        XCTAssertEqual(familyId, "KYKYRI II 9")
+        XCTAssertFalse(matchedSessionEvaluated)
+        XCTAssertFalse(cachedFamilyEvaluated)
+        XCTAssertFalse(sourceTextEvaluated)
+    }
+
     private func makeTestCache() -> FamilyNetworkCache {
         let temporaryDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("KalvianRootsTests-\(UUID().uuidString)", isDirectory: true)
