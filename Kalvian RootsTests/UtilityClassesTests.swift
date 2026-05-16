@@ -356,6 +356,45 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertEqual(values["loppuvuosi"], "1807")
     }
 
+    func testBuildFamilyBirthSearchUrlAcceptsFallbackStartYearFromFirstChild() throws {
+        let url = try service.buildFamilyBirthSearchUrl(
+            fatherName: "Juho",
+            fatherPatronymic: "Juhonp.",
+            motherName: "Maria",
+            motherPatronymic: "Matint.",
+            startYear: 1800
+        )
+
+        let values = try queryValues(in: url)
+
+        XCTAssertEqual(values["alkuvuosi"], "1800")
+        XCTAssertEqual(values["loppuvuosi"], "1835")
+        XCTAssertEqual(values["ietunimi"], "Juho")
+        XCTAssertEqual(values["ipatronyymi"], "Juhonp")
+        XCTAssertEqual(values["aetunimi"], "Maria")
+        XCTAssertEqual(values["apatronyymi"], "Matint")
+    }
+
+    func testFamilyBirthEndYearUsesFallbackStartYearWhenMarriageIsMissing() {
+        XCTAssertEqual(
+            HiskiService.familyBirthEndYear(
+                startYear: 1800,
+                husbandDeathDate: nil,
+                wifeDeathDate: nil
+            ),
+            1835
+        )
+
+        XCTAssertEqual(
+            HiskiService.familyBirthEndYear(
+                startYear: 1800,
+                husbandDeathDate: nil,
+                wifeDeathDate: "19.10.1810"
+            ),
+            1810
+        )
+    }
+
     func testFamilyBirthEndYearUsesFirstKnownSpouseDeathYear() {
         XCTAssertEqual(
             HiskiService.familyBirthEndYear(

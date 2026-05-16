@@ -1220,8 +1220,26 @@ class HiskiService {
             fatherPatronymic: hiskiPatronymicSearchInput(for: fatherPatronymic),
             motherName: normalizeForHiskiQuery(motherName),
             motherPatronymic: hiskiPatronymicSearchInput(for: motherPatronymic),
-            marriageYear: marriageYear,
-            endYear: endYear
+            startYear: marriageYear - Self.yearsBeforeMarriage,
+            endYear: endYear ?? marriageYear + Self.childbearingWindowYears
+        )
+    }
+
+    func buildFamilyBirthSearchUrl(
+        fatherName: String,
+        fatherPatronymic: String?,
+        motherName: String,
+        motherPatronymic: String?,
+        startYear: Int,
+        endYear: Int? = nil
+    ) throws -> URL {
+        try makeFamilyBirthSearchUrl(
+            fatherName: normalizeForHiskiQuery(fatherName),
+            fatherPatronymic: hiskiPatronymicSearchInput(for: fatherPatronymic),
+            motherName: normalizeForHiskiQuery(motherName),
+            motherPatronymic: hiskiPatronymicSearchInput(for: motherPatronymic),
+            startYear: startYear,
+            endYear: endYear ?? startYear + Self.childbearingWindowYears
         )
     }
 
@@ -1233,8 +1251,27 @@ class HiskiService {
         marriageYear: Int,
         endYear: Int? = nil
     ) throws -> [FamilyBirthSearchRequest] {
+        try buildFamilyBirthSearchRequests(
+            fatherName: fatherName,
+            fatherPatronymic: fatherPatronymic,
+            motherName: motherName,
+            motherPatronymic: motherPatronymic,
+            startYear: marriageYear - Self.yearsBeforeMarriage,
+            endYear: endYear ?? marriageYear + Self.childbearingWindowYears
+        )
+    }
+
+    func buildFamilyBirthSearchRequests(
+        fatherName: String,
+        fatherPatronymic: String?,
+        motherName: String,
+        motherPatronymic: String?,
+        startYear: Int,
+        endYear: Int? = nil
+    ) throws -> [FamilyBirthSearchRequest] {
         var requests: [FamilyBirthSearchRequest] = []
         var seenURLs: Set<String> = []
+        let boundedEndYear = max(startYear, endYear ?? startYear + Self.childbearingWindowYears)
 
         func appendRequest(
             label: String,
@@ -1248,8 +1285,8 @@ class HiskiService {
                 fatherPatronymic: fatherSearchPatronymic,
                 motherName: motherSearchName,
                 motherPatronymic: motherSearchPatronymic,
-                marriageYear: marriageYear,
-                endYear: endYear
+                startYear: startYear,
+                endYear: boundedEndYear
             )
 
             guard seenURLs.insert(url.absoluteString).inserted else {
@@ -1299,16 +1336,31 @@ class HiskiService {
         return max(marriageYear, min(earliestSpouseDeathYear ?? defaultEndYear, defaultEndYear))
     }
 
+    static func familyBirthEndYear(
+        startYear: Int,
+        husbandDeathDate: String?,
+        wifeDeathDate: String?
+    ) -> Int {
+        let defaultEndYear = startYear + childbearingWindowYears
+        let earliestSpouseDeathYear = [
+            extractYear(from: husbandDeathDate),
+            extractYear(from: wifeDeathDate)
+        ]
+            .compactMap { $0 }
+            .min()
+
+        return max(startYear, min(earliestSpouseDeathYear ?? defaultEndYear, defaultEndYear))
+    }
+
     private func makeFamilyBirthSearchUrl(
         fatherName: String,
         fatherPatronymic: String?,
         motherName: String,
         motherPatronymic: String?,
-        marriageYear: Int,
+        startYear: Int,
         endYear: Int?
     ) throws -> URL {
-        let startYear = marriageYear - Self.yearsBeforeMarriage
-        let boundedEndYear = max(startYear, endYear ?? marriageYear + Self.childbearingWindowYears)
+        let boundedEndYear = max(startYear, endYear ?? startYear + Self.childbearingWindowYears)
 
         let params = [
             "komento": "haku",

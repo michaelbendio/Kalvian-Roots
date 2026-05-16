@@ -880,17 +880,16 @@ class JuuretApp {
             return
         }
 
-        guard let marriageDate = couple.fullMarriageDate ?? couple.marriageDate,
-              let marriageYear = extractYear(from: marriageDate) else {
+        guard let hiskiWindow = hiskiBirthSpanWindow(for: couple) else {
             appendFamilySearchComparisonDebug("FamilySearch children handed to comparison: \(familySearchChildren.count)")
             appendFamilySearchComparisonDebug("FamilySearch comparison input source: \(familySearchComparisonInputSource)")
             assignFamilySearchComparisonFallback(
                 family: family,
                 couple: couple,
                 familySearchChildren: familySearchChildren,
-                message: "Comparison not triggered: missing first-couple marriage year"
+                message: "Comparison not triggered: missing first-couple marriage year and child birth year"
             )
-            logInfo(.app, "ℹ️ Skipping Juuret + HisKi comparison for \(family.familyId): missing first-couple marriage year")
+            logInfo(.app, "ℹ️ Skipping Juuret + HisKi comparison for \(family.familyId): missing first-couple marriage year and child birth year")
             return
         }
 
@@ -901,10 +900,8 @@ class JuuretApp {
         appendFamilySearchComparisonDebug("FamilySearch comparison input source: \(familySearchComparisonInputSource)")
         let hiskiService = HiskiService(nameEquivalenceManager: nameEquivalenceManager)
         hiskiService.setCurrentFamily(family.familyId)
-        let hiskiEndYear = HiskiService.familyBirthEndYear(
-            marriageYear: marriageYear,
-            husbandDeathDate: couple.husband.deathDate,
-            wifeDeathDate: couple.wife.deathDate
+        appendFamilySearchComparisonDebug(
+            "HisKi family-child search window: \(hiskiWindow.startYear)-\(hiskiWindow.endYear) (\(hiskiWindow.sourceDescription))"
         )
 
         do {
@@ -913,8 +910,8 @@ class JuuretApp {
                 fatherPatronymic: couple.husband.patronymic,
                 motherName: couple.wife.name,
                 motherPatronymic: couple.wife.patronymic,
-                marriageYear: marriageYear,
-                endYear: hiskiEndYear
+                startYear: hiskiWindow.startYear,
+                endYear: hiskiWindow.endYear
             )
 
             var rawRows: [HiskiService.HiskiFamilyBirthRow] = []
@@ -1005,20 +1002,13 @@ class JuuretApp {
         var rowsByCouple: [Int: [HiskiService.HiskiFamilyBirthRow]] = [:]
 
         for (index, couple) in family.couples.enumerated() {
-            guard let marriageDate = couple.fullMarriageDate ?? couple.marriageDate,
-                  let marriageYear = extractYear(from: marriageDate) else {
+            guard let hiskiWindow = hiskiBirthSpanWindow(for: couple) else {
                 appendFamilySearchComparisonDebug(
-                    "HisKi child query skipped for couple \(index + 1): missing marriage year"
+                    "HisKi child query skipped for couple \(index + 1): missing marriage year and child birth year"
                 )
                 rowsByCouple[index] = []
                 continue
             }
-
-            let hiskiEndYear = HiskiService.familyBirthEndYear(
-                marriageYear: marriageYear,
-                husbandDeathDate: couple.husband.deathDate,
-                wifeDeathDate: couple.wife.deathDate
-            )
 
             do {
                 let searchRequests = try hiskiService.buildFamilyBirthSearchRequests(
@@ -1026,8 +1016,8 @@ class JuuretApp {
                     fatherPatronymic: couple.husband.patronymic,
                     motherName: couple.wife.name,
                     motherPatronymic: couple.wife.patronymic,
-                    marriageYear: marriageYear,
-                    endYear: hiskiEndYear
+                    startYear: hiskiWindow.startYear,
+                    endYear: hiskiWindow.endYear
                 )
 
                 guard let request = searchRequests.first else {
@@ -1036,7 +1026,7 @@ class JuuretApp {
                 }
 
                 appendFamilySearchComparisonDebug(
-                    "HisKi live child query started for couple \(index + 1): \(request.url.absoluteString)"
+                    "HisKi live child query started for couple \(index + 1) \(hiskiWindow.startYear)-\(hiskiWindow.endYear) (\(hiskiWindow.sourceDescription)): \(request.url.absoluteString)"
                 )
                 let searchHtml = try await loadHiskiSearchHtml(from: request.url)
                 let rawRows = hiskiService.parseFamilyBirthResultsTable(searchHtml)
@@ -1060,6 +1050,51 @@ class JuuretApp {
         }
 
         return rowsByCouple
+    }
+
+    private struct HiskiBirthSpanWindow {
+        let startYear: Int
+        let endYear: Int
+        let sourceDescription: String
+    }
+
+    private func hiskiBirthSpanWindow(for couple: Couple) -> HiskiBirthSpanWindow? {
+        if let marriageDate = couple.fullMarriageDate ?? couple.marriageDate,
+           let marriageYear = extractYear(from: marriageDate) {
+            return HiskiBirthSpanWindow(
+                startYear: marriageYear - HiskiService.yearsBeforeMarriage,
+                endYear: HiskiService.familyBirthEndYear(
+                    marriageYear: marriageYear,
+                    husbandDeathDate: couple.husband.deathDate,
+                    wifeDeathDate: couple.wife.deathDate
+                ),
+                sourceDescription: "marriage year \(marriageYear)"
+            )
+        }
+
+        guard let firstChildBirthYear = couple.children
+            .compactMap({ child -> Int? in
+                guard let birthDate = child.birthDate else {
+                    return nil
+                }
+
+                return extractYear(from: birthDate)
+            })
+            .min() else {
+            return nil
+        }
+
+        let startYear = firstChildBirthYear - 5
+
+        return HiskiBirthSpanWindow(
+            startYear: startYear,
+            endYear: HiskiService.familyBirthEndYear(
+                startYear: startYear,
+                husbandDeathDate: couple.husband.deathDate,
+                wifeDeathDate: couple.wife.deathDate
+            ),
+            sourceDescription: "first child birth year \(firstChildBirthYear) minus 5"
+        )
     }
 
     private func assignFamilySearchComparisonFallback(
