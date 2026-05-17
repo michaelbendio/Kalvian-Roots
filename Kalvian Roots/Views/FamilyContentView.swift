@@ -788,7 +788,7 @@ struct FamilyContentView: View {
 
     private func openHiskiChildResults(for couple: Couple) {
         guard let url = hiskiChildSearchURL(for: couple) else {
-            onShowHiski("HisKi child query unavailable: missing parent names or marriage year")
+            onShowHiski("HisKi child query unavailable: missing parent names, marriage year, or child birth year")
             return
         }
 
@@ -802,35 +802,21 @@ struct FamilyContentView: View {
     private func hiskiChildSearchURL(for couple: Couple) -> URL? {
         guard !couple.husband.name.isEmpty,
               !couple.wife.name.isEmpty,
-              let marriageDate = couple.fullMarriageDate ?? couple.marriageDate,
-              let marriageYear = extractYear(from: marriageDate) else {
+              let hiskiWindow = HiskiService.familyBirthSearchWindow(for: couple) else {
             return nil
         }
 
         let hiskiService = HiskiService(nameEquivalenceManager: juuretApp.nameEquivalenceManager)
         hiskiService.setCurrentFamily(family.familyId)
-        let hiskiEndYear = HiskiService.familyBirthEndYear(
-            marriageYear: marriageYear,
-            husbandDeathDate: couple.husband.deathDate,
-            wifeDeathDate: couple.wife.deathDate
-        )
 
         return try? hiskiService.buildFamilyBirthSearchRequests(
             fatherName: couple.husband.name,
             fatherPatronymic: couple.husband.patronymic,
             motherName: couple.wife.name,
             motherPatronymic: couple.wife.patronymic,
-            marriageYear: marriageYear,
-            endYear: hiskiEndYear
+            startYear: hiskiWindow.startYear,
+            endYear: hiskiWindow.endYear
         ).first?.url
-    }
-
-    private func extractYear(from rawDate: String) -> Int? {
-        guard let yearRange = rawDate.range(of: #"\b\d{4}\b"#, options: .regularExpression) else {
-            return nil
-        }
-
-        return Int(rawDate[yearRange])
     }
 
     private func comparisonGroup(forCoupleAt index: Int) -> FamilyChildrenComparisonGroup? {

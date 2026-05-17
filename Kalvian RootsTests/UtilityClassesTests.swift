@@ -375,6 +375,41 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertEqual(values["apatronyymi"], "Matint")
     }
 
+    func testFamilyBirthSearchWindowFallsBackToFirstChildBirthYearWhenMarriageIsMissing() throws {
+        let couple = Couple(
+            husband: Person(name: "Matti", patronymic: "Juhonp."),
+            wife: Person(name: "Kaarin", patronymic: "Kustaant.", deathDate: "26.05.1707"),
+            marriageDate: nil,
+            children: [
+                Person(name: "Maria", birthDate: "12.02.1696"),
+                Person(name: "Katarijna", birthDate: "18.02.1697")
+            ]
+        )
+
+        let window = try XCTUnwrap(HiskiService.familyBirthSearchWindow(for: couple))
+
+        XCTAssertEqual(window.startYear, 1691)
+        XCTAssertEqual(window.endYear, 1707)
+        XCTAssertEqual(window.sourceDescription, "first child birth year 1696 minus 5")
+    }
+
+    func testFamilyBirthSearchWindowPrefersMarriageYearWhenPresent() throws {
+        let couple = Couple(
+            husband: Person(name: "Matti", patronymic: "Erikinp."),
+            wife: Person(name: "Kaarin", patronymic: "Matint."),
+            marriageDate: "12.11.1779",
+            children: [
+                Person(name: "Elias", birthDate: "07.12.1781")
+            ]
+        )
+
+        let window = try XCTUnwrap(HiskiService.familyBirthSearchWindow(for: couple))
+
+        XCTAssertEqual(window.startYear, 1778)
+        XCTAssertEqual(window.endYear, 1814)
+        XCTAssertEqual(window.sourceDescription, "marriage year 1779")
+    }
+
     func testFamilyBirthEndYearUsesFallbackStartYearWhenMarriageIsMissing() {
         XCTAssertEqual(
             HiskiService.familyBirthEndYear(

@@ -1059,41 +1059,14 @@ class JuuretApp {
     }
 
     private func hiskiBirthSpanWindow(for couple: Couple) -> HiskiBirthSpanWindow? {
-        if let marriageDate = couple.fullMarriageDate ?? couple.marriageDate,
-           let marriageYear = extractYear(from: marriageDate) {
-            return HiskiBirthSpanWindow(
-                startYear: marriageYear - HiskiService.yearsBeforeMarriage,
-                endYear: HiskiService.familyBirthEndYear(
-                    marriageYear: marriageYear,
-                    husbandDeathDate: couple.husband.deathDate,
-                    wifeDeathDate: couple.wife.deathDate
-                ),
-                sourceDescription: "marriage year \(marriageYear)"
-            )
-        }
-
-        guard let firstChildBirthYear = couple.children
-            .compactMap({ child -> Int? in
-                guard let birthDate = child.birthDate else {
-                    return nil
-                }
-
-                return extractYear(from: birthDate)
-            })
-            .min() else {
+        guard let window = HiskiService.familyBirthSearchWindow(for: couple) else {
             return nil
         }
 
-        let startYear = firstChildBirthYear - 5
-
         return HiskiBirthSpanWindow(
-            startYear: startYear,
-            endYear: HiskiService.familyBirthEndYear(
-                startYear: startYear,
-                husbandDeathDate: couple.husband.deathDate,
-                wifeDeathDate: couple.wife.deathDate
-            ),
-            sourceDescription: "first child birth year \(firstChildBirthYear) minus 5"
+            startYear: window.startYear,
+            endYear: window.endYear,
+            sourceDescription: window.sourceDescription
         )
     }
 

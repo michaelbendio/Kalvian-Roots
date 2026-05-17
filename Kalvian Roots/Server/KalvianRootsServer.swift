@@ -1227,8 +1227,7 @@ final class HTTPHandler: ChannelInboundHandler {
         let comparisonService = FamilyComparisonService(nameManager: session.nameEquivalenceManager)
         let familySearchChildren = familySearchExtraction?.children ?? []
 
-        guard let marriageDate = couple.fullMarriageDate ?? couple.marriageDate,
-              let marriageYear = extractYear(from: marriageDate).flatMap(Int.init) else {
+        guard let hiskiWindow = HiskiService.familyBirthSearchWindow(for: couple) else {
             return comparisonService.compare(
                 juuretCandidates: comparisonService.makeJuuretCandidates(from: couple.children),
                 hiskiCandidates: [],
@@ -1238,11 +1237,6 @@ final class HTTPHandler: ChannelInboundHandler {
 
         let hiskiService = HiskiService(nameEquivalenceManager: session.nameEquivalenceManager)
         hiskiService.setCurrentFamily(family.familyId)
-        let hiskiEndYear = HiskiService.familyBirthEndYear(
-            marriageYear: marriageYear,
-            husbandDeathDate: couple.husband.deathDate,
-            wifeDeathDate: couple.wife.deathDate
-        )
 
         do {
             let searchRequests = try hiskiService.buildFamilyBirthSearchRequests(
@@ -1250,8 +1244,8 @@ final class HTTPHandler: ChannelInboundHandler {
                 fatherPatronymic: couple.husband.patronymic,
                 motherName: couple.wife.name,
                 motherPatronymic: couple.wife.patronymic,
-                marriageYear: marriageYear,
-                endYear: hiskiEndYear
+                startYear: hiskiWindow.startYear,
+                endYear: hiskiWindow.endYear
             )
             var rows: [HiskiService.HiskiFamilyBirthRow] = []
             for request in searchRequests {
@@ -1304,16 +1298,9 @@ final class HTTPHandler: ChannelInboundHandler {
         for (index, couple) in family.couples.enumerated() where !couple.children.isEmpty {
             guard !couple.husband.name.isEmpty,
                   !couple.wife.name.isEmpty,
-                  let marriageDate = couple.fullMarriageDate ?? couple.marriageDate,
-                  let marriageYear = extractYear(from: marriageDate).flatMap(Int.init) else {
+                  let hiskiWindow = HiskiService.familyBirthSearchWindow(for: couple) else {
                 continue
             }
-
-            let hiskiEndYear = HiskiService.familyBirthEndYear(
-                marriageYear: marriageYear,
-                husbandDeathDate: couple.husband.deathDate,
-                wifeDeathDate: couple.wife.deathDate
-            )
 
             do {
                 let searchRequests = try hiskiService.buildFamilyBirthSearchRequests(
@@ -1321,8 +1308,8 @@ final class HTTPHandler: ChannelInboundHandler {
                     fatherPatronymic: couple.husband.patronymic,
                     motherName: couple.wife.name,
                     motherPatronymic: couple.wife.patronymic,
-                    marriageYear: marriageYear,
-                    endYear: hiskiEndYear
+                    startYear: hiskiWindow.startYear,
+                    endYear: hiskiWindow.endYear
                 )
 
                 if let request = searchRequests.first {

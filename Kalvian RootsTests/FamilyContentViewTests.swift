@@ -206,7 +206,8 @@ final class FamilyContentViewTests: XCTestCase {
         XCTAssertTrue(familyContentView.contains("openHiskiChildResults(for: couple)"))
         XCTAssertTrue(familyContentView.contains("HiskiWebViewManager.shared.loadSearchResults(url: url)"))
         XCTAssertTrue(familyContentView.contains("buildFamilyBirthSearchRequests("))
-        XCTAssertTrue(familyContentView.contains("HiskiService.familyBirthEndYear("))
+        XCTAssertTrue(familyContentView.contains("HiskiService.familyBirthSearchWindow(for: couple)"))
+        XCTAssertTrue(familyContentView.contains("missing parent names, marriage year, or child birth year"))
         XCTAssertTrue(
             familyContentView.contains("childrenSection(couple: couple)"),
             "Additional spouse Lapset sections must pass the local couple, not only child arrays."

@@ -379,6 +379,12 @@ class HiskiService {
         let url: URL
     }
 
+    struct FamilyBirthSearchWindow: Equatable {
+        let startYear: Int
+        let endYear: Int
+        let sourceDescription: String
+    }
+
     struct HiskiFamilyBirthEvent: Equatable {
         let birthDate: String
         let childName: String
@@ -1350,6 +1356,38 @@ class HiskiService {
             .min()
 
         return max(startYear, min(earliestSpouseDeathYear ?? defaultEndYear, defaultEndYear))
+    }
+
+    static func familyBirthSearchWindow(for couple: Couple) -> FamilyBirthSearchWindow? {
+        if let marriageYear = extractYear(from: couple.fullMarriageDate ?? couple.marriageDate) {
+            return FamilyBirthSearchWindow(
+                startYear: marriageYear - yearsBeforeMarriage,
+                endYear: familyBirthEndYear(
+                    marriageYear: marriageYear,
+                    husbandDeathDate: couple.husband.deathDate,
+                    wifeDeathDate: couple.wife.deathDate
+                ),
+                sourceDescription: "marriage year \(marriageYear)"
+            )
+        }
+
+        guard let firstChildBirthYear = couple.children
+            .compactMap({ extractYear(from: $0.birthDate) })
+            .min() else {
+            return nil
+        }
+
+        let startYear = firstChildBirthYear - 5
+
+        return FamilyBirthSearchWindow(
+            startYear: startYear,
+            endYear: familyBirthEndYear(
+                startYear: startYear,
+                husbandDeathDate: couple.husband.deathDate,
+                wifeDeathDate: couple.wife.deathDate
+            ),
+            sourceDescription: "first child birth year \(firstChildBirthYear) minus 5"
+        )
     }
 
     private func makeFamilyBirthSearchUrl(

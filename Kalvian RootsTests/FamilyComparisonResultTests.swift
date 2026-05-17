@@ -1500,6 +1500,38 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertEqual(html.components(separatedBy: "class=\"section-header hiski-child-results-link\"").count - 1, 2)
     }
 
+    func testDevelopmentComparisonGroupBuildsHiskiSearchFromFirstChildWhenMarriageIsMissing() throws {
+        let couple = Couple(
+            husband: Person(name: "Matti", patronymic: "Juhonp."),
+            wife: Person(name: "Kaarin", patronymic: "Kustaant.", deathDate: "26.05.1707"),
+            marriageDate: nil,
+            children: [
+                Person(name: "Maria", birthDate: "12.02.1696"),
+                Person(name: "Katarijna", birthDate: "18.02.1697")
+            ]
+        )
+        let family = Family(
+            familyId: "TIKKANEN 6",
+            pageReferences: ["264", "265"],
+            couples: [couple]
+        )
+
+        let groups = TikkanenSixDevelopmentData.makeComparisonGroups(
+            for: family,
+            nameManager: NameEquivalenceManager()
+        )
+        let request = try XCTUnwrap(groups.first?.hiskiSearchRequests.first)
+        let values = try XCTUnwrap(URLComponents(url: request.url, resolvingAgainstBaseURL: false)?.queryItems)
+            .reduce(into: [String: String]()) { result, item in
+                result[item.name] = item.value ?? ""
+            }
+
+        XCTAssertEqual(values["alkuvuosi"], "1691")
+        XCTAssertEqual(values["loppuvuosi"], "1707")
+        XCTAssertEqual(values["ietunimi"], "Matti")
+        XCTAssertEqual(values["aetunimi"], "Kaarin")
+    }
+
     func testBookmarkletInjectsExtractorAndDetectsPersonIdFromURL() {
         let bookmarklet = FamilySearchDOMService.makeBookmarklet()
 

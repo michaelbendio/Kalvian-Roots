@@ -481,21 +481,15 @@ enum TikkanenSixDevelopmentData {
         hiskiService.setCurrentFamily(family.familyId)
 
         return family.couples.enumerated().map { index, couple in
-            let marriageYear = extractYear(from: couple.fullMarriageDate ?? couple.marriageDate)
             let requests: [HiskiService.FamilyBirthSearchRequest]
-            if let marriageYear {
-                let hiskiEndYear = HiskiService.familyBirthEndYear(
-                    marriageYear: marriageYear,
-                    husbandDeathDate: couple.husband.deathDate,
-                    wifeDeathDate: couple.wife.deathDate
-                )
+            if let hiskiWindow = HiskiService.familyBirthSearchWindow(for: couple) {
                 let searchRequests = try? hiskiService.buildFamilyBirthSearchRequests(
                     fatherName: couple.husband.name,
                     fatherPatronymic: couple.husband.patronymic,
                     motherName: couple.wife.name,
                     motherPatronymic: couple.wife.patronymic,
-                    marriageYear: marriageYear,
-                    endYear: hiskiEndYear
+                    startYear: hiskiWindow.startYear,
+                    endYear: hiskiWindow.endYear
                 )
                 requests = searchRequests.map { Array($0.prefix(1)) } ?? []
             } else {
