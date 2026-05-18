@@ -629,6 +629,38 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertEqual(rows[0].childName, "Abraham")
         XCTAssertEqual(rows[0].fatherName, "Elias Mattsson Kykyri")
         XCTAssertEqual(rows[0].motherName, "Maria Andersdr. 40-45")
+        XCTAssertNil(rows[0].parish)
+        XCTAssertNil(rows[0].villageFarm)
+    }
+
+    func testBirthSpanRowsKeepSameRecordParishRowsWhenHiskiTableHasOnlyVillageAndFarm() {
+        let html = """
+        <TABLE>
+            <TR><TH>Born<TH>Christened<TH>Village<TH>Farm<TH>Father<TH>Mother<TH>Child
+            <TR><TD><a href="/hiski?en+0265+kastetut+1696"><img src="/historia/sl.gif"></a>12.2.1696 <TD>14.2.1696 <TD>&nbsp; <TD>&nbsp; <TD>Mattz Joh: <TD>Carin Gustafsdr. <TD>Maria<BR>
+            <TR><TD><a href="/hiski?en+0265+kastetut+1701"><img src="/historia/sl.gif"></a>23.2.1701 <TD>1701 <TD>&nbsp; <TD>Laikeri (????) <TD>Matz Johansson <TD>Carin Gustafsdr. <TD>Gustawus<BR>
+            <TR><TD><a href="/hiski?en+0265+kastetut+1704"><img src="/historia/sl.gif"></a>6.7.1704 <TD>8.7.1704 <TD>&nbsp; <TD>Zacheri <TD>Matz Johansson <TD>Carin Gustafsdr. <TD>Lijsa<BR>
+            <TR><TD><a href="/hiski?en+0265+kastetut+1708"><img src="/historia/sl.gif"></a>5.12.1708 <TD>6.12.1708 <TD>&nbsp; <TD>Zacheri <TD>Matt Johansson <TD>Carin Gustafsdr. <TD>Thomas<BR>
+            <TR><TD><a href="/hiski?en+0165+kastetut+1696"><img src="/historia/sl.gif"></a>4.5.1696 <TD>5.5.1696 <TD>&nbsp; <TD>&nbsp; <TD>Mattz Joh: <TD>Carin Gustafsdr. <TD>Wrong Parish<BR>
+        </TABLE>
+        """
+
+        let rows = service.parseFamilyBirthResultsTable(html)
+        let result = service.filterFamilyBirthRowsAnchoredToJuuretChildren(
+            rows,
+            juuretChildren: [
+                Person(name: "Maria", birthDate: "12.02.1696")
+            ]
+        )
+
+        XCTAssertEqual(rows.count, 5)
+        XCTAssertNil(rows[1].parish)
+        XCTAssertEqual(rows[1].villageFarm, "Laikeri (????)")
+        XCTAssertTrue(result.isAnchored)
+        XCTAssertEqual(result.originalRowCount, 5)
+        XCTAssertEqual(result.retainedGroupCount, 1)
+        XCTAssertEqual(result.rows.map(\.childName), ["Maria", "Gustawus", "Lijsa", "Thomas"])
+        XCTAssertFalse(result.rows.contains { $0.childName == "Wrong Parish" })
     }
 
     func testBirthSpanRowsAreFilteredToParishCoupleGroupAnchoredByJuuretBirthDates() {

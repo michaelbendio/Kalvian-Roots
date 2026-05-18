@@ -431,6 +431,11 @@ class HiskiService {
         }
     }
 
+    private enum HiskiFamilyBirthLocationLayout {
+        case parishAndLocation
+        case locationOnly
+    }
+
     private let nameEquivalenceManager: NameEquivalenceManager
     private let parishes = "0053,0093,0165,0183,0218,0172,0265,0295,0301,0386,0555,0581,0614"
     private var currentFamilyId: String?
@@ -831,7 +836,16 @@ class HiskiService {
     }
 
     func parseFamilyBirthResultsTable(_ html: String) -> [HiskiFamilyBirthRow] {
-        extractTableRows(from: html).compactMap(parseFamilyBirthRow)
+        var locationLayout = HiskiFamilyBirthLocationLayout.locationOnly
+
+        return extractTableRows(from: html).compactMap { rowHtml in
+            if isFamilyBirthHeaderRow(rowHtml) {
+                locationLayout = familyBirthLocationLayout(fromHeaderRow: rowHtml)
+                return nil
+            }
+
+            return parseFamilyBirthRow(from: rowHtml, locationLayout: locationLayout)
+        }
     }
 
     func filterFamilyBirthRowsAnchoredToJuuretChildren(
@@ -972,7 +986,10 @@ class HiskiService {
         return citationUrl
     }
 
-    private func parseFamilyBirthRow(from rowHtml: String) -> HiskiFamilyBirthRow? {
+    private func parseFamilyBirthRow(
+        from rowHtml: String,
+        locationLayout: HiskiFamilyBirthLocationLayout
+    ) -> HiskiFamilyBirthRow? {
         guard let recordPath = extractSlGifHref(from: rowHtml) else {
             return nil
         }
@@ -1004,8 +1021,17 @@ class HiskiService {
                 index > 1 && index < fatherIndex && !value.isEmpty
             }
             .map(\.element)
-        let parish = locationValues.first
-        let joinedVillageFarm = locationValues.dropFirst().joined(separator: " / ")
+        let parish: String?
+        let villageFarmValues: ArraySlice<String>
+        switch locationLayout {
+        case .parishAndLocation:
+            parish = locationValues.first
+            villageFarmValues = locationValues.dropFirst()
+        case .locationOnly:
+            parish = nil
+            villageFarmValues = locationValues[...]
+        }
+        let joinedVillageFarm = villageFarmValues.joined(separator: " / ")
         let villageFarm = joinedVillageFarm.isEmpty ? nil : joinedVillageFarm
 
         guard !fatherName.isEmpty, !motherName.isEmpty, !childName.isEmpty else {
@@ -1024,7 +1050,30 @@ class HiskiService {
     }
 
     private func parishGroupKey(for row: HiskiFamilyBirthRow) -> HiskiParishGroupKey {
-        HiskiParishGroupKey(parish: normalizedDisplayValue(row.parish))
+        HiskiParishGroupKey(
+            parish: hiskiParishCode(fromRecordPath: row.recordPath) ?? normalizedDisplayValue(row.parish)
+        )
+    }
+
+    private func isFamilyBirthHeaderRow(_ rowHtml: String) -> Bool {
+        rowHtml.range(of: "<TH", options: [.caseInsensitive]) != nil
+    }
+
+    private func familyBirthLocationLayout(fromHeaderRow rowHtml: String) -> HiskiFamilyBirthLocationLayout {
+        let headerCells = extractTableHeaderContents(from: rowHtml)
+            .map { normalizedDisplayValue($0) }
+
+        return headerCells.contains("parish") ? .parishAndLocation : .locationOnly
+    }
+
+    private func hiskiParishCode(fromRecordPath recordPath: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: #"(?i)[?&][a-z]{2}\+(\d{4})\+"#),
+              let match = regex.firstMatch(in: recordPath, range: NSRange(recordPath.startIndex..., in: recordPath)),
+              let codeRange = Range(match.range(at: 1), in: recordPath) else {
+            return nil
+        }
+
+        return String(recordPath[codeRange])
     }
 
     private func normalizedBirthDateKey(_ rawDate: String?) -> String? {
@@ -1127,6 +1176,19 @@ class HiskiService {
         )
 
         return Array(tdSeparated.components(separatedBy: delimiter).dropFirst())
+    }
+
+    private func extractTableHeaderContents(from html: String) -> [String] {
+        let delimiter = "\u{1F}"
+
+        let thSeparated = html.replacingOccurrences(
+            of: "(?i)<th[^>]*>",
+            with: delimiter,
+            options: .regularExpression
+        )
+
+        return Array(thSeparated.components(separatedBy: delimiter).dropFirst())
+            .map(cleanHiskiCellText)
     }
     
     private func cleanHiskiCellText(_ html: String) -> String {
