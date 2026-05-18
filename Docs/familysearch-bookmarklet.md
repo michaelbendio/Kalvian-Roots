@@ -34,9 +34,8 @@ The generated bookmarklet is produced by:
 
 It runs in the FamilySearch page context, verifies that the current path matches
 `/tree/person/details/<FamilySearchID>`, extracts the current ID from
-`window.location.pathname`, reads each child's Details page without navigating
-the active tab, extracts Birth, Christening, Death, and Burial values where
-available, and posts the result to:
+`window.location.pathname`, extracts Birth, Christening, Death, and Burial
+values from each child's quick-card, and posts the result to:
 
     http://127.0.0.1:8081/familysearch/extraction-result
 
@@ -63,23 +62,21 @@ The extractor works in this order:
 
 1. Confirm the active page is a FamilySearch person Details page.
 2. Read the focus person and spouse/child groups from the visible page.
-3. For each child, first fetch the child's Details HTML and parse any vital
-   facts available in that response. A progress banner on the FamilySearch page
-   shows which child is currently being processed.
-4. If the static HTML does not contain usable vital facts, load the child
-   Details page in a hidden frame and parse the rendered Birth, Christening,
-   Death, and Burial values from that document.
-5. If both detail paths fail, keep the summary data already visible on the
+3. For each child, open the child's quick-card, read the Birth, Christening,
+   Death, and Burial values visible there, and close the card before moving to
+   the next child.
+4. If the quick-card path fails, keep the summary data already visible on the
    parent page as partial context only. The parent summary usually exposes
    year-only life spans, so those values are not treated as exact Birth or
    Death dates.
-6. Post the extraction result to the local Kalvian Roots server.
-7. Show a short success message on the FamilySearch page.
+5. Post the extraction result to the local Kalvian Roots server.
+6. Show a short success message on the FamilySearch page.
 
 FamilySearch quick-cards are interactive page UI, not a public API. The
-bookmarklet no longer opens them during the normal extraction path or fallback.
-Keeping extraction on Details pages and partial summary context avoids leaving
-interactive FamilySearch UI running in the active tab.
+bookmarklet uses normal browser events: hover/click to open each card, pointer
+leave/outside click/Escape to close it, and no DOM deletion. That keeps the
+extractor manual and low-impact while avoiding hidden child-page loads from the
+bookmarklet code.
 
 Source of Truth
 ---------------
@@ -99,4 +96,4 @@ Before changing this workflow, also read:
     Docs/implementation-plan.md
 
 FamilySearch extraction must remain manual or user-triggered. Do not add
-automated crawling or hidden repeated page navigation.
+automated crawling.

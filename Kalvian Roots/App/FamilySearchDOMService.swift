@@ -832,7 +832,6 @@ enum FamilySearchDOMService {
 
             function showExtractionSuccessMessage(message) {
                 localDocument.getElementById('kalvian-roots-familysearch-success')?.remove();
-                localDocument.getElementById('kalvian-roots-familysearch-progress')?.remove();
 
                 const banner = localDocument.createElement('div');
                 banner.id = 'kalvian-roots-familysearch-success';
@@ -871,33 +870,6 @@ enum FamilySearchDOMService {
                 window.setTimeout(function () {
                     banner.remove();
                 }, 5000);
-            }
-
-            function updateExtractionProgress(message) {
-                let banner = localDocument.getElementById('kalvian-roots-familysearch-progress');
-                if (!banner) {
-                    banner = localDocument.createElement('div');
-                    banner.id = 'kalvian-roots-familysearch-progress';
-                    banner.setAttribute('role', 'status');
-                    banner.style.position = 'fixed';
-                    banner.style.zIndex = '2147483647';
-                    banner.style.right = '24px';
-                    banner.style.bottom = '24px';
-                    banner.style.maxWidth = '420px';
-                    banner.style.padding = '14px 18px';
-                    banner.style.borderRadius = '8px';
-                    banner.style.background = '#084298';
-                    banner.style.color = '#fff';
-                    banner.style.boxShadow = '0 8px 24px rgba(0,0,0,0.24)';
-                    banner.style.font = '15px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-                    banner.style.lineHeight = '1.4';
-                    localDocument.body.appendChild(banner);
-                }
-                banner.textContent = message;
-            }
-
-            function clearExtractionProgress() {
-                localDocument.getElementById('kalvian-roots-familysearch-progress')?.remove();
             }
 
             async function withBlockedChildNavigation(summary, action) {
@@ -955,17 +927,15 @@ enum FamilySearchDOMService {
             }
 
             async function openChildQuickCard(summary, control, ignoredPanels) {
-                // This helper is intentionally not used by the normal extractor
-                // path. It is kept isolated so visible FamilySearch UI is not
-                // opened unless a future explicit diagnostic path calls it.
                 if (control.scrollIntoView) {
                     control.scrollIntoView({ block: 'center', inline: 'nearest' });
                     await sleep(100);
                 }
 
                 // FamilySearch may open a child quick-card from hover, focus,
-                // or click depending on the current page state. Fire the same
-                // small sequence a user gesture would naturally produce.
+                // or click depending on the current page state. The fallback
+                // extractor fires the same short sequence a user gesture would
+                // naturally produce, then reads and closes the resulting card.
                 const pointerEvent = typeof PointerEvent === 'function'
                     ? new PointerEvent('pointerover', { bubbles: true, cancelable: true, view: window, pointerType: 'mouse' })
                     : new MouseEvent('mouseover', { bubbles: true, cancelable: true, view: window });
@@ -1034,122 +1004,13 @@ enum FamilySearchDOMService {
                 }
             }
 
-            async function extractChildDetailsFromFetchedHTML(summary, notes) {
-                const target = detailsBaseURL + summary.id;
-                const response = await fetch(target, {
-                    method: 'GET',
-                    credentials: 'include'
-                });
-                if (!response.ok) {
-                    throw new Error('child details HTML fetch failed for ' + summary.id + ': HTTP ' + response.status);
-                }
-
-                const html = await response.text();
-                notes.push('details HTML fetched: ' + html.length + ' bytes, contains Birth: ' + (/\\bBirth\\b/i.test(html) ? 'yes' : 'no') + ', contains Death: ' + (/\\bDeath\\b/i.test(html) ? 'yes' : 'no'));
-                const doc = new DOMParser().parseFromString(html, 'text/html');
-                const person = extractPersonSummaryFromDocument(doc, summary.id);
-                const birth = { date: person.birthDate || null, place: person.birthPlace || null };
-                const death = { date: person.deathDate || null, place: person.deathPlace || null };
-
-                if (!clean(birth.date) && !clean(death.date)) {
-                    throw new Error('child details HTML contained no extracted vital dates for ' + summary.id);
-                }
-
-                return {
-                    id: summary.id,
-                    name: person.name || summary.name,
-                    sex: summary.sex || null,
-                    summaryYears: summary.summaryYears || summary.lifeSpan || person.lifeSpan || null,
-                    birth,
-                    birthDate: birth.date,
-                    birthPlace: birth.place,
-                    christening: { date: null, place: null },
-                    christeningDate: null,
-                    christeningPlace: null,
-                    death,
-                    deathDate: death.date,
-                    deathPlace: death.place,
-                    burial: { date: null, place: null },
-                    burialDate: null,
-                    burialPlace: null,
-                    lifeSpan: person.lifeSpan || summary.lifeSpan || summary.summaryYears || null,
-                    extractionStatus: 'success',
-                    extractionSource: 'detailsHTML',
-                    extractionNotes: notes
-                };
-            }
-
-            async function extractChildDetailsFromRenderedDetailsPage(summary, notes) {
-                notes.push('using hidden child details page extraction');
-                const target = detailsBaseURL + summary.id;
-                const frame = detailFrame();
-                if (documentURL(documentForDetailFrame(frame)) !== target) {
-                    frame.src = target;
-                }
-                await waitForDetailsPage(summary.id, function () { return documentForDetailFrame(frame); });
-
-                const frameDocument = documentForDetailFrame(frame);
-                currentDocumentOverride.value = frameDocument;
-                let person;
-                let birth;
-                let christening;
-                let death;
-                let burial;
-                try {
-                    person = extractPersonSummary();
-                    birth = { date: person.birthDate || null, place: person.birthPlace || null };
-                    christening = extractVital('Christening');
-                    death = { date: person.deathDate || null, place: person.deathPlace || null };
-                    burial = extractVital('Burial');
-                } finally {
-                    currentDocumentOverride.value = null;
-                }
-
-                if (!clean(birth.date) && !clean(christening.date) && !clean(death.date) && !clean(burial.date)) {
-                    throw new Error('hidden child details page contained no extracted vital dates for ' + summary.id);
-                }
-
-                return {
-                    id: summary.id,
-                    name: person.name || summary.name,
-                    sex: summary.sex || null,
-                    summaryYears: summary.summaryYears || summary.lifeSpan || person.lifeSpan || null,
-                    birth,
-                    birthDate: birth.date,
-                    birthPlace: birth.place,
-                    christening,
-                    christeningDate: christening.date,
-                    christeningPlace: christening.place,
-                    death,
-                    deathDate: death.date,
-                    deathPlace: death.place,
-                    burial,
-                    burialDate: burial.date,
-                    burialPlace: burial.place,
-                    lifeSpan: person.lifeSpan || summary.lifeSpan || summary.summaryYears || null,
-                    extractionStatus: 'success',
-                    extractionSource: 'detailsPage',
-                    extractionNotes: notes
-                };
-            }
-
             async function extractChildDetails(summary) {
                 const notes = [];
                 try {
-                    // Fast path: fetch and parse the child details page HTML.
-                    // This avoids leaving FamilySearch's visible quick-card UI
-                    // open in the active tab.
-                    notes.push('using child details HTML extraction');
-                    return await extractChildDetailsFromFetchedHTML(summary, notes);
-                } catch (error) {
-                    notes.push(clean(error && error.message));
-                }
-                try {
-                    // Rendered fallback: load the child Details page in the
-                    // hidden frame and parse its full vital facts. The parent
-                    // page summary only exposes year spans, which are not
-                    // precise enough for child identity matching.
-                    return await extractChildDetailsFromRenderedDetailsPage(summary, notes);
+                    // Open the child's quick-card from the already visible
+                    // FamilySearch page, read the full vital facts visible
+                    // there, then close the card before moving on.
+                    return await extractChildDetailsFromPanel(summary, notes);
                 } catch (error) {
                     notes.push(clean(error && error.message));
                 }
@@ -1408,7 +1269,6 @@ enum FamilySearchDOMService {
                 try {
                     console.info('Kalvian Roots FamilySearch extractor started for ' + normalizedPersonId + '.');
                     cleanupDetailFrame();
-                    updateExtractionProgress('Kalvian Roots is extracting FamilySearch children...');
                     assertCurrentFamilySearchDetailsPage(normalizedPersonId);
                     const focusPerson = await visitPerson(normalizedPersonId);
                     const spouseGroups = extractSpouseGroups();
@@ -1420,20 +1280,13 @@ enum FamilySearchDOMService {
                     let spouse = selectedGroup.spouses.find(person => person.id !== normalizedPersonId) || null;
 
                     const enrichedSpouseGroups = [];
-                    const totalChildrenToExtract = spouseGroups.reduce((count, group) => count + group.children.length, 0);
-                    let extractedChildCount = 0;
                     for (const group of spouseGroups) {
                         const enrichedChildren = [];
                         for (const summary of group.children) {
-                            // Process one child detail page at a time so the
-                            // hidden frame has time to finish rendering before
-                            // the next child is loaded into it.
-                            updateExtractionProgress('Kalvian Roots is extracting FamilySearch child ' + (extractedChildCount + 1) + ' of ' + totalChildrenToExtract + ': ' + summary.name);
+                            // Process one child at a time so each quick-card
+                            // fallback has time to open, be read, and close.
                             await sleep(250);
-                            const child = await extractChildDetails(summary);
-                            extractedChildCount += 1;
-                            updateExtractionProgress('Kalvian Roots extracted FamilySearch child ' + extractedChildCount + ' of ' + totalChildrenToExtract + ': ' + child.name + (clean(child.birthDate) ? ' (' + child.birthDate + ')' : ' (date not found yet)'));
-                            enrichedChildren.push(child);
+                            enrichedChildren.push(await extractChildDetails(summary));
                         }
                         enrichedSpouseGroups.push({
                             ...group,
@@ -1448,13 +1301,8 @@ enum FamilySearchDOMService {
                     const selectedDeathDateCount = children.filter(child => clean(child.deathDate)).length;
                     const allBirthDateCount = allEnrichedChildren.filter(child => clean(child.birthDate)).length;
                     const allDeathDateCount = allEnrichedChildren.filter(child => clean(child.deathDate)).length;
-                    const detailsPageChildCount = allEnrichedChildren.filter(child => child.extractionSource === 'detailsPage').length;
-                    const detailsHTMLChildCount = allEnrichedChildren.filter(child => child.extractionSource === 'detailsHTML').length;
                     const panelFallbackChildCount = allEnrichedChildren.filter(child => child.extractionSource === 'panelFallback').length;
                     const summaryFallbackChildCount = allEnrichedChildren.filter(child => child.extractionSource === 'summaryFallback').length;
-                    const htmlFetchNotes = allEnrichedChildren.flatMap(child => (child.extractionNotes || []).filter(note => /^details HTML fetched:/i.test(note)));
-                    const htmlFetchBirthYesCount = htmlFetchNotes.filter(note => /contains Birth: yes/i.test(note)).length;
-                    const htmlFetchDeathYesCount = htmlFetchNotes.filter(note => /contains Death: yes/i.test(note)).length;
                     const childExtractionNoteSamples = allEnrichedChildren
                         .filter(child => Array.isArray(child.extractionNotes) && child.extractionNotes.length > 0)
                         .slice(0, 8)
@@ -1496,8 +1344,7 @@ enum FamilySearchDOMService {
                             'FamilySearch extraction finished: spouse groups ' + enrichedSpouseGroups.length + ', preferred group children ' + selectedEnrichedGroup.children.length,
                             'FamilySearch selected group child birth dates extracted: ' + selectedBirthDateCount + '/' + children.length + ', death dates extracted: ' + selectedDeathDateCount + '/' + children.length,
                             'FamilySearch all spouse group child birth dates extracted: ' + allBirthDateCount + '/' + allEnrichedChildren.length + ', death dates extracted: ' + allDeathDateCount + '/' + allEnrichedChildren.length,
-                            'FamilySearch child detail sources: details page ' + detailsPageChildCount + ', details HTML ' + detailsHTMLChildCount + ', panel fallback ' + panelFallbackChildCount + ', summary fallback ' + summaryFallbackChildCount,
-                            'FamilySearch details HTML fetch diagnostics: fetched ' + htmlFetchNotes.length + '/' + allEnrichedChildren.length + ', contains Birth ' + htmlFetchBirthYesCount + ', contains Death ' + htmlFetchDeathYesCount
+                            'FamilySearch child detail sources: quick-card ' + panelFallbackChildCount + ', summary fallback ' + summaryFallbackChildCount
                         ].concat(childExtractionNoteSamples)
                     };
 
@@ -1508,12 +1355,10 @@ enum FamilySearchDOMService {
                     try {
                         await postResult(result);
                         await closeChildPanel();
-                        clearExtractionProgress();
                         console.info('Kalvian Roots FamilySearch extraction succeeded: ' + children.length + ' children.');
-                        showExtractionSuccessMessage('Kalvian Roots received FamilySearch extraction for ' + normalizedPersonId + ': ' + children.length + ' children, birth dates ' + selectedBirthDateCount + '/' + children.length + '. Return to the local family page.');
+                        showExtractionSuccessMessage('Kalvian Roots received FamilySearch extraction for ' + normalizedPersonId + ': ' + children.length + ' children. Return to the local family page.');
                     } catch (postError) {
                         await closeChildPanel();
-                        clearExtractionProgress();
                         result.status = 'callbackPostFailed';
                         result.failureReason = clean(postError && postError.message);
                         result.debugNotes = result.debugNotes.concat(['FamilySearch callback POST failed: ' + result.failureReason]);
@@ -1522,7 +1367,6 @@ enum FamilySearchDOMService {
                     }
                     return result;
                 } catch (error) {
-                    clearExtractionProgress();
                     console.error('Kalvian Roots FamilySearch extraction failed:', error);
                     const result = makeFailureResult(normalizedPersonId, error);
                     await postFailureResult(result);
