@@ -814,6 +814,19 @@ enum FamilySearchDOMService {
                     }
                     await sleep(150);
                 }
+
+                const remainingPanel = Array.from(localDocument.querySelectorAll('[role="dialog"],[aria-modal="true"],aside,section,article,[data-testid],div'))
+                    .filter(element => {
+                        const text = visibleText(element);
+                        return /\\b(Birth|Christening|Death|Burial|Sex)\\b/i.test(text) &&
+                            /\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/.test(text) &&
+                            element.offsetWidth > 0 &&
+                            element.offsetHeight > 0;
+                    })
+                    .sort((a, b) => visibleText(a).length - visibleText(b).length)[0];
+                if (remainingPanel) {
+                    remainingPanel.remove();
+                }
             }
 
             function showExtractionSuccessMessage(message) {
@@ -827,7 +840,7 @@ enum FamilySearchDOMService {
                 banner.style.right = '24px';
                 banner.style.bottom = '24px';
                 banner.style.maxWidth = '420px';
-                banner.style.padding = '14px 18px';
+                banner.style.padding = '14px 44px 14px 18px';
                 banner.style.borderRadius = '8px';
                 banner.style.background = '#0f5132';
                 banner.style.color = '#fff';
@@ -835,7 +848,27 @@ enum FamilySearchDOMService {
                 banner.style.font = '15px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
                 banner.style.lineHeight = '1.4';
                 banner.textContent = message;
+
+                const closeButton = localDocument.createElement('button');
+                closeButton.type = 'button';
+                closeButton.setAttribute('aria-label', 'Dismiss Kalvian Roots extraction message');
+                closeButton.textContent = '×';
+                closeButton.style.position = 'absolute';
+                closeButton.style.top = '6px';
+                closeButton.style.right = '10px';
+                closeButton.style.border = '0';
+                closeButton.style.background = 'transparent';
+                closeButton.style.color = '#fff';
+                closeButton.style.font = '24px/1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+                closeButton.style.cursor = 'pointer';
+                closeButton.addEventListener('click', function () {
+                    banner.remove();
+                });
+                banner.appendChild(closeButton);
                 localDocument.body.appendChild(banner);
+                window.setTimeout(function () {
+                    banner.remove();
+                }, 15000);
             }
 
             async function withBlockedChildNavigation(summary, action) {
