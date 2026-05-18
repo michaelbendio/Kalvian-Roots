@@ -773,13 +773,44 @@ enum FamilySearchDOMService {
                     if (active && typeof active.blur === 'function') {
                         active.blur();
                     }
-                    localDocument.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-                    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-                    const body = localDocument.body;
-                    if (body) {
-                        body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
-                        body.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
-                        body.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+
+                    for (const type of ['keydown', 'keypress', 'keyup']) {
+                        const event = new KeyboardEvent(type, {
+                            key: 'Escape',
+                            code: 'Escape',
+                            keyCode: 27,
+                            which: 27,
+                            bubbles: true,
+                            cancelable: true
+                        });
+                        localDocument.dispatchEvent(event);
+                        window.dispatchEvent(event);
+                    }
+
+                    const openPanel = Array.from(localDocument.querySelectorAll('[role="dialog"],[aria-modal="true"],aside,section,article,[data-testid],div'))
+                        .filter(element => {
+                            const text = visibleText(element);
+                            return /\\b(Birth|Christening|Death|Burial|Sex)\\b/i.test(text) &&
+                                /\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/.test(text) &&
+                                element.offsetWidth > 0 &&
+                                element.offsetHeight > 0;
+                        })
+                        .sort((a, b) => visibleText(a).length - visibleText(b).length)[0];
+                    const panelRect = openPanel ? openPanel.getBoundingClientRect() : null;
+                    const outsideX = panelRect && panelRect.left > 20
+                        ? Math.max(5, panelRect.left - 10)
+                        : Math.min(window.innerWidth - 5, (panelRect ? panelRect.right + 10 : 5));
+                    const outsideY = panelRect && panelRect.top > 20
+                        ? Math.max(5, panelRect.top - 10)
+                        : Math.min(window.innerHeight - 5, (panelRect ? panelRect.bottom + 10 : 5));
+                    const target = localDocument.elementFromPoint(outsideX, outsideY) || localDocument.body;
+                    if (target) {
+                        for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+                            const event = type.startsWith('pointer') && typeof PointerEvent === 'function'
+                                ? new PointerEvent(type, { bubbles: true, cancelable: true, view: window, clientX: outsideX, clientY: outsideY, pointerType: 'mouse' })
+                                : new MouseEvent(type, { bubbles: true, cancelable: true, view: window, clientX: outsideX, clientY: outsideY });
+                            target.dispatchEvent(event);
+                        }
                     }
                     await sleep(150);
                 }
