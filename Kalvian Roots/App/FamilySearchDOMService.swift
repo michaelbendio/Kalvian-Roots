@@ -927,6 +927,9 @@ enum FamilySearchDOMService {
             }
 
             async function openChildQuickCard(summary, control, ignoredPanels) {
+                // This helper is intentionally not used by the normal extractor
+                // path. It is kept isolated so visible FamilySearch UI is not
+                // opened unless a future explicit diagnostic path calls it.
                 if (control.scrollIntoView) {
                     control.scrollIntoView({ block: 'center', inline: 'nearest' });
                     await sleep(100);
@@ -1048,6 +1051,60 @@ enum FamilySearchDOMService {
                 };
             }
 
+            async function extractChildDetailsFromRenderedDetailsPage(summary, notes) {
+                notes.push('using hidden child details page extraction');
+                const target = detailsBaseURL + summary.id;
+                const frame = detailFrame();
+                if (documentURL(documentForDetailFrame(frame)) !== target) {
+                    frame.src = target;
+                }
+                await waitForDetailsPage(summary.id, function () { return documentForDetailFrame(frame); });
+
+                const frameDocument = documentForDetailFrame(frame);
+                currentDocumentOverride.value = frameDocument;
+                let person;
+                let birth;
+                let christening;
+                let death;
+                let burial;
+                try {
+                    person = extractPersonSummary();
+                    birth = { date: person.birthDate || null, place: person.birthPlace || null };
+                    christening = extractVital('Christening');
+                    death = { date: person.deathDate || null, place: person.deathPlace || null };
+                    burial = extractVital('Burial');
+                } finally {
+                    currentDocumentOverride.value = null;
+                }
+
+                if (!clean(birth.date) && !clean(christening.date) && !clean(death.date) && !clean(burial.date)) {
+                    throw new Error('hidden child details page contained no extracted vital dates for ' + summary.id);
+                }
+
+                return {
+                    id: summary.id,
+                    name: person.name || summary.name,
+                    sex: summary.sex || null,
+                    summaryYears: summary.summaryYears || summary.lifeSpan || person.lifeSpan || null,
+                    birth,
+                    birthDate: birth.date,
+                    birthPlace: birth.place,
+                    christening,
+                    christeningDate: christening.date,
+                    christeningPlace: christening.place,
+                    death,
+                    deathDate: death.date,
+                    deathPlace: death.place,
+                    burial,
+                    burialDate: burial.date,
+                    burialPlace: burial.place,
+                    lifeSpan: person.lifeSpan || summary.lifeSpan || summary.summaryYears || null,
+                    extractionStatus: 'success',
+                    extractionSource: 'detailsPage',
+                    extractionNotes: notes
+                };
+            }
+
             async function extractChildDetails(summary) {
                 const notes = [];
                 try {
@@ -1060,35 +1117,40 @@ enum FamilySearchDOMService {
                     notes.push(clean(error && error.message));
                 }
                 try {
-                    // Fallback: use the visible quick-card only if the HTML
-                    // path cannot produce useful vital dates.
-                    return await extractChildDetailsFromPanel(summary, notes);
+                    // Rendered fallback: load the child Details page in the
+                    // hidden frame and parse its full vital facts. The parent
+                    // page summary only exposes year spans, which are not
+                    // precise enough for child identity matching.
+                    return await extractChildDetailsFromRenderedDetailsPage(summary, notes);
                 } catch (error) {
                     notes.push(clean(error && error.message));
-                    console.warn('Kalvian Roots FamilySearch child extraction failed for ' + summary.id + ':', error);
-                    return {
-                        id: summary.id,
-                        name: summary.name,
-                        sex: summary.sex || null,
-                        summaryYears: summary.summaryYears || summary.lifeSpan || null,
-                        birth: { date: summary.birthDate || null, place: summary.birthPlace || null },
-                        birthDate: summary.birthDate || null,
-                        birthPlace: summary.birthPlace || null,
-                        christening: { date: null, place: null },
-                        christeningDate: null,
-                        christeningPlace: null,
-                        death: { date: summary.deathDate || null, place: summary.deathPlace || null },
-                        deathDate: summary.deathDate || null,
-                        deathPlace: summary.deathPlace || null,
-                        burial: { date: null, place: null },
-                        burialDate: null,
-                        burialPlace: null,
-                        lifeSpan: summary.lifeSpan || summary.summaryYears || null,
-                        extractionStatus: 'partial',
-                        extractionSource: 'summaryFallback',
-                        extractionNotes: notes
-                    };
                 }
+                console.warn('Kalvian Roots FamilySearch child extraction failed for ' + summary.id + ':', notes.join(' | '));
+                // Fallback: keep the summary data already visible on the
+                // parent page as partial context only. Its life-span text is
+                // often year-only, so do not promote it into exact vital dates.
+                return {
+                    id: summary.id,
+                    name: summary.name,
+                    sex: summary.sex || null,
+                    summaryYears: summary.summaryYears || summary.lifeSpan || null,
+                    birth: { date: null, place: null },
+                    birthDate: null,
+                    birthPlace: null,
+                    christening: { date: null, place: null },
+                    christeningDate: null,
+                    christeningPlace: null,
+                    death: { date: null, place: null },
+                    deathDate: null,
+                    deathPlace: null,
+                    burial: { date: null, place: null },
+                    burialDate: null,
+                    burialPlace: null,
+                    lifeSpan: summary.lifeSpan || summary.summaryYears || null,
+                    extractionStatus: 'partial',
+                    extractionSource: 'summaryFallback',
+                    extractionNotes: notes
+                };
             }
 
             function assertCurrentFamilySearchDetailsPage(expectedId) {
@@ -1332,8 +1394,9 @@ enum FamilySearchDOMService {
                     for (const group of spouseGroups) {
                         const enrichedChildren = [];
                         for (const summary of group.children) {
-                            // Process one child at a time so FamilySearch has
-                            // time to open and close each quick-card cleanly.
+                            // Process one child detail page at a time so the
+                            // hidden frame has time to finish rendering before
+                            // the next child is loaded into it.
                             await sleep(250);
                             enrichedChildren.push(await extractChildDetails(summary));
                         }
