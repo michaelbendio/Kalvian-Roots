@@ -94,6 +94,18 @@ final class FamilyComparisonService {
         )
     }
 
+    func makeFamilySearchCandidates(
+        from children: [FamilySearchChild],
+        matchingHiskiRows hiskiRows: [HiskiService.HiskiFamilyBirthRow]
+    ) -> [PersonCandidate] {
+        makeFamilySearchCandidates(
+            from: familySearchChildrenWithHiskiBirthDates(
+                children,
+                matchingHiskiRows: hiskiRows
+            )
+        )
+    }
+
     func compareChildren(
         juuretChildren: [Person],
         hiskiChildren: [HiskiService.HiskiFamilyBirthEvent],
@@ -114,7 +126,10 @@ final class FamilyComparisonService {
         compare(
             juuretCandidates: makeJuuretCandidates(from: juuretChildren),
             hiskiCandidates: makeHiskiCandidates(from: hiskiRows),
-            familySearchCandidates: makeFamilySearchCandidates(from: familySearchChildren)
+            familySearchCandidates: makeFamilySearchCandidates(
+                from: familySearchChildren,
+                matchingHiskiRows: hiskiRows
+            )
         )
     }
 
@@ -278,6 +293,75 @@ private extension FamilyComparisonService {
         }
 
         return nil
+    }
+
+    func familySearchChildrenWithHiskiBirthDates(
+        _ children: [FamilySearchChild],
+        matchingHiskiRows hiskiRows: [HiskiService.HiskiFamilyBirthRow]
+    ) -> [FamilySearchChild] {
+        children.map { child in
+            guard isYearOnly(firstNonBlank(child.birthDate, child.birth?.date, child.christeningDate, child.christening?.date)),
+                  let hiskiBirthDate = matchingHiskiBirthDate(
+                    for: child,
+                    in: hiskiRows
+                  ) else {
+                return child
+            }
+
+            var updated = child
+            updated.birthDate = hiskiBirthDate
+            updated.birth = FamilySearchVitalSummary(
+                date: hiskiBirthDate,
+                place: updated.birth?.place
+            )
+            return updated
+        }
+    }
+
+    func matchingHiskiBirthDate(
+        for child: FamilySearchChild,
+        in rows: [HiskiService.HiskiFamilyBirthRow]
+    ) -> String? {
+        let childName = comparisonGivenName(from: child.name)
+        let childYear = extractYear(from: firstNonBlank(child.birthDate, child.birth?.date, child.christeningDate, child.christening?.date))
+
+        return rows.first { row in
+            guard extractYear(from: row.birthDate) == childYear else {
+                return false
+            }
+
+            return nameManager.areNamesEquivalent(childName, row.childName)
+        }?.birthDate
+    }
+
+    func comparisonGivenName(from name: String) -> String {
+        name
+            .split(whereSeparator: \.isWhitespace)
+            .first
+            .map(String.init) ?? name
+    }
+
+    func firstNonBlank(_ values: String?...) -> String? {
+        values
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+    }
+
+    func isYearOnly(_ rawDate: String?) -> Bool {
+        guard let rawDate else {
+            return false
+        }
+
+        return rawDate.range(of: #"^\d{4}$"#, options: .regularExpression) != nil
+    }
+
+    func extractYear(from rawDate: String?) -> Int? {
+        guard let rawDate,
+              let yearRange = rawDate.range(of: #"\b\d{4}\b"#, options: .regularExpression) else {
+            return nil
+        }
+
+        return Int(rawDate[yearRange])
     }
 
     func hasNameMismatch(_ match: FamilyComparisonResult.Match) -> Bool {

@@ -412,6 +412,13 @@ final class FamilyComparisonResultTests: XCTestCase {
                     birth: date(1704, 7, 6),
                     source: .familySearch,
                     familySearchId: "M88H-ZT9"
+                ),
+                candidate(
+                    name: "Thomas Mattsson",
+                    identityName: "Thomas",
+                    birth: date(1708, 12, 5),
+                    source: .familySearch,
+                    familySearchId: "M8ZY-5TC"
                 )
             ],
             juuretKalvialla: [
@@ -436,11 +443,16 @@ final class FamilyComparisonResultTests: XCTestCase {
                     name: "Lijsa",
                     birth: date(1704, 7, 6),
                     source: .hiski
+                ),
+                candidate(
+                    name: "Thomas",
+                    birth: date(1708, 12, 5),
+                    source: .hiski
                 )
             ]
         )
 
-        XCTAssertEqual(result.matches.count, 3)
+        XCTAssertEqual(result.matches.count, 4)
 
         let katariina = try XCTUnwrap(result.matches.first { $0.juuretKalvialla?.rawName == "Katariina" })
         XCTAssertEqual(katariina.hiski?.rawName, "Catharina")
@@ -450,6 +462,9 @@ final class FamilyComparisonResultTests: XCTestCase {
 
         let liisa = try XCTUnwrap(result.matches.first { $0.familySearch?.rawName == "Liisa Mattsson" })
         XCTAssertEqual(liisa.hiski?.rawName, "Lijsa")
+
+        let thomas = try XCTUnwrap(result.matches.first { $0.familySearch?.rawName == "Thomas Mattsson" })
+        XCTAssertEqual(thomas.hiski?.rawName, "Thomas")
     }
 
     func testDisplayRowsCoalesceSameCanonicalNameWithNearbyBirthDateDiscrepancy() throws {
@@ -655,6 +670,31 @@ final class FamilyComparisonServiceTests: XCTestCase {
         XCTAssertEqual(candidate.source, .hiski)
         XCTAssertEqual(candidate.birthDate, date(1802, 6, 25))
         XCTAssertNil(candidate.hiskiCitation)
+    }
+
+    func testMakeFamilySearchCandidatesUsesHiskiFullBirthDateForYearOnlyMatch() throws {
+        let candidates = service.makeFamilySearchCandidates(
+            from: [
+                FamilySearchChild(
+                    id: "M8ZY-5TC",
+                    name: "Thomas Mattsson",
+                    birthDate: "1708"
+                )
+            ],
+            matchingHiskiRows: [
+                HiskiService.HiskiFamilyBirthRow(
+                    birthDate: "5.12.1708",
+                    childName: "Thomas",
+                    fatherName: "Matt Johansson",
+                    motherName: "Carin Gustafsdr.",
+                    recordPath: "/hiski?en+0265+kastetut+1708"
+                )
+            ]
+        )
+
+        let candidate = try XCTUnwrap(candidates.first)
+        XCTAssertEqual(candidate.rawName, "Thomas Mattsson")
+        XCTAssertEqual(candidate.birthDate, date(1708, 12, 5))
     }
 
     func testMakeJuuretCandidatesConvertsChildrenToJuuretCandidates() throws {
@@ -1486,7 +1526,11 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("callback POST failed"))
         XCTAssertTrue(script.contains("found zero children"))
         XCTAssertTrue(script.contains("Kalvian Roots FamilySearch extraction succeeded"))
+        XCTAssertTrue(script.contains("function showExtractionSuccessMessage(message)"))
+        XCTAssertTrue(script.contains("await closeChildPanel();"))
         XCTAssertTrue(script.contains("Kalvian Roots received FamilySearch extraction"))
+        XCTAssertFalse(script.contains("alert('Kalvian Roots received FamilySearch extraction"))
+        XCTAssertFalse(script.localizedCaseInsensitiveContains("do not show"))
         XCTAssertTrue(script.contains("FamilySearch extraction finished, but Kalvian Roots did not receive it"))
         XCTAssertTrue(script.contains("preferred group children"))
         XCTAssertTrue(script.contains("\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b"))
@@ -1597,7 +1641,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertEqual(html.components(separatedBy: "class=\"section-header hiski-child-results-link\"").count - 1, 2)
     }
 
-    func testDevelopmentComparisonGroupBuildsHiskiSearchFromFirstChildWhenMarriageIsMissing() throws {
+    func testHiskiSearchRequestUsesFirstChildWhenMarriageIsMissing() throws {
         let couple = Couple(
             husband: Person(name: "Matti", patronymic: "Juhonp."),
             wife: Person(name: "Kaarin", patronymic: "Kustaant.", deathDate: "26.05.1707"),
@@ -1607,17 +1651,19 @@ final class FamilySearchDOMServiceTests: XCTestCase {
                 Person(name: "Katarijna", birthDate: "18.02.1697")
             ]
         )
-        let family = Family(
-            familyId: "TIKKANEN 6",
-            pageReferences: ["264", "265"],
-            couples: [couple]
-        )
 
-        let groups = TikkanenSixDevelopmentData.makeComparisonGroups(
-            for: family,
-            nameManager: NameEquivalenceManager()
+        let service = HiskiService(nameEquivalenceManager: NameEquivalenceManager())
+        let window = try XCTUnwrap(HiskiService.familyBirthSearchWindow(for: couple))
+        let request = try XCTUnwrap(
+            service.buildFamilyBirthSearchRequests(
+                fatherName: couple.husband.name,
+                fatherPatronymic: couple.husband.patronymic,
+                motherName: couple.wife.name,
+                motherPatronymic: couple.wife.patronymic,
+                startYear: window.startYear,
+                endYear: window.endYear
+            ).first
         )
-        let request = try XCTUnwrap(groups.first?.hiskiSearchRequests.first)
         let values = try XCTUnwrap(URLComponents(url: request.url, resolvingAgainstBaseURL: false)?.queryItems)
             .reduce(into: [String: String]()) { result, item in
                 result[item.name] = item.value ?? ""
@@ -1964,7 +2010,7 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
         XCTAssertTrue(text.contains("Matti\tYes | 14 Mar 1761\tNo\tYes | <LK4Q-YSX> | 14 Mar 1761\tMissing in HisKi"))
     }
 
-    func testRowsFallBackToDevelopmentComparisonGroups() {
+    func testRowsFallBackToComparisonGroups() {
         let nameManager = NameEquivalenceManager()
         nameManager.clearAllEquivalences()
         nameManager.addEquivalence(between: "Mikko", and: "Michel")
@@ -2002,7 +2048,7 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
             groups: [group]
         )
         let text = FamilySearchComparisonClipboardFormatter.text(
-            debugMessage: "Development Tikkanen 6 comparison ready",
+            debugMessage: "FamilySearch comparison ready",
             debugLines: [],
             rows: rows,
             status: { _ in "Missing in HisKi" }
@@ -2097,7 +2143,7 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
         )
 
         let text = FamilySearchComparisonClipboardFormatter.text(
-            debugMessage: "Development Tikkanen 6 comparison ready",
+            debugMessage: "FamilySearch comparison ready",
             debugLines: [],
             rows: result.rows,
             status: { _ in "unused" }
@@ -2174,394 +2220,6 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
         XCTAssertTrue(html.contains("Review name discrepancy"))
         XCTAssertFalse(html.contains("HisKi-only"))
         XCTAssertFalse(html.contains("Missing in HisKi"))
-    }
-}
-
-final class TikkanenSixDevelopmentDataTests: XCTestCase {
-
-    private let equivalencesKey = "UserNameEquivalences"
-    private var savedEquivalencesData: Data?
-
-    override func setUpWithError() throws {
-        try super.setUpWithError()
-        nameEquivalenceUserDefaultsLock.lock()
-
-        let defaults = UserDefaults.standard
-        savedEquivalencesData = defaults.data(forKey: equivalencesKey)
-        defaults.removeObject(forKey: equivalencesKey)
-    }
-
-    override func tearDownWithError() throws {
-        defer {
-            nameEquivalenceUserDefaultsLock.unlock()
-        }
-
-        let defaults = UserDefaults.standard
-
-        if let savedEquivalencesData {
-            defaults.set(savedEquivalencesData, forKey: equivalencesKey)
-        } else {
-            defaults.removeObject(forKey: equivalencesKey)
-        }
-
-        try super.tearDownWithError()
-    }
-
-    func testTikkanenSixDevelopmentGroupsAreBuiltPerCouple() throws {
-        let groups = TikkanenSixDevelopmentData.makeComparisonGroups(
-            for: makeTikkanenSixFamily(),
-            nameManager: NameEquivalenceManager(),
-            familySearchChildrenByCouple: makeTikkanenSixFamilySearchChildrenByCouple()
-        )
-
-        XCTAssertEqual(groups.count, 3)
-        XCTAssertEqual(groups.map { $0.result.rows.count }, [2, 5, 18])
-        XCTAssertEqual(groups.map { $0.hiskiSearchRequests.count }, [1, 1, 1])
-
-        XCTAssertEqual(queryValue("alkuvuosi", in: groups[0].hiskiSearchRequests[0].url), "1737")
-        XCTAssertEqual(queryValue("loppuvuosi", in: groups[0].hiskiSearchRequests[0].url), "1740")
-        XCTAssertEqual(queryValue("alkuvuosi", in: groups[1].hiskiSearchRequests[0].url), "1745")
-        XCTAssertEqual(queryValue("loppuvuosi", in: groups[1].hiskiSearchRequests[0].url), "1753")
-        XCTAssertEqual(queryValue("alkuvuosi", in: groups[2].hiskiSearchRequests[0].url), "1752")
-        XCTAssertEqual(queryValue("loppuvuosi", in: groups[2].hiskiSearchRequests[0].url), "1788")
-    }
-
-    func testTikkanenSixDevelopmentDisplayFavorsJuuretNames() throws {
-        let family = makeTikkanenSixFamily()
-        let mariaGroup = try XCTUnwrap(
-            TikkanenSixDevelopmentData.makeComparisonGroups(
-                for: family,
-                nameManager: NameEquivalenceManager(),
-                hiskiRowsByCouple: [
-                    2: makeMariaHiskiRows(couple: family.couples[2])
-                ],
-                familySearchChildrenByCouple: makeTikkanenSixFamilySearchChildrenByCouple()
-            ).last
-        )
-
-        let mikkoRow = try XCTUnwrap(mariaGroup.result.rows.first {
-            $0.juuretKalvialla?.rawName == "Mikko"
-        })
-        XCTAssertEqual(mikkoRow.familySearch?.rawName, "Michel Tikkanen")
-        XCTAssertEqual(mikkoRow.hiski?.rawName, "Michel")
-
-        let abrahamRow = try XCTUnwrap(mariaGroup.result.rows.first {
-            $0.juuretKalvialla?.rawName == "Abraham"
-        })
-        XCTAssertEqual(abrahamRow.familySearch?.rawName, "Abram Eriksson")
-        XCTAssertEqual(abrahamRow.hiski?.rawName, "Abram")
-    }
-
-    func testTikkanenSixUsesExtractedFamilySearchChildrenWhenProvided() throws {
-        let family = makeTikkanenSixFamily()
-        let mariaGroup = try XCTUnwrap(
-            TikkanenSixDevelopmentData.makeComparisonGroups(
-                for: family,
-                nameManager: NameEquivalenceManager(),
-                hiskiRowsByCouple: [
-                    2: makeMariaHiskiRows(couple: family.couples[2])
-                ],
-                familySearchChildrenByCouple: [
-                    2: [
-                        FamilySearchChild(
-                            id: "FS-MICHEL",
-                            name: "Michel Tikkanen",
-                            birthDate: "1757"
-                        )
-                    ]
-                ]
-            ).last
-        )
-
-        let mikkoRow = try XCTUnwrap(mariaGroup.result.rows.first {
-            $0.juuretKalvialla?.rawName == "Mikko"
-        })
-        XCTAssertEqual(mikkoRow.familySearch?.familySearchId, "FS-MICHEL")
-        XCTAssertEqual(mikkoRow.familySearch?.rawName, "Michel Tikkanen")
-        XCTAssertNil(mariaGroup.result.rows.first {
-            $0.familySearch?.rawName == "Gustaf Tikkanen"
-        })
-    }
-
-    func testFamilySearchSpouseGroupsAreMatchedToTikkanenCouplesBySpecificParentId() throws {
-        let family = makeTikkanenSixFamily()
-        var extraction = FamilySearchFamilyExtraction(
-            sourcePersonId: "K2YQ-1ZY",
-            children: []
-        )
-        extraction.status = "success"
-        extraction.spouseGroups = [
-            spouseGroup(
-                wifeId: "K8CD-718",
-                child: FamilySearchChild(id: "MARIA-CHILD", name: "Maria child", birthDate: "1755")
-            ),
-            spouseGroup(
-                wifeId: "GMQH-8GF",
-                child: FamilySearchChild(id: "ANNA-CHILD", name: "Anna child", birthDate: "1747")
-            ),
-            spouseGroup(
-                wifeId: "K2YQ-18B",
-                child: FamilySearchChild(id: "ANNIKA-CHILD", name: "Annika child", birthDate: "1739")
-            )
-        ]
-
-        let matches = TikkanenSixDevelopmentData.matchFamilySearchChildrenByCouple(
-            for: family,
-            extraction: extraction
-        )
-
-        XCTAssertEqual(matches.map { $0.children.first?.id }, [
-            "ANNIKA-CHILD",
-            "ANNA-CHILD",
-            "MARIA-CHILD"
-        ])
-        XCTAssertTrue(matches[0].debugSummary.contains("K2YQ-18B"))
-        XCTAssertTrue(matches[1].debugSummary.contains("GMQH-8GF"))
-        XCTAssertTrue(matches[2].debugSummary.contains("K8CD-718"))
-    }
-
-    func testFamilySearchSpouseGroupsDoNotMatchMultiCoupleFamilyBySharedParentOnly() throws {
-        var family = makeTikkanenSixFamily()
-        for index in family.couples.indices {
-            family.couples[index].wife.familySearchId = nil
-        }
-
-        var extraction = FamilySearchFamilyExtraction(
-            sourcePersonId: "K2YQ-1ZY",
-            children: []
-        )
-        extraction.status = "success"
-        extraction.spouseGroups = [
-            FamilySearchSpouseGroup(
-                spouses: [
-                    FamilySearchPersonSummary(id: "K2YQ-1ZY", name: "Erik Johansson Tikkanen")
-                ],
-                marriage: nil,
-                declaredChildCount: 1,
-                children: [FamilySearchChild(id: "AMBIGUOUS", name: "Ambiguous child", birthDate: "1739")],
-                isPreferred: false
-            )
-        ]
-
-        let matches = TikkanenSixDevelopmentData.matchFamilySearchChildrenByCouple(
-            for: family,
-            extraction: extraction
-        )
-
-        XCTAssertTrue(matches.allSatisfy { $0.children.isEmpty })
-        XCTAssertTrue(matches.allSatisfy {
-            $0.debugSummary.contains("no unused spouse group contains a couple-specific FamilySearch ID or unique marriage year")
-        })
-    }
-
-    func testFamilySearchSpouseGroupsFallbackToUniqueMarriageYear() throws {
-        var family = makeTikkanenSixFamily()
-        for index in family.couples.indices {
-            family.couples[index].wife.familySearchId = nil
-        }
-
-        var extraction = FamilySearchFamilyExtraction(
-            sourcePersonId: "K2YQ-1ZY",
-            children: []
-        )
-        extraction.status = "success"
-        extraction.spouseGroups = [
-            spouseGroup(
-                wifeId: nil,
-                marriageDate: "27 November 1753",
-                child: FamilySearchChild(id: "MARIA-YEAR", name: "Maria year child", birthDate: "1755")
-            ),
-            spouseGroup(
-                wifeId: nil,
-                marriageDate: "24 June 1746",
-                child: FamilySearchChild(id: "ANNA-YEAR", name: "Anna year child", birthDate: "1747")
-            ),
-            spouseGroup(
-                wifeId: nil,
-                marriageDate: "29 October 1738",
-                child: FamilySearchChild(id: "ANNIKA-YEAR", name: "Annika year child", birthDate: "1739")
-            )
-        ]
-
-        let matches = TikkanenSixDevelopmentData.matchFamilySearchChildrenByCouple(
-            for: family,
-            extraction: extraction
-        )
-
-        XCTAssertEqual(matches.map { $0.children.first?.id }, [
-            "ANNIKA-YEAR",
-            "ANNA-YEAR",
-            "MARIA-YEAR"
-        ])
-        XCTAssertTrue(matches[0].debugSummary.contains("marriage year 1738"))
-        XCTAssertTrue(matches[1].debugSummary.contains("marriage year 1746"))
-        XCTAssertTrue(matches[2].debugSummary.contains("marriage year 1753"))
-    }
-
-    private func makeMariaHiskiRows(couple: Couple) -> [HiskiService.HiskiFamilyBirthRow] {
-        [
-            hiskiRow("05.03.1757", "Michel", couple),
-            hiskiRow("25.11.1774", "Abram", couple)
-        ]
-    }
-
-    private func makeTikkanenSixFamilySearchChildrenByCouple() -> [Int: [FamilySearchChild]] {
-        [
-            0: [
-                familySearchChild(id: "LXSP-RTS", name: "Tikkanen", birthDate: "1739", deathDate: "1739"),
-                familySearchChild(id: "LXSP-T4T", name: "Carin Tikkanen", birthDate: "1740", deathDate: "1740")
-            ],
-            1: [
-                familySearchChild(id: "M88C-9G5", name: "Elisabeth Tikkanen", birthDate: "1747", deathDate: "1747"),
-                familySearchChild(id: "M8ZT-H6K", name: "Anna Eriksson", birthDate: "1748"),
-                familySearchChild(id: "M8ZP-9VD", name: "Brita Eriksson", birthDate: "20.05.1750", deathDate: "1750"),
-                familySearchChild(id: "M88M-KZZ", name: "Johannes Eriksson", birthDate: "27.11.1751"),
-                familySearchChild(id: "M8ZL-2C1", name: "Erik Eriksson", birthDate: "06.02.1753", deathDate: "03.06.1785")
-            ],
-            2: [
-                familySearchChild(id: "M8Z1-C8M", name: "Elias Tikkanen", birthDate: "1755", deathDate: "1755"),
-                familySearchChild(id: "M8ZN-Q6S", name: "Matts Tikkanen", birthDate: "1755", deathDate: "1755"),
-                familySearchChild(id: "LHH6-W2P", name: "Matts Tikkanen", birthDate: "14.03.1756", deathDate: "1829"),
-                familySearchChild(id: "M8ZB-PGR", name: "Michel Tikkanen", birthDate: "05.03.1757", deathDate: "1809"),
-                familySearchChild(id: "M883-K1G", name: "Gustaf Tikkanen", birthDate: "1758", deathDate: "1758"),
-                familySearchChild(id: "K2TZ-DY4", name: "Gustav Tikkanen", birthDate: "13.09.1759", deathDate: "1825"),
-                familySearchChild(id: "KHM5-VHL", name: "Elias Tikkanen", birthDate: "14.12.1760"),
-                familySearchChild(id: "M88Z-4M5", name: "Jacob Eriksson", birthDate: "1762", deathDate: "1762"),
-                familySearchChild(id: "M8Z5-CXJ", name: "Brita Tikkanen", birthDate: "04.12.1763"),
-                familySearchChild(id: "M887-WG3", name: "Anders Eriksson Tikkanen", birthDate: "07.03.1765", deathDate: "1838"),
-                familySearchChild(id: "M8ZN-M45", name: "Malin Eriksdotter", birthDate: "1766", deathDate: "1766"),
-                familySearchChild(id: "GW9B-8JZ", name: "Elisabet Eriksdr. Tikkanen", birthDate: "28.11.1767", deathDate: "1843"),
-                familySearchChild(id: "M88Z-4SX", name: "Jacob Eriksson", birthDate: "24.03.1769"),
-                familySearchChild(id: "M8ZK-MCM", name: "Maria Eriksdotter", birthDate: "31.05.1770", deathDate: "1851"),
-                familySearchChild(id: "KZXH-GLC", name: "Kaarin Erikintytär Tikkanen", birthDate: "16.06.1773", deathDate: "1828"),
-                familySearchChild(id: "M8ZY-KJ8", name: "Isaac Eriksson", birthDate: "1774", deathDate: "1774"),
-                familySearchChild(id: "M887-1Q4", name: "Abram Eriksson", birthDate: "25.11.1774", deathDate: "1834"),
-                familySearchChild(id: "M88M-7ZH", name: "Hinric Eriksson", birthDate: "1777", deathDate: "1777")
-            ]
-        ]
-    }
-
-    private func familySearchChild(
-        id: String,
-        name: String,
-        birthDate: String,
-        deathDate: String? = nil
-    ) -> FamilySearchChild {
-        FamilySearchChild(
-            id: id,
-            name: name,
-            birthDate: birthDate,
-            deathDate: deathDate
-        )
-    }
-
-    private func hiskiRow(
-        _ birthDate: String,
-        _ childName: String,
-        _ couple: Couple
-    ) -> HiskiService.HiskiFamilyBirthRow {
-        HiskiService.HiskiFamilyBirthRow(
-            birthDate: birthDate,
-            childName: childName,
-            fatherName: couple.husband.displayName,
-            motherName: couple.wife.displayName,
-            recordPath: "/hiski?en+test"
-        )
-    }
-
-    private func spouseGroup(
-        wifeId: String?,
-        marriageDate: String? = nil,
-        child: FamilySearchChild
-    ) -> FamilySearchSpouseGroup {
-        let spouses = [
-            FamilySearchPersonSummary(id: "K2YQ-1ZY", name: "Erik Johansson Tikkanen"),
-            wifeId.map { FamilySearchPersonSummary(id: $0, name: "Wife") }
-        ].compactMap { $0 }
-
-        return FamilySearchSpouseGroup(
-            spouses: spouses,
-            marriage: FamilySearchMarriageSummary(date: marriageDate, place: nil),
-            declaredChildCount: 1,
-            children: [child],
-            isPreferred: false
-        )
-    }
-
-    private func queryValue(_ name: String, in url: URL) -> String? {
-        URLComponents(url: url, resolvingAgainstBaseURL: false)?
-            .queryItems?
-            .first { $0.name == name }?
-            .value
-    }
-
-    private func makeTikkanenSixFamily() -> Family {
-        let husband = Person(
-            name: "Erik",
-            patronymic: "Juhonp.",
-            birthDate: "1716",
-            deathDate: "27.02.1797",
-            familySearchId: "K2YQ-1ZY"
-        )
-
-        return Family(
-            familyId: "TIKKANEN 6",
-            pageReferences: ["240", "241"],
-            couples: [
-                Couple(
-                    husband: husband,
-                    wife: Person(
-                        name: "Annika",
-                        patronymic: "Matint.",
-                        birthDate: "1721",
-                        deathDate: "20.01.1740",
-                        familySearchId: "K2YQ-18B"
-                    ),
-                    fullMarriageDate: "29.10.1738"
-                ),
-                Couple(
-                    husband: husband,
-                    wife: Person(
-                        name: "Anna",
-                        patronymic: "Pietarint.",
-                        birthDate: "1721",
-                        deathDate: "06.02.1753",
-                        familySearchId: "GMQH-8GF"
-                    ),
-                    fullMarriageDate: "24.06.1746",
-                    children: [
-                        Person(name: "Brita", birthDate: "20.05.1750", familySearchId: "M8ZP-9VD"),
-                        Person(name: "Johannes", birthDate: "27.11.1751", familySearchId: "M88M-KZZ"),
-                        Person(name: "Erik", birthDate: "06.02.1753", deathDate: "03.06.1785", familySearchId: "M8ZL-2C1")
-                    ]
-                ),
-                Couple(
-                    husband: husband,
-                    wife: Person(
-                        name: "Maria",
-                        patronymic: "Martint.",
-                        birthDate: "02.06.1735",
-                        familySearchId: "K8CD-718"
-                    ),
-                    fullMarriageDate: "27.11.1753",
-                    children: [
-                        Person(name: "Matti", birthDate: "14.03.1756", familySearchId: "LHH6-W2P"),
-                        Person(name: "Mikko", birthDate: "05.03.1757", familySearchId: "M8ZB-PGR"),
-                        Person(name: "Kustaa", birthDate: "13.09.1759", familySearchId: "K2TZ-DY4"),
-                        Person(name: "Elias", birthDate: "14.12.1760", familySearchId: "KHM5-VHL"),
-                        Person(name: "Brita", birthDate: "04.12.1763", familySearchId: "M8Z5-CXJ"),
-                        Person(name: "Antti", birthDate: "07.03.1765", familySearchId: "M887-WG3"),
-                        Person(name: "Liisa", birthDate: "28.11.1767", familySearchId: "M88H-SZ7"),
-                        Person(name: "Jaakko", birthDate: "24.03.1769", familySearchId: "M88Z-4SX"),
-                        Person(name: "Maria", birthDate: "31.05.1770", familySearchId: "M8ZK-MCM"),
-                        Person(name: "Kaarin", birthDate: "16.06.1773", familySearchId: "KZXH-GLC"),
-                        Person(name: "Abraham", birthDate: "25.11.1774", familySearchId: "M887-1Q4")
-                    ]
-                )
-            ],
-            notes: [],
-            noteDefinitions: [:]
-        )
     }
 }
 

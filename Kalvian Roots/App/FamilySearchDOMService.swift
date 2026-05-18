@@ -762,24 +762,49 @@ enum FamilySearchDOMService {
                 return match ? match[1] : null;
             }
 
-            function closeChildPanel() {
-                const closeButton = Array.from(localDocument.querySelectorAll('button,[role="button"]'))
-                    .find(element => /close/i.test(clean(element.getAttribute('aria-label') || element.textContent || '')));
-                if (closeButton) {
-                    closeButton.click();
+            async function closeChildPanel() {
+                for (let attempt = 0; attempt < 3; attempt += 1) {
+                    const closeButton = Array.from(localDocument.querySelectorAll('button,[role="button"]'))
+                        .find(element => /close/i.test(clean(element.getAttribute('aria-label') || element.textContent || '')));
+                    if (closeButton) {
+                        closeButton.click();
+                    }
+                    const active = localDocument.activeElement;
+                    if (active && typeof active.blur === 'function') {
+                        active.blur();
+                    }
+                    localDocument.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+                    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+                    const body = localDocument.body;
+                    if (body) {
+                        body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                        body.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+                        body.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                    }
+                    await sleep(150);
                 }
-                const active = localDocument.activeElement;
-                if (active && typeof active.blur === 'function') {
-                    active.blur();
-                }
-                localDocument.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-                window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-                const body = localDocument.body;
-                if (body) {
-                    body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
-                    body.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
-                    body.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                }
+            }
+
+            function showExtractionSuccessMessage(message) {
+                localDocument.getElementById('kalvian-roots-familysearch-success')?.remove();
+
+                const banner = localDocument.createElement('div');
+                banner.id = 'kalvian-roots-familysearch-success';
+                banner.setAttribute('role', 'status');
+                banner.style.position = 'fixed';
+                banner.style.zIndex = '2147483647';
+                banner.style.right = '24px';
+                banner.style.bottom = '24px';
+                banner.style.maxWidth = '420px';
+                banner.style.padding = '14px 18px';
+                banner.style.borderRadius = '8px';
+                banner.style.background = '#0f5132';
+                banner.style.color = '#fff';
+                banner.style.boxShadow = '0 8px 24px rgba(0,0,0,0.24)';
+                banner.style.font = '15px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+                banner.style.lineHeight = '1.4';
+                banner.textContent = message;
+                localDocument.body.appendChild(banner);
             }
 
             async function withBlockedChildNavigation(summary, action) {
@@ -906,7 +931,7 @@ enum FamilySearchDOMService {
                         extractionNotes: notes
                     };
                 } finally {
-                    closeChildPanel();
+                    await closeChildPanel();
                     await sleep(250);
                 }
             }
@@ -1297,11 +1322,11 @@ enum FamilySearchDOMService {
 
                     try {
                         await postResult(result);
-                        closeChildPanel();
+                        await closeChildPanel();
                         console.info('Kalvian Roots FamilySearch extraction succeeded: ' + children.length + ' children.');
-                        alert('Kalvian Roots received FamilySearch extraction for ' + normalizedPersonId + ': ' + children.length + ' children. Return to the local family page.');
+                        showExtractionSuccessMessage('Kalvian Roots received FamilySearch extraction for ' + normalizedPersonId + ': ' + children.length + ' children. Return to the local family page.');
                     } catch (postError) {
-                        closeChildPanel();
+                        await closeChildPanel();
                         result.status = 'callbackPostFailed';
                         result.failureReason = clean(postError && postError.message);
                         result.debugNotes = result.debugNotes.concat(['FamilySearch callback POST failed: ' + result.failureReason]);

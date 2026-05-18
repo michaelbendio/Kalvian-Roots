@@ -752,73 +752,6 @@ class JuuretApp {
         familySearchComparisonDebugMessage = "Comparison not triggered"
         appendFamilySearchComparisonDebug("Family selected: \(family.familyId)")
 
-        if TikkanenSixDevelopmentData.isEnabled(for: family) {
-            let familySearchPersonId = familySearchParentId(in: family)
-            let storedFamilySearchExtraction = familySearchExtraction(for: family.familyId)
-            var familySearchNavigationRequest: FamilySearchNavigationRequest?
-            if let familySearchPersonId {
-                if storedFamilySearchExtraction == nil {
-                    familySearchNavigationRequest = FamilySearchNavigationRequest(
-                        requested: false,
-                        status: "waiting for user-opened FamilySearch page",
-                        url: FamilySearchDOMService.detailsURL(for: familySearchPersonId),
-                        detail: "Open the FamilySearch person Details page, click the reusable Kalvian Roots FamilySearch Extractor bookmarklet in Atlas, then return to the local family page"
-                    )
-                }
-                appendFamilySearchComparisonDebug("FamilySearch ID found: \(familySearchPersonId)")
-                appendFamilySearchExtractionDiagnostics(
-                    expectedPersonId: familySearchPersonId,
-                    targetURL: FamilySearchDOMService.detailsURL(for: familySearchPersonId),
-                    localFamilyURL: atlasFamilyURL(for: family.familyId),
-                    navigationRequest: familySearchNavigationRequest,
-                    extraction: storedFamilySearchExtraction
-                )
-            } else {
-                appendFamilySearchComparisonDebug("FamilySearch comparison not yet available: no FamilySearch parent ID found")
-                appendFamilySearchComparisonDebug("FamilySearch extraction not started: no FamilySearch parent ID was found")
-            }
-
-            let hiskiRowsByCouple = await loadTikkanenSixHiskiRows(for: family)
-            let familySearchMatches = TikkanenSixDevelopmentData.matchFamilySearchChildrenByCouple(
-                for: family,
-                extraction: storedFamilySearchExtraction
-            )
-            let familySearchChildrenByCouple = Dictionary(
-                uniqueKeysWithValues: familySearchMatches.map { ($0.coupleIndex, $0.children) }
-            )
-            let groups = TikkanenSixDevelopmentData.makeComparisonGroups(
-                for: family,
-                nameManager: nameEquivalenceManager,
-                hiskiRowsByCouple: hiskiRowsByCouple,
-                familySearchChildrenByCouple: familySearchChildrenByCouple
-            )
-            familyChildrenComparisonGroups = groups
-            familySearchComparisonResult = nil
-            comparisonReport = ""
-            hiskiCitationProposals = []
-            familySearchComparisonDebugMessage = "Development Tikkanen 6 comparison ready"
-            if let storedFamilySearchExtraction, storedFamilySearchExtraction.isSuccessful {
-                appendFamilySearchComparisonDebug("Development comparison source: stored FamilySearch spouse groups and live HisKi rows")
-            } else if let storedFamilySearchExtraction {
-                appendFamilySearchComparisonDebug("Development comparison source: empty FamilySearch children (extraction failed: \(storedFamilySearchExtraction.status ?? "unknown")) and live HisKi rows")
-            } else {
-                appendFamilySearchComparisonDebug("Development comparison source: empty FamilySearch children (extractor not invoked) and live HisKi rows")
-            }
-            familySearchMatches.forEach { match in
-                appendFamilySearchComparisonDebug(match.debugSummary)
-            }
-            appendFamilySearchComparisonDebug("Development comparison groups assigned: \(groups.count)")
-            for group in groups {
-                appendFamilySearchComparisonDebug(
-                    "Couple \(group.coupleIndex + 1) \(group.couple.husband.displayName) + \(group.couple.wife.displayName): \(group.result.rows.count) union rows"
-                )
-                group.hiskiSearchRequests.forEach { request in
-                    appendFamilySearchComparisonDebug("HisKi query built: \(request.label) \(request.url.absoluteString)")
-                }
-            }
-            return
-        }
-
         let familySearchPersonId = familySearchParentId(in: family)
         let storedFamilySearchExtraction = familySearchExtraction(for: family.familyId)
         var familySearchNavigationRequest: FamilySearchNavigationRequest?
@@ -895,8 +828,7 @@ class JuuretApp {
 
         let comparisonService = FamilyComparisonService(nameManager: nameEquivalenceManager)
         let juuretCandidates = comparisonService.makeJuuretCandidates(from: couple.children)
-        let familySearchCandidates = comparisonService.makeFamilySearchCandidates(from: familySearchChildren)
-        appendFamilySearchComparisonDebug("FamilySearch children handed to comparison: \(familySearchCandidates.count)")
+        appendFamilySearchComparisonDebug("FamilySearch children handed to comparison: \(familySearchChildren.count)")
         appendFamilySearchComparisonDebug("FamilySearch comparison input source: \(familySearchComparisonInputSource)")
         let hiskiService = HiskiService(nameEquivalenceManager: nameEquivalenceManager)
         hiskiService.setCurrentFamily(family.familyId)
@@ -943,7 +875,10 @@ class JuuretApp {
             let result = comparisonService.compare(
                 juuretCandidates: juuretCandidates,
                 hiskiCandidates: comparisonService.makeHiskiCandidates(from: structuredRows),
-                familySearchCandidates: familySearchCandidates
+                familySearchCandidates: comparisonService.makeFamilySearchCandidates(
+                    from: familySearchChildren,
+                    matchingHiskiRows: structuredRows
+                )
             )
 
             let proposals: [HiskiCitationProposal]
@@ -953,7 +888,10 @@ class JuuretApp {
                 let citationResult = comparisonService.compare(
                     juuretCandidates: juuretCandidates,
                     hiskiCandidates: comparisonService.makeHiskiCandidates(from: hiskiEvents),
-                    familySearchCandidates: familySearchCandidates
+                    familySearchCandidates: comparisonService.makeFamilySearchCandidates(
+                        from: familySearchChildren,
+                        matchingHiskiRows: structuredRows
+                    )
                 )
                 proposals = comparisonService.makeHiskiCitationProposals(from: citationResult)
             } catch {
@@ -997,62 +935,6 @@ class JuuretApp {
             hiskiCitationProposals = []
             logWarn(.app, "⚠️ Juuret + HisKi comparison unavailable for \(family.familyId): \(error.localizedDescription)")
         }
-    }
-
-    private func loadTikkanenSixHiskiRows(for family: Family) async -> [Int: [HiskiService.HiskiFamilyBirthRow]] {
-        let hiskiService = HiskiService(nameEquivalenceManager: nameEquivalenceManager)
-        hiskiService.setCurrentFamily(family.familyId)
-        var rowsByCouple: [Int: [HiskiService.HiskiFamilyBirthRow]] = [:]
-
-        for (index, couple) in family.couples.enumerated() {
-            guard let hiskiWindow = hiskiBirthSpanWindow(for: couple) else {
-                appendFamilySearchComparisonDebug(
-                    "HisKi child query skipped for couple \(index + 1): missing marriage year and child birth year"
-                )
-                rowsByCouple[index] = []
-                continue
-            }
-
-            do {
-                let searchRequests = try hiskiService.buildFamilyBirthSearchRequests(
-                    fatherName: couple.husband.name,
-                    fatherPatronymic: couple.husband.patronymic,
-                    motherName: couple.wife.name,
-                    motherPatronymic: couple.wife.patronymic,
-                    startYear: hiskiWindow.startYear,
-                    endYear: hiskiWindow.endYear
-                )
-
-                guard let request = searchRequests.first else {
-                    rowsByCouple[index] = []
-                    continue
-                }
-
-                appendFamilySearchComparisonDebug(
-                    "HisKi live child query started for couple \(index + 1) \(hiskiWindow.startYear)-\(hiskiWindow.endYear) (\(hiskiWindow.sourceDescription)): \(request.url.absoluteString)"
-                )
-                let searchHtml = try await loadHiskiSearchHtml(from: request.url)
-                let rawRows = hiskiService.parseFamilyBirthResultsTable(searchHtml)
-                let structuredRowsResult = hiskiService.filterFamilyBirthRowsAnchoredToJuuretChildren(
-                    rawRows,
-                    juuretChildren: couple.children
-                )
-                appendFamilySearchComparisonDebug(
-                    "HisKi live child raw rows parsed for couple \(index + 1): \(rawRows.count)"
-                )
-                appendFamilySearchComparisonDebug(
-                    "HisKi live child structured rows \(structuredRowsResult.confidenceLabel) for couple \(index + 1): \(structuredRowsResult.rows.count)"
-                )
-                rowsByCouple[index] = structuredRowsResult.rows
-            } catch {
-                appendFamilySearchComparisonDebug(
-                    "HisKi live child query failed for couple \(index + 1): \(error.localizedDescription)"
-                )
-                rowsByCouple[index] = []
-            }
-        }
-
-        return rowsByCouple
     }
 
     private struct HiskiBirthSpanWindow {
