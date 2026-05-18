@@ -416,11 +416,8 @@ class HiskiService {
         }
     }
 
-    struct HiskiParentCoupleGroupKey: Hashable, Equatable {
+    struct HiskiParishGroupKey: Hashable, Equatable {
         let parish: String
-        let villageFarm: String
-        let fatherNormalizedDisplayName: String
-        let motherNormalizedDisplayName: String
     }
 
     struct HiskiFamilyBirthRowsFilterResult: Equatable {
@@ -856,7 +853,7 @@ class HiskiService {
             )
         }
 
-        let groupedRows = Dictionary(grouping: rows, by: parentCoupleGroupKey(for:))
+        let groupedRows = Dictionary(grouping: rows, by: parishGroupKey(for:))
         let anchoredGroupKeys = Set(
             groupedRows.compactMap { key, groupRows in
                 groupRows.contains { row in
@@ -879,7 +876,7 @@ class HiskiService {
         }
 
         let filteredRows = rows.filter { row in
-            anchoredGroupKeys.contains(parentCoupleGroupKey(for: row))
+            anchoredGroupKeys.contains(parishGroupKey(for: row))
         }
 
         return HiskiFamilyBirthRowsFilterResult(
@@ -1026,13 +1023,8 @@ class HiskiService {
         )
     }
 
-    private func parentCoupleGroupKey(for row: HiskiFamilyBirthRow) -> HiskiParentCoupleGroupKey {
-        HiskiParentCoupleGroupKey(
-            parish: normalizedDisplayValue(row.parish),
-            villageFarm: normalizedDisplayValue(row.villageFarm),
-            fatherNormalizedDisplayName: normalizedParentDisplayName(row.fatherName),
-            motherNormalizedDisplayName: normalizedParentDisplayName(row.motherName)
-        )
+    private func parishGroupKey(for row: HiskiFamilyBirthRow) -> HiskiParishGroupKey {
+        HiskiParishGroupKey(parish: normalizedDisplayValue(row.parish))
     }
 
     private func normalizedBirthDateKey(_ rawDate: String?) -> String? {
@@ -1052,16 +1044,6 @@ class HiskiService {
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
             .lowercased()
             .folding(options: .diacriticInsensitive, locale: .current) ?? ""
-    }
-
-    private func normalizedParentDisplayName(_ rawName: String) -> String {
-        let withoutTrailingAge = rawName.replacingOccurrences(
-            of: "\\s+\\d{1,3}(?:-\\d{1,3})?$",
-            with: "",
-            options: .regularExpression
-        )
-
-        return normalizedDisplayValue(withoutTrailingAge)
     }
 
     private func extractTableRows(from html: String) -> [String] {

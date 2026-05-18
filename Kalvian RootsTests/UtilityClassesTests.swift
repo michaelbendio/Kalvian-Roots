@@ -667,6 +667,69 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertFalse(result.rows.contains { $0.parish == "Lohtaja" })
     }
 
+    func testBirthSpanRowsKeepAnchoredParishRowsAcrossFarmAndParentDisplayVariants() {
+        let rows = [
+            HiskiService.HiskiFamilyBirthRow(
+                birthDate: "12.2.1696",
+                childName: "Maria",
+                fatherName: "Mattz Joh:",
+                motherName: "Carin Gustafsdr.",
+                recordPath: "/hiski?en+0265+kastetut+1696",
+                parish: "Kälviä",
+                villageFarm: ""
+            ),
+            HiskiService.HiskiFamilyBirthRow(
+                birthDate: "23.2.1701",
+                childName: "Gustawus",
+                fatherName: "Matz Johansson",
+                motherName: "Carin Gustafsdr.",
+                recordPath: "/hiski?en+0265+kastetut+1701",
+                parish: "Kälviä",
+                villageFarm: "Laikeri (????)"
+            ),
+            HiskiService.HiskiFamilyBirthRow(
+                birthDate: "6.7.1704",
+                childName: "Lijsa",
+                fatherName: "Matz Johansson",
+                motherName: "Carin Gustafsdr.",
+                recordPath: "/hiski?en+0265+kastetut+1704",
+                parish: "Kälviä",
+                villageFarm: "Zacheri"
+            ),
+            HiskiService.HiskiFamilyBirthRow(
+                birthDate: "5.12.1708",
+                childName: "Thomas",
+                fatherName: "Matt Johansson",
+                motherName: "Carin Gustafsdr.",
+                recordPath: "/hiski?en+0265+kastetut+1708",
+                parish: "Kälviä",
+                villageFarm: "Zacheri"
+            ),
+            HiskiService.HiskiFamilyBirthRow(
+                birthDate: "4.5.1696",
+                childName: "Wrong Parish",
+                fatherName: "Mattz Joh:",
+                motherName: "Carin Gustafsdr.",
+                recordPath: "/hiski?en+0165+kastetut+1696",
+                parish: "Lohtaja",
+                villageFarm: ""
+            )
+        ]
+
+        let result = service.filterFamilyBirthRowsAnchoredToJuuretChildren(
+            rows,
+            juuretChildren: [
+                Person(name: "Maria", birthDate: "12.02.1696")
+            ]
+        )
+
+        XCTAssertTrue(result.isAnchored)
+        XCTAssertEqual(result.originalRowCount, 5)
+        XCTAssertEqual(result.retainedGroupCount, 1)
+        XCTAssertEqual(result.rows.map(\.childName), ["Maria", "Gustawus", "Lijsa", "Thomas"])
+        XCTAssertFalse(result.rows.contains { $0.parish == "Lohtaja" })
+    }
+
     func testBirthSpanRowsFallBackAsUnanchoredWhenNoJuuretBirthDateMatches() {
         let rows = [
             HiskiService.HiskiFamilyBirthRow(
