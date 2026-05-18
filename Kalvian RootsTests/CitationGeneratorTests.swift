@@ -184,6 +184,54 @@ final class CitationGeneratorTests: XCTestCase {
         XCTAssertFalse(citation.contains("Elias's marriage"))
         XCTAssertFalse(citation.contains("1745"))
     }
+
+    func testChildTargetDoesNotMarkSameNamedParentWithoutBirthDate() {
+        let father = Person(
+            name: "Matti",
+            patronymic: "Juhonp.",
+            noteMarkers: []
+        )
+        let mother = Person(
+            name: "Kaarin",
+            patronymic: "Kustaant.",
+            birthDate: "1677",
+            deathDate: "26.02.1749",
+            noteMarkers: ["*"]
+        )
+        let targetChild = Person(
+            name: "Matti",
+            birthDate: "22.08.1698",
+            noteMarkers: []
+        )
+        let family = Family(
+            familyId: "SAKERI 1",
+            pageReferences: ["264", "265"],
+            couples: [
+                Couple(
+                    husband: father,
+                    wife: mother,
+                    children: [
+                        Person(name: "Maria", birthDate: "12.02.1696", deathDate: "13.05.1697", noteMarkers: []),
+                        Person(name: "Katariina", birthDate: "18.02.1697", deathDate: "12.04.1697", noteMarkers: []),
+                        targetChild,
+                        Person(name: "Johannes", birthDate: "14.10.1699", noteMarkers: [])
+                    ],
+                    childrenDiedInfancy: 7
+                )
+            ],
+            notes: [],
+            noteDefinitions: ["*": "kuoli Miekkojalla."]
+        )
+
+        let citation = CitationGenerator.generateMainFamilyCitation(
+            family: family,
+            targetPerson: targetChild,
+            network: nil
+        )
+
+        XCTAssertFalse(citation.contains("→ Matti Juhonp."))
+        XCTAssertTrue(citation.contains("→ Matti, b. 22 August 1698"))
+    }
     
     // MARK: - AsChild Citation Tests
     

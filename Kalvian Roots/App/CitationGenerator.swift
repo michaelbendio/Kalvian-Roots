@@ -179,10 +179,15 @@ struct CitationGenerator {
 
     // Similar logic to isTargetPerson but for parents
     private static func isTargetParent(_ parent: Person, _ target: Person) -> Bool {
-        // If both have birth dates, they must match
-        if let parentBirth = parent.birthDate?.trimmingCharacters(in: .whitespaces),
-           let targetBirth = target.birthDate?.trimmingCharacters(in: .whitespaces),
-           !parentBirth.isEmpty && !targetBirth.isEmpty {
+        let parentBirth = parent.birthDate?.trimmingCharacters(in: .whitespaces) ?? ""
+        let targetBirth = target.birthDate?.trimmingCharacters(in: .whitespaces) ?? ""
+
+        // If either side has a birth date, do not collapse parent/child name collisions.
+        if !parentBirth.isEmpty || !targetBirth.isEmpty {
+            guard !parentBirth.isEmpty && !targetBirth.isEmpty else {
+                return false
+            }
+
             if parentBirth == targetBirth {
                 return true
             }
