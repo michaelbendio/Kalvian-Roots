@@ -135,6 +135,9 @@ enum FamilySearchDOMService {
         (function () {
             \(callbackLine)
 
+            // The bookmarklet runs inside the active FamilySearch tab. Keep all
+            // parsing local to that page and send only structured JSON back to
+            // the local Kalvian Roots server.
             function clean(text) {
                 return (text || '').replace(/\\s+/g, ' ').trim();
             }
@@ -149,6 +152,9 @@ enum FamilySearchDOMService {
             let failedDetailDocuments = new Set();
             let currentDocumentOverride = { value: null };
 
+            // Most extraction reads the live FamilySearch document. Some
+            // helpers temporarily parse a fetched child details page, and this
+            // override lets the same parsing functions work against that HTML.
             function extractionDocument() {
                 if (currentDocumentOverride.value) {
                     return currentDocumentOverride.value;
@@ -558,6 +564,8 @@ enum FamilySearchDOMService {
                     best = current;
                     current = current.parentElement;
                 }
+                // The best card is the smallest ancestor that contains this
+                // child's ID and no other FamilySearch person IDs.
                 return best;
             }
 
@@ -638,6 +646,8 @@ enum FamilySearchDOMService {
                             element.offsetWidth > 0 &&
                             element.offsetHeight > 0;
                     })
+                    // Prefer the smallest matching panel so we read the opened
+                    // quick-card, not a large page wrapper around it.
                     .sort((a, b) => visibleText(a).length - visibleText(b).length);
             }
 
@@ -777,6 +787,9 @@ enum FamilySearchDOMService {
                     active.blur();
                 }
 
+                // FamilySearch quick-cards behave like hover/click UI. Signal
+                // that the pointer left the child control and the card before
+                // sending one outside-click sequence. Do not remove DOM nodes.
                 for (const element of [control, panel]) {
                     if (!element) continue;
                     for (const type of ['pointerout', 'pointerleave', 'mouseout', 'mouseleave']) {
@@ -919,6 +932,9 @@ enum FamilySearchDOMService {
                     await sleep(100);
                 }
 
+                // FamilySearch may open a child quick-card from hover, focus,
+                // or click depending on the current page state. Fire the same
+                // small sequence a user gesture would naturally produce.
                 const pointerEvent = typeof PointerEvent === 'function'
                     ? new PointerEvent('pointerover', { bubbles: true, cancelable: true, view: window, pointerType: 'mouse' })
                     : new MouseEvent('mouseover', { bubbles: true, cancelable: true, view: window });
@@ -1035,11 +1051,15 @@ enum FamilySearchDOMService {
             async function extractChildDetails(summary) {
                 const notes = [];
                 try {
+                    // Fast path: use the visible quick-card. This preserves
+                    // facts that may be visible in the interactive UI.
                     return await extractChildDetailsFromPanel(summary, notes);
                 } catch (error) {
                     notes.push(clean(error && error.message));
                 }
                 try {
+                    // Fallback: fetch the child details page HTML and parse it
+                    // without navigating the user's active FamilySearch tab.
                     notes.push('using child details HTML extraction');
                     return await extractChildDetailsFromFetchedHTML(summary, notes);
                 } catch (error) {
@@ -1298,6 +1318,8 @@ enum FamilySearchDOMService {
                     for (const group of spouseGroups) {
                         const enrichedChildren = [];
                         for (const summary of group.children) {
+                            // Process one child at a time so FamilySearch has
+                            // time to open and close each quick-card cleanly.
                             await sleep(250);
                             enrichedChildren.push(await extractChildDetails(summary));
                         }
@@ -1400,6 +1422,9 @@ enum FamilySearchDOMService {
         let extractorScript = makeAtlasExtractorScript()
         let bookmarkletBody = """
         (() => {
+        // Atlas stores bookmarklets as javascript: URLs. This wrapper installs
+        // the extractor into the current FamilySearch page, reads the person ID
+        // from the URL, and starts extraction for that visible person.
         \(extractorScript)
         const match = location.pathname.match(/\\/tree\\/person\\/details\\/([A-Z0-9-]+)/i);
         if (!match) {

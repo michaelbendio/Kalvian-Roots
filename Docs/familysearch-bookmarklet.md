@@ -44,6 +44,40 @@ If the bookmarklet is run from the wrong page, it alerts:
 
     Open a FamilySearch person Details page before running the Kalvian Roots extractor.
 
+Code Walkthrough
+----------------
+
+The Atlas bookmark stores a `javascript:` URL. The code inside that URL is
+generated from the Swift source in `FamilySearchDOMService`.
+
+There are two layers:
+
+1. `makeAtlasExtractorScript()` builds the real extractor. It defines helper
+   functions, reads the FamilySearch Details page, creates structured child
+   records, and posts JSON back to Kalvian Roots.
+2. `makeBookmarklet()` wraps that extractor in a tiny launcher. The launcher
+   reads the current FamilySearch person ID from the browser URL and calls
+   `window.extractFamilySearchChildren(...)`.
+
+The extractor works in this order:
+
+1. Confirm the active page is a FamilySearch person Details page.
+2. Read the focus person and spouse/child groups from the visible page.
+3. For each child, try to open the visible FamilySearch quick-card and read the
+   vital facts from that panel.
+4. If the quick-card path cannot produce useful vital dates, fetch the child's
+   details HTML and parse the same facts from that document.
+5. If both detail paths fail, keep the summary data already visible on the
+   parent page so the comparison still has a partial child record.
+6. Post the extraction result to the local Kalvian Roots server.
+7. Show a short success message on the FamilySearch page.
+
+FamilySearch quick-cards are interactive page UI, not a public API. The
+bookmarklet therefore uses normal browser events: hover/click to open the card,
+pointer leave/outside click/Escape to close it, and no DOM deletion. That keeps
+the extractor manual and low-impact while still letting it read the information
+visible to the user.
+
 Source of Truth
 ---------------
 
