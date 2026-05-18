@@ -64,7 +64,8 @@ The extractor works in this order:
 1. Confirm the active page is a FamilySearch person Details page.
 2. Read the focus person and spouse/child groups from the visible page.
 3. For each child, first fetch the child's Details HTML and parse any vital
-   facts available in that response.
+   facts available in that response. A progress banner on the FamilySearch page
+   shows which child is currently being processed.
 4. If the static HTML does not contain usable vital facts, load the child
    Details page in a hidden frame and parse the rendered Birth, Christening,
    Death, and Burial values from that document.

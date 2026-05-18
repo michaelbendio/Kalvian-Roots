@@ -832,6 +832,7 @@ enum FamilySearchDOMService {
 
             function showExtractionSuccessMessage(message) {
                 localDocument.getElementById('kalvian-roots-familysearch-success')?.remove();
+                localDocument.getElementById('kalvian-roots-familysearch-progress')?.remove();
 
                 const banner = localDocument.createElement('div');
                 banner.id = 'kalvian-roots-familysearch-success';
@@ -870,6 +871,33 @@ enum FamilySearchDOMService {
                 window.setTimeout(function () {
                     banner.remove();
                 }, 5000);
+            }
+
+            function updateExtractionProgress(message) {
+                let banner = localDocument.getElementById('kalvian-roots-familysearch-progress');
+                if (!banner) {
+                    banner = localDocument.createElement('div');
+                    banner.id = 'kalvian-roots-familysearch-progress';
+                    banner.setAttribute('role', 'status');
+                    banner.style.position = 'fixed';
+                    banner.style.zIndex = '2147483647';
+                    banner.style.right = '24px';
+                    banner.style.bottom = '24px';
+                    banner.style.maxWidth = '420px';
+                    banner.style.padding = '14px 18px';
+                    banner.style.borderRadius = '8px';
+                    banner.style.background = '#084298';
+                    banner.style.color = '#fff';
+                    banner.style.boxShadow = '0 8px 24px rgba(0,0,0,0.24)';
+                    banner.style.font = '15px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+                    banner.style.lineHeight = '1.4';
+                    localDocument.body.appendChild(banner);
+                }
+                banner.textContent = message;
+            }
+
+            function clearExtractionProgress() {
+                localDocument.getElementById('kalvian-roots-familysearch-progress')?.remove();
             }
 
             async function withBlockedChildNavigation(summary, action) {
@@ -1380,6 +1408,7 @@ enum FamilySearchDOMService {
                 try {
                     console.info('Kalvian Roots FamilySearch extractor started for ' + normalizedPersonId + '.');
                     cleanupDetailFrame();
+                    updateExtractionProgress('Kalvian Roots is extracting FamilySearch children...');
                     assertCurrentFamilySearchDetailsPage(normalizedPersonId);
                     const focusPerson = await visitPerson(normalizedPersonId);
                     const spouseGroups = extractSpouseGroups();
@@ -1391,14 +1420,20 @@ enum FamilySearchDOMService {
                     let spouse = selectedGroup.spouses.find(person => person.id !== normalizedPersonId) || null;
 
                     const enrichedSpouseGroups = [];
+                    const totalChildrenToExtract = spouseGroups.reduce((count, group) => count + group.children.length, 0);
+                    let extractedChildCount = 0;
                     for (const group of spouseGroups) {
                         const enrichedChildren = [];
                         for (const summary of group.children) {
                             // Process one child detail page at a time so the
                             // hidden frame has time to finish rendering before
                             // the next child is loaded into it.
+                            updateExtractionProgress('Kalvian Roots is extracting FamilySearch child ' + (extractedChildCount + 1) + ' of ' + totalChildrenToExtract + ': ' + summary.name);
                             await sleep(250);
-                            enrichedChildren.push(await extractChildDetails(summary));
+                            const child = await extractChildDetails(summary);
+                            extractedChildCount += 1;
+                            updateExtractionProgress('Kalvian Roots extracted FamilySearch child ' + extractedChildCount + ' of ' + totalChildrenToExtract + ': ' + child.name + (clean(child.birthDate) ? ' (' + child.birthDate + ')' : ' (date not found yet)'));
+                            enrichedChildren.push(child);
                         }
                         enrichedSpouseGroups.push({
                             ...group,
@@ -1473,10 +1508,12 @@ enum FamilySearchDOMService {
                     try {
                         await postResult(result);
                         await closeChildPanel();
+                        clearExtractionProgress();
                         console.info('Kalvian Roots FamilySearch extraction succeeded: ' + children.length + ' children.');
-                        showExtractionSuccessMessage('Kalvian Roots received FamilySearch extraction for ' + normalizedPersonId + ': ' + children.length + ' children. Return to the local family page.');
+                        showExtractionSuccessMessage('Kalvian Roots received FamilySearch extraction for ' + normalizedPersonId + ': ' + children.length + ' children, birth dates ' + selectedBirthDateCount + '/' + children.length + '. Return to the local family page.');
                     } catch (postError) {
                         await closeChildPanel();
+                        clearExtractionProgress();
                         result.status = 'callbackPostFailed';
                         result.failureReason = clean(postError && postError.message);
                         result.debugNotes = result.debugNotes.concat(['FamilySearch callback POST failed: ' + result.failureReason]);
@@ -1485,6 +1522,7 @@ enum FamilySearchDOMService {
                     }
                     return result;
                 } catch (error) {
+                    clearExtractionProgress();
                     console.error('Kalvian Roots FamilySearch extraction failed:', error);
                     const result = makeFailureResult(normalizedPersonId, error);
                     await postFailureResult(result);
