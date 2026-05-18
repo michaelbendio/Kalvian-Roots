@@ -814,19 +814,6 @@ enum FamilySearchDOMService {
                     }
                     await sleep(150);
                 }
-
-                const remainingPanel = Array.from(localDocument.querySelectorAll('[role="dialog"],[aria-modal="true"],aside,section,article,[data-testid],div'))
-                    .filter(element => {
-                        const text = visibleText(element);
-                        return /\\b(Birth|Christening|Death|Burial|Sex)\\b/i.test(text) &&
-                            /\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/.test(text) &&
-                            element.offsetWidth > 0 &&
-                            element.offsetHeight > 0;
-                    })
-                    .sort((a, b) => visibleText(a).length - visibleText(b).length)[0];
-                if (remainingPanel) {
-                    remainingPanel.remove();
-                }
             }
 
             function showExtractionSuccessMessage(message) {
@@ -868,7 +855,7 @@ enum FamilySearchDOMService {
                 localDocument.body.appendChild(banner);
                 window.setTimeout(function () {
                     banner.remove();
-                }, 15000);
+                }, 5000);
             }
 
             async function withBlockedChildNavigation(summary, action) {
