@@ -1527,6 +1527,9 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("wrongPageType"))
         XCTAssertTrue(script.contains("not on FamilySearch person details page"))
         XCTAssertTrue(script.contains("kalvian-roots-familysearch-detail-frame"))
+        XCTAssertTrue(script.contains("function cleanupDetailFrame()"))
+        XCTAssertTrue(script.contains("frame.src = 'about:blank';"))
+        XCTAssertTrue(script.contains("frame.remove();"))
         XCTAssertTrue(script.contains("diagnosticContext"))
         XCTAssertTrue(script.contains("childrenMarkerCount"))
         XCTAssertTrue(script.contains("rawCandidateChildCount"))
@@ -1543,6 +1546,8 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertFalse(script.contains("alert('Kalvian Roots received FamilySearch extraction"))
         XCTAssertFalse(script.localizedCaseInsensitiveContains("do not show"))
         XCTAssertTrue(script.contains("FamilySearch extraction finished, but Kalvian Roots did not receive it"))
+        XCTAssertTrue(script.contains("finally {"))
+        XCTAssertTrue(script.contains("cleanupDetailFrame();"))
         XCTAssertTrue(script.contains("preferred group children"))
         XCTAssertTrue(script.contains("\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b"))
     }

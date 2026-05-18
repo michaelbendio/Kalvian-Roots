@@ -1125,6 +1125,18 @@ enum FamilySearchDOMService {
                 return frame;
             }
 
+            function cleanupDetailFrame() {
+                currentDocumentOverride.value = null;
+                const frame = localDocument.getElementById(detailFrameId);
+                if (!frame) return;
+
+                try {
+                    frame.src = 'about:blank';
+                } catch (_) {
+                }
+                frame.remove();
+            }
+
             function documentForDetailFrame(frame) {
                 try {
                     return frame.contentDocument || frame.contentWindow.document;
@@ -1304,6 +1316,7 @@ enum FamilySearchDOMService {
                 const normalizedPersonId = clean(personId).toUpperCase();
                 try {
                     console.info('Kalvian Roots FamilySearch extractor started for ' + normalizedPersonId + '.');
+                    cleanupDetailFrame();
                     assertCurrentFamilySearchDetailsPage(normalizedPersonId);
                     const focusPerson = await visitPerson(normalizedPersonId);
                     const spouseGroups = extractSpouseGroups();
@@ -1412,6 +1425,8 @@ enum FamilySearchDOMService {
                     const result = makeFailureResult(normalizedPersonId, error);
                     await postFailureResult(result);
                     return result;
+                } finally {
+                    cleanupDetailFrame();
                 }
             };
         })();
