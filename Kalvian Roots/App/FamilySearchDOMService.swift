@@ -772,16 +772,29 @@ enum FamilySearchDOMService {
                 return match ? match[1] : null;
             }
 
-            async function closeChildPanel(panel, control) {
-                function panelStillVisible() {
+            async function closeChildPanel(panel, control, childId) {
+                function currentPanel() {
+                    // FamilySearch can swap or wrap the quick-card node while
+                    // it animates. Re-query by child ID so the close loop
+                    // follows the visible card instead of a stale element.
+                    if (childId) {
+                        const panels = panelCandidatesFor(childId);
+                        if (panels.length > 0) return panels[0];
+                    }
                     return panel &&
                         localDocument.body.contains(panel) &&
                         panel.offsetWidth > 0 &&
-                        panel.offsetHeight > 0;
+                        panel.offsetHeight > 0
+                        ? panel
+                        : null;
+                }
+
+                function panelStillVisible() {
+                    return !!currentPanel();
                 }
 
                 async function clickCloseControl() {
-                    const closeScope = panel || localDocument;
+                    const closeScope = currentPanel() || localDocument;
                     const closeButton = Array.from(closeScope.querySelectorAll('button,[role="button"],a[role="button"]'))
                         .find(element => /close|dismiss/i.test(clean(element.getAttribute('aria-label') || element.getAttribute('title') || element.textContent || '')));
                     if (!closeButton) return false;
@@ -800,11 +813,12 @@ enum FamilySearchDOMService {
                 if (await clickCloseControl()) return;
 
                 for (let attempt = 0; attempt < 2 && panelStillVisible(); attempt += 1) {
+                    const activePanel = currentPanel();
                     // FamilySearch quick-cards behave like hover/click UI.
                     // Signal that the pointer left the child control and the
                     // card, then send outside-click and Escape events through
                     // the same document. Do not remove DOM nodes.
-                    for (const element of [control, panel]) {
+                    for (const element of [control, activePanel]) {
                         if (!element) continue;
                         for (const type of ['pointerout', 'pointerleave', 'mouseout', 'mouseleave']) {
                             const event = type.startsWith('pointer') && typeof PointerEvent === 'function'
@@ -814,7 +828,7 @@ enum FamilySearchDOMService {
                         }
                     }
 
-                    const panelRect = panel ? panel.getBoundingClientRect() : null;
+                    const panelRect = activePanel ? activePanel.getBoundingClientRect() : null;
                     const outsideX = panelRect && panelRect.left > 20
                         ? Math.max(5, panelRect.left - 10)
                         : Math.min(window.innerWidth - 5, (panelRect ? panelRect.right + 10 : 5));
@@ -1016,7 +1030,7 @@ enum FamilySearchDOMService {
                         extractionNotes: notes
                     };
                 } finally {
-                    await closeChildPanel(panel, control);
+                    await closeChildPanel(panel, control, summary.id);
                 }
             }
 
