@@ -63,19 +63,20 @@ The extractor works in this order:
 
 1. Confirm the active page is a FamilySearch person Details page.
 2. Read the focus person and spouse/child groups from the visible page.
-3. For each child, try to open the visible FamilySearch quick-card and read the
-   vital facts from that panel.
-4. If the quick-card path cannot produce useful vital dates, fetch the child's
-   details HTML and parse the same facts from that document.
+3. For each child, fetch the child's details HTML and parse the vital facts
+   from that document without navigating the active FamilySearch tab.
+4. If the details HTML path cannot produce useful vital dates, open the visible
+   FamilySearch quick-card and read the same facts from that panel.
 5. If both detail paths fail, keep the summary data already visible on the
    parent page so the comparison still has a partial child record.
 6. Post the extraction result to the local Kalvian Roots server.
 7. Show a short success message on the FamilySearch page.
 
 FamilySearch quick-cards are interactive page UI, not a public API. The
-bookmarklet therefore uses normal browser events: hover/click to open the card,
-pointer leave/outside click/Escape to close it, and no DOM deletion. That keeps
-the extractor manual and low-impact while still letting it read the information
+bookmarklet treats them as a fallback, not the normal path. When it does need a
+quick-card, it uses normal browser events: hover/click to open the card, pointer
+leave/outside click/Escape to close it, and no DOM deletion. That keeps the
+extractor manual and low-impact while still letting it read the information
 visible to the user.
 
 Source of Truth

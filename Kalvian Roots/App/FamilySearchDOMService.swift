@@ -1051,17 +1051,18 @@ enum FamilySearchDOMService {
             async function extractChildDetails(summary) {
                 const notes = [];
                 try {
-                    // Fast path: use the visible quick-card. This preserves
-                    // facts that may be visible in the interactive UI.
-                    return await extractChildDetailsFromPanel(summary, notes);
+                    // Fast path: fetch and parse the child details page HTML.
+                    // This avoids leaving FamilySearch's visible quick-card UI
+                    // open in the active tab.
+                    notes.push('using child details HTML extraction');
+                    return await extractChildDetailsFromFetchedHTML(summary, notes);
                 } catch (error) {
                     notes.push(clean(error && error.message));
                 }
                 try {
-                    // Fallback: fetch the child details page HTML and parse it
-                    // without navigating the user's active FamilySearch tab.
-                    notes.push('using child details HTML extraction');
-                    return await extractChildDetailsFromFetchedHTML(summary, notes);
+                    // Fallback: use the visible quick-card only if the HTML
+                    // path cannot produce useful vital dates.
+                    return await extractChildDetailsFromPanel(summary, notes);
                 } catch (error) {
                     notes.push(clean(error && error.message));
                     console.warn('Kalvian Roots FamilySearch child extraction failed for ' + summary.id + ':', error);
