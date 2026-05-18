@@ -773,13 +773,23 @@ enum FamilySearchDOMService {
             }
 
             async function closeChildPanel(panel, control) {
-                const closeScope = panel || localDocument;
-                const closeButton = Array.from(closeScope.querySelectorAll('button,[role="button"]'))
-                    .find(element => /close/i.test(clean(element.getAttribute('aria-label') || element.getAttribute('title') || element.textContent || '')));
-                if (closeButton) {
+                function panelStillVisible() {
+                    return panel &&
+                        localDocument.body.contains(panel) &&
+                        panel.offsetWidth > 0 &&
+                        panel.offsetHeight > 0;
+                }
+
+                async function clickCloseControl() {
+                    const closeScope = panel || localDocument;
+                    const closeButton = Array.from(closeScope.querySelectorAll('button,[role="button"],a[role="button"]'))
+                        .find(element => /close|dismiss/i.test(clean(element.getAttribute('aria-label') || element.getAttribute('title') || element.textContent || '')));
+                    if (!closeButton) return false;
+                    closeButton.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                    closeButton.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
                     closeButton.click();
-                    await sleep(50);
-                    return;
+                    await sleep(100);
+                    return !panelStillVisible();
                 }
 
                 const active = localDocument.activeElement;
@@ -787,47 +797,53 @@ enum FamilySearchDOMService {
                     active.blur();
                 }
 
-                // FamilySearch quick-cards behave like hover/click UI. Signal
-                // that the pointer left the child control and the card before
-                // sending one outside-click sequence. Do not remove DOM nodes.
-                for (const element of [control, panel]) {
-                    if (!element) continue;
-                    for (const type of ['pointerout', 'pointerleave', 'mouseout', 'mouseleave']) {
-                        const event = type.startsWith('pointer') && typeof PointerEvent === 'function'
-                            ? new PointerEvent(type, { bubbles: true, cancelable: true, view: window, pointerType: 'mouse' })
-                            : new MouseEvent(type, { bubbles: true, cancelable: true, view: window });
-                        element.dispatchEvent(event);
+                if (await clickCloseControl()) return;
+
+                for (let attempt = 0; attempt < 2 && panelStillVisible(); attempt += 1) {
+                    // FamilySearch quick-cards behave like hover/click UI.
+                    // Signal that the pointer left the child control and the
+                    // card, then send outside-click and Escape events through
+                    // the same document. Do not remove DOM nodes.
+                    for (const element of [control, panel]) {
+                        if (!element) continue;
+                        for (const type of ['pointerout', 'pointerleave', 'mouseout', 'mouseleave']) {
+                            const event = type.startsWith('pointer') && typeof PointerEvent === 'function'
+                                ? new PointerEvent(type, { bubbles: true, cancelable: true, view: window, pointerType: 'mouse' })
+                                : new MouseEvent(type, { bubbles: true, cancelable: true, view: window });
+                            element.dispatchEvent(event);
+                        }
                     }
-                }
 
-                const panelRect = panel ? panel.getBoundingClientRect() : null;
-                const outsideX = panelRect && panelRect.left > 20
-                    ? Math.max(5, panelRect.left - 10)
-                    : Math.min(window.innerWidth - 5, (panelRect ? panelRect.right + 10 : 5));
-                const outsideY = panelRect && panelRect.top > 20
-                    ? Math.max(5, panelRect.top - 10)
-                    : Math.min(window.innerHeight - 5, (panelRect ? panelRect.bottom + 10 : 5));
-                const target = localDocument.elementFromPoint(outsideX, outsideY) || localDocument.body;
-                for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
-                    const event = type.startsWith('pointer') && typeof PointerEvent === 'function'
-                        ? new PointerEvent(type, { bubbles: true, cancelable: true, view: window, clientX: outsideX, clientY: outsideY, pointerType: 'mouse' })
-                        : new MouseEvent(type, { bubbles: true, cancelable: true, view: window, clientX: outsideX, clientY: outsideY });
-                    target.dispatchEvent(event);
-                    localDocument.dispatchEvent(event);
-                    window.dispatchEvent(event);
-                }
+                    const panelRect = panel ? panel.getBoundingClientRect() : null;
+                    const outsideX = panelRect && panelRect.left > 20
+                        ? Math.max(5, panelRect.left - 10)
+                        : Math.min(window.innerWidth - 5, (panelRect ? panelRect.right + 10 : 5));
+                    const outsideY = panelRect && panelRect.top > 20
+                        ? Math.max(5, panelRect.top - 10)
+                        : Math.min(window.innerHeight - 5, (panelRect ? panelRect.bottom + 10 : 5));
+                    const target = localDocument.elementFromPoint(outsideX, outsideY) || localDocument.body;
+                    for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+                        const event = type.startsWith('pointer') && typeof PointerEvent === 'function'
+                            ? new PointerEvent(type, { bubbles: true, cancelable: true, view: window, clientX: outsideX, clientY: outsideY, pointerType: 'mouse' })
+                            : new MouseEvent(type, { bubbles: true, cancelable: true, view: window, clientX: outsideX, clientY: outsideY });
+                        target.dispatchEvent(event);
+                        localDocument.dispatchEvent(event);
+                        window.dispatchEvent(event);
+                    }
 
-                const escapeEvent = new KeyboardEvent('keydown', {
-                    key: 'Escape',
-                    code: 'Escape',
-                    keyCode: 27,
-                    which: 27,
-                    bubbles: true,
-                    cancelable: true
-                });
-                localDocument.dispatchEvent(escapeEvent);
-                window.dispatchEvent(escapeEvent);
-                await sleep(50);
+                    const escapeEvent = new KeyboardEvent('keydown', {
+                        key: 'Escape',
+                        code: 'Escape',
+                        keyCode: 27,
+                        which: 27,
+                        bubbles: true,
+                        cancelable: true
+                    });
+                    localDocument.dispatchEvent(escapeEvent);
+                    window.dispatchEvent(escapeEvent);
+                    await sleep(100);
+                    if (await clickCloseControl()) return;
+                }
             }
 
             function showExtractionSuccessMessage(message) {
