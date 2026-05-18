@@ -762,58 +762,59 @@ enum FamilySearchDOMService {
                 return match ? match[1] : null;
             }
 
-            async function closeChildPanel() {
-                for (let attempt = 0; attempt < 3; attempt += 1) {
-                    const closeButton = Array.from(localDocument.querySelectorAll('button,[role="button"]'))
-                        .find(element => /close/i.test(clean(element.getAttribute('aria-label') || element.textContent || '')));
-                    if (closeButton) {
-                        closeButton.click();
-                    }
-                    const active = localDocument.activeElement;
-                    if (active && typeof active.blur === 'function') {
-                        active.blur();
-                    }
-
-                    for (const type of ['keydown', 'keypress', 'keyup']) {
-                        const event = new KeyboardEvent(type, {
-                            key: 'Escape',
-                            code: 'Escape',
-                            keyCode: 27,
-                            which: 27,
-                            bubbles: true,
-                            cancelable: true
-                        });
-                        localDocument.dispatchEvent(event);
-                        window.dispatchEvent(event);
-                    }
-
-                    const openPanel = Array.from(localDocument.querySelectorAll('[role="dialog"],[aria-modal="true"],aside,section,article,[data-testid],div'))
-                        .filter(element => {
-                            const text = visibleText(element);
-                            return /\\b(Birth|Christening|Death|Burial|Sex)\\b/i.test(text) &&
-                                /\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/.test(text) &&
-                                element.offsetWidth > 0 &&
-                                element.offsetHeight > 0;
-                        })
-                        .sort((a, b) => visibleText(a).length - visibleText(b).length)[0];
-                    const panelRect = openPanel ? openPanel.getBoundingClientRect() : null;
-                    const outsideX = panelRect && panelRect.left > 20
-                        ? Math.max(5, panelRect.left - 10)
-                        : Math.min(window.innerWidth - 5, (panelRect ? panelRect.right + 10 : 5));
-                    const outsideY = panelRect && panelRect.top > 20
-                        ? Math.max(5, panelRect.top - 10)
-                        : Math.min(window.innerHeight - 5, (panelRect ? panelRect.bottom + 10 : 5));
-                    const target = localDocument.elementFromPoint(outsideX, outsideY) || localDocument.body;
-                    if (target) {
-                        for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
-                            const event = type.startsWith('pointer') && typeof PointerEvent === 'function'
-                                ? new PointerEvent(type, { bubbles: true, cancelable: true, view: window, clientX: outsideX, clientY: outsideY, pointerType: 'mouse' })
-                                : new MouseEvent(type, { bubbles: true, cancelable: true, view: window, clientX: outsideX, clientY: outsideY });
-                            target.dispatchEvent(event);
-                        }
-                    }
-                    await sleep(150);
+            async function closeChildPanel(panel, control) {
+                const closeScope = panel || localDocument;
+                const closeButton = Array.from(closeScope.querySelectorAll('button,[role="button"]'))
+                    .find(element => /close/i.test(clean(element.getAttribute('aria-label') || element.getAttribute('title') || element.textContent || '')));
+                if (closeButton) {
+                    closeButton.click();
+                    await sleep(50);
+                    return;
                 }
+
+                const active = localDocument.activeElement;
+                if (active && typeof active.blur === 'function') {
+                    active.blur();
+                }
+
+                for (const element of [control, panel]) {
+                    if (!element) continue;
+                    for (const type of ['pointerout', 'pointerleave', 'mouseout', 'mouseleave']) {
+                        const event = type.startsWith('pointer') && typeof PointerEvent === 'function'
+                            ? new PointerEvent(type, { bubbles: true, cancelable: true, view: window, pointerType: 'mouse' })
+                            : new MouseEvent(type, { bubbles: true, cancelable: true, view: window });
+                        element.dispatchEvent(event);
+                    }
+                }
+
+                const panelRect = panel ? panel.getBoundingClientRect() : null;
+                const outsideX = panelRect && panelRect.left > 20
+                    ? Math.max(5, panelRect.left - 10)
+                    : Math.min(window.innerWidth - 5, (panelRect ? panelRect.right + 10 : 5));
+                const outsideY = panelRect && panelRect.top > 20
+                    ? Math.max(5, panelRect.top - 10)
+                    : Math.min(window.innerHeight - 5, (panelRect ? panelRect.bottom + 10 : 5));
+                const target = localDocument.elementFromPoint(outsideX, outsideY) || localDocument.body;
+                for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+                    const event = type.startsWith('pointer') && typeof PointerEvent === 'function'
+                        ? new PointerEvent(type, { bubbles: true, cancelable: true, view: window, clientX: outsideX, clientY: outsideY, pointerType: 'mouse' })
+                        : new MouseEvent(type, { bubbles: true, cancelable: true, view: window, clientX: outsideX, clientY: outsideY });
+                    target.dispatchEvent(event);
+                    localDocument.dispatchEvent(event);
+                    window.dispatchEvent(event);
+                }
+
+                const escapeEvent = new KeyboardEvent('keydown', {
+                    key: 'Escape',
+                    code: 'Escape',
+                    keyCode: 27,
+                    which: 27,
+                    bubbles: true,
+                    cancelable: true
+                });
+                localDocument.dispatchEvent(escapeEvent);
+                window.dispatchEvent(escapeEvent);
+                await sleep(50);
             }
 
             function showExtractionSuccessMessage(message) {
@@ -982,8 +983,7 @@ enum FamilySearchDOMService {
                         extractionNotes: notes
                     };
                 } finally {
-                    await closeChildPanel();
-                    await sleep(250);
+                    await closeChildPanel(panel, control);
                 }
             }
 
