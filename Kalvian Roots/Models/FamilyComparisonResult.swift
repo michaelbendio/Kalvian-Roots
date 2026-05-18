@@ -239,23 +239,26 @@ enum FamilyComparisonReviewDetector {
         rows: [FamilyComparisonResult.Match],
         consumedRowIndices: Set<Int>
     ) -> (index: Int, row: FamilyComparisonResult.Match, message: String)? {
-        guard let birthDate = row.identity.birthDate else {
-            return nil
-        }
-
         for candidateIndex in rows.indices where candidateIndex != index && !consumedRowIndices.contains(candidateIndex) {
             let candidate = rows[candidateIndex]
 
-            guard candidate.identity.birthDate == birthDate,
-                  shouldReview(row, candidate) else {
-                continue
+            if let birthDate = row.identity.birthDate,
+               candidate.identity.birthDate == birthDate,
+               shouldReview(row, candidate) {
+                return (
+                    candidateIndex,
+                    candidate,
+                    reviewMessage(left: row, right: candidate, birthDate: birthDate)
+                )
             }
 
-            return (
-                candidateIndex,
-                candidate,
-                reviewMessage(left: row, right: candidate, birthDate: birthDate)
-            )
+            if shouldReviewDateDiscrepancy(row, candidate) {
+                return (
+                    candidateIndex,
+                    candidate,
+                    dateDiscrepancyReviewMessage(left: row, right: candidate)
+                )
+            }
         }
 
         return nil
@@ -299,6 +302,33 @@ enum FamilyComparisonReviewDetector {
                 namesAreNear(leftName, rightName)
             }
         }
+    }
+
+    private static func shouldReviewDateDiscrepancy(
+        _ left: FamilyComparisonResult.Match,
+        _ right: FamilyComparisonResult.Match
+    ) -> Bool {
+        guard left.identity.canonicalName == right.identity.canonicalName,
+              !left.identity.canonicalName.isEmpty,
+              let leftBirthDate = left.identity.birthDate,
+              let rightBirthDate = right.identity.birthDate,
+              leftBirthDate != rightBirthDate else {
+            return false
+        }
+
+        let leftSources = sources(for: left)
+        let rightSources = sources(for: right)
+        guard !leftSources.isEmpty,
+              !rightSources.isEmpty,
+              leftSources.isDisjoint(with: rightSources) else {
+            return false
+        }
+
+        return abs(Calendar(identifier: .gregorian).dateComponents(
+            [.day],
+            from: leftBirthDate,
+            to: rightBirthDate
+        ).day ?? Int.max) <= 90
     }
 
     private static func sources(for row: FamilyComparisonResult.Match) -> Set<String> {
@@ -388,6 +418,24 @@ enum FamilyComparisonReviewDetector {
             .joined(separator: "; ")
 
         return "Possible same child on \(formatDate(birthDate)): \(sourceDetails)."
+    }
+
+    private static func dateDiscrepancyReviewMessage(
+        left: FamilyComparisonResult.Match,
+        right: FamilyComparisonResult.Match
+    ) -> String {
+        let orderedRows = [left, right].sorted { first, second in
+            let firstHasJuuret = first.juuretKalvialla != nil
+            let secondHasJuuret = second.juuretKalvialla != nil
+            return firstHasJuuret == secondHasJuuret ? false : firstHasJuuret
+        }
+
+        let sourceDetails = orderedRows
+            .map(sourcePhrase(for:))
+            .filter { !$0.isEmpty }
+            .joined(separator: "; ")
+
+        return "Possible same child with date discrepancy: \(sourceDetails)."
     }
 
     private static func sourcePhrase(for row: FamilyComparisonResult.Match) -> String {

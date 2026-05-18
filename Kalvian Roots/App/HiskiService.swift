@@ -839,13 +839,15 @@ class HiskiService {
 
     func filterFamilyBirthRowsAnchoredToJuuretChildren(
         _ rows: [HiskiFamilyBirthRow],
-        juuretChildren: [Person]
+        juuretChildren: [Person],
+        additionalAnchorBirthDates: [String?] = []
     ) -> HiskiFamilyBirthRowsFilterResult {
-        let juuretBirthDates = Set(
-            juuretChildren.compactMap { normalizedBirthDateKey($0.birthDate) }
+        let anchorBirthDates = Set(
+            juuretChildren.compactMap { normalizedBirthDateKey($0.birthDate) } +
+            additionalAnchorBirthDates.compactMap(normalizedBirthDateKey)
         )
 
-        guard !rows.isEmpty, !juuretBirthDates.isEmpty else {
+        guard !rows.isEmpty, !anchorBirthDates.isEmpty else {
             return HiskiFamilyBirthRowsFilterResult(
                 rows: rows,
                 isAnchored: false,
@@ -862,7 +864,7 @@ class HiskiService {
                         return false
                     }
 
-                    return juuretBirthDates.contains(birthDate)
+                    return anchorBirthDates.contains(birthDate)
                 } ? key : nil
             }
         )

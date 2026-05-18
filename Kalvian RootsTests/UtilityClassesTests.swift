@@ -71,8 +71,10 @@ final class NameEquivalenceManagerTests: XCTestCase {
         XCTAssertTrue(manager.areNamesEquivalent("Kustaa", "Gustav"))
         XCTAssertTrue(manager.areNamesEquivalent("Kustaa", "Gustaf"))
         XCTAssertTrue(manager.areNamesEquivalent("Jaakko", "Jacob"))
+        XCTAssertTrue(manager.areNamesEquivalent("Liisa", "Lijsa"))
         XCTAssertTrue(manager.areNamesEquivalent("Kaarin", "Carin"))
         XCTAssertTrue(manager.areNamesEquivalent("Kaarin", "Catharina"))
+        XCTAssertTrue(manager.areNamesEquivalent("Katariina", "Catharina"))
         XCTAssertTrue(manager.areNamesEquivalent("Henrik", "Hinric"))
         XCTAssertTrue(manager.areNamesEquivalent("Abraham", "Abram"))
     }
@@ -688,6 +690,39 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertFalse(result.isAnchored)
         XCTAssertEqual(result.confidenceLabel, "unanchored low-confidence")
         XCTAssertEqual(result.rows, rows)
+    }
+
+    func testBirthSpanRowsCanAnchorFromFamilySearchBirthDates() {
+        let rows = [
+            HiskiService.HiskiFamilyBirthRow(
+                birthDate: "23.2.1701",
+                childName: "Gustawus",
+                fatherName: "Matz Johansson",
+                motherName: "Carin Gustafsdr.",
+                recordPath: "/hiski?en+0265+kastetut+1701",
+                parish: "Kälviä",
+                villageFarm: "Laikeri (????)"
+            ),
+            HiskiService.HiskiFamilyBirthRow(
+                birthDate: "4.5.1803",
+                childName: "Jacob",
+                fatherName: "Juho Juhonp.",
+                motherName: "Maria Matint.",
+                recordPath: "/hiski?en+0165+kastetut+9003",
+                parish: "Lohtaja",
+                villageFarm: "Wargström"
+            )
+        ]
+
+        let result = service.filterFamilyBirthRowsAnchoredToJuuretChildren(
+            rows,
+            juuretChildren: [],
+            additionalAnchorBirthDates: ["23.02.1701"]
+        )
+
+        XCTAssertTrue(result.isAnchored)
+        XCTAssertEqual(result.retainedGroupCount, 1)
+        XCTAssertEqual(result.rows.map(\.childName), ["Gustawus"])
     }
 
     func testFetchCitationsForFamilyBirthRowsBuildsOrderedEvents() async throws {

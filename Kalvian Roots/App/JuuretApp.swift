@@ -929,7 +929,10 @@ class JuuretApp {
 
             let structuredRowsResult = hiskiService.filterFamilyBirthRowsAnchoredToJuuretChildren(
                 rawRows,
-                juuretChildren: couple.children
+                juuretChildren: couple.children,
+                additionalAnchorBirthDates: familySearchChildren.flatMap { child in
+                    [child.birthDate, child.birth?.date, child.christeningDate, child.christening?.date]
+                }
             )
             let structuredRows = structuredRowsResult.rows
             appendFamilySearchComparisonDebug("HisKi raw family-child rows parsed: \(structuredRowsResult.originalRowCount)")

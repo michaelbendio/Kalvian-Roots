@@ -396,6 +396,103 @@ final class FamilyComparisonResultTests: XCTestCase {
         )
     }
 
+    func testSakeriOneVariantNamesMatchAcrossSources() throws {
+        let result = FamilyComparisonResult(
+            familySearch: [
+                candidate(
+                    name: "Gustawus Mattsson",
+                    identityName: "Gustawus",
+                    birth: date(1701, 2, 23),
+                    source: .familySearch,
+                    familySearchId: "M883-J3T"
+                ),
+                candidate(
+                    name: "Liisa Mattsson",
+                    identityName: "Liisa",
+                    birth: date(1704, 7, 6),
+                    source: .familySearch,
+                    familySearchId: "M88H-ZT9"
+                )
+            ],
+            juuretKalvialla: [
+                candidate(
+                    name: "Katariina",
+                    birth: date(1697, 2, 18),
+                    source: .juuretKalvialla
+                )
+            ],
+            hiski: [
+                candidate(
+                    name: "Catharina",
+                    birth: date(1697, 2, 18),
+                    source: .hiski
+                ),
+                candidate(
+                    name: "Gustawus",
+                    birth: date(1701, 2, 23),
+                    source: .hiski
+                ),
+                candidate(
+                    name: "Lijsa",
+                    birth: date(1704, 7, 6),
+                    source: .hiski
+                )
+            ]
+        )
+
+        XCTAssertEqual(result.matches.count, 3)
+
+        let katariina = try XCTUnwrap(result.matches.first { $0.juuretKalvialla?.rawName == "Katariina" })
+        XCTAssertEqual(katariina.hiski?.rawName, "Catharina")
+
+        let gustawus = try XCTUnwrap(result.matches.first { $0.familySearch?.rawName == "Gustawus Mattsson" })
+        XCTAssertEqual(gustawus.hiski?.rawName, "Gustawus")
+
+        let liisa = try XCTUnwrap(result.matches.first { $0.familySearch?.rawName == "Liisa Mattsson" })
+        XCTAssertEqual(liisa.hiski?.rawName, "Lijsa")
+    }
+
+    func testDisplayRowsCoalesceSameCanonicalNameWithNearbyBirthDateDiscrepancy() throws {
+        let result = FamilyComparisonResult(
+            familySearch: [
+                candidate(
+                    name: "Malin",
+                    birth: date(1707, 5, 26),
+                    source: .familySearch,
+                    familySearchId: "M8ZN-MBH"
+                )
+            ],
+            juuretKalvialla: [
+                candidate(
+                    name: "Malin",
+                    birth: date(1707, 7, 26),
+                    source: .juuretKalvialla
+                )
+            ],
+            hiski: [
+                candidate(
+                    name: "Malin",
+                    birth: date(1707, 5, 26),
+                    source: .hiski
+                )
+            ]
+        )
+
+        XCTAssertEqual(result.rows.count, 2)
+
+        let displayRows = FamilyComparisonReviewDetector.displayRows(for: result.rows)
+        XCTAssertEqual(displayRows.count, 1)
+
+        let displayRow = try XCTUnwrap(displayRows.first)
+        XCTAssertEqual(displayRow.match.juuretKalvialla?.rawName, "Malin")
+        XCTAssertEqual(displayRow.match.familySearch?.rawName, "Malin")
+        XCTAssertEqual(displayRow.match.hiski?.rawName, "Malin")
+        XCTAssertEqual(
+            displayRow.reviewNote?.message,
+            "Possible same child with date discrepancy: Juuret has Malin; FamilySearch has Malin; HisKi has Malin."
+        )
+    }
+
     private func candidate(
         name: String,
         identityName: String? = nil,
