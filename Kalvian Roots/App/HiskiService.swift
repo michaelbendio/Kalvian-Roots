@@ -257,19 +257,9 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate, NSWindowDelegate {
 
             logInfo(.app, "✅ Hiski record page loaded")
             
-            // Extract citation URL using JavaScript
+            // Extract the record-page HTML and reuse the HTTP citation parser.
             let script = """
-            (function() {
-                // Find the "Link to this event" link
-                var links = document.getElementsByTagName('a');
-                for (var i = 0; i < links.length; i++) {
-                    var href = links[i].getAttribute('href');
-                    if (href && href.includes('+t')) {
-                        return 'https://hiski.genealogia.fi' + href;
-                    }
-                }
-                return null;
-            })();
+            document.documentElement ? document.documentElement.outerHTML : "";
             """
             
             webView.evaluateJavaScript(script) { [weak self] result, error in
@@ -283,7 +273,8 @@ class HiskiWebViewManager: NSObject, WKNavigationDelegate, NSWindowDelegate {
                         return
                     }
                     
-                    if let citationUrl = result as? String, !citationUrl.isEmpty {
+                    if let html = result as? String,
+                       let citationUrl = HiskiService.extractCitationUrlFromHtml(html) {
                         logInfo(.app, "📋 Extracted citation URL: \(citationUrl)")
                         self.citationContinuation?.resume(returning: citationUrl)
                         self.citationContinuation = nil
@@ -1018,23 +1009,38 @@ class HiskiService {
      * Extract citation URL from record page HTML using regex (pure HTTP mode)
      * This replicates the logic from the Python script hiski.py
      */
-    private func extractCitationUrlFromHtml(_ html: String) -> String? {
-        // Pattern to find citation links with +t in the href
+    static func extractCitationUrlFromHtml(_ html: String) -> String? {
+        // Pattern to find citation links with +t in the href.
         // Example: HREF="/hiski?en+t4086417"
-        let pattern = "HREF=\"(/hiski\\?en\\+t\\d+)\""
+        let citationHrefPattern = #"href\s*=\s*["'](/hiski\?en\+t\d+)["']"#
+        if let citationPath = firstCapture(in: html, pattern: citationHrefPattern) {
+            let citationUrl = "https://hiski.genealogia.fi" + citationPath
+            logInfo(.app, "📋 Extracted citation URL from HTML: \(citationUrl)")
+            return citationUrl
+        }
 
+        // HisKi record pages may expose the stable event id as:
+        // Link to this event [ 4087076 ]
+        let eventCodePattern = #"Link(?:\s|&nbsp;)+to(?:\s|&nbsp;)+this(?:\s|&nbsp;)+event[\s\S]*?\[\s*(\d+)\s*\]"#
+        if let eventCode = firstCapture(in: html, pattern: eventCodePattern) {
+            let citationUrl = "https://hiski.genealogia.fi/hiski?en+t\(eventCode)"
+            logInfo(.app, "📋 Built HisKi citation URL from event code: \(citationUrl)")
+            return citationUrl
+        }
+
+        logWarn(.app, "⚠️ Could not find citation link in record page HTML")
+        return nil
+    }
+
+    private static func firstCapture(in text: String, pattern: String) -> String? {
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
-              let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
-              let hrefRange = Range(match.range(at: 1), in: html) else {
-            logWarn(.app, "⚠️ Could not find citation link in record page HTML")
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              match.numberOfRanges > 1,
+              let captureRange = Range(match.range(at: 1), in: text) else {
             return nil
         }
 
-        let citationPath = String(html[hrefRange])
-        let citationUrl = "https://hiski.genealogia.fi" + citationPath
-        logInfo(.app, "📋 Extracted citation URL from HTML: \(citationUrl)")
-
-        return citationUrl
+        return String(text[captureRange])
     }
 
     /**
@@ -1052,7 +1058,7 @@ class HiskiService {
         }
 
         // Extract citation URL from HTML
-        guard let citationUrl = extractCitationUrlFromHtml(recordHtml) else {
+        guard let citationUrl = Self.extractCitationUrlFromHtml(recordHtml) else {
             throw HiskiServiceError.citationExtractionFailed
         }
 

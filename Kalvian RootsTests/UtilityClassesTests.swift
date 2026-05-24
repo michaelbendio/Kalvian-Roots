@@ -937,6 +937,42 @@ final class HiskiServiceTests: XCTestCase {
             "Matts, 1.3.1804, Elias Matinp. + Maria Antint., record https://hiski.genealogia.fi/hiski?en+abc124: HisKi citation link not found in record page."
         )
     }
+
+    func testExtractCitationUrlFromHtmlUsesExistingCitationHref() {
+        let html = #"""
+        <HTML>
+        <BODY>
+        <A HREF="/hiski?en+t4086417">Link to this event</A>
+        </BODY>
+        </HTML>
+        """#
+
+        XCTAssertEqual(
+            HiskiService.extractCitationUrlFromHtml(html),
+            "https://hiski.genealogia.fi/hiski?en+t4086417"
+        )
+    }
+
+    func testExtractCitationUrlFromHtmlBuildsCitationFromBracketedEventCode() {
+        let html = #"""
+        <HTML>
+        <BODY>
+        <A HREF="/hiski?en+0265+kastetut+3326">Link to this event</A> [ 4087076 ]
+        <TABLE>
+        <TR><TD>Born / Christened</TD><TD>14.2.1756</TD><TD>15.2.1756</TD></TR>
+        <TR><TD>Father</TD><TD>Erich</TD><TD>Johanss.</TD></TR>
+        <TR><TD>Mother</TD><TD>Maria</TD><TD>Martinsdr.</TD></TR>
+        <TR><TD>Child</TD><TD>Matthias</TD></TR>
+        </TABLE>
+        </BODY>
+        </HTML>
+        """#
+
+        let citationUrl = HiskiService.extractCitationUrlFromHtml(html)
+
+        XCTAssertEqual(citationUrl, "https://hiski.genealogia.fi/hiski?en+t4087076")
+        XCTAssertNotEqual(citationUrl, "https://hiski.genealogia.fi/hiski?en+0265+kastetut+3326")
+    }
     
     func testQueryBirthGeneratesURL() async throws {
         // Integration test - would require actual query
