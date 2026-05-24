@@ -51,14 +51,20 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
     private let windowHeight: CGFloat = 840
 
     static func isDetailsPageURL(_ urlString: String?, for personId: String) -> Bool {
-        guard let urlString else {
+        guard let urlString,
+              let components = URLComponents(string: urlString),
+              let host = components.host?.lowercased() else {
             return false
         }
 
-        let normalizedURL = urlString.uppercased()
+        guard host == "www.familysearch.org" || host == "familysearch.org" else {
+            return false
+        }
+
+        let normalizedPath = components.path.uppercased()
         let normalizedPersonId = personId.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        return normalizedURL.contains("/TREE/PERSON/DETAILS/")
-            && normalizedURL.contains(normalizedPersonId)
+        return normalizedPath.contains("/TREE/PERSON/DETAILS/")
+            && normalizedPath.contains(normalizedPersonId)
     }
 
     @MainActor private override init() {
@@ -82,6 +88,10 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         try await loadDetailsPage(personId: personId)
         try await waitForDetailsPage(personId: personId)
         return try await extractCurrentDetailsPage(expectedPersonId: personId)
+    }
+
+    @MainActor func currentPageURLString() -> String {
+        webView?.url?.absoluteString ?? "not open"
     }
 
     @MainActor func openFamilySearchHome() {
@@ -207,11 +217,38 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
             detailsPageContinuation?.resume(throwing: FamilySearchWebViewExtractionError.windowClosed)
             pendingDetailsPagePersonId = normalizedPersonId
             detailsPageContinuation = continuation
+            pollForDetailsPage(personId: normalizedPersonId)
         }
     }
 
     @MainActor private func isLoadedDetailsPage(for personId: String) -> Bool {
         Self.isDetailsPageURL(webView?.url?.absoluteString, for: personId)
+    }
+
+    @MainActor private func pollForDetailsPage(personId: String) {
+        Task { @MainActor [weak self] in
+            while let self,
+                  self.detailsPageContinuation != nil,
+                  self.pendingDetailsPagePersonId == personId {
+                self.resumeDetailsPageContinuationIfLoaded()
+                if self.detailsPageContinuation == nil {
+                    return
+                }
+
+                try? await Task.sleep(nanoseconds: 250_000_000)
+            }
+        }
+    }
+
+    @MainActor private func resumeDetailsPageContinuationIfLoaded() {
+        guard let pendingPersonId = pendingDetailsPagePersonId,
+              isLoadedDetailsPage(for: pendingPersonId) else {
+            return
+        }
+
+        detailsPageContinuation?.resume()
+        detailsPageContinuation = nil
+        pendingDetailsPagePersonId = nil
     }
 
     nonisolated func userContentController(
@@ -236,12 +273,7 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
             self.navigationContinuation?.resume()
             self.navigationContinuation = nil
 
-            if let pendingPersonId = self.pendingDetailsPagePersonId,
-               self.isLoadedDetailsPage(for: pendingPersonId) {
-                self.detailsPageContinuation?.resume()
-                self.detailsPageContinuation = nil
-                self.pendingDetailsPagePersonId = nil
-            }
+            self.resumeDetailsPageContinuationIfLoaded()
         }
     }
 

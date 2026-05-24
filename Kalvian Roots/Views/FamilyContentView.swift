@@ -381,7 +381,7 @@ struct FamilyContentView: View {
         if let deathDate = candidate.deathDate {
             parts.append("d. \(formatComparisonDate(deathDate))")
         }
-        return parts.joined(separator: "\n")
+        return parts.joined(separator: ", ")
     }
 
     private func formatComparisonDate(_ date: Date) -> String {
@@ -1012,7 +1012,7 @@ enum FamilySearchComparisonClipboardFormatter {
         if let deathDate = candidate.deathDate {
             parts.append("d. \(formatComparisonDate(deathDate))")
         }
-        return parts.joined(separator: " | ")
+        return parts.joined(separator: ", ")
     }
 
     private static func sanitizeCell(_ text: String) -> String {

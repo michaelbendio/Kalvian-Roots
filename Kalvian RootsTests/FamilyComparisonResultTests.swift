@@ -1745,6 +1745,12 @@ final class FamilySearchDOMServiceTests: XCTestCase {
                 for: "k2yq-1zy"
             )
         )
+        XCTAssertFalse(
+            FamilySearchWebViewExtractionManager.isDetailsPageURL(
+                "https://ident.familysearch.org/en/identity/login/?state=https://www.familysearch.org/en/tree/person/details/K2YQ-1ZY",
+                for: "K2YQ-1ZY"
+            )
+        )
     }
     #endif
 
@@ -2139,7 +2145,7 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
         XCTAssertTrue(text.contains("FamilySearch extraction context URL: https://www.familysearch.org/en/tree/person/details/KJJH-2QK"))
         XCTAssertTrue(text.contains("FamilySearch children handed to comparison: 1"))
         XCTAssertTrue(text.contains("Child name\tJuuret\tHisKi\tFamilySearch\tStatus"))
-        XCTAssertTrue(text.contains("Matti\tYes | 14 Mar 1761\tNo\tYes | <LK4Q-YSX> | 14 Mar 1761\tMissing in HisKi"))
+        XCTAssertTrue(text.contains("Matti\tYes, 14 Mar 1761\tNo\tYes, <LK4Q-YSX>, 14 Mar 1761\tMissing in HisKi"))
     }
 
     func testDebugTextIncludesFailureMessageWithoutComparisonRows() {
@@ -2205,7 +2211,7 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
 
         XCTAssertEqual(rows.count, 1)
         XCTAssertFalse(text.contains("(no rows)"))
-        XCTAssertTrue(text.contains("Mikko\tYes | 05 Mar 1757\tNo\tYes | <FS-MICHEL> | 05 Mar 1757\tMissing in HisKi"))
+        XCTAssertTrue(text.contains("Mikko\tYes, 05 Mar 1757\tNo\tYes, <FS-MICHEL>, 05 Mar 1757\tMissing in HisKi"))
     }
 
     func testPrimaryCoupleFallbackGroupWrapsSingleComparisonResult() throws {
@@ -2303,7 +2309,7 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
             .filter { $0.contains("Johannes") || $0.contains("Johanna") }
 
         XCTAssertEqual(johannesRows.count, 1)
-        XCTAssertTrue(text.contains("Johannes\tYes | Johannes | 27 Nov 1751\tYes | Johanna | 27 Nov 1751\tYes | Johannes Eriksson | <FS-JOHANNES> | 27 Nov 1751\tReview name discrepancy"))
+        XCTAssertTrue(text.contains("Johannes\tYes, Johannes, 27 Nov 1751\tYes, Johanna, 27 Nov 1751\tYes, Johannes Eriksson, <FS-JOHANNES>, 27 Nov 1751\tReview name discrepancy"))
     }
 
     func testServerComparisonTableCoalescesReviewNameDiscrepanciesIntoOneDisplayRow() {

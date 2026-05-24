@@ -54,6 +54,8 @@ class JuuretApp {
     var isFamilySearchComparisonPanelVisible = false
     var hiskiCitationProposals: [HiskiCitationProposal] = []
     private var familySearchExtractions: [String: FamilySearchFamilyExtraction] = [:]
+    private var familySearchComparisonRunCounter = 0
+    private var familySearchExtractionRunCounter = 0
 
     var currentFamilySearchExtractorPageURL: URL? {
         guard let currentFamily,
@@ -128,8 +130,8 @@ class JuuretApp {
         logInfo(.ui, "📦 Loaded cached family \(familyId) (workflow activated via helper)")
 
         Task {
-            await self.runJuuretHiskiComparisonPipeline(for: network.mainFamily)
             await self.prepareFamilySearchWebKitForCurrentFamily(network.mainFamily)
+            await self.runJuuretHiskiComparisonPipeline(for: network.mainFamily)
         }
     }
     
@@ -520,6 +522,24 @@ class JuuretApp {
         logInfo(.ui, "🧪 \(message)")
     }
 
+    private func nextFamilySearchComparisonRunId() -> Int {
+        familySearchComparisonRunCounter += 1
+        return familySearchComparisonRunCounter
+    }
+
+    private func nextFamilySearchExtractionRunId() -> Int {
+        familySearchExtractionRunCounter += 1
+        return familySearchExtractionRunCounter
+    }
+
+    private func preComparisonFamilySearchDebugLines() -> [String] {
+        familySearchComparisonDebugLines.filter { line in
+            line != "Comparison not triggered" &&
+                !line.hasPrefix("Family selected:") &&
+                !line.hasPrefix("Comparison run:")
+        }
+    }
+
     private func debugValue(_ value: String?) -> String {
         guard let value, !value.isEmpty else {
             return "not detected"
@@ -672,10 +692,18 @@ class JuuretApp {
         return String(line[range]).uppercased()
     }
 
-    func storeFamilySearchExtraction(_ extraction: FamilySearchFamilyExtraction, for familyId: String) {
+    func storeFamilySearchExtraction(
+        _ extraction: FamilySearchFamilyExtraction,
+        for familyId: String,
+        rerunComparison: Bool = true
+    ) {
         let normalizedFamilyId = normalizedFamilySearchExtractionKey(familyId)
         familySearchExtractions[normalizedFamilyId] = extraction
         logInfo(.ui, "🧪 FamilySearch extraction stored for SwiftUI: \(normalizedFamilyId), children: \(extraction.children.count)")
+
+        guard rerunComparison else {
+            return
+        }
 
         guard currentFamily?.familyId.uppercased() == normalizedFamilyId,
               let currentFamily else {
@@ -687,7 +715,10 @@ class JuuretApp {
         }
     }
 
-    func storeFamilySearchExtractionForCurrentFamily(_ extraction: FamilySearchFamilyExtraction) -> String? {
+    func storeFamilySearchExtractionForCurrentFamily(
+        _ extraction: FamilySearchFamilyExtraction,
+        rerunComparison: Bool = true
+    ) -> String? {
         guard let currentFamily else {
             return nil
         }
@@ -700,7 +731,7 @@ class JuuretApp {
             appendFamilySearchComparisonDebug(
                 "FamilySearch extraction stored without Juuret father ID: received \(postedPersonId)"
             )
-            storeFamilySearchExtraction(extraction, for: currentFamily.familyId)
+            storeFamilySearchExtraction(extraction, for: currentFamily.familyId, rerunComparison: rerunComparison)
             return currentFamily.familyId
         }
 
@@ -711,7 +742,7 @@ class JuuretApp {
             return nil
         }
 
-        storeFamilySearchExtraction(extraction, for: currentFamily.familyId)
+        storeFamilySearchExtraction(extraction, for: currentFamily.familyId, rerunComparison: rerunComparison)
         return currentFamily.familyId
     }
 
@@ -746,6 +777,12 @@ class JuuretApp {
 
         #if os(macOS)
         let familySearchPersonId = fatherFamilySearchId(in: currentFamily)
+        let extractionRunId = nextFamilySearchExtractionRunId()
+        appendFamilySearchComparisonDebug("FamilySearch extraction run: \(extractionRunId)")
+        appendFamilySearchComparisonDebug("FamilySearch phase: waiting for sign-in/details page")
+        appendFamilySearchComparisonDebug(
+            "FamilySearch WebKit URL at extraction start: \(FamilySearchWebViewExtractionManager.shared.currentPageURLString())"
+        )
         appendFamilySearchComparisonDebug(
             "FamilySearch in-app extraction started: \(familySearchPersonId ?? "current FamilySearch page")"
         )
@@ -762,13 +799,21 @@ class JuuretApp {
                 }
 
                 let childCount = extraction.childCount ?? extraction.children.count
+                appendFamilySearchComparisonDebug(
+                    "FamilySearch WebKit URL at extraction completion: \(FamilySearchWebViewExtractionManager.shared.currentPageURLString())"
+                )
+                appendFamilySearchComparisonDebug("FamilySearch phase: extracted")
                 appendFamilySearchComparisonDebug("FamilySearch in-app extraction returned: \(childCount) children")
+                appendFamilySearchComparisonDebug(
+                    "FamilySearch in-app extraction completed: \(extraction.status ?? (extraction.isSuccessful ? "success" : "unknown")), children \(childCount), spouse groups \(debugCount(extraction.spouseGroupCount ?? extraction.spouseGroups?.count))"
+                )
 
                 if storeFamilySearchExtractionForCurrentFamily(extraction) == nil {
                     familySearchComparisonDebugMessage = "FamilySearch in-app extraction ignored"
                 }
             } catch {
                 familySearchComparisonDebugMessage = "FamilySearch in-app extraction failed"
+                appendFamilySearchComparisonDebug("FamilySearch phase: extraction failed")
                 appendFamilySearchComparisonDebug("FamilySearch in-app extraction failed: \(error.localizedDescription)")
             }
         }
@@ -782,19 +827,36 @@ class JuuretApp {
 
         #if os(macOS)
         if let familySearchPersonId = fatherFamilySearchId(in: family) {
+            let extractionRunId = nextFamilySearchExtractionRunId()
+            appendFamilySearchComparisonDebug("FamilySearch extraction run: \(extractionRunId)")
+            appendFamilySearchComparisonDebug("FamilySearch phase: waiting for sign-in/details page")
+            appendFamilySearchComparisonDebug(
+                "FamilySearch WebKit URL at extraction start: \(FamilySearchWebViewExtractionManager.shared.currentPageURLString())"
+            )
             appendFamilySearchComparisonDebug("FamilySearch automatic in-app extraction started: \(familySearchPersonId)")
             do {
                 let extraction = try await FamilySearchWebViewExtractionManager.shared.openDetailsPageAndExtract(
                     personId: familySearchPersonId
                 )
                 let childCount = extraction.childCount ?? extraction.children.count
+                appendFamilySearchComparisonDebug(
+                    "FamilySearch WebKit URL at extraction completion: \(FamilySearchWebViewExtractionManager.shared.currentPageURLString())"
+                )
+                appendFamilySearchComparisonDebug("FamilySearch phase: extracted")
                 appendFamilySearchComparisonDebug("FamilySearch automatic in-app extraction returned: \(childCount) children")
+                appendFamilySearchComparisonDebug(
+                    "FamilySearch automatic extraction completed: \(extraction.status ?? (extraction.isSuccessful ? "success" : "unknown")), children \(childCount), spouse groups \(debugCount(extraction.spouseGroupCount ?? extraction.spouseGroups?.count))"
+                )
 
-                if storeFamilySearchExtractionForCurrentFamily(extraction) == nil {
+                if storeFamilySearchExtractionForCurrentFamily(extraction, rerunComparison: false) == nil {
                     familySearchComparisonDebugMessage = "FamilySearch automatic extraction ignored"
                 }
             } catch {
                 familySearchComparisonDebugMessage = "FamilySearch automatic extraction failed"
+                appendFamilySearchComparisonDebug("FamilySearch phase: extraction failed")
+                appendFamilySearchComparisonDebug(
+                    "FamilySearch WebKit URL at extraction failure: \(FamilySearchWebViewExtractionManager.shared.currentPageURLString())"
+                )
                 appendFamilySearchComparisonDebug("FamilySearch automatic extraction failed: \(error.localizedDescription)")
             }
         } else {
@@ -810,9 +872,17 @@ class JuuretApp {
             return
         }
 
+        let preComparisonDebugLines = preComparisonFamilySearchDebugLines()
+        let comparisonRunId = nextFamilySearchComparisonRunId()
         familySearchComparisonDebugLines = []
         familySearchComparisonDebugMessage = "Comparison not triggered"
         appendFamilySearchComparisonDebug("Family selected: \(family.familyId)")
+        appendFamilySearchComparisonDebug("Comparison run: \(comparisonRunId)")
+        if !preComparisonDebugLines.isEmpty {
+            appendFamilySearchComparisonDebug("Pre-comparison FamilySearch extraction debug")
+            preComparisonDebugLines.forEach { appendFamilySearchComparisonDebug($0) }
+        }
+        appendFamilySearchComparisonDebug("FamilySearch phase: building comparison")
 
         let familySearchPersonId = familySearchParentId(in: family)
         let storedFamilySearchExtraction = familySearchExtraction(for: family.familyId)
@@ -840,17 +910,32 @@ class JuuretApp {
         } else {
             appendFamilySearchComparisonDebug("FamilySearch extraction finished: not invoked")
         }
+        if familySearchChildrenByCouple.isEmpty {
+            appendFamilySearchComparisonDebug("FamilySearch couple mappings: none")
+        } else {
+            for coupleIndex in familySearchChildrenByCouple.keys.sorted() {
+                let count = familySearchChildrenByCouple[coupleIndex]?.count ?? 0
+                appendFamilySearchComparisonDebug("FamilySearch couple \(coupleIndex + 1) mapped children: \(count)")
+            }
+        }
 
         let familySearchComparisonInputSource: String
+        let comparisonBuildTiming: String
         if let storedFamilySearchExtraction, storedFamilySearchExtraction.isSuccessful {
             familySearchComparisonInputSource = "stored FamilySearch extraction"
+            comparisonBuildTiming = "after successful FamilySearch extraction"
         } else if let storedFamilySearchExtraction {
             familySearchComparisonInputSource = "fallback empty set (extraction failed: \(storedFamilySearchExtraction.status ?? "unknown"))"
+            comparisonBuildTiming = "after failed FamilySearch extraction"
         } else if familySearchPersonId == nil {
             familySearchComparisonInputSource = "fallback empty set (no FamilySearch parent ID)"
+            comparisonBuildTiming = "without FamilySearch parent ID"
         } else {
             familySearchComparisonInputSource = "fallback empty set (extractor not invoked)"
+            comparisonBuildTiming = "without FamilySearch extraction result"
         }
+        appendFamilySearchComparisonDebug("Comparison build timing: \(comparisonBuildTiming)")
+        appendFamilySearchComparisonDebug("Comparison used FamilySearch children: \(familySearchChildCount > 0 ? "yes" : "no")")
 
         guard !couple.husband.name.isEmpty, !couple.wife.name.isEmpty else {
             appendFamilySearchComparisonDebug("FamilySearch children handed to comparison: \(familySearchChildren.count)")
@@ -933,6 +1018,7 @@ class JuuretApp {
             } else {
                 familySearchComparisonDebugMessage = "FamilySearch comparison ready"
             }
+            appendFamilySearchComparisonDebug("FamilySearch phase: comparison built")
             appendFamilySearchComparisonDebug("comparison groups assigned to UI state: \(comparisonGroups.count)")
             appendFamilySearchComparisonDebug("comparison results assigned to UI state: \(comparisonGroups.reduce(0) { $0 + $1.result.rows.count }) rows")
             logInfo(.app, "📋 Juuret + HisKi comparison report for \(family.familyId):\n\(report)")
@@ -1104,8 +1190,8 @@ class JuuretApp {
             
             logInfo(.app, "✨ Family loaded from cache: \(normalizedId)")
 
-            await runJuuretHiskiComparisonPipeline(for: cached.mainFamily)
             await prepareFamilySearchWebKitForCurrentFamily(cached.mainFamily)
+            await runJuuretHiskiComparisonPipeline(for: cached.mainFamily)
             
             prefetchManager.startPrefetchAll()
             
@@ -1198,8 +1284,8 @@ class JuuretApp {
                 errorMessage = nil
             }
 
-            await runJuuretHiskiComparisonPipeline(for: family)
             await prepareFamilySearchWebKitForCurrentFamily(family)
+            await runJuuretHiskiComparisonPipeline(for: family)
             
             let totalTime = Date().timeIntervalSince(startTime)
             logInfo(.app, "✅ Family extraction complete in \(String(format: "%.2f", totalTime))s")
