@@ -130,8 +130,8 @@ class JuuretApp {
         logInfo(.ui, "📦 Loaded cached family \(familyId) (workflow activated via helper)")
 
         Task {
-            await self.prepareFamilySearchWebKitForCurrentFamily(network.mainFamily)
             await self.runJuuretHiskiComparisonPipeline(for: network.mainFamily)
+            await self.prepareFamilySearchWebKitForCurrentFamily(network.mainFamily)
         }
     }
     
@@ -827,6 +827,7 @@ class JuuretApp {
 
         #if os(macOS)
         if let familySearchPersonId = fatherFamilySearchId(in: family) {
+            familySearchComparisonDebugMessage = "Waiting for FamilySearch sign-in/details page"
             let extractionRunId = nextFamilySearchExtractionRunId()
             appendFamilySearchComparisonDebug("FamilySearch extraction run: \(extractionRunId)")
             appendFamilySearchComparisonDebug("FamilySearch phase: waiting for sign-in/details page")
@@ -848,7 +849,7 @@ class JuuretApp {
                     "FamilySearch automatic extraction completed: \(extraction.status ?? (extraction.isSuccessful ? "success" : "unknown")), children \(childCount), spouse groups \(debugCount(extraction.spouseGroupCount ?? extraction.spouseGroups?.count))"
                 )
 
-                if storeFamilySearchExtractionForCurrentFamily(extraction, rerunComparison: false) == nil {
+                if storeFamilySearchExtractionForCurrentFamily(extraction) == nil {
                     familySearchComparisonDebugMessage = "FamilySearch automatic extraction ignored"
                 }
             } catch {
@@ -1190,8 +1191,10 @@ class JuuretApp {
             
             logInfo(.app, "✨ Family loaded from cache: \(normalizedId)")
 
-            await prepareFamilySearchWebKitForCurrentFamily(cached.mainFamily)
             await runJuuretHiskiComparisonPipeline(for: cached.mainFamily)
+            Task {
+                await prepareFamilySearchWebKitForCurrentFamily(cached.mainFamily)
+            }
             
             prefetchManager.startPrefetchAll()
             
@@ -1284,8 +1287,10 @@ class JuuretApp {
                 errorMessage = nil
             }
 
-            await prepareFamilySearchWebKitForCurrentFamily(family)
             await runJuuretHiskiComparisonPipeline(for: family)
+            Task {
+                await prepareFamilySearchWebKitForCurrentFamily(family)
+            }
             
             let totalTime = Date().timeIntervalSince(startTime)
             logInfo(.app, "✅ Family extraction complete in \(String(format: "%.2f", totalTime))s")
