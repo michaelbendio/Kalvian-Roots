@@ -124,21 +124,11 @@ enum FamilySearchDOMService {
             .map(String.init) ?? name
     }
 
-    static func makeAtlasExtractorScript(callbackURL: String? = nil) -> String {
-        let callbackLine: String
-        if let callbackURL {
-            callbackLine = "const KALVIAN_ROOTS_CALLBACK_URL = '\(escapeJavaScript(callbackURL))';"
-        } else {
-            callbackLine = "const KALVIAN_ROOTS_CALLBACK_URL = 'http://127.0.0.1:8081/familysearch/extraction-result';"
-        }
-
+    static func makeFamilySearchExtractorScript() -> String {
         return """
         (function () {
-            \(callbackLine)
-
-            // The bookmarklet runs inside the active FamilySearch tab. Keep all
-            // parsing local to that page and send only structured JSON back to
-            // the local Kalvian Roots server.
+            // Keep all parsing local to the visible FamilySearch page and
+            // return only structured JSON to the host app.
             function clean(text) {
                 return (text || '').replace(/\\s+/g, ' ').trim();
             }
@@ -1213,42 +1203,6 @@ enum FamilySearchDOMService {
                 }
             }
 
-            async function postResult(result) {
-                if (!KALVIAN_ROOTS_CALLBACK_URL) {
-                    console.warn('Kalvian Roots FamilySearch extractor has no callback URL; result was not posted.');
-                    return;
-                }
-
-                let response = null;
-                try {
-                    response = await fetch(KALVIAN_ROOTS_CALLBACK_URL, {
-                        method: 'POST',
-                        mode: 'cors',
-                        credentials: 'include',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(result)
-                    });
-                } catch (error) {
-                    console.error('Kalvian Roots FamilySearch extractor callback POST failed:', error);
-                    throw new Error('callback POST failed: ' + clean(error && error.message));
-                }
-
-                if (!response.ok) {
-                    console.error('Kalvian Roots FamilySearch extractor callback POST failed: HTTP ' + response.status);
-                    throw new Error('callback POST failed: HTTP ' + response.status);
-                }
-
-                console.info('Kalvian Roots FamilySearch extractor callback POST succeeded.');
-            }
-
-            async function postFailureResult(result) {
-                try {
-                    await postResult(result);
-                } catch (error) {
-                    console.error('Kalvian Roots FamilySearch extractor failure callback POST failed:', error);
-                }
-            }
-
             function failureStatusForError(error) {
                 const message = clean(error && error.message);
                 if (/not on FamilySearch person details page/i.test(message)) return 'notOnFamilySearch';
@@ -1256,7 +1210,6 @@ enum FamilySearchDOMService {
                 if (/wrong host for FamilySearch extraction/i.test(message)) return 'wrongHost';
                 if (/wrong page type|not on person details page/i.test(message)) return 'wrongPageType';
                 if (/expected .* found/i.test(message)) return 'personMismatch';
-                if (/callback POST failed/i.test(message)) return 'callbackPostFailed';
                 if (/page not ready|timed out/i.test(message)) return 'pageNotReady';
                 if (/Spouses and Children section not found/i.test(message)) return 'sectionNotFound';
                 if (/spouse groups not found/i.test(message)) return 'spouseGroupsNotFound';
@@ -1383,24 +1336,13 @@ enum FamilySearchDOMService {
                         console.warn('Kalvian Roots FamilySearch extractor found zero children; posting result anyway.');
                     }
 
-                    try {
-                        await postResult(result);
-                        await closeChildPanel();
-                        console.info('Kalvian Roots FamilySearch extraction succeeded: ' + children.length + ' children.');
-                        showExtractionSuccessMessage('Kalvian Roots received FamilySearch extraction for ' + normalizedPersonId + ': ' + children.length + ' children. Return to the local family page.');
-                    } catch (postError) {
-                        await closeChildPanel();
-                        result.status = 'callbackPostFailed';
-                        result.failureReason = clean(postError && postError.message);
-                        result.debugNotes = result.debugNotes.concat(['FamilySearch callback POST failed: ' + result.failureReason]);
-                        console.error('Kalvian Roots FamilySearch extraction completed but callback POST failed:', postError);
-                        alert('FamilySearch extraction finished, but Kalvian Roots did not receive it: ' + result.failureReason);
-                    }
+                    await closeChildPanel();
+                    console.info('Kalvian Roots FamilySearch extraction succeeded: ' + children.length + ' children.');
+                    showExtractionSuccessMessage('Kalvian Roots extracted FamilySearch children for ' + normalizedPersonId + ': ' + children.length + ' children.');
                     return result;
                 } catch (error) {
                     console.error('Kalvian Roots FamilySearch extraction failed:', error);
                     const result = makeFailureResult(normalizedPersonId, error);
-                    await postFailureResult(result);
                     return result;
                 } finally {
                     cleanupDetailFrame();
@@ -1408,29 +1350,6 @@ enum FamilySearchDOMService {
             };
         })();
         """
-    }
-
-    static func makeBookmarklet() -> String {
-        let extractorScript = makeAtlasExtractorScript()
-        let bookmarkletBody = """
-        (() => {
-        // Atlas stores bookmarklets as javascript: URLs. This wrapper installs
-        // the extractor into the current FamilySearch page, reads the person ID
-        // from the URL, and starts extraction for that visible person.
-        \(extractorScript)
-        const match = location.pathname.match(/\\/tree\\/person\\/details\\/([A-Z0-9-]+)/i);
-        if (!match) {
-            alert('Open a FamilySearch person Details page before running the Kalvian Roots extractor.');
-            console.error('Not on FamilySearch person details page');
-            return;
-        }
-        window.extractFamilySearchChildren(match[1].toUpperCase());
-        })()
-        """
-        var allowed = CharacterSet.urlFragmentAllowed
-        allowed.remove(charactersIn: "%")
-        let encodedBody = bookmarkletBody.addingPercentEncoding(withAllowedCharacters: allowed) ?? bookmarkletBody
-        return "javascript:" + encodedBody
     }
 
     static func makeWebKitExtractionScript(for personId: String) -> String {
@@ -1445,7 +1364,7 @@ enum FamilySearchDOMService {
         let normalizedPersonId = expectedPersonId?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased() ?? ""
-        let extractorScript = makeAtlasExtractorScript(callbackURL: "")
+        let extractorScript = makeFamilySearchExtractorScript()
 
         return """
         (() => {

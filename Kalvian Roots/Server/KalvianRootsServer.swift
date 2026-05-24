@@ -250,10 +250,6 @@ final class HTTPHandler: ChannelInboundHandler {
         )
 
         switch (method, path) {
-        case (.OPTIONS, _):
-            logger.info("[\(requestID!)] Handling CORS preflight")
-            return .html("", headers: corsHeaders())
-
         case (.GET, "/"):
             logger.info("[\(requestID!)] 🏠 Handling landing page")
             let error = queryItems.first(where: { $0.name == "error" })?.value
@@ -263,10 +259,6 @@ final class HTTPHandler: ChannelInboundHandler {
         case (.POST, "/"):
             logger.info("[\(requestID!)] 📝 Handling landing page POST")
             return handleLandingPagePost()
-
-        case (.POST, "/familysearch/extraction-result"):
-            logger.info("[\(requestID!)] 👪 Handling generic FamilySearch extraction POST")
-            return try await handleGenericFamilySearchExtractionPost()
 
         case (.GET, "/family"):
             // Handle form submission from navigation bar
@@ -323,10 +315,6 @@ final class HTTPHandler: ChannelInboundHandler {
         case (.GET, let p) where p.starts(with: "/family/"):
             logger.info("[\(requestID!)] 👪 Handling family route: \(p)")
             return try await handleFamilyRoute(path: p, queryItems: queryItems)
-
-        case (.POST, let p) where p.starts(with: "/family/") && p.hasSuffix("/familysearch"):
-            logger.info("[\(requestID!)] 👪 Handling FamilySearch extraction POST: \(p)")
-            return try await handleFamilySearchExtractionPost(path: p, queryItems: queryItems)
 
         default:
             logger.warning("[\(requestID!)] ❓ Unknown route: \(method) \(path)")
@@ -557,13 +545,6 @@ final class HTTPHandler: ChannelInboundHandler {
             let familySearchPersonId = network.mainFamily.primaryCouple?.husband.familySearchId
                 ?? network.mainFamily.primaryCouple?.wife.familySearchId
                 ?? juuretApp?.primaryFamilySearchParentIdInSourceText(for: canonicalID)
-            let familySearchCallbackURL = makeFamilySearchCallbackURL(
-                familyId: canonicalID,
-                sessionId: sessionResult.sessionId
-            )
-            let autoExtractFamilySearch = queryItems.contains { item in
-                item.name == "familysearch" && item.value == "auto"
-            }
             let html = HTMLRenderer.renderFamily(
                 family: network.mainFamily,
                 network: network,
@@ -571,8 +552,6 @@ final class HTTPHandler: ChannelInboundHandler {
                 comparisonResult: comparisonResult,
                 familySearchExtraction: familySearchExtraction,
                 familySearchPersonId: familySearchPersonId,
-                familySearchCallbackURL: familySearchCallbackURL,
-                autoExtractFamilySearch: autoExtractFamilySearch,
                 hiskiChildSearchRequestsByCouple: hiskiChildSearchRequestsByCouple
             )
 
@@ -589,157 +568,6 @@ final class HTTPHandler: ChannelInboundHandler {
         }
     }
 
-    @MainActor
-    private func handleFamilySearchExtractionPost(
-        path: String,
-        queryItems: [URLQueryItem]
-    ) async throws -> HTTPResponse {
-        let components = path.split(separator: "/").map(String.init)
-        guard components.count == 3 else {
-            return .error(.badRequest, "Invalid FamilySearch extraction path", headers: corsHeaders())
-        }
-
-        let rawID = components[1]
-        let decodedID = rawID.removingPercentEncoding ?? rawID
-        let canonicalID = decodedID.trimmingCharacters(in: .whitespaces).uppercased()
-
-        guard FamilyIDs.isValid(familyId: canonicalID) else {
-            return .error(.badRequest, "Invalid family ID", headers: corsHeaders())
-        }
-
-        guard let body = requestBody,
-              let data = body.data(using: .utf8) else {
-            return .error(.badRequest, "Missing FamilySearch extraction JSON", headers: corsHeaders())
-        }
-
-        let extraction = try JSONDecoder().decode(FamilySearchFamilyExtraction.self, from: data)
-        if extraction.isSuccessful {
-            logger.info(
-                "[\(requestID!)] ✅ FamilySearch extraction received",
-                metadata: [
-                    "family": "\(canonicalID)",
-                    "url": "\(extraction.url ?? "unknown")",
-                    "host": "\(extraction.detectedHost ?? "unknown")",
-                    "detectedPersonId": "\(extraction.detectedPersonId ?? "unknown")",
-                    "spouseGroups": "\(extraction.spouseGroupCount ?? extraction.spouseGroups?.count ?? 0)",
-                    "rawCandidates": "\(extraction.rawCandidateChildCount ?? 0)",
-                    "children": "\(extraction.children.count)"
-                ]
-            )
-        } else {
-            logger.warning(
-                "[\(requestID!)] ⚠️ FamilySearch extraction failed",
-                metadata: [
-                    "family": "\(canonicalID)",
-                    "status": "\(extraction.status ?? "unknown")",
-                    "reason": "\(extraction.failureReason ?? "unknown")",
-                    "url": "\(extraction.url ?? "unknown")",
-                    "host": "\(extraction.detectedHost ?? "unknown")",
-                    "detectedPersonId": "\(extraction.detectedPersonId ?? "unknown")",
-                    "familyMembersFound": "\(extraction.familyMembersSectionFound.map { $0 ? "true" : "false" } ?? "unknown")",
-                    "spousesAndChildrenFound": "\(extraction.spousesAndChildrenSectionFound.map { $0 ? "true" : "false" } ?? "unknown")"
-                ]
-            )
-        }
-        let explicitSessionId = queryItems.first(where: { $0.name == "session" })?.value
-        let headers = requestHeaders ?? HTTPHeaders()
-        let sessionResult: BrowserSessionManager.SessionResult
-
-        if let explicitSessionId,
-           let session = sessionManager.existingSession(id: explicitSessionId) {
-            sessionResult = BrowserSessionManager.SessionResult(
-                session: session,
-                sessionId: explicitSessionId,
-                isNew: false
-            )
-        } else {
-            sessionResult = sessionManager.session(for: headers)
-        }
-
-        sessionResult.session.storeFamilySearchExtraction(extraction, for: canonicalID)
-        await juuretApp?.storeFamilySearchExtraction(extraction, for: canonicalID)
-
-        var responseHeaders = corsHeaders()
-        if sessionResult.isNew {
-            responseHeaders.add(
-                name: "Set-Cookie",
-                value: sessionManager.makeSessionCookieHeader(for: sessionResult.sessionId)
-            )
-        }
-
-        return .html("OK", headers: responseHeaders)
-    }
-
-    @MainActor
-    private func handleGenericFamilySearchExtractionPost() async throws -> HTTPResponse {
-        guard let body = requestBody,
-              let data = body.data(using: .utf8) else {
-            return .error(.badRequest, "Missing FamilySearch extraction JSON", headers: corsHeaders())
-        }
-
-        let extraction = try JSONDecoder().decode(FamilySearchFamilyExtraction.self, from: data)
-        let parentId = (extraction.parentFamilySearchId ?? extraction.sourcePersonId)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .uppercased()
-
-        guard !parentId.isEmpty else {
-            return .error(.badRequest, "Missing FamilySearch parent ID", headers: corsHeaders())
-        }
-
-        let appFamilyId = juuretApp?.storeFamilySearchExtractionForCurrentFamily(extraction)
-        let matchedSession = sessionManager.loadedSession(matchingFamilySearchParentId: parentId)
-        let familyId = BrowserSessionManager.resolveGenericFamilySearchExtractionFamilyId(
-            appFamilyId: appFamilyId,
-            matchedSessionFamilyId: { matchedSession?.familyId },
-            cachedFamilyId: { juuretApp?.familyNetworkCache.uniqueFamilyId(matchingFamilySearchParentId: parentId) },
-            sourceTextFamilyId: { juuretApp?.familyIdMatchingPrimaryFamilySearchParentIdInSourceText(parentId) }
-        )
-        guard let familyId else {
-            logger.warning(
-                "[\(requestID!)] ⚠️ Generic FamilySearch extraction could not be associated",
-                metadata: [
-                    "parentFamilySearchId": "\(parentId)",
-                    "sourceUrl": "\(extraction.sourceUrl ?? extraction.url ?? "unknown")",
-                    "children": "\(extraction.children.count)"
-                ]
-            )
-            return .error(
-                .badRequest,
-                "No selected Kalvian Roots family matches FamilySearch person \(parentId)",
-                headers: corsHeaders()
-            )
-        }
-
-        let headers = requestHeaders ?? HTTPHeaders()
-        let sessionResult = sessionManager.session(for: headers)
-        let storageSession = matchedSession?.session ?? sessionResult.session
-        storageSession.storeFamilySearchExtraction(extraction, for: familyId)
-
-        if appFamilyId == nil {
-            await juuretApp?.storeFamilySearchExtraction(extraction, for: familyId)
-        }
-
-        logger.info(
-            "[\(requestID!)] ✅ Generic FamilySearch extraction received",
-            metadata: [
-                "family": "\(familyId)",
-                "parentFamilySearchId": "\(parentId)",
-                "sourceUrl": "\(extraction.sourceUrl ?? extraction.url ?? "unknown")",
-                "children": "\(extraction.children.count)"
-            ]
-        )
-
-        var responseHeaders = corsHeaders()
-        if sessionResult.isNew {
-            responseHeaders.add(
-                name: "Set-Cookie",
-                value: sessionManager.makeSessionCookieHeader(for: sessionResult.sessionId)
-            )
-        }
-
-        return .html("OK", headers: responseHeaders)
-    }
-    
     // MARK: - Citation Handler
     
     @MainActor
@@ -1226,45 +1054,32 @@ final class HTTPHandler: ChannelInboundHandler {
 
         let comparisonService = FamilyComparisonService(nameManager: session.nameEquivalenceManager)
         let familySearchChildren = familySearchExtraction?.children ?? []
-
-        guard let hiskiWindow = HiskiService.familyBirthSearchWindow(for: couple) else {
-            return comparisonService.compare(
-                juuretCandidates: comparisonService.makeJuuretCandidates(from: couple.children),
-                hiskiCandidates: [],
-                familySearchCandidates: comparisonService.makeFamilySearchCandidates(from: familySearchChildren)
-            )
-        }
-
         let hiskiService = HiskiService(nameEquivalenceManager: session.nameEquivalenceManager)
         hiskiService.setCurrentFamily(family.familyId)
+        let builder = FamilyChildrenComparisonBuilder(
+            hiskiService: hiskiService,
+            comparisonService: comparisonService,
+            loadHiskiSearchHtml: loadHiskiSearchHtml,
+            log: { [weak self] message in
+                self?.logger.info("[\(self?.requestID?.uuidString ?? "unknown")] \(message)")
+            }
+        )
 
         do {
-            let searchRequests = try hiskiService.buildFamilyBirthSearchRequests(
-                fatherName: couple.husband.name,
-                fatherPatronymic: couple.husband.patronymic,
-                motherName: couple.wife.name,
-                motherPatronymic: couple.wife.patronymic,
-                startYear: hiskiWindow.startYear,
-                endYear: hiskiWindow.endYear
-            )
-            var rows: [HiskiService.HiskiFamilyBirthRow] = []
-            for request in searchRequests {
-                let searchHtml = try await loadHiskiSearchHtml(from: request.url)
-                rows = hiskiService.parseFamilyBirthResultsTable(searchHtml)
-
-                if !rows.isEmpty {
-                    logger.info(
-                        "[\(requestID!)] HisKi family-child search matched",
-                        metadata: ["request": "\(request.label)", "rows": "\(rows.count)"]
-                    )
-                    break
-                }
+            guard let buildResult = try await builder.buildGroup(
+                couple: couple,
+                coupleIndex: 0,
+                familySearchChildren: familySearchChildren,
+                loadCitationProposals: false
+            ) else {
+                return comparisonService.compare(
+                    juuretCandidates: comparisonService.makeJuuretCandidates(from: couple.children),
+                    hiskiCandidates: [],
+                    familySearchCandidates: comparisonService.makeFamilySearchCandidates(from: familySearchChildren)
+                )
             }
-            return comparisonService.compareChildren(
-                juuretChildren: couple.children,
-                hiskiRows: rows,
-                familySearchChildren: familySearchChildren
-            )
+
+            return buildResult.group.result
         } catch {
             logger.warning(
                 "[\(requestID!)] Family child comparison fell back without HisKi",
@@ -1276,15 +1091,6 @@ final class HTTPHandler: ChannelInboundHandler {
                 familySearchCandidates: comparisonService.makeFamilySearchCandidates(from: familySearchChildren)
             )
         }
-    }
-
-    private func makeFamilySearchCallbackURL(familyId: String, sessionId: String) -> String? {
-        guard let host = requestHeaders?.first(name: "Host") else {
-            return nil
-        }
-
-        let encodedFamilyId = familyId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? familyId
-        return "http://\(host)/family/\(encodedFamilyId)/familysearch?session=\(sessionId)"
     }
 
     private func makeHiskiChildSearchRequestsByCouple(
@@ -1324,16 +1130,6 @@ final class HTTPHandler: ChannelInboundHandler {
         }
 
         return requestsByCouple
-    }
-
-    private func corsHeaders() -> HTTPHeaders {
-        var headers = HTTPHeaders()
-        headers.add(name: "Access-Control-Allow-Origin", value: "https://www.familysearch.org")
-        headers.add(name: "Access-Control-Allow-Methods", value: "POST, OPTIONS")
-        headers.add(name: "Access-Control-Allow-Headers", value: "Content-Type")
-        headers.add(name: "Access-Control-Allow-Private-Network", value: "true")
-        headers.add(name: "Access-Control-Allow-Credentials", value: "true")
-        return headers
     }
 
     private func loadHiskiSearchHtml(from url: URL) async throws -> String {

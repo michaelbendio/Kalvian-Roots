@@ -381,7 +381,7 @@ Completed or current capabilities:
 
     - Multiple-spouse Juuret parsing and Kalvian Roots citation grouping
     - Local durable family network cache
-    - FamilySearch bookmarklet extraction workflow
+    - FamilySearch WebKit extraction workflow
 
 
 Summary

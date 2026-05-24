@@ -514,7 +514,7 @@ Current Implemented Capabilities
     multiple-spouse Juuret family parsing
     spouse-specific Kalvian Roots citation grouping
     local durable family network cache
-    FamilySearch bookmarklet extraction workflow
+    FamilySearch WebKit extraction workflow
     deterministic PersonCandidate → PersonIdentity comparison pipeline
 
 

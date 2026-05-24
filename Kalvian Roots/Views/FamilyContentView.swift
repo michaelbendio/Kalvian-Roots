@@ -211,14 +211,6 @@ struct FamilyContentView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                if juuretApp.familySearchComparisonDebugMessage == "FamilySearch comparison not yet available" {
-                    Text("Install the reusable bookmarklet once with Copy FamilySearch bookmarklet. Then open the FamilySearch person Details page, click the bookmarklet in Atlas, and return here.")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
                 if !familySearchComparisonRows.isEmpty {
                     familySearchComparisonTable(rows: familySearchComparisonRows)
                 } else {

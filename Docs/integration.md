@@ -14,8 +14,8 @@ Current source-of-truth documents:
     Docs/implementation-plan.md
     Docs/familysearch-bookmarklet.md
 
-Current FamilySearch extraction is manual or user-triggered through the local
-page and bookmarklet workflow. Do not implement automated crawling or hidden
+Current FamilySearch extraction is manual or user-triggered through the visible
+in-app WebKit workflow. Do not implement automated crawling or hidden
 FamilySearch traversal from this sketch without a new approved design.
 
 
@@ -64,4 +64,3 @@ Click on the spouse name
 for each of the children
    click on the name, get the birth and death years
    Add the Kalvian Roots source citation()
-

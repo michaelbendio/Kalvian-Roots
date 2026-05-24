@@ -1455,14 +1455,13 @@ final class BrowserSessionManagerTests: XCTestCase {
 
 final class FamilySearchDOMServiceTests: XCTestCase {
 
-    func testAtlasExtractorIncludesCallbackAndCardLineParser() {
-        let script = FamilySearchDOMService.makeAtlasExtractorScript(
-            callbackURL: "http://127.0.0.1:8081/family/AHOKANGAS%202/familysearch?session=test"
-        )
+    func testFamilySearchExtractorIncludesCardLineParserWithoutBookmarkletCallback() {
+        let script = FamilySearchDOMService.makeFamilySearchExtractorScript()
 
-        XCTAssertTrue(script.contains("KALVIAN_ROOTS_CALLBACK_URL = 'http://127.0.0.1:8081/family/AHOKANGAS%202/familysearch?session=test'"))
-        XCTAssertTrue(script.contains("await postResult(result);"))
         XCTAssertTrue(script.contains("window.extractFamilySearchChildren"))
+        XCTAssertFalse(script.contains("KALVIAN_ROOTS_CALLBACK_URL"))
+        XCTAssertFalse(script.contains("fetch("))
+        XCTAssertFalse(script.contains("callback POST failed"))
         XCTAssertFalse(script.contains("function updateExtractionProgress(message)"))
         XCTAssertFalse(script.contains("function clearExtractionProgress()"))
         XCTAssertFalse(script.contains("Kalvian Roots is extracting FamilySearch child"))
@@ -1552,7 +1551,6 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("diagnosticContext"))
         XCTAssertTrue(script.contains("childrenMarkerCount"))
         XCTAssertTrue(script.contains("rawCandidateChildCount"))
-        XCTAssertTrue(script.contains("callback POST failed"))
         XCTAssertTrue(script.contains("found zero children"))
         XCTAssertTrue(script.contains("Kalvian Roots FamilySearch extraction succeeded"))
         XCTAssertTrue(script.contains("function showExtractionSuccessMessage(message)"))
@@ -1561,17 +1559,16 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("window.setTimeout(function ()"))
         XCTAssertTrue(script.contains("}, 5000);"))
         XCTAssertTrue(script.contains("await closeChildPanel();"))
-        XCTAssertTrue(script.contains("Kalvian Roots received FamilySearch extraction"))
+        XCTAssertTrue(script.contains("Kalvian Roots extracted FamilySearch children"))
         XCTAssertFalse(script.contains("alert('Kalvian Roots received FamilySearch extraction"))
         XCTAssertFalse(script.localizedCaseInsensitiveContains("do not show"))
-        XCTAssertTrue(script.contains("FamilySearch extraction finished, but Kalvian Roots did not receive it"))
         XCTAssertTrue(script.contains("finally {"))
         XCTAssertTrue(script.contains("cleanupDetailFrame();"))
         XCTAssertTrue(script.contains("preferred group children"))
         XCTAssertTrue(script.contains("\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b"))
     }
 
-    func testServerRenderedFamilyProvidesReusableFamilySearchBookmarklet() {
+    func testServerRenderedFamilyOmitsBookmarkletControls() {
         let family = Family(
             familyId: "AHOKANGAS 2",
             pageReferences: ["1"],
@@ -1586,24 +1583,15 @@ final class FamilySearchDOMServiceTests: XCTestCase {
             network: nil,
             comparisonResult: nil,
             familySearchExtraction: nil,
-            familySearchPersonId: "KJJH-2QK",
-            familySearchCallbackURL: "http://127.0.0.1:8081/family/AHOKANGAS%202/familysearch?session=test",
-            autoExtractFamilySearch: true
+            familySearchPersonId: "KJJH-2QK"
         )
 
-        XCTAssertTrue(html.contains("familySearchAutoStatus"))
-        XCTAssertTrue(html.contains("Use the same Kalvian Roots FamilySearch Extractor bookmarklet for every family"))
-        XCTAssertTrue(html.contains("Open FamilySearch extractor page"))
-        XCTAssertTrue(html.contains("Copy bookmarklet"))
+        XCTAssertTrue(html.contains("Open FamilySearch Details page"))
         XCTAssertTrue(html.contains("href=\"https://www.familysearch.org/en/tree/person/details/KJJH-2QK\""))
-        XCTAssertTrue(html.contains("familySearchBookmarkletStatus"))
-        XCTAssertTrue(html.contains("Drag this reusable bookmarklet to your Atlas bookmarks bar"))
-        XCTAssertTrue(html.contains("Kalvian Roots FamilySearch Extractor"))
-        XCTAssertTrue(html.contains("FamilySearch extractor invocation status: waiting for user-opened FamilySearch page"))
-        XCTAssertFalse(html.contains("window.addEventListener('load'"))
-        XCTAssertFalse(html.contains("Run FamilySearch Extractor"))
-        XCTAssertFalse(html.contains("run extractFamilySearchChildren"))
-        XCTAssertFalse(html.contains("const personId = 'KJJH-2QK'"))
+        XCTAssertFalse(html.localizedCaseInsensitiveContains("bookmarklet"))
+        XCTAssertFalse(html.contains("Copy bookmarklet"))
+        XCTAssertFalse(html.localizedCaseInsensitiveContains("Atlas"))
+        XCTAssertFalse(html.contains("fs-script"))
     }
 
     func testServerRenderedLapsetOpensHiskiChildResultsPopup() throws {
@@ -1710,19 +1698,6 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertEqual(values["aetunimi"], "Kaarin")
     }
 
-    func testBookmarkletInjectsExtractorAndDetectsPersonIdFromURL() {
-        let bookmarklet = FamilySearchDOMService.makeBookmarklet()
-
-        XCTAssertTrue(bookmarklet.hasPrefix("javascript:"))
-        XCTAssertTrue(bookmarklet.contains("extractFamilySearchChildren"))
-        XCTAssertTrue(bookmarklet.contains("location.pathname.match"))
-        XCTAssertTrue(bookmarklet.contains("familysearch"))
-        XCTAssertTrue(bookmarklet.contains("extraction-result"))
-        XCTAssertTrue(bookmarklet.contains("Open%20a%20FamilySearch%20person%20Details%20page"))
-        XCTAssertTrue(bookmarklet.contains("Not%20on%20FamilySearch%20person%20details%20page"))
-        XCTAssertFalse(bookmarklet.contains("KJJH-2QK"))
-    }
-
     func testWebKitExtractionScriptPostsResultToMessageHandler() {
         let script = FamilySearchDOMService.makeWebKitExtractionScript(for: " kjjh-2qk ")
 
@@ -1730,7 +1705,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("window.webkit.messageHandlers"))
         XCTAssertTrue(script.contains("extractFamilySearchChildren"))
         XCTAssertTrue(script.contains("KJJH-2QK"))
-        XCTAssertTrue(script.contains("const KALVIAN_ROOTS_CALLBACK_URL = '';"))
+        XCTAssertFalse(script.contains("KALVIAN_ROOTS_CALLBACK_URL"))
         XCTAssertFalse(script.contains("http://127.0.0.1:8081/familysearch/extraction-result"))
     }
 
@@ -2331,9 +2306,7 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
             network: nil,
             comparisonResult: result,
             familySearchExtraction: nil,
-            familySearchPersonId: nil,
-            familySearchCallbackURL: nil,
-            autoExtractFamilySearch: false
+            familySearchPersonId: nil
         )
 
         let johannesLines = html

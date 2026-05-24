@@ -115,8 +115,6 @@ struct HTMLRenderer {
         comparisonResult: FamilyComparisonResult? = nil,
         familySearchExtraction: FamilySearchFamilyExtraction? = nil,
         familySearchPersonId: String? = nil,
-        familySearchCallbackURL: String? = nil,
-        autoExtractFamilySearch: Bool = false,
         hiskiChildSearchRequestsByCouple: [Int: HiskiService.FamilyBirthSearchRequest] = [:]
     ) -> String {
         let tokenizer = FamilyTokenizer()
@@ -142,9 +140,7 @@ struct HTMLRenderer {
             family: family,
             comparisonResult: comparisonResult,
             familySearchExtraction: familySearchExtraction,
-            familySearchPersonId: familySearchPersonId,
-            familySearchCallbackURL: familySearchCallbackURL,
-            autoExtractFamilySearch: autoExtractFamilySearch
+            familySearchPersonId: familySearchPersonId
         )
 
         return """
@@ -391,9 +387,7 @@ struct HTMLRenderer {
         family: Family,
         comparisonResult: FamilyComparisonResult?,
         familySearchExtraction: FamilySearchFamilyExtraction?,
-        familySearchPersonId: String?,
-        familySearchCallbackURL: String?,
-        autoExtractFamilySearch: Bool
+        familySearchPersonId: String?
     ) -> String {
         guard comparisonResult != nil || familySearchPersonId != nil else {
             return ""
@@ -440,50 +434,13 @@ struct HTMLRenderer {
                 """
             }
         } else if let familySearchPersonId {
-            let script = FamilySearchDOMService.makeAtlasExtractorScript(callbackURL: familySearchCallbackURL)
-            let bookmarklet = FamilySearchDOMService.makeBookmarklet()
-            let autoRunStatus = autoExtractFamilySearch
-                ? "<div id=\"familySearchAutoStatus\" class=\"fs-debug-summary\">FamilySearch extractor invocation status: waiting for user-opened FamilySearch page</div>"
-                : ""
             let familySearchURL = FamilySearchDOMService.detailsURL(for: familySearchPersonId)
             extractionSummary = """
             <div class="fs-debug-summary">
                 FamilySearch children have not been imported for this family.
-                Use the same Kalvian Roots FamilySearch Extractor bookmarklet for every family:
-                1. Open the FamilySearch person Details page.
-                2. Click the Kalvian Roots FamilySearch Extractor bookmarklet in Atlas.
-                3. Return to this local family page to view comparison results.
+                Open the FamilySearch person Details page in Kalvian Roots to extract children with the in-app WebKit workflow.
             </div>
-            <a class="fs-action" href="\(escapeHTML(familySearchURL))">Open FamilySearch extractor page</a>
-            <button id="copyFamilySearchBookmarklet" class="fs-action fs-button" type="button">Copy bookmarklet</button>
-            \(autoRunStatus)
-            <div class="fs-debug-summary">Drag this reusable bookmarklet to your Atlas bookmarks bar:
-                <a class="fs-bookmarklet" href="\(escapeHTML(bookmarklet))">Kalvian Roots FamilySearch Extractor</a>
-            </div>
-            <div id="familySearchBookmarkletStatus" class="fs-debug-summary">Bookmarklet status: ready to install</div>
-            <textarea class="fs-script" spellcheck="false">\(escapeHTML(script))</textarea>
-            <script>
-            (function () {
-                const button = document.getElementById('copyFamilySearchBookmarklet');
-                const status = document.getElementById('familySearchBookmarkletStatus');
-                const bookmarklet = '\(escapeJavaScript(bookmarklet))';
-                if (!button) return;
-                button.addEventListener('click', async function () {
-                    try {
-                        await navigator.clipboard.writeText(bookmarklet);
-                        if (status) {
-                            status.textContent = 'Bookmarklet copied. Create an Atlas bookmark and paste it as the URL.';
-                            status.dataset.state = 'ready';
-                        }
-                    } catch (error) {
-                        if (status) {
-                            status.textContent = 'Copy failed. Drag the bookmarklet link to the Atlas bookmarks bar instead.';
-                            status.dataset.state = 'error';
-                        }
-                    }
-                });
-            })();
-            </script>
+            <a class="fs-action" href="\(escapeHTML(familySearchURL))">Open FamilySearch Details page</a>
             """
         } else {
             extractionSummary = """
@@ -912,17 +869,6 @@ struct HTMLRenderer {
             font-size: 13px;
             margin-top: 4px;
         }
-        .fs-script {
-            width: 100%;
-            min-height: 140px;
-            margin: 12px 0;
-            padding: 10px;
-            font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
-            font-size: 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            background: #f9f9f9;
-        }
         .fs-action {
             display: inline-block;
             margin-top: 10px;
@@ -942,13 +888,6 @@ struct HTMLRenderer {
         .fs-action:disabled {
             cursor: wait;
             opacity: 0.65;
-        }
-        .fs-bookmarklet {
-            color: #0066cc;
-            font-weight: 600;
-        }
-        #familySearchBookmarkletStatus[data-state="error"] {
-            color: #b00020;
         }
         .comparison-table {
             width: 100%;

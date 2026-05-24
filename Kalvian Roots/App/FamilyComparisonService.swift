@@ -43,31 +43,6 @@ final class FamilyComparisonService {
 
     // MARK: - Public API
 
-    func compare(
-        familySearchChildren: [Person],
-        juuretChildren: [Person],
-        hiskiCitations: [HiskiCitation]
-    ) -> FamilyComparisonResult {
-
-        let fsCandidates = familySearchChildren.map {
-            makeFamilySearchCandidate(from: $0)
-        }
-
-        let jkCandidates = juuretChildren.map {
-            makeJuuretCandidate(from: $0)
-        }
-
-        let hiskiCandidates = hiskiCitations.map {
-            makeHiskiCandidate(from: $0)
-        }
-
-        return FamilyComparisonResult(
-            familySearch: fsCandidates,
-            juuretKalvialla: jkCandidates,
-            hiski: hiskiCandidates
-        )
-    }
-
     func makeHiskiCandidates(from events: [HiskiService.HiskiFamilyBirthEvent]) -> [PersonCandidate] {
         events.map {
             makeHiskiCandidate(from: $0)
@@ -103,45 +78,6 @@ final class FamilyComparisonService {
                 children,
                 matchingHiskiRows: hiskiRows
             )
-        )
-    }
-
-    func compareChildren(
-        juuretChildren: [Person],
-        hiskiChildren: [HiskiService.HiskiFamilyBirthEvent],
-        familySearchChildren: [FamilySearchChild]
-    ) -> FamilyComparisonResult {
-        compare(
-            juuretCandidates: makeJuuretCandidates(from: juuretChildren),
-            hiskiCandidates: makeHiskiCandidates(from: hiskiChildren),
-            familySearchCandidates: makeFamilySearchCandidates(from: familySearchChildren)
-        )
-    }
-
-    func compareChildren(
-        juuretChildren: [Person],
-        hiskiRows: [HiskiService.HiskiFamilyBirthRow],
-        familySearchChildren: [FamilySearchChild]
-    ) -> FamilyComparisonResult {
-        compare(
-            juuretCandidates: makeJuuretCandidates(from: juuretChildren),
-            hiskiCandidates: makeHiskiCandidates(from: hiskiRows),
-            familySearchCandidates: makeFamilySearchCandidates(
-                from: familySearchChildren,
-                matchingHiskiRows: hiskiRows
-            )
-        )
-    }
-
-    func compareChildren(
-        _ juuretChildren: [Person],
-        _ hiskiChildren: [HiskiService.HiskiFamilyBirthEvent],
-        _ familySearchChildren: [FamilySearchChild]
-    ) -> FamilyComparisonResult {
-        compareChildren(
-            juuretChildren: juuretChildren,
-            hiskiChildren: hiskiChildren,
-            familySearchChildren: familySearchChildren
         )
     }
 
@@ -213,18 +149,6 @@ private extension FamilyComparisonService {
         match.juuretKalvialla != nil && match.hiski != nil
     }
 
-    func makeFamilySearchCandidate(from person: Person) -> PersonCandidate {
-        PersonCandidate(
-            name: person.name,
-            birthDate: parseGenealogyDate(person.birthDate),
-            deathDate: parseGenealogyDate(person.deathDate),
-            source: .familySearch,
-            nameManager: nameManager,
-            familySearchId: person.familySearchId,
-            hiskiCitation: nil
-        )
-    }
-
     func makeJuuretCandidate(from person: Person) -> PersonCandidate {
         PersonCandidate(
             name: person.name,
@@ -233,17 +157,6 @@ private extension FamilyComparisonService {
             nameManager: nameManager,
             familySearchId: nil,
             hiskiCitation: nil
-        )
-    }
-
-    func makeHiskiCandidate(from citation: HiskiCitation) -> PersonCandidate {
-        PersonCandidate(
-            name: citation.personName,
-            birthDate: parseGenealogyDate(citation.date),
-            source: .hiski,
-            nameManager: nameManager,
-            familySearchId: nil,
-            hiskiCitation: URL(string: citation.url)
         )
     }
 
