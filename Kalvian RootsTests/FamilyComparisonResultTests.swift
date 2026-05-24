@@ -1719,6 +1719,23 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertFalse(script.contains("KJJH-2QK"))
     }
 
+    #if os(macOS)
+    func testWebKitDetailsPageDetectionWaitsPastLoginRedirect() {
+        XCTAssertFalse(
+            FamilySearchWebViewExtractionManager.isDetailsPageURL(
+                "https://www.familysearch.org/en/auth/login",
+                for: "K2YQ-1ZY"
+            )
+        )
+        XCTAssertTrue(
+            FamilySearchWebViewExtractionManager.isDetailsPageURL(
+                "https://www.familysearch.org/en/tree/person/details/K2YQ-1ZY",
+                for: "k2yq-1zy"
+            )
+        )
+    }
+    #endif
+
     func testFamilySearchSpouseGroupsRouteByBothParentIdsForRepeatedHusband() {
         let erik = Person(name: "Erik", familySearchId: "K2YQ-1ZY")
         let family = Family(

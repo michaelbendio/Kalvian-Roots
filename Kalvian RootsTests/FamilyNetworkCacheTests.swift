@@ -57,6 +57,20 @@ final class FamilyNetworkCacheTests: XCTestCase {
         XCTAssertEqual(cached?.mainFamily.familyId, "TEST 1")
     }
 
+    func testCachedNetworkSuppressesSyntOriginPhrasesBeforeDisplay() {
+        let network = createTestNetwork(
+            notes: ["synt. Veteli", "Lapsena kuollut 6."],
+            noteDefinitions: ["*": "synt. Lohtaja", "**": "real note"]
+        )
+
+        cache.cacheNetwork(network, extractionTime: 1.0)
+
+        let cached = cache.getCachedNetwork(familyId: "TEST 1")
+
+        XCTAssertEqual(cached?.mainFamily.notes, ["Lapsena kuollut 6."])
+        XCTAssertEqual(cached?.mainFamily.noteDefinitions, ["**": "real note"])
+    }
+
     func testGetUncachedNetworkReturnsNil() {
         let result = cache.getCachedNetwork(familyId: "UNCACHED 999")
 
@@ -96,7 +110,11 @@ final class FamilyNetworkCacheTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func createTestNetwork(familyId: String = "TEST 1") -> FamilyNetwork {
+    private func createTestNetwork(
+        familyId: String = "TEST 1",
+        notes: [String] = [],
+        noteDefinitions: [String: String] = [:]
+    ) -> FamilyNetwork {
         let husband = Person(name: "Matti", birthDate: "01.01.1750", noteMarkers: [])
         let wife = Person(name: "Maria", birthDate: "01.01.1755", noteMarkers: [])
         let child = Person(name: "Liisa", birthDate: "01.01.1780", noteMarkers: [])
@@ -106,8 +124,8 @@ final class FamilyNetworkCacheTests: XCTestCase {
             familyId: familyId,
             pageReferences: ["100"],
             couples: [couple],
-            notes: [],
-            noteDefinitions: [:]
+            notes: notes,
+            noteDefinitions: noteDefinitions
         )
 
         return FamilyNetwork(mainFamily: family)

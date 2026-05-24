@@ -36,6 +36,10 @@ class AIParsingService {
 
         logInfo(.ai, "✅ Using hosted AI service: \(service.name)")
     }
+
+    init(service: AIService) {
+        self.service = service
+    }
     
     func configure(apiKey: String) throws {
         try service.configure(apiKey: apiKey)
@@ -145,8 +149,8 @@ class AIParsingService {
         // Extract basic fields
         let familyId = json["familyId"] as? String ?? providedFamilyId
         let pageReferences = extractPageReferences(from: json)
-        let notes = json["notes"] as? [String] ?? []
-        let noteDefinitions = json["noteDefinitions"] as? [String: String] ?? [:]
+        let notes = JuuretOriginPhraseFilter.sanitizedNotes(json["notes"] as? [String] ?? [])
+        let noteDefinitions = JuuretOriginPhraseFilter.sanitized(json["noteDefinitions"] as? [String: String] ?? [:])
         
         // Extract couples array - this is now the ONLY supported format
         guard let couplesData = json["couples"] as? [[String: Any]] else {
@@ -189,7 +193,7 @@ class AIParsingService {
             
             // Extract other couple fields
             let childrenDiedInfancy = coupleData["childrenDiedInfancy"] as? Int
-            let coupleNotes = coupleData["coupleNotes"] as? [String] ?? []
+            let coupleNotes = JuuretOriginPhraseFilter.sanitizedNotes(coupleData["coupleNotes"] as? [String] ?? [])
             
             // Create couple
             let couple = Couple(
@@ -241,12 +245,12 @@ class AIParsingService {
             name: data["name"] as? String ?? "Unknown",
             patronymic: data["patronymic"] as? String,
             birthDate: data["birthDate"] as? String,
-            deathDate: data["deathDate"] as? String,
+            deathDate: JuuretOriginPhraseFilter.sanitizedField(data["deathDate"] as? String),
             marriageDate: data["marriageDate"] as? String,
             fullMarriageDate: data["fullMarriageDate"] as? String,
-            spouse: data["spouse"] as? String,
-            asChild: data["asChild"] as? String,
-            asParent: data["asParent"] as? String,
+            spouse: JuuretOriginPhraseFilter.sanitizedField(data["spouse"] as? String),
+            asChild: JuuretOriginPhraseFilter.sanitizedField(data["asChild"] as? String),
+            asParent: JuuretOriginPhraseFilter.sanitizedField(data["asParent"] as? String),
             familySearchId: data["familySearchId"] as? String,
             noteMarkers: data["noteMarkers"] as? [String] ?? [],
             fatherName: data["fatherName"] as? String,

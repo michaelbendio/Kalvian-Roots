@@ -115,6 +115,66 @@ final class AIParsingServiceTests: XCTestCase {
         XCTAssertTrue(aiServicesSource.contains(#""synt. Veteli" means the person was originally from Veteli"#))
         XCTAssertTrue(aiServicesSource.contains(#"Do NOT store "synt." text in notes, coupleNotes, deathDate, spouse, asChild, or asParent"#))
     }
+
+    func testParsedFamilySuppressesSyntOriginPhrasesFromModelOutput() async throws {
+        let service = AIParsingService(service: MockAIService(response: """
+        {
+          "familyId": "TIKKANEN 6",
+          "pageReferences": ["240", "241"],
+          "couples": [
+            {
+              "husband": {
+                "name": "Erik",
+                "patronymic": "Juhonp.",
+                "birthDate": "1716",
+                "deathDate": "27.02.1797 synt. Veteli",
+                "asChild": "Tikkanen 4 synt. Veteli",
+                "familySearchId": "K2YQ-1ZY",
+                "noteMarkers": []
+              },
+              "wife": {
+                "name": "Maria",
+                "patronymic": "Martint.",
+                "birthDate": "02.06.1735",
+                "deathDate": null,
+                "asChild": "synt. Lohtaja",
+                "familySearchId": "K8CD-718",
+                "noteMarkers": []
+              },
+              "marriageDate": "53",
+              "fullMarriageDate": "27.11.1753",
+              "children": [
+                {
+                  "name": "Matti",
+                  "birthDate": "14.03.1756",
+                  "deathDate": null,
+                  "marriageDate": "79",
+                  "spouse": "Kaarin Bjömheim synt. Veteli",
+                  "asParent": "Tikkanen II 1 synt. Veteli",
+                  "familySearchId": "LHH6-W2P",
+                  "noteMarkers": []
+                }
+              ],
+              "childrenDiedInfancy": null,
+              "coupleNotes": ["synt. Lohtaja"]
+            }
+          ],
+          "notes": ["synt. Veteli", "Lapsena kuollut 6."],
+          "noteDefinitions": {"*": "synt. Lohtaja", "**": "real note"}
+        }
+        """))
+
+        let family = try await service.parseFamily(familyId: "TIKKANEN 6", familyText: "ignored")
+
+        XCTAssertEqual(family.notes, ["Lapsena kuollut 6."])
+        XCTAssertEqual(family.noteDefinitions, ["**": "real note"])
+        XCTAssertEqual(family.primaryCouple?.coupleNotes, [])
+        XCTAssertEqual(family.primaryCouple?.husband.deathDate, "27.02.1797")
+        XCTAssertEqual(family.primaryCouple?.husband.asChild, "Tikkanen 4")
+        XCTAssertNil(family.primaryCouple?.wife.asChild)
+        XCTAssertEqual(family.primaryCouple?.children.first?.spouse, "Kaarin Bjömheim")
+        XCTAssertEqual(family.primaryCouple?.children.first?.asParent, "Tikkanen II 1")
+    }
     
     func testServiceNameAfterConfiguration() throws {
         try service.configure(apiKey: "test-key")
@@ -168,5 +228,21 @@ final class AIParsingServiceTests: XCTestCase {
         
         // Then: Existing configuration remains intact; the app has no clear-key API.
         XCTAssertTrue(service.isConfigured, "Empty key should not clear an existing configuration")
+    }
+}
+
+private final class MockAIService: AIService {
+    let name = "Mock"
+    var isConfigured: Bool { true }
+    private let response: String
+
+    init(response: String) {
+        self.response = response
+    }
+
+    func configure(apiKey: String) throws {}
+
+    func parseFamily(familyId: String, familyText: String) async throws -> String {
+        response
     }
 }

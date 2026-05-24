@@ -163,7 +163,7 @@ class FamilyNetworkCache: FamilyNetworkCaching {
         if let cached = cachedNetworks[normalized] {
             let retrieveTime = Date().timeIntervalSince(startTime)
             logInfo(.cache, "⚡ Retrieved from memory cache: \(normalized) in \(String(format: "%.3f", retrieveTime))s")
-            return cached.network
+            return JuuretOriginPhraseFilter.sanitized(cached.network)
         }
         
         // Check persistent store
@@ -181,10 +181,17 @@ class FamilyNetworkCache: FamilyNetworkCaching {
                 - Network size: \(persisted.network.allFamilies.count) families
                 """)
             
+            let sanitizedNetwork = JuuretOriginPhraseFilter.sanitized(persisted.network)
+            let sanitized = CachedFamily(
+                network: sanitizedNetwork,
+                cachedAt: persisted.cachedAt,
+                extractionTime: persisted.extractionTime
+            )
+
             // Add to memory cache for next time
-            cachedNetworks[normalized] = persisted
+            cachedNetworks[normalized] = sanitized
             
-            return persisted.network
+            return sanitizedNetwork
         }
         
         let totalTime = Date().timeIntervalSince(startTime)
@@ -201,15 +208,20 @@ class FamilyNetworkCache: FamilyNetworkCaching {
         // Check memory cache first
         if let cached = cachedNetworks[normalized] {
             logInfo(.cache, "⚡ Cache hit (nuclear) for: \(normalized)")
-            return cached.network.mainFamily
+            return JuuretOriginPhraseFilter.sanitized(cached.network.mainFamily)
         }
         
         // Check persistent store
         if let persisted = persistenceStore.loadFamily(withId: normalized) {
             logInfo(.cache, "💾 Cache hit (nuclear, disk) for: \(normalized)")
+            let sanitizedNetwork = JuuretOriginPhraseFilter.sanitized(persisted.network)
             // Add to memory cache for next time
-            cachedNetworks[normalized] = persisted
-            return persisted.network.mainFamily
+            cachedNetworks[normalized] = CachedFamily(
+                network: sanitizedNetwork,
+                cachedAt: persisted.cachedAt,
+                extractionTime: persisted.extractionTime
+            )
+            return sanitizedNetwork.mainFamily
         }
         
         logTrace(.cache, "❌ Cache miss (nuclear) for: \(normalized)")
@@ -220,9 +232,10 @@ class FamilyNetworkCache: FamilyNetworkCaching {
      * Cache a network
      */
     func cacheNetwork(_ network: FamilyNetwork, extractionTime: TimeInterval) {
-        let normalized = network.mainFamily.familyId.uppercased().trimmingCharacters(in: .whitespaces)
+        let sanitizedNetwork = JuuretOriginPhraseFilter.sanitized(network)
+        let normalized = sanitizedNetwork.mainFamily.familyId.uppercased().trimmingCharacters(in: .whitespaces)
         let cached = CachedFamily(
-            network: network,
+            network: sanitizedNetwork,
             cachedAt: Date(),
             extractionTime: extractionTime
         )
