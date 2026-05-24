@@ -884,6 +884,59 @@ final class HiskiServiceTests: XCTestCase {
 
         XCTAssertTrue(events.isEmpty)
     }
+
+    func testFetchCitationEventsForFamilyBirthRowsKeepsSuccessesAndReportsFailures() async {
+        let rows = [
+            HiskiService.HiskiFamilyBirthRow(
+                birthDate: "24.6.1801",
+                childName: "Anna",
+                fatherName: "Elias Matinp.",
+                motherName: "Maria Antint.",
+                recordPath: "/hiski?en+abc123"
+            ),
+            HiskiService.HiskiFamilyBirthRow(
+                birthDate: "1.3.1804",
+                childName: "Matts",
+                fatherName: "Elias Matinp.",
+                motherName: "Maria Antint.",
+                recordPath: "/hiski?en+abc124"
+            )
+        ]
+
+        var requestedRecordURLs: [String] = []
+
+        let result = await service.fetchCitationEventsForFamilyBirthRows(rows) { recordURL in
+            requestedRecordURLs.append(recordURL)
+
+            if recordURL == "https://hiski.genealogia.fi/hiski?en+abc123" {
+                return "https://hiski.genealogia.fi/hiski?en+t111"
+            }
+
+            throw HiskiServiceError.citationExtractionFailed
+        }
+
+        XCTAssertEqual(
+            requestedRecordURLs,
+            [
+                "https://hiski.genealogia.fi/hiski?en+abc123",
+                "https://hiski.genealogia.fi/hiski?en+abc124"
+            ]
+        )
+        XCTAssertEqual(result.events.count, 1)
+        XCTAssertEqual(result.events.first?.childName, "Anna")
+        XCTAssertEqual(result.events.first?.citationURL, "https://hiski.genealogia.fi/hiski?en+t111")
+        XCTAssertEqual(result.failures.count, 1)
+
+        let failure = result.failures[0]
+        XCTAssertEqual(failure.row.childName, "Matts")
+        XCTAssertEqual(failure.row.birthDate, "1.3.1804")
+        XCTAssertEqual(failure.recordURL, "https://hiski.genealogia.fi/hiski?en+abc124")
+        XCTAssertEqual(failure.message, "HisKi citation link not found in record page.")
+        XCTAssertEqual(
+            failure.logDescription,
+            "Matts, 1.3.1804, Elias Matinp. + Maria Antint., record https://hiski.genealogia.fi/hiski?en+abc124: HisKi citation link not found in record page."
+        )
+    }
     
     func testQueryBirthGeneratesURL() async throws {
         // Integration test - would require actual query

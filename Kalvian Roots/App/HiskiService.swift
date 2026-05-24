@@ -18,13 +18,30 @@ import WebKit
 
 // MARK: - Error Types
 
-enum HiskiServiceError: Error {
+enum HiskiServiceError: LocalizedError {
     case sessionFailed
     case invalidDate
     case urlCreationFailed
     case browserOpenFailed
     case noRecordFound
     case citationExtractionFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .sessionFailed:
+            return "HisKi session failed."
+        case .invalidDate:
+            return "HisKi date is invalid."
+        case .urlCreationFailed:
+            return "HisKi URL could not be created."
+        case .browserOpenFailed:
+            return "HisKi browser window could not be opened."
+        case .noRecordFound:
+            return "No HisKi record found."
+        case .citationExtractionFailed:
+            return "HisKi citation link not found in record page."
+        }
+    }
 }
 
 // MARK: - Extraction Mode
@@ -414,6 +431,21 @@ class HiskiService {
             self.parish = parish
             self.villageFarm = villageFarm
         }
+    }
+
+    struct HiskiFamilyBirthCitationFailure: Equatable {
+        let row: HiskiFamilyBirthRow
+        let recordURL: String
+        let message: String
+
+        var logDescription: String {
+            "\(row.childName), \(row.birthDate), \(row.fatherName) + \(row.motherName), record \(recordURL): \(message)"
+        }
+    }
+
+    struct HiskiFamilyBirthCitationFetchResult: Equatable {
+        let events: [HiskiFamilyBirthEvent]
+        let failures: [HiskiFamilyBirthCitationFailure]
     }
 
     struct HiskiParishGroupKey: Hashable, Equatable {
@@ -911,32 +943,73 @@ class HiskiService {
         _ rows: [HiskiFamilyBirthRow],
         using citationLoader: (String) async throws -> String
     ) async throws -> [HiskiFamilyBirthEvent] {
+        let result = await fetchCitationEventsForFamilyBirthRows(rows, using: citationLoader)
+        if !result.failures.isEmpty {
+            throw HiskiServiceError.citationExtractionFailed
+        }
+
+        return result.events
+    }
+
+    func fetchCitationEventsForFamilyBirthRows(
+        _ rows: [HiskiFamilyBirthRow]
+    ) async -> HiskiFamilyBirthCitationFetchResult {
+        await fetchCitationEventsForFamilyBirthRows(rows) { recordUrl in
+            try await self.loadRecordAndExtractCitationHTTP(recordUrl: recordUrl)
+        }
+    }
+
+    func fetchCitationEventsForFamilyBirthRows(
+        _ rows: [HiskiFamilyBirthRow],
+        using citationLoader: (String) async throws -> String
+    ) async -> HiskiFamilyBirthCitationFetchResult {
         guard !rows.isEmpty else {
-            return []
+            return HiskiFamilyBirthCitationFetchResult(events: [], failures: [])
         }
 
         var events: [HiskiFamilyBirthEvent] = []
         events.reserveCapacity(rows.count)
+        var failures: [HiskiFamilyBirthCitationFailure] = []
 
         for row in rows {
             let recordURL = "https://hiski.genealogia.fi" + row.recordPath
-            let citationURL = try await citationLoader(recordURL)
 
-            events.append(
-                HiskiFamilyBirthEvent(
-                    birthDate: row.birthDate,
-                    childName: row.childName,
-                    fatherName: row.fatherName,
-                    motherName: row.motherName,
-                    recordURL: recordURL,
-                    citationURL: citationURL,
-                    parish: row.parish,
-                    villageFarm: row.villageFarm
+            do {
+                let citationURL = try await citationLoader(recordURL)
+
+                events.append(
+                    HiskiFamilyBirthEvent(
+                        birthDate: row.birthDate,
+                        childName: row.childName,
+                        fatherName: row.fatherName,
+                        motherName: row.motherName,
+                        recordURL: recordURL,
+                        citationURL: citationURL,
+                        parish: row.parish,
+                        villageFarm: row.villageFarm
+                    )
                 )
-            )
+            } catch {
+                failures.append(
+                    HiskiFamilyBirthCitationFailure(
+                        row: row,
+                        recordURL: recordURL,
+                        message: Self.errorDescription(for: error)
+                    )
+                )
+            }
         }
 
-        return events
+        return HiskiFamilyBirthCitationFetchResult(events: events, failures: failures)
+    }
+
+    private static func errorDescription(for error: Error) -> String {
+        if let localizedError = error as? LocalizedError,
+           let description = localizedError.errorDescription {
+            return description
+        }
+
+        return error.localizedDescription
     }
     
     // MARK: - Pure HTTP Citation Extraction

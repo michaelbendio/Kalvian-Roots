@@ -110,22 +110,25 @@ final class FamilyChildrenComparisonBuilder {
             return []
         }
 
-        do {
-            let hiskiEvents = try await hiskiService.fetchCitationsForFamilyBirthRows(structuredRows)
-            log("HisKi citation events loaded: \(hiskiEvents.count)")
-            let citationResult = comparisonService.compare(
-                juuretCandidates: comparisonService.makeJuuretCandidates(from: couple.children),
-                hiskiCandidates: comparisonService.makeHiskiCandidates(from: hiskiEvents),
-                familySearchCandidates: comparisonService.makeFamilySearchCandidates(
-                    from: familySearchChildren,
-                    matchingHiskiRows: structuredRows
-                )
-            )
-            return comparisonService.makeHiskiCitationProposals(from: citationResult)
-        } catch {
-            log("HisKi citation events unavailable: \(error.localizedDescription)")
-            return []
+        let citationLoad = await hiskiService.fetchCitationEventsForFamilyBirthRows(structuredRows)
+        if citationLoad.failures.isEmpty {
+            log("HisKi citation events loaded: \(citationLoad.events.count)")
+        } else {
+            log("HisKi citation events loaded: \(citationLoad.events.count); unavailable: \(citationLoad.failures.count)")
+            for failure in citationLoad.failures {
+                log("HisKi citation event unavailable for \(failure.logDescription)")
+            }
         }
+
+        let citationResult = comparisonService.compare(
+            juuretCandidates: comparisonService.makeJuuretCandidates(from: couple.children),
+            hiskiCandidates: comparisonService.makeHiskiCandidates(from: citationLoad.events),
+            familySearchCandidates: comparisonService.makeFamilySearchCandidates(
+                from: familySearchChildren,
+                matchingHiskiRows: structuredRows
+            )
+        )
+        return comparisonService.makeHiskiCitationProposals(from: citationResult)
     }
 }
 
