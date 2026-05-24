@@ -1762,6 +1762,26 @@ final class FamilySearchDOMServiceTests: XCTestCase {
             )
         )
     }
+
+    func testSwiftWebKitTimeoutPayloadReportsCurrentDetailsPage() {
+        let extraction = FamilySearchWebViewExtractionManager.makeTimeoutExtractionPayload(
+            expectedPersonId: " k2yq-1zy ",
+            currentURL: "https://www.familysearch.org/en/tree/person/details/K2YQ-1ZY"
+        )
+
+        XCTAssertFalse(extraction.isSuccessful)
+        XCTAssertEqual(extraction.status, "extractorTimeout")
+        XCTAssertEqual(extraction.sourcePersonId, "K2YQ-1ZY")
+        XCTAssertEqual(extraction.parentFamilySearchId, "K2YQ-1ZY")
+        XCTAssertEqual(extraction.detectedHost, "www.familysearch.org")
+        XCTAssertEqual(extraction.detectedPersonId, "K2YQ-1ZY")
+        XCTAssertEqual(extraction.expectedPersonId, "K2YQ-1ZY")
+        XCTAssertEqual(extraction.isFamilySearchPage, true)
+        XCTAssertEqual(extraction.isPersonDetailsPage, true)
+        XCTAssertEqual(extraction.children.count, 0)
+        XCTAssertTrue(extraction.failureReason?.contains("timed out after 90 seconds") == true)
+        XCTAssertTrue(extraction.debugNotes?.contains("FamilySearch Swift WebKit timeout fired before the JavaScript message handler returned a result") == true)
+    }
     #endif
 
     func testFamilySearchSpouseGroupsRouteByBothParentIdsForRepeatedHusband() {

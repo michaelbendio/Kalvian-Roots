@@ -43,12 +43,14 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
     @MainActor private var window: NSWindow?
     @MainActor private var webView: WKWebView?
     @MainActor private var extractionContinuation: CheckedContinuation<FamilySearchFamilyExtraction, Error>?
+    @MainActor private var extractionTimeoutTask: Task<Void, Never>?
     @MainActor private var navigationContinuation: CheckedContinuation<Void, Error>?
     @MainActor private var detailsPageContinuation: CheckedContinuation<Void, Error>?
     @MainActor private var pendingDetailsPagePersonId: String?
 
     private let windowWidth: CGFloat = 1180
     private let windowHeight: CGFloat = 840
+    private let extractionTimeoutNanoseconds: UInt64 = 90_000_000_000
 
     static func isDetailsPageURL(_ urlString: String?, for personId: String) -> Bool {
         guard let urlString,
@@ -65,6 +67,68 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         let normalizedPersonId = personId.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         return normalizedPath.contains("/TREE/PERSON/DETAILS/")
             && normalizedPath.contains(normalizedPersonId)
+    }
+
+    static func makeTimeoutExtractionPayload(
+        expectedPersonId: String?,
+        currentURL: String?
+    ) -> FamilySearchFamilyExtraction {
+        let normalizedExpectedPersonId = expectedPersonId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+        let detectedPersonId = personIdFromDetailsURL(currentURL)
+        let sourcePersonId = normalizedExpectedPersonId ?? detectedPersonId ?? ""
+        let host = URLComponents(string: currentURL ?? "")?.host
+        let lowercasedHost = host?.lowercased()
+        let isFamilySearchPage = lowercasedHost == "familysearch.org"
+            || lowercasedHost?.hasSuffix(".familysearch.org") == true
+
+        return FamilySearchFamilyExtraction(
+            sourcePersonId: sourcePersonId,
+            parentFamilySearchId: sourcePersonId.isEmpty ? nil : sourcePersonId,
+            extractedAt: ISO8601DateFormatter().string(from: Date()),
+            sourceUrl: currentURL,
+            focusPerson: nil,
+            spouse: nil,
+            marriage: nil,
+            children: [],
+            spouseGroups: [],
+            status: "extractorTimeout",
+            failureReason: "FamilySearch WebKit extraction timed out after 90 seconds without a result message.",
+            url: currentURL,
+            pageTitle: nil,
+            detectedHost: host,
+            detectedPersonId: detectedPersonId,
+            expectedPersonId: normalizedExpectedPersonId,
+            isFamilySearchPage: isFamilySearchPage,
+            isPersonDetailsPage: currentURL.flatMap { isDetailsPageURL($0, for: sourcePersonId) },
+            familyMembersSectionFound: nil,
+            spousesAndChildrenSectionFound: nil,
+            childrenMarkerCount: nil,
+            rawCandidateChildCount: 0,
+            spouseGroupCount: 0,
+            childCount: 0,
+            preferredChildCount: 0,
+            debugNotes: [
+                "FamilySearch Swift WebKit timeout fired before the JavaScript message handler returned a result",
+                "FamilySearch WebKit URL at Swift timeout: \(currentURL ?? "not open")"
+            ]
+        )
+    }
+
+    private static func personIdFromDetailsURL(_ urlString: String?) -> String? {
+        guard let urlString,
+              let components = URLComponents(string: urlString) else {
+            return nil
+        }
+
+        let parts = components.path.split(separator: "/").map(String.init)
+        guard let detailsIndex = parts.firstIndex(where: { $0.caseInsensitiveCompare("details") == .orderedSame }),
+              detailsIndex + 1 < parts.count else {
+            return nil
+        }
+
+        return parts[detailsIndex + 1].uppercased()
     }
 
     @MainActor private override init() {
@@ -138,6 +202,7 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
 
         return try await withCheckedThrowingContinuation { continuation in
             extractionContinuation = continuation
+            startExtractionTimeout(expectedPersonId: expectedPersonId)
 
             webView.evaluateJavaScript(script) { [weak self] _, error in
                 guard let error else {
@@ -349,12 +414,40 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         }
 
         extractionContinuation = nil
+        extractionTimeoutTask?.cancel()
+        extractionTimeoutTask = nil
 
         switch result {
         case let .success(extraction):
             continuation.resume(returning: extraction)
         case let .failure(error):
             continuation.resume(throwing: error)
+        }
+    }
+
+    @MainActor private func startExtractionTimeout(expectedPersonId: String?) {
+        extractionTimeoutTask?.cancel()
+        let timeoutNanoseconds = extractionTimeoutNanoseconds
+        extractionTimeoutTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: timeoutNanoseconds)
+            } catch {
+                return
+            }
+
+            guard let self,
+                  self.extractionContinuation != nil else {
+                return
+            }
+
+            self.finishExtraction(
+                with: .success(
+                    Self.makeTimeoutExtractionPayload(
+                        expectedPersonId: expectedPersonId,
+                        currentURL: self.webView?.url?.absoluteString
+                    )
+                )
+            )
         }
     }
 }
