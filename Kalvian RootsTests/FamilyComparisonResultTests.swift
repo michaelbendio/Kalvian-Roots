@@ -2142,6 +2142,23 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
         XCTAssertTrue(text.contains("Matti\tYes | 14 Mar 1761\tNo\tYes | <LK4Q-YSX> | 14 Mar 1761\tMissing in HisKi"))
     }
 
+    func testDebugTextIncludesFailureMessageWithoutComparisonRows() {
+        let text = FamilySearchComparisonClipboardFormatter.debugText(
+            debugMessage: "FamilySearch extraction failed (wrongPageType): wrong page type for FamilySearch extraction: https://ident.familysearch.org/en/identity/login/?state=https://www.familysearch.org/en/tree/person/details/K2YQ-1ZY",
+            debugLines: [
+                "Family selected: TIKKANEN 6",
+                "FamilySearch extraction status: wrongPageType",
+                "FamilySearch extraction context URL: https://ident.familysearch.org/en/identity/login/?state=https://www.familysearch.org/en/tree/person/details/K2YQ-1ZY"
+            ]
+        )
+
+        XCTAssertTrue(text.contains("FamilySearch extraction failed (wrongPageType)"))
+        XCTAssertTrue(text.contains("FamilySearch extraction status: wrongPageType"))
+        XCTAssertTrue(text.contains("FamilySearch extraction context URL: https://ident.familysearch.org"))
+        XCTAssertFalse(text.contains("Child name\tJuuret\tHisKi\tFamilySearch\tStatus"))
+        XCTAssertFalse(text.contains("Missing in FamilySearch"))
+    }
+
     func testRowsFallBackToComparisonGroups() {
         let nameManager = NameEquivalenceManager()
         nameManager.clearAllEquivalences()

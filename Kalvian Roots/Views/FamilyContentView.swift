@@ -236,11 +236,9 @@ struct FamilyContentView: View {
     }
 
     private var familySearchComparisonDebugCopyText: String {
-        FamilySearchComparisonClipboardFormatter.text(
+        FamilySearchComparisonClipboardFormatter.debugText(
             debugMessage: juuretApp.familySearchComparisonDebugMessage,
-            debugLines: juuretApp.familySearchComparisonDebugLines,
-            rows: familySearchComparisonRows,
-            status: juuretApp.familySearchComparisonStatus(for:)
+            debugLines: juuretApp.familySearchComparisonDebugLines
         )
     }
 
@@ -965,6 +963,25 @@ enum FamilySearchComparisonClipboardFormatter {
                     statusText
                 ].map(sanitizeCell).joined(separator: "\t")
             })
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    static func debugText(debugMessage: String, debugLines: [String]) -> String {
+        guard !debugMessage.isEmpty || !debugLines.isEmpty else {
+            return ""
+        }
+
+        var lines = [
+            "Juuret / HisKi / FamilySearch Children Comparison",
+            debugMessage.isEmpty ? "Comparison not triggered" : debugMessage
+        ]
+
+        if !debugLines.isEmpty {
+            lines.append("")
+            lines.append("Debug")
+            lines.append(contentsOf: debugLines)
         }
 
         return lines.joined(separator: "\n")

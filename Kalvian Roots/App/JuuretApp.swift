@@ -752,9 +752,15 @@ class JuuretApp {
 
         Task {
             do {
-                let extraction = try await FamilySearchWebViewExtractionManager.shared.extractCurrentDetailsPage(
-                    expectedPersonId: familySearchPersonId
-                )
+                let extraction: FamilySearchFamilyExtraction
+                if let familySearchPersonId {
+                    extraction = try await FamilySearchWebViewExtractionManager.shared.openDetailsPageAndExtract(
+                        personId: familySearchPersonId
+                    )
+                } else {
+                    extraction = try await FamilySearchWebViewExtractionManager.shared.extractCurrentDetailsPage()
+                }
+
                 let childCount = extraction.childCount ?? extraction.children.count
                 appendFamilySearchComparisonDebug("FamilySearch in-app extraction returned: \(childCount) children")
 

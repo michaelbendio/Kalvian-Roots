@@ -99,15 +99,20 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
     @MainActor func extractCurrentDetailsPage(expectedPersonId: String? = nil) async throws -> FamilySearchFamilyExtraction {
         guard let webView else {
             if let expectedPersonId {
-                openDetailsPage(personId: expectedPersonId)
-            } else {
-                openFamilySearchHome()
+                return try await openDetailsPageAndExtract(personId: expectedPersonId)
             }
+
+            openFamilySearchHome()
             throw FamilySearchWebViewExtractionError.pageNotOpen
         }
 
         guard extractionContinuation == nil else {
             throw FamilySearchWebViewExtractionError.extractionAlreadyRunning
+        }
+
+        if let expectedPersonId, !isLoadedDetailsPage(for: expectedPersonId) {
+            try await loadDetailsPage(personId: expectedPersonId)
+            try await waitForDetailsPage(personId: expectedPersonId)
         }
 
         let script = expectedPersonId.map(FamilySearchDOMService.makeWebKitExtractionScript)
