@@ -137,6 +137,15 @@ enum FamilySearchDOMService {
                 return new Promise(resolve => setTimeout(resolve, ms));
             }
 
+            function setExtractionStage(stage) {
+                window.__kalvianRootsFamilySearchStage = clean(stage);
+                console.info('Kalvian Roots FamilySearch stage: ' + window.__kalvianRootsFamilySearchStage);
+            }
+
+            function currentExtractionStage() {
+                return clean(window.__kalvianRootsFamilySearchStage) || 'not started';
+            }
+
             let detailsBaseURL = '\(detailsBaseURL)';
             let localDocument = document;
             let detailFrameId = 'kalvian-roots-familysearch-detail-frame';
@@ -643,7 +652,7 @@ enum FamilySearchDOMService {
             }
 
             async function waitForChildPanel(id, ignoredPanels) {
-                for (let attempt = 0; attempt < 40; attempt += 1) {
+                for (let attempt = 0; attempt < 8; attempt += 1) {
                     const panels = panelCandidatesFor(id).filter(panel => !ignoredPanels || !ignoredPanels.has(panel));
                     if (panels.length > 0) {
                         return panels[0];
@@ -1262,7 +1271,7 @@ enum FamilySearchDOMService {
                     spouseGroupCount: 0,
                     childCount: 0,
                     preferredChildCount: 0,
-                    debugNotes: []
+                    debugNotes: ['FamilySearch extraction stage at failure: ' + currentExtractionStage()]
                 };
             }
 
@@ -1270,10 +1279,15 @@ enum FamilySearchDOMService {
                 const normalizedPersonId = clean(personId).toUpperCase();
                 try {
                     console.info('Kalvian Roots FamilySearch extractor started for ' + normalizedPersonId + '.');
+                    setExtractionStage('started for ' + normalizedPersonId);
                     cleanupDetailFrame();
+                    setExtractionStage('validating details page for ' + normalizedPersonId);
                     assertCurrentFamilySearchDetailsPage(normalizedPersonId);
+                    setExtractionStage('waiting for Family Members section');
                     await waitForFamilyMembersSection(normalizedPersonId);
+                    setExtractionStage('reading focus person ' + normalizedPersonId);
                     const focusPerson = await visitPerson(normalizedPersonId);
+                    setExtractionStage('reading spouse groups');
                     const spouseGroups = extractSpouseGroups();
                     const preferredGroupIndex = spouseGroups.findIndex(group => group.isPreferred);
                     const selectedGroupIndex = preferredGroupIndex >= 0 ? preferredGroupIndex : 0;
@@ -1283,11 +1297,14 @@ enum FamilySearchDOMService {
                     let spouse = selectedGroup.spouses.find(person => person.id !== normalizedPersonId) || null;
 
                     const enrichedSpouseGroups = [];
-                    for (const group of spouseGroups) {
+                    for (let groupIndex = 0; groupIndex < spouseGroups.length; groupIndex += 1) {
+                        const group = spouseGroups[groupIndex];
                         const enrichedChildren = [];
-                        for (const summary of group.children) {
+                        for (let childIndex = 0; childIndex < group.children.length; childIndex += 1) {
+                            const summary = group.children[childIndex];
                             // Process one child at a time so each quick-card
                             // fallback has time to open, be read, and close.
+                            setExtractionStage('extracting child ' + (childIndex + 1) + '/' + group.children.length + ' in spouse group ' + (groupIndex + 1) + '/' + spouseGroups.length + ': ' + summary.id + ' ' + summary.name);
                             await sleep(250);
                             enrichedChildren.push(await extractChildDetails(summary));
                         }
@@ -1312,10 +1329,12 @@ enum FamilySearchDOMService {
                         .map(child => 'FamilySearch child extraction note ' + child.id + ' ' + child.name + ': ' + child.extractionNotes.join(' | ').slice(0, 360));
 
                     if (personIdFromURL() !== normalizedPersonId) {
+                        setExtractionStage('returning to focus person ' + normalizedPersonId);
                         await sleep(900);
                         await visitPerson(normalizedPersonId);
                     }
 
+                    setExtractionStage('building extraction result');
                     const diagnostics = diagnosticContext();
                     const result = {
                         sourcePersonId: normalizedPersonId,
@@ -1344,6 +1363,7 @@ enum FamilySearchDOMService {
                         childCount: children.length,
                         preferredChildCount: selectedEnrichedGroup.children.length,
                         debugNotes: [
+                            'FamilySearch extraction final stage: ' + currentExtractionStage(),
                             'FamilySearch extraction finished: spouse groups ' + enrichedSpouseGroups.length + ', preferred group children ' + selectedEnrichedGroup.children.length,
                             'FamilySearch selected group child birth dates extracted: ' + selectedBirthDateCount + '/' + children.length + ', death dates extracted: ' + selectedDeathDateCount + '/' + children.length,
                             'FamilySearch all spouse group child birth dates extracted: ' + allBirthDateCount + '/' + allEnrichedChildren.length + ', death dates extracted: ' + allDeathDateCount + '/' + allEnrichedChildren.length,
@@ -1356,6 +1376,7 @@ enum FamilySearchDOMService {
                     }
 
                     await closeChildPanel();
+                    setExtractionStage('posting success result');
                     console.info('Kalvian Roots FamilySearch extraction succeeded: ' + children.length + ' children.');
                     showExtractionSuccessMessage('Kalvian Roots extracted FamilySearch children for ' + normalizedPersonId + ': ' + children.length + ' children.');
                     return result;
@@ -1390,13 +1411,48 @@ enum FamilySearchDOMService {
             const KALVIAN_ROOTS_WEBKIT_EXPECTED_PERSON_ID = '\(escapeJavaScript(normalizedPersonId))';
             const KALVIAN_ROOTS_WEBKIT_PERSON_ID = KALVIAN_ROOTS_WEBKIT_EXPECTED_PERSON_ID || ((window.location.pathname.match(/\\/tree\\/person\\/details\\/([A-Z0-9-]+)/i) || [])[1] || '').toUpperCase();
             const KALVIAN_ROOTS_WEBKIT_HANDLER = '\(webKitExtractionMessageHandler)';
+            const KALVIAN_ROOTS_WEBKIT_TIMEOUT_MS = 90000;
+            let didPostKalvianRootsExtractionResult = false;
 
             function cleanWebKitMessage(text) {
                 return (text || '').replace(/\\s+/g, ' ').trim();
             }
 
+            function detectedWebKitPersonId() {
+                return ((window.location.pathname.match(/\\/tree\\/person\\/details\\/([A-Z0-9-]+)/i) || [])[1] || '').toUpperCase() || null;
+            }
+
+            function webKitExtractionStage() {
+                return cleanWebKitMessage(window.__kalvianRootsFamilySearchStage) || 'not reported';
+            }
+
             function postWebKitExtractionResult(result) {
+                if (didPostKalvianRootsExtractionResult) {
+                    return;
+                }
+                didPostKalvianRootsExtractionResult = true;
                 window.webkit.messageHandlers[KALVIAN_ROOTS_WEBKIT_HANDLER].postMessage(JSON.stringify(result));
+            }
+
+            function makeWebKitFailureResult(status, reason, notes) {
+                return {
+                    sourcePersonId: KALVIAN_ROOTS_WEBKIT_PERSON_ID,
+                    parentFamilySearchId: KALVIAN_ROOTS_WEBKIT_PERSON_ID || null,
+                    extractedAt: new Date().toISOString(),
+                    sourceUrl: window.location.href,
+                    children: [],
+                    spouseGroups: [],
+                    status,
+                    failureReason: reason,
+                    url: window.location.href,
+                    pageTitle: document.title,
+                    detectedHost: window.location.hostname,
+                    detectedPersonId: detectedWebKitPersonId(),
+                    expectedPersonId: KALVIAN_ROOTS_WEBKIT_EXPECTED_PERSON_ID || KALVIAN_ROOTS_WEBKIT_PERSON_ID,
+                    isFamilySearchPage: /(^|\\.)familysearch\\.org$/i.test(window.location.hostname),
+                    isPersonDetailsPage: /\\/tree\\/person\\/details\\//i.test(window.location.pathname),
+                    debugNotes: notes
+                };
             }
 
             \(extractorScript)
@@ -1423,27 +1479,28 @@ enum FamilySearchDOMService {
                 return 'missing-person-id';
             }
 
+            window.setTimeout(function () {
+                postWebKitExtractionResult(makeWebKitFailureResult(
+                    'extractorTimeout',
+                    'FamilySearch extraction timed out after ' + Math.round(KALVIAN_ROOTS_WEBKIT_TIMEOUT_MS / 1000) + ' seconds.',
+                    [
+                        'FamilySearch WebKit extraction timed out before the extractor returned a result',
+                        'FamilySearch extraction stage at timeout: ' + webKitExtractionStage()
+                    ]
+                ));
+            }, KALVIAN_ROOTS_WEBKIT_TIMEOUT_MS);
+
             window.extractFamilySearchChildren(KALVIAN_ROOTS_WEBKIT_PERSON_ID)
                 .then(postWebKitExtractionResult)
                 .catch(error => {
-                    postWebKitExtractionResult({
-                        sourcePersonId: KALVIAN_ROOTS_WEBKIT_PERSON_ID,
-                        parentFamilySearchId: KALVIAN_ROOTS_WEBKIT_PERSON_ID,
-                        extractedAt: new Date().toISOString(),
-                        sourceUrl: window.location.href,
-                        children: [],
-                        spouseGroups: [],
-                        status: 'extractorError',
-                        failureReason: cleanWebKitMessage(error && error.message),
-                        url: window.location.href,
-                        pageTitle: document.title,
-                        detectedHost: window.location.hostname,
-                        detectedPersonId: null,
-                        expectedPersonId: KALVIAN_ROOTS_WEBKIT_EXPECTED_PERSON_ID || KALVIAN_ROOTS_WEBKIT_PERSON_ID,
-                        isFamilySearchPage: window.location.hostname === 'www.familysearch.org',
-                        isPersonDetailsPage: /\\/tree\\/person\\/details\\//i.test(window.location.pathname),
-                        debugNotes: ['FamilySearch WebKit extraction failed before result callback']
-                    });
+                    postWebKitExtractionResult(makeWebKitFailureResult(
+                        'extractorError',
+                        cleanWebKitMessage(error && error.message),
+                        [
+                            'FamilySearch WebKit extraction failed before result callback',
+                            'FamilySearch extraction stage at failure: ' + webKitExtractionStage()
+                        ]
+                    ));
                 });
 
             return 'started';
