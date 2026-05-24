@@ -100,6 +100,21 @@ final class AIParsingServiceTests: XCTestCase {
     func testCurrentServiceName() {
         XCTAssertEqual(service.currentServiceName, "DeepSeek", "Default service should be DeepSeek")
     }
+
+    func testPromptIgnoresSyntOriginPhrases() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        let aiServicesSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/App/AIServices.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(aiServicesSource.contains(#"Ignore origin-place phrases beginning with "synt.":"#))
+        XCTAssertTrue(aiServicesSource.contains(#""synt. Veteli" means the person was originally from Veteli"#))
+        XCTAssertTrue(aiServicesSource.contains(#"Do NOT store "synt." text in notes, coupleNotes, deathDate, spouse, asChild, or asParent"#))
+    }
     
     func testServiceNameAfterConfiguration() throws {
         try service.configure(apiKey: "test-key")

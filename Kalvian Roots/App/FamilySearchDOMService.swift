@@ -1434,12 +1434,23 @@ enum FamilySearchDOMService {
     }
 
     static func makeWebKitExtractionScript(for personId: String) -> String {
-        let normalizedPersonId = personId.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        makeWebKitExtractionScript(expectedPersonId: personId)
+    }
+
+    static func makeWebKitExtractionScriptForCurrentPage() -> String {
+        makeWebKitExtractionScript(expectedPersonId: nil)
+    }
+
+    private static func makeWebKitExtractionScript(expectedPersonId: String?) -> String {
+        let normalizedPersonId = expectedPersonId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased() ?? ""
         let extractorScript = makeAtlasExtractorScript(callbackURL: "")
 
         return """
         (() => {
-            const KALVIAN_ROOTS_WEBKIT_PERSON_ID = '\(escapeJavaScript(normalizedPersonId))';
+            const KALVIAN_ROOTS_WEBKIT_EXPECTED_PERSON_ID = '\(escapeJavaScript(normalizedPersonId))';
+            const KALVIAN_ROOTS_WEBKIT_PERSON_ID = KALVIAN_ROOTS_WEBKIT_EXPECTED_PERSON_ID || ((window.location.pathname.match(/\\/tree\\/person\\/details\\/([A-Z0-9-]+)/i) || [])[1] || '').toUpperCase();
             const KALVIAN_ROOTS_WEBKIT_HANDLER = '\(webKitExtractionMessageHandler)';
 
             function cleanWebKitMessage(text) {
@@ -1451,6 +1462,28 @@ enum FamilySearchDOMService {
             }
 
             \(extractorScript)
+
+            if (!KALVIAN_ROOTS_WEBKIT_PERSON_ID) {
+                postWebKitExtractionResult({
+                    sourcePersonId: '',
+                    parentFamilySearchId: null,
+                    extractedAt: new Date().toISOString(),
+                    sourceUrl: window.location.href,
+                    children: [],
+                    spouseGroups: [],
+                    status: 'wrongPage',
+                    failureReason: 'Open a FamilySearch person Details page before extracting.',
+                    url: window.location.href,
+                    pageTitle: document.title,
+                    detectedHost: window.location.hostname,
+                    detectedPersonId: null,
+                    expectedPersonId: KALVIAN_ROOTS_WEBKIT_EXPECTED_PERSON_ID || null,
+                    isFamilySearchPage: window.location.hostname === 'www.familysearch.org',
+                    isPersonDetailsPage: /\\/tree\\/person\\/details\\//i.test(window.location.pathname),
+                    debugNotes: ['FamilySearch WebKit extraction did not find a person ID in the current page URL']
+                });
+                return 'missing-person-id';
+            }
 
             window.extractFamilySearchChildren(KALVIAN_ROOTS_WEBKIT_PERSON_ID)
                 .then(postWebKitExtractionResult)
@@ -1468,7 +1501,7 @@ enum FamilySearchDOMService {
                         pageTitle: document.title,
                         detectedHost: window.location.hostname,
                         detectedPersonId: null,
-                        expectedPersonId: KALVIAN_ROOTS_WEBKIT_PERSON_ID,
+                        expectedPersonId: KALVIAN_ROOTS_WEBKIT_EXPECTED_PERSON_ID || KALVIAN_ROOTS_WEBKIT_PERSON_ID,
                         isFamilySearchPage: window.location.hostname === 'www.familysearch.org',
                         isPersonDetailsPage: /\\/tree\\/person\\/details\\//i.test(window.location.pathname),
                         debugNotes: ['FamilySearch WebKit extraction failed before result callback']

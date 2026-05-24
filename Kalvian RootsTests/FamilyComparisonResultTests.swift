@@ -1734,6 +1734,16 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertFalse(script.contains("http://127.0.0.1:8081/familysearch/extraction-result"))
     }
 
+    func testWebKitExtractionScriptCanUseCurrentDetailsPageWhenExpectedIdIsMissing() {
+        let script = FamilySearchDOMService.makeWebKitExtractionScriptForCurrentPage()
+
+        XCTAssertTrue(script.contains("KALVIAN_ROOTS_WEBKIT_EXPECTED_PERSON_ID = '';"))
+        XCTAssertTrue(script.contains("window.location.pathname.match"))
+        XCTAssertTrue(script.contains("Open a FamilySearch person Details page before extracting."))
+        XCTAssertTrue(script.contains("extractFamilySearchChildren(KALVIAN_ROOTS_WEBKIT_PERSON_ID)"))
+        XCTAssertFalse(script.contains("KJJH-2QK"))
+    }
+
     func testFamilySearchSpouseGroupsRouteByBothParentIdsForRepeatedHusband() {
         let erik = Person(name: "Erik", familySearchId: "K2YQ-1ZY")
         let family = Family(

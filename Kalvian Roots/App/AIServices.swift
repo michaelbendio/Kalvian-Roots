@@ -122,6 +122,11 @@ class DeepSeekService: AIService {
                    - Do NOT strip or remove the "n " prefix - it indicates an approximate date
                 
                 5. Extract family references from {curly braces} as asChild/asParent fields
+
+                5a. Ignore origin-place phrases beginning with "synt.":
+                   - "synt. Veteli" means the person was originally from Veteli
+                   - Do NOT store "synt." text in notes, coupleNotes, deathDate, spouse, asChild, or asParent
+                   - Preserve the person's name, patronymic, dates, FamilySearch ID, and family reference normally
                 
                 6. **MISSING SPOUSE DATA - CREATE PLACEHOLDER OBJECTS**:
                    - If only husband data exists (widower family), create a placeholder wife object:

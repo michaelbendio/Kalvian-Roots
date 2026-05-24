@@ -216,6 +216,17 @@ final class FamilyContentViewTests: XCTestCase {
             familyContentView.contains("guard juuretApp.familyChildrenComparisonGroups.isEmpty,"),
             "Primary-couple fallback must not reuse one grouped comparison result across spouse sections."
         )
+        XCTAssertTrue(
+            familyContentView.contains("if !juuretApp.currentFamilyHasFatherFamilySearchId"),
+            "Manual in-app FamilySearch extraction must stay visible when the Juuret father has no FamilySearch ID."
+        )
+        XCTAssertTrue(
+            familyContentView.contains(#"Label("Extract in-app FamilySearch", systemImage: "square.and.arrow.down")"#)
+        )
+        XCTAssertFalse(
+            familyContentView.contains(#"Label("Open FamilySearch in Kalvian Roots", systemImage: "globe")"#),
+            "The automatic WebKit path should not leave a redundant open button in the family view."
+        )
     }
 
     func testStoredStarFootnoteMarkersDisplayAsAsterisks() {

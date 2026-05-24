@@ -109,11 +109,19 @@ class JuuretApp {
 
     var currentFamilySearchExtractorPageURL: URL? {
         guard let currentFamily,
-              let familySearchPersonId = familySearchParentId(in: currentFamily) else {
+              let familySearchPersonId = fatherFamilySearchId(in: currentFamily) else {
             return nil
         }
 
         return URL(string: FamilySearchDOMService.detailsURL(for: familySearchPersonId))
+    }
+
+    var currentFamilyHasFatherFamilySearchId: Bool {
+        guard let currentFamily else {
+            return false
+        }
+
+        return fatherFamilySearchId(in: currentFamily) != nil
     }
     
     // MARK: - Detail Routing (macOS NavigationSplitView)
@@ -173,6 +181,7 @@ class JuuretApp {
 
         Task {
             await self.runJuuretHiskiComparisonPipeline(for: network.mainFamily)
+            await self.prepareFamilySearchWebKitForCurrentFamily(network.mainFamily)
         }
     }
     
@@ -655,11 +664,16 @@ class JuuretApp {
     }
 
     private func familySearchParentId(in family: Family) -> String? {
+        fatherFamilySearchId(in: family)
+            ?? family.primaryCouple?.wife.familySearchId
+    }
+
+    private func fatherFamilySearchId(in family: Family) -> String? {
         guard let couple = family.primaryCouple else {
             return nil
         }
 
-        return couple.husband.familySearchId ?? couple.wife.familySearchId
+        return couple.husband.familySearchId
     }
 
     func familyIdMatchingPrimaryFamilySearchParentIdInSourceText(_ parentId: String) -> String? {
@@ -748,14 +762,21 @@ class JuuretApp {
     }
 
     func storeFamilySearchExtractionForCurrentFamily(_ extraction: FamilySearchFamilyExtraction) -> String? {
-        guard let currentFamily,
-              let expectedPersonId = familySearchParentId(in: currentFamily)?.uppercased() else {
+        guard let currentFamily else {
             return nil
         }
 
         let postedPersonId = (extraction.parentFamilySearchId ?? extraction.sourcePersonId)
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased()
+
+        guard let expectedPersonId = fatherFamilySearchId(in: currentFamily)?.uppercased() else {
+            appendFamilySearchComparisonDebug(
+                "FamilySearch extraction stored without Juuret father ID: received \(postedPersonId)"
+            )
+            storeFamilySearchExtraction(extraction, for: currentFamily.familyId)
+            return currentFamily.familyId
+        }
 
         guard postedPersonId == expectedPersonId else {
             appendFamilySearchComparisonDebug(
@@ -789,27 +810,33 @@ class JuuretApp {
     }
 
     func openCurrentFamilySearchInApp() {
-        guard let currentFamily,
-              let familySearchPersonId = familySearchParentId(in: currentFamily) else {
+        guard let currentFamily else {
             return
         }
 
         #if os(macOS)
-        appendFamilySearchComparisonDebug("FamilySearch in-app page opened: \(familySearchPersonId)")
-        FamilySearchWebViewExtractionManager.shared.openDetailsPage(personId: familySearchPersonId)
+        if let familySearchPersonId = fatherFamilySearchId(in: currentFamily) {
+            appendFamilySearchComparisonDebug("FamilySearch in-app page opened: \(familySearchPersonId)")
+            FamilySearchWebViewExtractionManager.shared.openDetailsPage(personId: familySearchPersonId)
+        } else {
+            appendFamilySearchComparisonDebug("FamilySearch in-app page opened without Juuret father ID")
+            FamilySearchWebViewExtractionManager.shared.openFamilySearchHome()
+        }
         #else
         openCurrentFamilySearchExtractorPage()
         #endif
     }
 
     func extractCurrentFamilySearchInApp() {
-        guard let currentFamily,
-              let familySearchPersonId = familySearchParentId(in: currentFamily) else {
+        guard let currentFamily else {
             return
         }
 
         #if os(macOS)
-        appendFamilySearchComparisonDebug("FamilySearch in-app extraction started: \(familySearchPersonId)")
+        let familySearchPersonId = fatherFamilySearchId(in: currentFamily)
+        appendFamilySearchComparisonDebug(
+            "FamilySearch in-app extraction started: \(familySearchPersonId ?? "current FamilySearch page")"
+        )
 
         Task {
             do {
@@ -829,6 +856,34 @@ class JuuretApp {
         }
         #else
         openCurrentFamilySearchExtractorPage()
+        #endif
+    }
+
+    private func prepareFamilySearchWebKitForCurrentFamily(_ family: Family) async {
+        guard currentFamily?.familyId == family.familyId else {
+            return
+        }
+
+        #if os(macOS)
+        if let familySearchPersonId = fatherFamilySearchId(in: family) {
+            appendFamilySearchComparisonDebug("FamilySearch automatic in-app extraction started: \(familySearchPersonId)")
+            do {
+                let extraction = try await FamilySearchWebViewExtractionManager.shared.openDetailsPageAndExtract(
+                    personId: familySearchPersonId
+                )
+                let childCount = extraction.childCount ?? extraction.children.count
+                appendFamilySearchComparisonDebug("FamilySearch automatic in-app extraction returned: \(childCount) children")
+
+                if storeFamilySearchExtractionForCurrentFamily(extraction) == nil {
+                    familySearchComparisonDebugMessage = "FamilySearch automatic extraction ignored"
+                }
+            } catch {
+                familySearchComparisonDebugMessage = "FamilySearch automatic extraction failed"
+                appendFamilySearchComparisonDebug("FamilySearch automatic extraction failed: \(error.localizedDescription)")
+            }
+        } else {
+            openCurrentFamilySearchInApp()
+        }
         #endif
     }
 
@@ -1256,6 +1311,7 @@ class JuuretApp {
             logInfo(.app, "✨ Family loaded from cache: \(normalizedId)")
 
             await runJuuretHiskiComparisonPipeline(for: cached.mainFamily)
+            await prepareFamilySearchWebKitForCurrentFamily(cached.mainFamily)
             
             prefetchManager.startPrefetchAll()
             
@@ -1349,6 +1405,7 @@ class JuuretApp {
             }
 
             await runJuuretHiskiComparisonPipeline(for: family)
+            await prepareFamilySearchWebKitForCurrentFamily(family)
             
             let totalTime = Date().timeIntervalSince(startTime)
             logInfo(.app, "✅ Family extraction complete in \(String(format: "%.2f", totalTime))s")
