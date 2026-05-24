@@ -1080,6 +1080,24 @@ enum FamilySearchDOMService {
                 }
             }
 
+            async function waitForFamilyMembersSection(expectedId) {
+                let lastDiagnostics = null;
+                for (let attempt = 0; attempt < 120; attempt += 1) {
+                    assertCurrentFamilySearchDetailsPage(expectedId);
+                    lastDiagnostics = diagnosticContext();
+                    if (lastDiagnostics.familyMembersSectionFound && lastDiagnostics.spousesAndChildrenSectionFound) {
+                        return;
+                    }
+
+                    await sleep(500);
+                }
+
+                const familyMembersMessage = lastDiagnostics && lastDiagnostics.familyMembersSectionFound
+                    ? ''
+                    : ': Family Members section not found';
+                throw new Error('Spouses and Children section not found' + familyMembersMessage);
+            }
+
             function detailFrame() {
                 let frame = localDocument.getElementById(detailFrameId);
                 if (frame) return frame;
@@ -1254,6 +1272,7 @@ enum FamilySearchDOMService {
                     console.info('Kalvian Roots FamilySearch extractor started for ' + normalizedPersonId + '.');
                     cleanupDetailFrame();
                     assertCurrentFamilySearchDetailsPage(normalizedPersonId);
+                    await waitForFamilyMembersSection(normalizedPersonId);
                     const focusPerson = await visitPerson(normalizedPersonId);
                     const spouseGroups = extractSpouseGroups();
                     const preferredGroupIndex = spouseGroups.findIndex(group => group.isPreferred);

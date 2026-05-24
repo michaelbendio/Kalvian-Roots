@@ -1719,6 +1719,18 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertFalse(script.contains("KJJH-2QK"))
     }
 
+    func testFamilySearchExtractorWaitsForFamilyMembersSectionsBeforeReadingChildren() {
+        let script = FamilySearchDOMService.makeFamilySearchExtractorScript()
+
+        XCTAssertTrue(script.contains("async function waitForFamilyMembersSection(expectedId)"))
+        XCTAssertTrue(script.contains("lastDiagnostics.familyMembersSectionFound && lastDiagnostics.spousesAndChildrenSectionFound"))
+        XCTAssertTrue(script.contains("await waitForFamilyMembersSection(normalizedPersonId);"))
+        XCTAssertLessThan(
+            try XCTUnwrap(script.range(of: "await waitForFamilyMembersSection(normalizedPersonId);")?.lowerBound),
+            try XCTUnwrap(script.range(of: "const spouseGroups = extractSpouseGroups();")?.lowerBound)
+        )
+    }
+
     #if os(macOS)
     func testWebKitDetailsPageDetectionWaitsPastLoginRedirect() {
         XCTAssertFalse(
