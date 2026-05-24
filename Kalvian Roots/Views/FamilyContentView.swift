@@ -25,7 +25,6 @@ import UIKit
  */
 struct FamilyContentView: View {
     @Environment(JuuretApp.self) private var juuretApp
-    @State private var familySearchBookmarkletCopied = false
     @State private var selectedFamilySearchReviewNote: FamilyComparisonReviewNote?
     let family: Family
     
@@ -38,7 +37,15 @@ struct FamilyContentView: View {
             VStack(alignment: .leading, spacing: 0) {
                 // 1. Family ID + page references
                 familyHeader
-                    .padding(.bottom, 12)
+                    .padding(.bottom, 8)
+
+                if juuretApp.currentFamilySearchExtractorPageURL != nil {
+                    familySearchActionControls
+                        .padding(.bottom, 12)
+                } else {
+                    Color.clear
+                        .frame(height: 4)
+                }
                 
                 // 2. Parent lines (primary couple)
                 if let couple = family.primaryCouple {
@@ -166,33 +173,6 @@ struct FamilyContentView: View {
                         .font(.system(.caption, design: .monospaced))
                 }
                 .buttonStyle(.bordered)
-
-                if juuretApp.currentFamilySearchExtractorPageURL != nil {
-                    Button {
-                        juuretApp.openCurrentFamilySearchExtractorPage()
-                    } label: {
-                        Label("Open FamilySearch", systemImage: "safari")
-                            .font(.system(.caption, design: .monospaced))
-                    }
-                    .buttonStyle(.bordered)
-
-                    Button {
-                        copyToClipboard(FamilySearchDOMService.makeBookmarklet())
-                        familySearchBookmarkletCopied = true
-                    } label: {
-                        Label("Copy FamilySearch bookmarklet", systemImage: "bookmark")
-                            .font(.system(.caption, design: .monospaced))
-                    }
-                    .buttonStyle(.bordered)
-
-                    if familySearchBookmarkletCopied {
-                        Text("Bookmarklet copied. In Atlas, create a bookmark named Kalvian Roots FamilySearch Extractor and paste this as the URL.")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
 
                 Text(juuretApp.familySearchComparisonDebugMessage.isEmpty
                     ? "Comparison not triggered"
@@ -358,6 +338,30 @@ struct FamilyContentView: View {
 
             if let reviewNote {
                 reviewAsterisk(reviewNote)
+            }
+        }
+    }
+
+    private var familySearchActionControls: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                #if os(macOS)
+                Button {
+                    juuretApp.openCurrentFamilySearchInApp()
+                } label: {
+                    Label("Open FamilySearch in Kalvian Roots", systemImage: "globe")
+                        .font(.system(.caption, design: .monospaced))
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    juuretApp.extractCurrentFamilySearchInApp()
+                } label: {
+                    Label("Extract in-app FamilySearch", systemImage: "square.and.arrow.down")
+                        .font(.system(.caption, design: .monospaced))
+                }
+                .buttonStyle(.bordered)
+                #endif
             }
         }
     }
@@ -824,7 +828,10 @@ struct FamilyContentView: View {
             return group
         }
 
-        guard index == 0, let result = juuretApp.familySearchComparisonResult, !result.rows.isEmpty else {
+        guard juuretApp.familyChildrenComparisonGroups.isEmpty,
+              index == 0,
+              let result = juuretApp.familySearchComparisonResult,
+              !result.rows.isEmpty else {
             return nil
         }
 

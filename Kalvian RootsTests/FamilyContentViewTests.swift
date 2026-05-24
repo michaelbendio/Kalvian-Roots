@@ -212,6 +212,10 @@ final class FamilyContentViewTests: XCTestCase {
             familyContentView.contains("childrenSection(couple: couple)"),
             "Additional spouse Lapset sections must pass the local couple, not only child arrays."
         )
+        XCTAssertTrue(
+            familyContentView.contains("guard juuretApp.familyChildrenComparisonGroups.isEmpty,"),
+            "Primary-couple fallback must not reuse one grouped comparison result across spouse sections."
+        )
     }
 
     func testStoredStarFootnoteMarkersDisplayAsAsterisks() {

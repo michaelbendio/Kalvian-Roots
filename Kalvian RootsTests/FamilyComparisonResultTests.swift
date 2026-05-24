@@ -1723,6 +1723,89 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertFalse(bookmarklet.contains("KJJH-2QK"))
     }
 
+    func testWebKitExtractionScriptPostsResultToMessageHandler() {
+        let script = FamilySearchDOMService.makeWebKitExtractionScript(for: " kjjh-2qk ")
+
+        XCTAssertTrue(script.contains(FamilySearchDOMService.webKitExtractionMessageHandler))
+        XCTAssertTrue(script.contains("window.webkit.messageHandlers"))
+        XCTAssertTrue(script.contains("extractFamilySearchChildren"))
+        XCTAssertTrue(script.contains("KJJH-2QK"))
+        XCTAssertTrue(script.contains("const KALVIAN_ROOTS_CALLBACK_URL = '';"))
+        XCTAssertFalse(script.contains("http://127.0.0.1:8081/familysearch/extraction-result"))
+    }
+
+    func testFamilySearchSpouseGroupsRouteByBothParentIdsForRepeatedHusband() {
+        let erik = Person(name: "Erik", familySearchId: "K2YQ-1ZY")
+        let family = Family(
+            familyId: "TIKKANEN 6",
+            pageReferences: ["240", "241"],
+            couples: [
+                Couple(
+                    husband: erik,
+                    wife: Person(name: "Annika", familySearchId: "K2YQ-18B"),
+                    children: []
+                ),
+                Couple(
+                    husband: erik,
+                    wife: Person(name: "Anna", familySearchId: "GMQH-8GF"),
+                    children: [
+                        Person(name: "Brita", birthDate: "20.05.1750", familySearchId: "M8ZP-9VD")
+                    ]
+                ),
+                Couple(
+                    husband: erik,
+                    wife: Person(name: "Maria", familySearchId: "K8CD-718"),
+                    children: [
+                        Person(name: "Matti", birthDate: "14.03.1756", familySearchId: "LHH6-W2P")
+                    ]
+                )
+            ],
+            notes: [],
+            noteDefinitions: [:]
+        )
+
+        let mappedChildren = FamilySearchSpouseGroupMatcher.childrenByCouple(
+            family: family,
+            spouseGroups: [
+                FamilySearchSpouseGroup(
+                    spouses: [
+                        FamilySearchPersonSummary(id: "K2YQ-1ZY", name: "Erik Johansson Tikkanen"),
+                        FamilySearchPersonSummary(id: "K2YQ-18B", name: "Annika Matintytar Riippa")
+                    ],
+                    marriage: nil,
+                    declaredChildCount: 2,
+                    children: [FamilySearchChild(id: "LXSP-RT8", name: "Tikkanen", birthDate: "1739")],
+                    isPreferred: false
+                ),
+                FamilySearchSpouseGroup(
+                    spouses: [
+                        FamilySearchPersonSummary(id: "K2YQ-1ZY", name: "Erik Johansson Tikkanen"),
+                        FamilySearchPersonSummary(id: "GMQH-8GF", name: "Anna Kaski")
+                    ],
+                    marriage: nil,
+                    declaredChildCount: 5,
+                    children: [FamilySearchChild(id: "M8ZP-9VD", name: "Brita Eriksson", birthDate: "20 May 1750")],
+                    isPreferred: false
+                ),
+                FamilySearchSpouseGroup(
+                    spouses: [
+                        FamilySearchPersonSummary(id: "K2YQ-1ZY", name: "Erik Johansson Tikkanen"),
+                        FamilySearchPersonSummary(id: "K8CD-718", name: "Maria Martensdotter Haak")
+                    ],
+                    marriage: nil,
+                    declaredChildCount: 18,
+                    children: [FamilySearchChild(id: "LHH6-W2P", name: "Matts Tikkanen", birthDate: "14 March 1756")],
+                    isPreferred: true
+                )
+            ],
+            fallbackChildren: []
+        )
+
+        XCTAssertEqual(mappedChildren[0]?.map(\.id), ["LXSP-RT8"])
+        XCTAssertEqual(mappedChildren[1]?.map(\.id), ["M8ZP-9VD"])
+        XCTAssertEqual(mappedChildren[2]?.map(\.id), ["LHH6-W2P"])
+    }
+
     func testGenericBookmarkletPayloadDecodesRichChildVitals() throws {
         let json = """
         {

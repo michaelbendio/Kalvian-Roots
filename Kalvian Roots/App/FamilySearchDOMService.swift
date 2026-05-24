@@ -86,6 +86,7 @@ struct FamilySearchFamilyExtraction: Codable, Equatable, Hashable {
 enum FamilySearchDOMService {
 
     static let detailsBaseURL = "https://www.familysearch.org/en/tree/person/details/"
+    static let webKitExtractionMessageHandler = "kalvianRootsFamilySearchExtraction"
 
     static func detailsURL(for personId: String) -> String {
         detailsBaseURL + personId.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1430,6 +1431,53 @@ enum FamilySearchDOMService {
         allowed.remove(charactersIn: "%")
         let encodedBody = bookmarkletBody.addingPercentEncoding(withAllowedCharacters: allowed) ?? bookmarkletBody
         return "javascript:" + encodedBody
+    }
+
+    static func makeWebKitExtractionScript(for personId: String) -> String {
+        let normalizedPersonId = personId.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let extractorScript = makeAtlasExtractorScript(callbackURL: "")
+
+        return """
+        (() => {
+            const KALVIAN_ROOTS_WEBKIT_PERSON_ID = '\(escapeJavaScript(normalizedPersonId))';
+            const KALVIAN_ROOTS_WEBKIT_HANDLER = '\(webKitExtractionMessageHandler)';
+
+            function cleanWebKitMessage(text) {
+                return (text || '').replace(/\\s+/g, ' ').trim();
+            }
+
+            function postWebKitExtractionResult(result) {
+                window.webkit.messageHandlers[KALVIAN_ROOTS_WEBKIT_HANDLER].postMessage(JSON.stringify(result));
+            }
+
+            \(extractorScript)
+
+            window.extractFamilySearchChildren(KALVIAN_ROOTS_WEBKIT_PERSON_ID)
+                .then(postWebKitExtractionResult)
+                .catch(error => {
+                    postWebKitExtractionResult({
+                        sourcePersonId: KALVIAN_ROOTS_WEBKIT_PERSON_ID,
+                        parentFamilySearchId: KALVIAN_ROOTS_WEBKIT_PERSON_ID,
+                        extractedAt: new Date().toISOString(),
+                        sourceUrl: window.location.href,
+                        children: [],
+                        spouseGroups: [],
+                        status: 'extractorError',
+                        failureReason: cleanWebKitMessage(error && error.message),
+                        url: window.location.href,
+                        pageTitle: document.title,
+                        detectedHost: window.location.hostname,
+                        detectedPersonId: null,
+                        expectedPersonId: KALVIAN_ROOTS_WEBKIT_PERSON_ID,
+                        isFamilySearchPage: window.location.hostname === 'www.familysearch.org',
+                        isPersonDetailsPage: /\\/tree\\/person\\/details\\//i.test(window.location.pathname),
+                        debugNotes: ['FamilySearch WebKit extraction failed before result callback']
+                    });
+                });
+
+            return 'started';
+        })();
+        """
     }
 
     private static func escapeJavaScript(_ string: String) -> String {
