@@ -792,7 +792,10 @@ class JuuretApp {
                 let extraction: FamilySearchFamilyExtraction
                 if let familySearchPersonId {
                     extraction = try await FamilySearchWebViewExtractionManager.shared.openDetailsPageAndExtract(
-                        personId: familySearchPersonId
+                        personId: familySearchPersonId,
+                        log: { [weak self] message in
+                            self?.appendFamilySearchComparisonDebug(message)
+                        }
                     )
                 } else {
                     extraction = try await FamilySearchWebViewExtractionManager.shared.extractCurrentDetailsPage()
@@ -837,7 +840,10 @@ class JuuretApp {
             appendFamilySearchComparisonDebug("FamilySearch automatic in-app extraction started: \(familySearchPersonId)")
             do {
                 let extraction = try await FamilySearchWebViewExtractionManager.shared.openDetailsPageAndExtract(
-                    personId: familySearchPersonId
+                    personId: familySearchPersonId,
+                    log: { [weak self] message in
+                        self?.appendFamilySearchComparisonDebug(message)
+                    }
                 )
                 let childCount = extraction.childCount ?? extraction.children.count
                 appendFamilySearchComparisonDebug(

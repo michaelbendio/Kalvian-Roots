@@ -84,9 +84,17 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         webView.load(URLRequest(url: url))
     }
 
-    @MainActor func openDetailsPageAndExtract(personId: String) async throws -> FamilySearchFamilyExtraction {
-        try await loadDetailsPage(personId: personId)
+    @MainActor func openDetailsPageAndExtract(
+        personId: String,
+        log: ((String) -> Void)? = nil
+    ) async throws -> FamilySearchFamilyExtraction {
+        log?("FamilySearch WebKit extraction requested for: \(personId)")
+        try await loadDetailsPage(personId: personId, log: log)
+        log?("FamilySearch WebKit initial navigation finished: \(currentPageURLString())")
+        log?("FamilySearch WebKit waiting for details page: \(personId)")
         try await waitForDetailsPage(personId: personId)
+        log?("FamilySearch WebKit details page ready: \(currentPageURLString())")
+        log?("FamilySearch WebKit DOM extraction started")
         return try await extractCurrentDetailsPage(expectedPersonId: personId)
     }
 
@@ -181,13 +189,17 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         return webView
     }
 
-    @MainActor private func loadDetailsPage(personId: String) async throws {
+    @MainActor private func loadDetailsPage(
+        personId: String,
+        log: ((String) -> Void)? = nil
+    ) async throws {
         let normalizedPersonId = personId.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard let url = URL(string: FamilySearchDOMService.detailsURL(for: normalizedPersonId)) else {
             throw FamilySearchWebViewExtractionError.javascriptFailed("Invalid FamilySearch person ID.")
         }
 
         if webView?.url?.absoluteString == url.absoluteString {
+            log?("FamilySearch WebKit already at target URL: \(url.absoluteString)")
             return
         }
 
@@ -195,6 +207,8 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         window?.title = "FamilySearch \(normalizedPersonId)"
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        log?("FamilySearch WebKit window visible: \(window?.isVisible == true ? "yes" : "no")")
+        log?("FamilySearch WebKit navigation requested: \(url.absoluteString)")
 
         try await withCheckedThrowingContinuation { continuation in
             navigationContinuation?.resume(throwing: FamilySearchWebViewExtractionError.windowClosed)

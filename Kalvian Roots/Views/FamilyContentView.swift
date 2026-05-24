@@ -95,16 +95,6 @@ struct FamilyContentView: View {
                         .padding(.top, 4)
                 }
 
-                if juuretApp.isFamilySearchComparisonPanelVisible && !juuretApp.comparisonReport.isEmpty {
-                    GroupBox("Juuret + HisKi Report") {
-                        Text(juuretApp.comparisonReport)
-                            .font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .padding(.top, 12)
-                }
-
                 if !juuretApp.hiskiCitationProposals.isEmpty {
                     GroupBox("HisKi Citation Proposals") {
                         VStack(alignment: .leading, spacing: 4) {
@@ -181,24 +171,9 @@ struct FamilyContentView: View {
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
 
-                if !juuretApp.familySearchComparisonDebugLines.isEmpty {
-                    VStack(alignment: .leading, spacing: 2) {
-                        ForEach(Array(juuretApp.familySearchComparisonDebugLines.enumerated()), id: \.offset) { _, line in
-                            Text(line)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                        }
-                    }
-                    .padding(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.black.opacity(0.04))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-
                 if !familySearchComparisonDebugCopyText.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Copyable debug information")
+                        Text("Debug")
                             .font(.system(.caption, design: .monospaced))
                             .foregroundStyle(.secondary)
                         TextEditor(text: .constant(familySearchComparisonDebugCopyText))
