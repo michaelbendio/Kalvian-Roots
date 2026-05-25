@@ -610,13 +610,20 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
 
             let diagnostics = await self.collectTimeoutDiagnostics()
             let currentURL = diagnostics.url ?? self.webView?.url?.absoluteString
+            let diagnosticsExtractionStage = diagnostics.extractionStage?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let lastProgressStage = self.lastExtractionProgressStage?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let extractionStage = diagnosticsExtractionStage?.isEmpty == false
+                ? diagnosticsExtractionStage
+                : lastProgressStage
             self.finishExtraction(
                 with: .success(
                     Self.makeTimeoutExtractionPayload(
                         expectedPersonId: expectedPersonId,
                         currentURL: currentURL,
                         pageTitle: diagnostics.pageTitle ?? self.webView?.title,
-                        extractionStage: diagnostics.extractionStage ?? self.lastExtractionProgressStage,
+                        extractionStage: extractionStage,
                         familyMembersSectionFound: diagnostics.familyMembersSectionFound,
                         spousesAndChildrenSectionFound: diagnostics.spousesAndChildrenSectionFound,
                         childrenMarkerCount: diagnostics.childrenMarkerCount,

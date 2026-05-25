@@ -291,8 +291,11 @@ enum FamilySearchDOMService {
                     return heading.closest('section') || heading.closest('div[all]') || heading.parentElement;
                 }
 
-                const bodyText = clean((extractionDocument().body || {}).innerText);
-                if (/^Family Members$/im.test(bodyText) || /^Spouses and Children$/im.test(bodyText)) {
+                const bodyLines = ((extractionDocument().body || {}).innerText || '')
+                    .split('\n')
+                    .map(clean)
+                    .filter(Boolean);
+                if (bodyLines.some(line => /^Family Members$/i.test(line) || /^Spouses and Children$/i.test(line))) {
                     return extractionDocument().querySelector('main') || extractionDocument().body;
                 }
 
