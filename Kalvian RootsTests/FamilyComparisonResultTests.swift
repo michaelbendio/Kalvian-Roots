@@ -1746,6 +1746,8 @@ final class FamilySearchDOMServiceTests: XCTestCase {
 
         XCTAssertTrue(script.contains("window.__kalvianRootsFamilySearchProgress(window.__kalvianRootsFamilySearchStage)"))
         XCTAssertTrue(script.contains("async function waitForFamilyMembersSection(expectedId)"))
+        XCTAssertTrue(script.contains("const bodyText = clean((extractionDocument().body || {}).innerText);"))
+        XCTAssertTrue(script.contains("return extractionDocument().querySelector('main') || extractionDocument().body;"))
         XCTAssertTrue(script.contains("lastDiagnostics.familyMembersSectionFound && lastDiagnostics.spousesAndChildrenSectionFound"))
         XCTAssertTrue(script.contains("await waitForFamilyMembersSection(normalizedPersonId);"))
         XCTAssertLessThan(

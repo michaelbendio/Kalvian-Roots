@@ -287,7 +287,16 @@ enum FamilySearchDOMService {
 
             function familyMembersSection() {
                 const heading = findHeading('Family Members');
-                return heading && (heading.closest('section') || heading.closest('div[all]') || heading.parentElement);
+                if (heading) {
+                    return heading.closest('section') || heading.closest('div[all]') || heading.parentElement;
+                }
+
+                const bodyText = clean((extractionDocument().body || {}).innerText);
+                if (/^Family Members$/im.test(bodyText) || /^Spouses and Children$/im.test(bodyText)) {
+                    return extractionDocument().querySelector('main') || extractionDocument().body;
+                }
+
+                return null;
             }
 
             function pageURL() {

@@ -48,6 +48,7 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
     @MainActor private var activeExtractionExpectedPersonId: String?
     @MainActor private var lastBlockedNavigationDuringExtraction: String?
     @MainActor private var extractionProgressLog: ((String) -> Void)?
+    @MainActor private var lastExtractionProgressStage: String?
 
     private let windowWidth: CGFloat = 1180
     private let windowHeight: CGFloat = 840
@@ -320,6 +321,7 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         return try await withCheckedThrowingContinuation { continuation in
             extractionContinuation = continuation
             extractionProgressLog = log
+            lastExtractionProgressStage = nil
             activeExtractionExpectedPersonId = normalizedExpectedPersonId
             lastBlockedNavigationDuringExtraction = nil
             startExtractionTimeout(expectedPersonId: expectedPersonId)
@@ -558,6 +560,7 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
                 .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
                 .joined(separator: " - ")
+            lastExtractionProgressStage = stage?.trimmingCharacters(in: .whitespacesAndNewlines)
             extractionProgressLog?("FamilySearch WebKit progress: \(detail.isEmpty ? "progress message received" : detail)")
             return
         }
@@ -580,6 +583,7 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         extractionTimeoutTask = nil
         activeExtractionExpectedPersonId = nil
         extractionProgressLog = nil
+        lastExtractionProgressStage = nil
 
         switch result {
         case let .success(extraction):
@@ -612,7 +616,7 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
                         expectedPersonId: expectedPersonId,
                         currentURL: currentURL,
                         pageTitle: diagnostics.pageTitle ?? self.webView?.title,
-                        extractionStage: diagnostics.extractionStage,
+                        extractionStage: diagnostics.extractionStage ?? self.lastExtractionProgressStage,
                         familyMembersSectionFound: diagnostics.familyMembersSectionFound,
                         spousesAndChildrenSectionFound: diagnostics.spousesAndChildrenSectionFound,
                         childrenMarkerCount: diagnostics.childrenMarkerCount,
