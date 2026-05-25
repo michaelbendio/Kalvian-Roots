@@ -1772,7 +1772,10 @@ final class FamilySearchDOMServiceTests: XCTestCase {
             expectedPersonId: " k2yq-1zy ",
             currentURL: "https://www.familysearch.org/en/tree/person/details/K2YQ-1ZY",
             pageTitle: "Erick Johansson Tikkanen (1716–1797) • Person • Family Tree",
-            extractionStage: "extracting child 3/18 in spouse group 2/3: M8ZP-9VD Brita Eriksson"
+            extractionStage: "extracting child 3/18 in spouse group 2/3: M8ZP-9VD Brita Eriksson",
+            familyMembersSectionFound: true,
+            spousesAndChildrenSectionFound: true,
+            childrenMarkerCount: 3
         )
 
         XCTAssertFalse(extraction.isSuccessful)
@@ -1785,6 +1788,9 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertEqual(extraction.isFamilySearchPage, true)
         XCTAssertEqual(extraction.isPersonDetailsPage, true)
         XCTAssertEqual(extraction.pageTitle, "Erick Johansson Tikkanen (1716–1797) • Person • Family Tree")
+        XCTAssertEqual(extraction.familyMembersSectionFound, true)
+        XCTAssertEqual(extraction.spousesAndChildrenSectionFound, true)
+        XCTAssertEqual(extraction.childrenMarkerCount, 3)
         XCTAssertEqual(extraction.children.count, 0)
         XCTAssertTrue(extraction.failureReason?.contains("timed out after 90 seconds") == true)
         XCTAssertTrue(extraction.debugNotes?.contains("FamilySearch Swift WebKit timeout fired before the JavaScript message handler returned a result") == true)

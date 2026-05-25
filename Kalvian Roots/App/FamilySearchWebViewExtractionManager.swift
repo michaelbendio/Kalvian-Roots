@@ -52,6 +52,15 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
     private let windowHeight: CGFloat = 840
     private let extractionTimeoutNanoseconds: UInt64 = 90_000_000_000
 
+    private struct TimeoutDiagnostics: Decodable {
+        var url: String?
+        var pageTitle: String?
+        var extractionStage: String?
+        var familyMembersSectionFound: Bool?
+        var spousesAndChildrenSectionFound: Bool?
+        var childrenMarkerCount: Int?
+    }
+
     static func isDetailsPageURL(_ urlString: String?, for personId: String) -> Bool {
         guard let urlString,
               let components = URLComponents(string: urlString),
@@ -73,7 +82,10 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         expectedPersonId: String?,
         currentURL: String?,
         pageTitle: String? = nil,
-        extractionStage: String? = nil
+        extractionStage: String? = nil,
+        familyMembersSectionFound: Bool? = nil,
+        spousesAndChildrenSectionFound: Bool? = nil,
+        childrenMarkerCount: Int? = nil
     ) -> FamilySearchFamilyExtraction {
         let normalizedExpectedPersonId = expectedPersonId?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -117,9 +129,9 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
             expectedPersonId: normalizedExpectedPersonId,
             isFamilySearchPage: isFamilySearchPage,
             isPersonDetailsPage: currentURL.flatMap { isDetailsPageURL($0, for: sourcePersonId) },
-            familyMembersSectionFound: nil,
-            spousesAndChildrenSectionFound: nil,
-            childrenMarkerCount: nil,
+            familyMembersSectionFound: familyMembersSectionFound,
+            spousesAndChildrenSectionFound: spousesAndChildrenSectionFound,
+            childrenMarkerCount: childrenMarkerCount,
             rawCandidateChildCount: 0,
             spouseGroupCount: 0,
             childCount: 0,
@@ -452,16 +464,66 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
                 return
             }
 
+            let diagnostics = await self.collectTimeoutDiagnostics()
+            let currentURL = diagnostics.url ?? self.webView?.url?.absoluteString
             self.finishExtraction(
                 with: .success(
                     Self.makeTimeoutExtractionPayload(
                         expectedPersonId: expectedPersonId,
-                        currentURL: self.webView?.url?.absoluteString,
-                        pageTitle: self.webView?.title,
-                        extractionStage: nil
+                        currentURL: currentURL,
+                        pageTitle: diagnostics.pageTitle ?? self.webView?.title,
+                        extractionStage: diagnostics.extractionStage,
+                        familyMembersSectionFound: diagnostics.familyMembersSectionFound,
+                        spousesAndChildrenSectionFound: diagnostics.spousesAndChildrenSectionFound,
+                        childrenMarkerCount: diagnostics.childrenMarkerCount
                     )
                 )
             )
+        }
+    }
+
+    @MainActor private func collectTimeoutDiagnostics() async -> TimeoutDiagnostics {
+        guard let webView else {
+            return TimeoutDiagnostics()
+        }
+
+        let script = """
+        (() => {
+            function clean(text) {
+                return (text || '').replace(/\\s+/g, ' ').trim();
+            }
+
+            const bodyText = document.body ? (document.body.innerText || '') : '';
+            const lines = bodyText.split('\\n').map(clean).filter(Boolean);
+            const familyIndex = lines.findIndex(line => /^Family Members$/i.test(line));
+            const spousesIndex = lines.findIndex(line => /^Spouses and Children$/i.test(line));
+            const parentsIndex = lines.findIndex((line, index) => index > spousesIndex && /^Parents and Siblings$/i.test(line));
+            const sectionLines = spousesIndex >= 0
+                ? lines.slice(spousesIndex + 1, parentsIndex >= 0 ? parentsIndex : lines.length)
+                : [];
+
+            return JSON.stringify({
+                url: window.location.href,
+                pageTitle: document.title,
+                extractionStage: clean(window.__kalvianRootsFamilySearchStage),
+                familyMembersSectionFound: familyIndex >= 0 || spousesIndex >= 0,
+                spousesAndChildrenSectionFound: spousesIndex >= 0,
+                childrenMarkerCount: sectionLines.filter(line => /^Children\\s*\\(\\d+\\)$/i.test(line)).length
+            });
+        })();
+        """
+
+        return await withCheckedContinuation { continuation in
+            webView.evaluateJavaScript(script) { result, _ in
+                guard let json = result as? String,
+                      let data = json.data(using: .utf8),
+                      let diagnostics = try? JSONDecoder().decode(TimeoutDiagnostics.self, from: data) else {
+                    continuation.resume(returning: TimeoutDiagnostics())
+                    return
+                }
+
+                continuation.resume(returning: diagnostics)
+            }
         }
     }
 }
