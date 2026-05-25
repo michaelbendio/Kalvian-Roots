@@ -47,6 +47,7 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
     @MainActor private var navigationContinuation: CheckedContinuation<Void, Error>?
     @MainActor private var activeExtractionExpectedPersonId: String?
     @MainActor private var lastBlockedNavigationDuringExtraction: String?
+    @MainActor private var extractionProgressLog: ((String) -> Void)?
 
     private let windowWidth: CGFloat = 1180
     private let windowHeight: CGFloat = 840
@@ -267,7 +268,7 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         try await waitForDetailsPage(personId: personId)
         log?("FamilySearch WebKit details page ready: \(currentPageURLString())")
         log?("FamilySearch WebKit DOM extraction started")
-        return try await extractCurrentDetailsPage(expectedPersonId: personId)
+        return try await extractCurrentDetailsPage(expectedPersonId: personId, log: log)
     }
 
     @MainActor func currentPageURLString() -> String {
@@ -286,7 +287,10 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         webView.load(URLRequest(url: url))
     }
 
-    @MainActor func extractCurrentDetailsPage(expectedPersonId: String? = nil) async throws -> FamilySearchFamilyExtraction {
+    @MainActor func extractCurrentDetailsPage(
+        expectedPersonId: String? = nil,
+        log: ((String) -> Void)? = nil
+    ) async throws -> FamilySearchFamilyExtraction {
         guard let webView else {
             if let expectedPersonId {
                 return try await openDetailsPageAndExtract(personId: expectedPersonId)
@@ -315,6 +319,7 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
 
         return try await withCheckedThrowingContinuation { continuation in
             extractionContinuation = continuation
+            extractionProgressLog = log
             activeExtractionExpectedPersonId = normalizedExpectedPersonId
             lastBlockedNavigationDuringExtraction = nil
             startExtractionTimeout(expectedPersonId: expectedPersonId)
@@ -529,6 +534,7 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         finishExtraction(with: .failure(FamilySearchWebViewExtractionError.windowClosed))
         navigationContinuation?.resume(throwing: FamilySearchWebViewExtractionError.windowClosed)
         navigationContinuation = nil
+        extractionProgressLog = nil
         webView?.configuration.userContentController.removeScriptMessageHandler(
             forName: FamilySearchDOMService.webKitExtractionMessageHandler
         )
@@ -541,6 +547,18 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         guard let json = body as? String,
               let data = json.data(using: .utf8) else {
             finishExtraction(with: .failure(FamilySearchWebViewExtractionError.invalidMessage))
+            return
+        }
+
+        if let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           payload["messageType"] as? String == "progress" {
+            let stage = payload["stage"] as? String
+            let message = payload["message"] as? String
+            let detail = [stage, message]
+                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: " - ")
+            extractionProgressLog?("FamilySearch WebKit progress: \(detail.isEmpty ? "progress message received" : detail)")
             return
         }
 
@@ -561,6 +579,7 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         extractionTimeoutTask?.cancel()
         extractionTimeoutTask = nil
         activeExtractionExpectedPersonId = nil
+        extractionProgressLog = nil
 
         switch result {
         case let .success(extraction):

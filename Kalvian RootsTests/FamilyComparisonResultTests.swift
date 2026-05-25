@@ -1716,6 +1716,10 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("extractorTimeout"))
         XCTAssertTrue(script.contains("FamilySearch extraction stage at timeout"))
         XCTAssertTrue(script.contains("function setWebKitExtractionStage(stage)"))
+        XCTAssertTrue(script.contains("function postWebKitProgress(stage, message)"))
+        XCTAssertTrue(script.contains("messageType: 'progress'"))
+        XCTAssertTrue(script.contains("window.__kalvianRootsFamilySearchProgress = postWebKitProgress"))
+        XCTAssertTrue(script.contains("WebKit wrapper entered extraction script"))
         XCTAssertTrue(script.contains("WebKit wrapper installed extractor"))
         XCTAssertTrue(script.contains("WebKit wrapper calling extractor"))
         XCTAssertTrue(script.contains("extractorUnavailable"))
@@ -1740,6 +1744,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
     func testFamilySearchExtractorWaitsForFamilyMembersSectionsBeforeReadingChildren() {
         let script = FamilySearchDOMService.makeFamilySearchExtractorScript()
 
+        XCTAssertTrue(script.contains("window.__kalvianRootsFamilySearchProgress(window.__kalvianRootsFamilySearchStage)"))
         XCTAssertTrue(script.contains("async function waitForFamilyMembersSection(expectedId)"))
         XCTAssertTrue(script.contains("lastDiagnostics.familyMembersSectionFound && lastDiagnostics.spousesAndChildrenSectionFound"))
         XCTAssertTrue(script.contains("await waitForFamilyMembersSection(normalizedPersonId);"))

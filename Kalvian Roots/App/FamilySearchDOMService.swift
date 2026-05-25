@@ -140,6 +140,9 @@ enum FamilySearchDOMService {
             function setExtractionStage(stage) {
                 window.__kalvianRootsFamilySearchStage = clean(stage);
                 console.info('Kalvian Roots FamilySearch stage: ' + window.__kalvianRootsFamilySearchStage);
+                if (typeof window.__kalvianRootsFamilySearchProgress === 'function') {
+                    window.__kalvianRootsFamilySearchProgress(window.__kalvianRootsFamilySearchStage);
+                }
             }
 
             function currentExtractionStage() {
@@ -1429,6 +1432,7 @@ enum FamilySearchDOMService {
             function setWebKitExtractionStage(stage) {
                 window.__kalvianRootsFamilySearchStage = cleanWebKitMessage(stage);
                 console.info('Kalvian Roots FamilySearch WebKit stage: ' + window.__kalvianRootsFamilySearchStage);
+                postWebKitProgress(window.__kalvianRootsFamilySearchStage);
             }
 
             function postWebKitExtractionResult(result) {
@@ -1438,6 +1442,22 @@ enum FamilySearchDOMService {
                 didPostKalvianRootsExtractionResult = true;
                 window.webkit.messageHandlers[KALVIAN_ROOTS_WEBKIT_HANDLER].postMessage(JSON.stringify(result));
             }
+
+            function postWebKitProgress(stage, message) {
+                try {
+                    window.webkit.messageHandlers[KALVIAN_ROOTS_WEBKIT_HANDLER].postMessage(JSON.stringify({
+                        messageType: 'progress',
+                        stage: cleanWebKitMessage(stage),
+                        message: cleanWebKitMessage(message || ''),
+                        url: window.location.href,
+                        pageTitle: document.title
+                    }));
+                } catch (_) {
+                }
+            }
+
+            window.__kalvianRootsFamilySearchProgress = postWebKitProgress;
+            postWebKitProgress('WebKit wrapper entered extraction script', 'before installing FamilySearch extractor');
 
             function makeWebKitFailureResult(status, reason, notes) {
                 const diagnostics = typeof diagnosticContext === 'function' ? diagnosticContext() : {};
