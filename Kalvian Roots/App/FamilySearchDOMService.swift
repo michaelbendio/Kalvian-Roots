@@ -292,7 +292,7 @@ enum FamilySearchDOMService {
                 }
 
                 const bodyLines = ((extractionDocument().body || {}).innerText || '')
-                    .split('\n')
+                    .split('\\n')
                     .map(clean)
                     .filter(Boolean);
                 if (bodyLines.some(line => /^Family Members$/i.test(line) || /^Spouses and Children$/i.test(line))) {
