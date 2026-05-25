@@ -71,7 +71,9 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
 
     static func makeTimeoutExtractionPayload(
         expectedPersonId: String?,
-        currentURL: String?
+        currentURL: String?,
+        pageTitle: String? = nil,
+        extractionStage: String? = nil
     ) -> FamilySearchFamilyExtraction {
         let normalizedExpectedPersonId = expectedPersonId?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -82,6 +84,19 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         let lowercasedHost = host?.lowercased()
         let isFamilySearchPage = lowercasedHost == "familysearch.org"
             || lowercasedHost?.hasSuffix(".familysearch.org") == true
+
+        var debugNotes = [
+            "FamilySearch Swift WebKit timeout fired before the JavaScript message handler returned a result",
+            "FamilySearch WebKit URL at Swift timeout: \(currentURL ?? "not open")"
+        ]
+        if let pageTitle, !pageTitle.isEmpty {
+            debugNotes.append("FamilySearch WebKit title at Swift timeout: \(pageTitle)")
+        }
+        if let extractionStage, !extractionStage.isEmpty {
+            debugNotes.append("FamilySearch extraction stage at Swift timeout: \(extractionStage)")
+        } else {
+            debugNotes.append("FamilySearch extraction stage at Swift timeout: unavailable because JavaScript timeout did not post")
+        }
 
         return FamilySearchFamilyExtraction(
             sourcePersonId: sourcePersonId,
@@ -96,7 +111,7 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
             status: "extractorTimeout",
             failureReason: "FamilySearch WebKit extraction timed out after 90 seconds without a result message.",
             url: currentURL,
-            pageTitle: nil,
+            pageTitle: pageTitle,
             detectedHost: host,
             detectedPersonId: detectedPersonId,
             expectedPersonId: normalizedExpectedPersonId,
@@ -109,10 +124,7 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
             spouseGroupCount: 0,
             childCount: 0,
             preferredChildCount: 0,
-            debugNotes: [
-                "FamilySearch Swift WebKit timeout fired before the JavaScript message handler returned a result",
-                "FamilySearch WebKit URL at Swift timeout: \(currentURL ?? "not open")"
-            ]
+            debugNotes: debugNotes
         )
     }
 
@@ -444,7 +456,9 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
                 with: .success(
                     Self.makeTimeoutExtractionPayload(
                         expectedPersonId: expectedPersonId,
-                        currentURL: self.webView?.url?.absoluteString
+                        currentURL: self.webView?.url?.absoluteString,
+                        pageTitle: self.webView?.title,
+                        extractionStage: nil
                     )
                 )
             )

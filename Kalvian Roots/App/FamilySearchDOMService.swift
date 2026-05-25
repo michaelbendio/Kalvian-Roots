@@ -1411,7 +1411,7 @@ enum FamilySearchDOMService {
             const KALVIAN_ROOTS_WEBKIT_EXPECTED_PERSON_ID = '\(escapeJavaScript(normalizedPersonId))';
             const KALVIAN_ROOTS_WEBKIT_PERSON_ID = KALVIAN_ROOTS_WEBKIT_EXPECTED_PERSON_ID || ((window.location.pathname.match(/\\/tree\\/person\\/details\\/([A-Z0-9-]+)/i) || [])[1] || '').toUpperCase();
             const KALVIAN_ROOTS_WEBKIT_HANDLER = '\(webKitExtractionMessageHandler)';
-            const KALVIAN_ROOTS_WEBKIT_TIMEOUT_MS = 90000;
+            const KALVIAN_ROOTS_WEBKIT_TIMEOUT_MS = 85000;
             let didPostKalvianRootsExtractionResult = false;
 
             function cleanWebKitMessage(text) {
@@ -1435,22 +1435,30 @@ enum FamilySearchDOMService {
             }
 
             function makeWebKitFailureResult(status, reason, notes) {
+                const diagnostics = typeof diagnosticContext === 'function' ? diagnosticContext() : {};
                 return {
                     sourcePersonId: KALVIAN_ROOTS_WEBKIT_PERSON_ID,
                     parentFamilySearchId: KALVIAN_ROOTS_WEBKIT_PERSON_ID || null,
                     extractedAt: new Date().toISOString(),
-                    sourceUrl: window.location.href,
+                    sourceUrl: diagnostics.url || window.location.href,
                     children: [],
                     spouseGroups: [],
                     status,
                     failureReason: reason,
-                    url: window.location.href,
-                    pageTitle: document.title,
-                    detectedHost: window.location.hostname,
-                    detectedPersonId: detectedWebKitPersonId(),
+                    url: diagnostics.url || window.location.href,
+                    pageTitle: diagnostics.pageTitle || document.title,
+                    detectedHost: diagnostics.detectedHost || window.location.hostname,
+                    detectedPersonId: diagnostics.detectedPersonId || detectedWebKitPersonId(),
                     expectedPersonId: KALVIAN_ROOTS_WEBKIT_EXPECTED_PERSON_ID || KALVIAN_ROOTS_WEBKIT_PERSON_ID,
-                    isFamilySearchPage: /(^|\\.)familysearch\\.org$/i.test(window.location.hostname),
-                    isPersonDetailsPage: /\\/tree\\/person\\/details\\//i.test(window.location.pathname),
+                    isFamilySearchPage: diagnostics.isFamilySearchPage ?? /(^|\\.)familysearch\\.org$/i.test(window.location.hostname),
+                    isPersonDetailsPage: diagnostics.isPersonDetailsPage ?? /\\/tree\\/person\\/details\\//i.test(window.location.pathname),
+                    familyMembersSectionFound: diagnostics.familyMembersSectionFound,
+                    spousesAndChildrenSectionFound: diagnostics.spousesAndChildrenSectionFound,
+                    childrenMarkerCount: diagnostics.childrenMarkerCount,
+                    rawCandidateChildCount: diagnostics.rawCandidateChildCount ?? 0,
+                    spouseGroupCount: diagnostics.spouseGroupCount ?? 0,
+                    childCount: 0,
+                    preferredChildCount: 0,
                     debugNotes: notes
                 };
             }
