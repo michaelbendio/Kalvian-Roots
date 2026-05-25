@@ -45,8 +45,6 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
     @MainActor private var extractionContinuation: CheckedContinuation<FamilySearchFamilyExtraction, Error>?
     @MainActor private var extractionTimeoutTask: Task<Void, Never>?
     @MainActor private var navigationContinuation: CheckedContinuation<Void, Error>?
-    @MainActor private var detailsPageContinuation: CheckedContinuation<Void, Error>?
-    @MainActor private var pendingDetailsPagePersonId: String?
 
     private let windowWidth: CGFloat = 1180
     private let windowHeight: CGFloat = 840
@@ -59,6 +57,12 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         var familyMembersSectionFound: Bool?
         var spousesAndChildrenSectionFound: Bool?
         var childrenMarkerCount: Int?
+    }
+
+    private struct DocumentReadiness: Decodable {
+        var url: String?
+        var pageTitle: String?
+        var readyState: String?
     }
 
     static func isDetailsPageURL(_ urlString: String?, for personId: String) -> Bool {
@@ -76,6 +80,24 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         let normalizedPersonId = personId.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         return normalizedPath.contains("/TREE/PERSON/DETAILS/")
             && normalizedPath.contains(normalizedPersonId)
+    }
+
+    static func isDetailsPageDocumentReady(
+        urlString: String?,
+        pageTitle: String?,
+        readyState: String?,
+        for personId: String
+    ) -> Bool {
+        guard isDetailsPageURL(urlString, for: personId) else {
+            return false
+        }
+
+        let normalizedTitle = pageTitle?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        guard !normalizedTitle.contains("sign-in") && !normalizedTitle.contains("sign in") else {
+            return false
+        }
+
+        return readyState == nil || readyState == "complete"
     }
 
     static func makeTimeoutExtractionPayload(
@@ -216,8 +238,10 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
             throw FamilySearchWebViewExtractionError.extractionAlreadyRunning
         }
 
-        if let expectedPersonId, !isLoadedDetailsPage(for: expectedPersonId) {
-            try await loadDetailsPage(personId: expectedPersonId)
+        if let expectedPersonId {
+            if !isLoadedDetailsPage(for: expectedPersonId) {
+                try await loadDetailsPage(personId: expectedPersonId)
+            }
             try await waitForDetailsPage(personId: expectedPersonId)
         }
 
@@ -312,46 +336,60 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
             return
         }
 
-        if isLoadedDetailsPage(for: normalizedPersonId) {
-            return
+        for _ in 0..<600 {
+            let readiness = await collectDocumentReadiness()
+            if Self.isDetailsPageDocumentReady(
+                urlString: readiness.url,
+                pageTitle: readiness.pageTitle,
+                readyState: readiness.readyState,
+                for: normalizedPersonId
+            ) {
+                return
+            }
+
+            try await Task.sleep(nanoseconds: 250_000_000)
         }
 
-        try await withCheckedThrowingContinuation { continuation in
-            detailsPageContinuation?.resume(throwing: FamilySearchWebViewExtractionError.windowClosed)
-            pendingDetailsPagePersonId = normalizedPersonId
-            detailsPageContinuation = continuation
-            pollForDetailsPage(personId: normalizedPersonId)
-        }
+        throw FamilySearchWebViewExtractionError.javascriptFailed(
+            "FamilySearch details page was not ready for \(normalizedPersonId)."
+        )
     }
 
     @MainActor private func isLoadedDetailsPage(for personId: String) -> Bool {
         Self.isDetailsPageURL(webView?.url?.absoluteString, for: personId)
     }
 
-    @MainActor private func pollForDetailsPage(personId: String) {
-        Task { @MainActor [weak self] in
-            while let self,
-                  self.detailsPageContinuation != nil,
-                  self.pendingDetailsPagePersonId == personId {
-                self.resumeDetailsPageContinuationIfLoaded()
-                if self.detailsPageContinuation == nil {
+    @MainActor private func collectDocumentReadiness() async -> DocumentReadiness {
+        guard let webView else {
+            return DocumentReadiness()
+        }
+
+        let script = """
+        JSON.stringify({
+            url: window.location.href,
+            pageTitle: document.title,
+            readyState: document.readyState
+        });
+        """
+
+        return await withCheckedContinuation { continuation in
+            webView.evaluateJavaScript(script) { result, _ in
+                guard let json = result as? String,
+                      let data = json.data(using: .utf8),
+                      let readiness = try? JSONDecoder().decode(DocumentReadiness.self, from: data) else {
+                    continuation.resume(
+                        returning: DocumentReadiness(
+                            url: webView.url?.absoluteString,
+                            pageTitle: webView.title,
+                            readyState: nil
+                        )
+                    )
                     return
                 }
 
-                try? await Task.sleep(nanoseconds: 250_000_000)
+                continuation.resume(returning: readiness)
             }
         }
-    }
-
-    @MainActor private func resumeDetailsPageContinuationIfLoaded() {
-        guard let pendingPersonId = pendingDetailsPagePersonId,
-              isLoadedDetailsPage(for: pendingPersonId) else {
-            return
-        }
-
-        detailsPageContinuation?.resume()
-        detailsPageContinuation = nil
-        pendingDetailsPagePersonId = nil
     }
 
     nonisolated func userContentController(
@@ -375,8 +413,6 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
 
             self.navigationContinuation?.resume()
             self.navigationContinuation = nil
-
-            self.resumeDetailsPageContinuationIfLoaded()
         }
     }
 
@@ -390,11 +426,6 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
                 throwing: FamilySearchWebViewExtractionError.javascriptFailed(error.localizedDescription)
             )
             self.navigationContinuation = nil
-            self.detailsPageContinuation?.resume(
-                throwing: FamilySearchWebViewExtractionError.javascriptFailed(error.localizedDescription)
-            )
-            self.detailsPageContinuation = nil
-            self.pendingDetailsPagePersonId = nil
         }
     }
 
@@ -406,9 +437,6 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         finishExtraction(with: .failure(FamilySearchWebViewExtractionError.windowClosed))
         navigationContinuation?.resume(throwing: FamilySearchWebViewExtractionError.windowClosed)
         navigationContinuation = nil
-        detailsPageContinuation?.resume(throwing: FamilySearchWebViewExtractionError.windowClosed)
-        detailsPageContinuation = nil
-        pendingDetailsPagePersonId = nil
         webView?.configuration.userContentController.removeScriptMessageHandler(
             forName: FamilySearchDOMService.webKitExtractionMessageHandler
         )

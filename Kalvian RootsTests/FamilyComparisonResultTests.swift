@@ -1769,6 +1769,38 @@ final class FamilySearchDOMServiceTests: XCTestCase {
                 for: "K2YQ-1ZY"
             )
         )
+        XCTAssertFalse(
+            FamilySearchWebViewExtractionManager.isDetailsPageDocumentReady(
+                urlString: "https://ident.familysearch.org/en/identity/login/?state=https://www.familysearch.org/en/tree/person/details/K2YQ-1ZY",
+                pageTitle: "Sign-in to your account",
+                readyState: "complete",
+                for: "K2YQ-1ZY"
+            )
+        )
+        XCTAssertFalse(
+            FamilySearchWebViewExtractionManager.isDetailsPageDocumentReady(
+                urlString: "https://www.familysearch.org/en/tree/person/details/K2YQ-1ZY",
+                pageTitle: "Sign-in to your account",
+                readyState: "complete",
+                for: "K2YQ-1ZY"
+            )
+        )
+        XCTAssertFalse(
+            FamilySearchWebViewExtractionManager.isDetailsPageDocumentReady(
+                urlString: "https://www.familysearch.org/en/tree/person/details/K2YQ-1ZY",
+                pageTitle: "Erick Johansson Tikkanen (1716–1797) • Person • Family Tree",
+                readyState: "loading",
+                for: "K2YQ-1ZY"
+            )
+        )
+        XCTAssertTrue(
+            FamilySearchWebViewExtractionManager.isDetailsPageDocumentReady(
+                urlString: "https://www.familysearch.org/en/tree/person/details/K2YQ-1ZY",
+                pageTitle: "Erick Johansson Tikkanen (1716–1797) • Person • Family Tree",
+                readyState: "complete",
+                for: "k2yq-1zy"
+            )
+        )
     }
 
     func testSwiftWebKitTimeoutPayloadReportsCurrentDetailsPage() {
