@@ -291,15 +291,14 @@ enum FamilySearchDOMService {
                     return heading.closest('section') || heading.closest('div[all]') || heading.parentElement;
                 }
 
-                const bodyLines = ((extractionDocument().body || {}).innerText || '')
+                return null;
+            }
+
+            function visibleDocumentLines() {
+                return ((extractionDocument().body || {}).innerText || '')
                     .split('\\n')
                     .map(clean)
                     .filter(Boolean);
-                if (bodyLines.some(line => /^Family Members$/i.test(line) || /^Spouses and Children$/i.test(line))) {
-                    return extractionDocument().querySelector('main') || extractionDocument().body;
-                }
-
-                return null;
             }
 
             function pageURL() {
@@ -415,14 +414,15 @@ enum FamilySearchDOMService {
 
             function sectionLinesFromSpousesAndChildren() {
                 const section = familyMembersSection();
-                if (!section) {
-                    throw new Error('Spouses and Children section not found: Family Members section not found');
-                }
-
-                const lines = (section.innerText || '').split('\\n').map(clean).filter(Boolean);
+                const lines = section
+                    ? (section.innerText || '').split('\\n').map(clean).filter(Boolean)
+                    : visibleDocumentLines();
                 const start = lines.findIndex(line => /^Spouses and Children$/i.test(line));
                 if (start < 0) {
-                    throw new Error('Spouses and Children section not found');
+                    const familyMembersMessage = lines.some(line => /^Family Members$/i.test(line))
+                        ? ''
+                        : ': Family Members section not found';
+                    throw new Error('Spouses and Children section not found' + familyMembersMessage);
                 }
 
                 const end = lines.findIndex((line, index) => index > start && /^Parents and Siblings$/i.test(line));
@@ -436,7 +436,10 @@ enum FamilySearchDOMService {
                 } catch (_) {
                     section = null;
                 }
-                const allLines = section ? (section.innerText || '').split('\\n').map(clean).filter(Boolean) : [];
+                const allLines = section
+                    ? (section.innerText || '').split('\\n').map(clean).filter(Boolean)
+                    : visibleDocumentLines();
+                const familyIndex = allLines.findIndex(line => /^Family Members$/i.test(line));
                 const spousesIndex = allLines.findIndex(line => /^Spouses and Children$/i.test(line));
                 const parentsIndex = allLines.findIndex((line, index) => index > spousesIndex && /^Parents and Siblings$/i.test(line));
                 const sectionLines = spousesIndex >= 0
@@ -450,7 +453,7 @@ enum FamilySearchDOMService {
                     detectedPersonId: personIdFromDocumentURL(diagnosticDocument()),
                     isFamilySearchPage: isFamilySearchPage(),
                     isPersonDetailsPage: isPersonDetailsPage(),
-                    familyMembersSectionFound: !!section,
+                    familyMembersSectionFound: !!section || familyIndex >= 0 || spousesIndex >= 0,
                     spousesAndChildrenSectionFound: spousesIndex >= 0,
                     childrenMarkerCount: sectionLines.filter(line => /^Children\\s*\\(\\d+\\)$/i.test(line)).length
                 };
@@ -1111,6 +1114,15 @@ enum FamilySearchDOMService {
                     lastDiagnostics = diagnosticContext();
                     if (lastDiagnostics.familyMembersSectionFound && lastDiagnostics.spousesAndChildrenSectionFound) {
                         return;
+                    }
+
+                    if ([0, 10, 30, 60, 90, 119].includes(attempt)) {
+                        setExtractionStage(
+                            'waiting for Family Members section attempt ' + (attempt + 1)
+                            + ': familyMembers=' + (lastDiagnostics.familyMembersSectionFound ? 'yes' : 'no')
+                            + ', spousesAndChildren=' + (lastDiagnostics.spousesAndChildrenSectionFound ? 'yes' : 'no')
+                            + ', childMarkers=' + lastDiagnostics.childrenMarkerCount
+                        );
                     }
 
                     await sleep(500);
