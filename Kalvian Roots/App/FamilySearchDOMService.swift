@@ -1426,6 +1426,11 @@ enum FamilySearchDOMService {
                 return cleanWebKitMessage(window.__kalvianRootsFamilySearchStage) || 'not reported';
             }
 
+            function setWebKitExtractionStage(stage) {
+                window.__kalvianRootsFamilySearchStage = cleanWebKitMessage(stage);
+                console.info('Kalvian Roots FamilySearch WebKit stage: ' + window.__kalvianRootsFamilySearchStage);
+            }
+
             function postWebKitExtractionResult(result) {
                 if (didPostKalvianRootsExtractionResult) {
                     return;
@@ -1465,6 +1470,8 @@ enum FamilySearchDOMService {
 
             \(extractorScript)
 
+            setWebKitExtractionStage('WebKit wrapper installed extractor for ' + (KALVIAN_ROOTS_WEBKIT_PERSON_ID || 'unknown person'));
+
             if (!KALVIAN_ROOTS_WEBKIT_PERSON_ID) {
                 postWebKitExtractionResult({
                     sourcePersonId: '',
@@ -1487,6 +1494,18 @@ enum FamilySearchDOMService {
                 return 'missing-person-id';
             }
 
+            if (typeof window.extractFamilySearchChildren !== 'function') {
+                postWebKitExtractionResult(makeWebKitFailureResult(
+                    'extractorUnavailable',
+                    'FamilySearch extraction script did not install extractFamilySearchChildren.',
+                    [
+                        'FamilySearch WebKit extraction wrapper could not find extractFamilySearchChildren',
+                        'FamilySearch extraction stage at failure: ' + webKitExtractionStage()
+                    ]
+                ));
+                return 'missing-extractor-function';
+            }
+
             window.setTimeout(function () {
                 postWebKitExtractionResult(makeWebKitFailureResult(
                     'extractorTimeout',
@@ -1498,6 +1517,7 @@ enum FamilySearchDOMService {
                 ));
             }, KALVIAN_ROOTS_WEBKIT_TIMEOUT_MS);
 
+            setWebKitExtractionStage('WebKit wrapper calling extractor for ' + KALVIAN_ROOTS_WEBKIT_PERSON_ID);
             window.extractFamilySearchChildren(KALVIAN_ROOTS_WEBKIT_PERSON_ID)
                 .then(postWebKitExtractionResult)
                 .catch(error => {
