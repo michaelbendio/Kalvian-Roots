@@ -1813,6 +1813,18 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         )
     }
 
+    func testWebKitFamilyMembersSectionWaitProgressMessageReportsDiagnostics() {
+        XCTAssertEqual(
+            FamilySearchWebViewExtractionManager.familyMembersSectionWaitProgressMessage(
+                attempt: 30,
+                familyMembersSectionFound: true,
+                spousesAndChildrenSectionFound: false,
+                childrenMarkerCount: 3
+            ),
+            "FamilySearch WebKit waiting for Family Members section attempt 30: familyMembers=yes, spousesAndChildren=no, childMarkers=3"
+        )
+    }
+
     func testSwiftWebKitTimeoutPayloadReportsCurrentDetailsPage() {
         let extraction = FamilySearchWebViewExtractionManager.makeTimeoutExtractionPayload(
             expectedPersonId: " k2yq-1zy ",

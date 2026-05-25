@@ -104,6 +104,15 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         return readyState == nil || readyState == "complete"
     }
 
+    static func familyMembersSectionWaitProgressMessage(
+        attempt: Int,
+        familyMembersSectionFound: Bool?,
+        spousesAndChildrenSectionFound: Bool?,
+        childrenMarkerCount: Int?
+    ) -> String {
+        "FamilySearch WebKit waiting for Family Members section attempt \(attempt): familyMembers=\(familyMembersSectionFound == true ? "yes" : "no"), spousesAndChildren=\(spousesAndChildrenSectionFound == true ? "yes" : "no"), childMarkers=\(childrenMarkerCount ?? 0)"
+    }
+
     static func shouldAllowNavigationDuringExtraction(
         to url: URL?,
         expectedPersonId: String?
@@ -268,7 +277,6 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         log?("FamilySearch WebKit waiting for details page: \(personId)")
         try await waitForDetailsPage(personId: personId)
         log?("FamilySearch WebKit details page ready: \(currentPageURLString())")
-        log?("FamilySearch WebKit DOM extraction started")
         return try await extractCurrentDetailsPage(expectedPersonId: personId, log: log)
     }
 
@@ -310,8 +318,10 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
                 try await loadDetailsPage(personId: expectedPersonId)
             }
             try await waitForDetailsPage(personId: expectedPersonId)
+            try await waitForFamilyMembersSections(log: log)
         }
 
+        log?("FamilySearch WebKit DOM extraction started")
         let script = expectedPersonId.map(FamilySearchDOMService.makeWebKitExtractionScript)
             ?? FamilySearchDOMService.makeWebKitExtractionScriptForCurrentPage()
         let normalizedExpectedPersonId = expectedPersonId?
@@ -632,6 +642,42 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
                 )
             )
         }
+    }
+
+    @MainActor private func waitForFamilyMembersSections(log: ((String) -> Void)?) async throws {
+        let progressAttempts = Set([1, 10, 30, 60, 90, 120, 180, 240])
+
+        for attempt in 1...240 {
+            let diagnostics = await collectTimeoutDiagnostics()
+            if diagnostics.familyMembersSectionFound == true,
+               diagnostics.spousesAndChildrenSectionFound == true {
+                log?("FamilySearch WebKit Family Members section ready: childMarkers=\(diagnostics.childrenMarkerCount ?? 0)")
+                return
+            }
+
+            if progressAttempts.contains(attempt) {
+                log?(
+                    Self.familyMembersSectionWaitProgressMessage(
+                        attempt: attempt,
+                        familyMembersSectionFound: diagnostics.familyMembersSectionFound,
+                        spousesAndChildrenSectionFound: diagnostics.spousesAndChildrenSectionFound,
+                        childrenMarkerCount: diagnostics.childrenMarkerCount
+                    )
+                )
+            }
+
+            try await Task.sleep(nanoseconds: 500_000_000)
+        }
+
+        let diagnostics = await collectTimeoutDiagnostics()
+        throw FamilySearchWebViewExtractionError.javascriptFailed(
+            Self.familyMembersSectionWaitProgressMessage(
+                attempt: 240,
+                familyMembersSectionFound: diagnostics.familyMembersSectionFound,
+                spousesAndChildrenSectionFound: diagnostics.spousesAndChildrenSectionFound,
+                childrenMarkerCount: diagnostics.childrenMarkerCount
+            )
+        )
     }
 
     @MainActor private func collectTimeoutDiagnostics() async -> TimeoutDiagnostics {
