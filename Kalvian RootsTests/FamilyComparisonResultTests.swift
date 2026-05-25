@@ -1811,7 +1811,8 @@ final class FamilySearchDOMServiceTests: XCTestCase {
             extractionStage: "extracting child 3/18 in spouse group 2/3: M8ZP-9VD Brita Eriksson",
             familyMembersSectionFound: true,
             spousesAndChildrenSectionFound: true,
-            childrenMarkerCount: 3
+            childrenMarkerCount: 3,
+            blockedNavigationURL: "https://www.familysearch.org/en/tree/person/M8ZP-9VD"
         )
 
         XCTAssertFalse(extraction.isSuccessful)
@@ -1832,6 +1833,40 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(extraction.debugNotes?.contains("FamilySearch Swift WebKit timeout fired before the JavaScript message handler returned a result") == true)
         XCTAssertTrue(extraction.debugNotes?.contains("FamilySearch WebKit title at Swift timeout: Erick Johansson Tikkanen (1716–1797) • Person • Family Tree") == true)
         XCTAssertTrue(extraction.debugNotes?.contains("FamilySearch extraction stage at Swift timeout: extracting child 3/18 in spouse group 2/3: M8ZP-9VD Brita Eriksson") == true)
+        XCTAssertTrue(extraction.debugNotes?.contains("FamilySearch WebKit blocked navigation during extraction: https://www.familysearch.org/en/tree/person/M8ZP-9VD") == true)
+    }
+
+    func testWebKitExtractionNavigationGuardAllowsOnlyExpectedPersonNavigation() throws {
+        XCTAssertTrue(
+            FamilySearchWebViewExtractionManager.shouldAllowNavigationDuringExtraction(
+                to: URL(string: "https://www.familysearch.org/en/tree/person/details/K2YQ-1ZY"),
+                expectedPersonId: "k2yq-1zy"
+            )
+        )
+        XCTAssertTrue(
+            FamilySearchWebViewExtractionManager.shouldAllowNavigationDuringExtraction(
+                to: URL(string: "https://ident.familysearch.org/en/identity/login/"),
+                expectedPersonId: "K2YQ-1ZY"
+            )
+        )
+        XCTAssertTrue(
+            FamilySearchWebViewExtractionManager.shouldAllowNavigationDuringExtraction(
+                to: URL(string: "https://www.familysearch.org/en/tree/"),
+                expectedPersonId: nil
+            )
+        )
+        XCTAssertFalse(
+            FamilySearchWebViewExtractionManager.shouldAllowNavigationDuringExtraction(
+                to: URL(string: "https://www.familysearch.org/en/tree/person/M8ZP-9VD"),
+                expectedPersonId: "K2YQ-1ZY"
+            )
+        )
+        XCTAssertFalse(
+            FamilySearchWebViewExtractionManager.shouldAllowNavigationDuringExtraction(
+                to: URL(string: "https://www.familysearch.org/en/tree/person/details/M8ZP-9VD"),
+                expectedPersonId: "K2YQ-1ZY"
+            )
+        )
     }
     #endif
 

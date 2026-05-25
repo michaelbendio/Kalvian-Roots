@@ -45,6 +45,8 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
     @MainActor private var extractionContinuation: CheckedContinuation<FamilySearchFamilyExtraction, Error>?
     @MainActor private var extractionTimeoutTask: Task<Void, Never>?
     @MainActor private var navigationContinuation: CheckedContinuation<Void, Error>?
+    @MainActor private var activeExtractionExpectedPersonId: String?
+    @MainActor private var lastBlockedNavigationDuringExtraction: String?
 
     private let windowWidth: CGFloat = 1180
     private let windowHeight: CGFloat = 840
@@ -100,6 +102,41 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         return readyState == nil || readyState == "complete"
     }
 
+    static func shouldAllowNavigationDuringExtraction(
+        to url: URL?,
+        expectedPersonId: String?
+    ) -> Bool {
+        guard let url,
+              let expectedPersonId,
+              let host = url.host?.lowercased(),
+              host == "www.familysearch.org" || host == "familysearch.org" else {
+            return true
+        }
+
+        let normalizedExpectedPersonId = expectedPersonId
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+        guard !normalizedExpectedPersonId.isEmpty else {
+            return true
+        }
+
+        let parts = url.path.split(separator: "/").map(String.init)
+        guard let personIndex = parts.firstIndex(where: { $0.caseInsensitiveCompare("person") == .orderedSame }) else {
+            return true
+        }
+
+        let idIndex = personIndex + 1 < parts.count
+            && parts[personIndex + 1].caseInsensitiveCompare("details") == .orderedSame
+            ? personIndex + 2
+            : personIndex + 1
+        guard idIndex < parts.count else {
+            return true
+        }
+
+        let targetPersonId = parts[idIndex].uppercased()
+        return targetPersonId == normalizedExpectedPersonId
+    }
+
     static func makeTimeoutExtractionPayload(
         expectedPersonId: String?,
         currentURL: String?,
@@ -108,6 +145,28 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         familyMembersSectionFound: Bool? = nil,
         spousesAndChildrenSectionFound: Bool? = nil,
         childrenMarkerCount: Int? = nil
+    ) -> FamilySearchFamilyExtraction {
+        makeTimeoutExtractionPayload(
+            expectedPersonId: expectedPersonId,
+            currentURL: currentURL,
+            pageTitle: pageTitle,
+            extractionStage: extractionStage,
+            familyMembersSectionFound: familyMembersSectionFound,
+            spousesAndChildrenSectionFound: spousesAndChildrenSectionFound,
+            childrenMarkerCount: childrenMarkerCount,
+            blockedNavigationURL: nil
+        )
+    }
+
+    static func makeTimeoutExtractionPayload(
+        expectedPersonId: String?,
+        currentURL: String?,
+        pageTitle: String?,
+        extractionStage: String?,
+        familyMembersSectionFound: Bool?,
+        spousesAndChildrenSectionFound: Bool?,
+        childrenMarkerCount: Int?,
+        blockedNavigationURL: String?
     ) -> FamilySearchFamilyExtraction {
         let normalizedExpectedPersonId = expectedPersonId?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -130,6 +189,9 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
             debugNotes.append("FamilySearch extraction stage at Swift timeout: \(extractionStage)")
         } else {
             debugNotes.append("FamilySearch extraction stage at Swift timeout: unavailable because JavaScript timeout did not post")
+        }
+        if let blockedNavigationURL, !blockedNavigationURL.isEmpty {
+            debugNotes.append("FamilySearch WebKit blocked navigation during extraction: \(blockedNavigationURL)")
         }
 
         return FamilySearchFamilyExtraction(
@@ -247,9 +309,14 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
 
         let script = expectedPersonId.map(FamilySearchDOMService.makeWebKitExtractionScript)
             ?? FamilySearchDOMService.makeWebKitExtractionScriptForCurrentPage()
+        let normalizedExpectedPersonId = expectedPersonId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
 
         return try await withCheckedThrowingContinuation { continuation in
             extractionContinuation = continuation
+            activeExtractionExpectedPersonId = normalizedExpectedPersonId
+            lastBlockedNavigationDuringExtraction = nil
             startExtractionTimeout(expectedPersonId: expectedPersonId)
 
             webView.evaluateJavaScript(script) { [weak self] _, error in
@@ -416,6 +483,31 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         }
     }
 
+    nonisolated func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+    ) {
+        Task { @MainActor in
+            guard webView === self.webView else {
+                decisionHandler(.allow)
+                return
+            }
+
+            if self.extractionContinuation != nil,
+               !Self.shouldAllowNavigationDuringExtraction(
+                   to: navigationAction.request.url,
+                   expectedPersonId: self.activeExtractionExpectedPersonId
+               ) {
+                self.lastBlockedNavigationDuringExtraction = navigationAction.request.url?.absoluteString
+                decisionHandler(.cancel)
+                return
+            }
+
+            decisionHandler(.allow)
+        }
+    }
+
     nonisolated func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         Task { @MainActor in
             guard webView === self.webView else {
@@ -468,6 +560,7 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         extractionContinuation = nil
         extractionTimeoutTask?.cancel()
         extractionTimeoutTask = nil
+        activeExtractionExpectedPersonId = nil
 
         switch result {
         case let .success(extraction):
@@ -503,7 +596,8 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
                         extractionStage: diagnostics.extractionStage,
                         familyMembersSectionFound: diagnostics.familyMembersSectionFound,
                         spousesAndChildrenSectionFound: diagnostics.spousesAndChildrenSectionFound,
-                        childrenMarkerCount: diagnostics.childrenMarkerCount
+                        childrenMarkerCount: diagnostics.childrenMarkerCount,
+                        blockedNavigationURL: self.lastBlockedNavigationDuringExtraction
                     )
                 )
             )
