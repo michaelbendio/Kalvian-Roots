@@ -1667,17 +1667,22 @@ class HiskiService {
         let cleaned = patronymic.trimmingCharacters(
             in: .whitespacesAndNewlines.union(.punctuationCharacters)
         )
+        let patronymicToken = cleaned
+            .split(whereSeparator: \.isWhitespace)
+            .first
+            .map(String.init)?
+            .trimmingCharacters(in: .punctuationCharacters)
 
-        guard !cleaned.isEmpty else {
+        guard let patronymicToken, !patronymicToken.isEmpty else {
             return nil
         }
 
-        if let override = hiskiPatronymicOverride(for: cleaned) {
-            logInfo(.app, "✅ HisKi patronymic override '\(cleaned)' → '\(override)'")
+        if let override = hiskiPatronymicOverride(for: patronymicToken) {
+            logInfo(.app, "✅ HisKi patronymic override '\(patronymicToken)' → '\(override)'")
             return override
         }
 
-        return cleaned
+        return patronymicToken
     }
 
     private func hiskiPatronymicOverride(for patronymic: String) -> String? {

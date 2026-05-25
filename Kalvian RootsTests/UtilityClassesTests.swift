@@ -557,6 +557,25 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertEqual(mattiValues["apatronyymi"], "Persdr")
     }
 
+    func testBuildFamilyBirthSearchUrlUsesOnlyPatronymicTokenWhenSourceAlsoHasSurname() throws {
+        let url = try service.buildFamilyBirthSearchUrl(
+            fatherName: "Antti",
+            fatherPatronymic: "Mikonp.",
+            motherName: "Brita",
+            motherPatronymic: "Juhont. Kerola",
+            marriageYear: 1750
+        )
+
+        let values = try queryValues(in: url)
+
+        XCTAssertEqual(values["alkuvuosi"], "1749")
+        XCTAssertEqual(values["loppuvuosi"], "1785")
+        XCTAssertEqual(values["ietunimi"], "Antti")
+        XCTAssertEqual(values["ipatronyymi"], "Mikonp")
+        XCTAssertEqual(values["aetunimi"], "Brita")
+        XCTAssertEqual(values["apatronyymi"], "Juhont")
+    }
+
     func testBuildFamilyBirthSearchRequestsIncludesHiskiParentFallback() throws {
         let requests = try service.buildFamilyBirthSearchRequests(
             fatherName: "Tuomas",
