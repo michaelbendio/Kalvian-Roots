@@ -121,11 +121,16 @@ struct PersonLineView: View {
         .onAppear {
             loadEnhancedData()
         }
+        .onChange(of: person.id) { _ in
+            loadEnhancedData()
+        }
     }
     
     // MARK: - Enhanced Data Loading
     
     private func loadEnhancedData() {
+        enhancedData = nil
+
         guard let network = network else { return }
         guard person.isMarried else { return }
         

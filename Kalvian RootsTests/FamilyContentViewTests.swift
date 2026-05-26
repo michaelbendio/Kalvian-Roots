@@ -236,6 +236,26 @@ final class FamilyContentViewTests: XCTestCase {
         XCTAssertEqual(displayFootnoteText("*) Poika Abraham"), "*) Poika Abraham")
         XCTAssertEqual(displayFootnoteText("No marker ★ in body"), "No marker ★ in body")
     }
+
+    func testPersonLineViewReloadsEnhancedDataWhenRenderedPersonChanges() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        let personLineView = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/Views/PersonLineView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(
+            personLineView.contains(".onChange(of: person.id)"),
+            "SwiftUI may reuse child-row views as comparison rows change; enhanced dates must reload for the new person."
+        )
+        XCTAssertTrue(
+            personLineView.contains("private func loadEnhancedData() {\n        enhancedData = nil"),
+            "Enhanced dates must be cleared before any early return so one child cannot inherit another child's death or marriage date."
+        )
+    }
     
     // MARK: - PersonLineView Data Tests
     
