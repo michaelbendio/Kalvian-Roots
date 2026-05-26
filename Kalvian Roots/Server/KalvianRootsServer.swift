@@ -111,6 +111,7 @@ final class HTTPHandler: ChannelInboundHandler {
 
     private enum HTTPResponse {
         case html(String, status: HTTPResponseStatus = .ok, headers: HTTPHeaders = HTTPHeaders())
+        case json(String, status: HTTPResponseStatus = .ok, headers: HTTPHeaders = HTTPHeaders())
         case redirect(String, headers: HTTPHeaders = HTTPHeaders())
         case error(HTTPResponseStatus, String, headers: HTTPHeaders = HTTPHeaders())
     }
@@ -528,6 +529,28 @@ final class HTTPHandler: ChannelInboundHandler {
                 setCookieHeader: setCookieHeader,
                 session: sessionResult.session
             )
+
+        case "workup":
+            logger.info("[\(requestID!)] 🧰 Handling WORKUP request")
+            return await handleWorkupRequest(
+                familyId: canonicalID,
+                network: network,
+                homeId: homeId,
+                setCookieHeader: setCookieHeader,
+                session: sessionResult.session,
+                format: "html"
+            )
+
+        case "workup.json":
+            logger.info("[\(requestID!)] 🧰 Handling WORKUP JSON request")
+            return await handleWorkupRequest(
+                familyId: canonicalID,
+                network: network,
+                homeId: homeId,
+                setCookieHeader: setCookieHeader,
+                session: sessionResult.session,
+                format: "json"
+            )
             
         case nil:
             logger.info("[\(requestID!)] 🏠 Rendering family display (no sub-route)")
@@ -650,6 +673,68 @@ final class HTTPHandler: ChannelInboundHandler {
             responseHeaders.add(name: "Set-Cookie", value: setCookieHeader)
         }
         
+        return .html(html, headers: responseHeaders)
+    }
+
+    // MARK: - Workup Handler
+
+    @MainActor
+    private func handleWorkupRequest(
+        familyId: String,
+        network: FamilyNetwork,
+        homeId: String?,
+        setCookieHeader: String?,
+        session: BrowserSession,
+        format: String
+    ) async -> HTTPResponse {
+        let familySearchExtraction = session.familySearchExtraction(for: familyId)
+            ?? juuretApp?.familySearchExtraction(for: familyId)
+        let comparisonResult = await makeChildrenComparisonResult(
+            family: network.mainFamily,
+            familySearchExtraction: familySearchExtraction,
+            session: session
+        )
+        let familySearchPersonId = network.mainFamily.primaryCouple?.husband.familySearchId
+            ?? network.mainFamily.primaryCouple?.wife.familySearchId
+            ?? juuretApp?.primaryFamilySearchParentIdInSourceText(for: familyId)
+        let sourceText = juuretApp?.fileManager.extractFamilyText(familyId: familyId)
+        let workup = FamilyWorkupService(nameEquivalenceManager: session.nameEquivalenceManager)
+            .makeWorkup(
+                family: network.mainFamily,
+                network: network,
+                sourceText: sourceText,
+                familySearchExtraction: familySearchExtraction,
+                familySearchPersonId: familySearchPersonId,
+                comparisonResult: comparisonResult
+            )
+
+        var responseHeaders = HTTPHeaders()
+        if let setCookieHeader {
+            responseHeaders.add(name: "Set-Cookie", value: setCookieHeader)
+        }
+
+        if format == "json" {
+            do {
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let data = try encoder.encode(workup)
+                let json = String(data: data, encoding: .utf8) ?? "{}"
+                return .json(json, headers: responseHeaders)
+            } catch {
+                return .error(
+                    .internalServerError,
+                    "Failed to encode workup: \(error.localizedDescription)",
+                    headers: responseHeaders
+                )
+            }
+        }
+
+        let html = HTMLRenderer.renderWorkup(
+            workup,
+            family: network.mainFamily,
+            homeId: homeId ?? familyId
+        )
+
         return .html(html, headers: responseHeaders)
     }
     
@@ -1152,6 +1237,15 @@ final class HTTPHandler: ChannelInboundHandler {
         case .html(let html, let status, let headers):
             sendHTML(context: context, html: html, status: status, headers: headers)
 
+        case .json(let json, let status, let headers):
+            sendBody(
+                context: context,
+                body: json,
+                status: status,
+                contentType: "application/json; charset=utf-8",
+                headers: headers
+            )
+
         case .redirect(let location, let headers):
             sendRedirect(context: context, location: location, headers: headers)
 
@@ -1166,14 +1260,30 @@ final class HTTPHandler: ChannelInboundHandler {
         status: HTTPResponseStatus,
         headers: HTTPHeaders
     ) {
+        sendBody(
+            context: context,
+            body: html,
+            status: status,
+            contentType: "text/html; charset=utf-8",
+            headers: headers
+        )
+    }
+
+    private func sendBody(
+        context: ChannelHandlerContext,
+        body: String,
+        status: HTTPResponseStatus,
+        contentType: String,
+        headers: HTTPHeaders
+    ) {
         var responseHeaders = headers
         responseHeaders.add(
             name: "Content-Type",
-            value: "text/html; charset=utf-8"
+            value: contentType
         )
         responseHeaders.add(
             name: "Content-Length",
-            value: String(html.utf8.count)
+            value: String(body.utf8.count)
         )
 
         if isKeepAlive {
@@ -1188,14 +1298,14 @@ final class HTTPHandler: ChannelInboundHandler {
 
         context.write(wrapOutboundOut(.head(head)), promise: nil)
 
-        var body =
+        var responseBody =
             context.channel.allocator.buffer(
-                capacity: html.utf8.count
+                capacity: body.utf8.count
             )
-        body.writeString(html)
+        responseBody.writeString(body)
 
         context.write(
-            wrapOutboundOut(.body(.byteBuffer(body))),
+            wrapOutboundOut(.body(.byteBuffer(responseBody))),
             promise: nil
         )
 

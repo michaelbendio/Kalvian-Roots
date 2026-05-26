@@ -187,6 +187,7 @@ struct HTMLRenderer {
         let nextURL = nextId.map { "/family/\(urlEncode($0))" } ?? ""
         let reloadURL = "/family/\(urlEncode(homeId))?reload=1"
         let sourceURL = "/family/\(urlEncode(displayedId))/source" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
+        let workupURL = "/family/\(urlEncode(displayedId))/workup" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
         
         return """
         <div class="nav-bar">
@@ -196,6 +197,7 @@ struct HTMLRenderer {
                 <a href="\(nextURL)" class="nav-btn\(canGoNext ? "" : " disabled")" \(canGoNext ? "" : "onclick='return false;'")>→</a>
                 <a href="\(reloadURL)" class="nav-btn">↺</a>
                 <a href="\(sourceURL)" class="nav-btn" title="View source text">📄</a>
+                <a href="\(workupURL)" class="nav-btn" title="View family workup">⚙</a>
             </div>
             <form method="GET" action="/family" class="nav-form" onsubmit="showLoading(event)">
                 <div class="input-wrapper">
@@ -910,6 +912,174 @@ struct HTMLRenderer {
             background: #fce4ec;
             color: #ad1457;
         }
+        .workup-panel {
+            background: white;
+            padding: 24px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .workup-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .workup-header h1 {
+            margin: 0 0 4px 0;
+            font-size: 24px;
+        }
+        .workup-section {
+            border-top: 1px solid #e5e5e5;
+            padding-top: 16px;
+            margin-top: 16px;
+        }
+        .workup-section h2 {
+            margin: 0 0 8px 0;
+            font-size: 17px;
+        }
+        .workup-section ul {
+            margin: 8px 0 0 20px;
+            padding: 0;
+        }
+        .workup-section li {
+            margin-bottom: 8px;
+        }
+        .workup-muted {
+            color: #666;
+            font-size: 13px;
+        }
+        """
+    }
+
+    static func renderWorkup(
+        _ workup: FamilyWorkup,
+        family: Family,
+        homeId: String
+    ) -> String {
+        let navBar = renderNavigationBar(homeId: homeId, displayedId: family.familyId)
+        let jsonURL = "/family/\(urlEncode(family.familyId))/workup.json"
+        let actionsHTML = workup.actions.isEmpty
+            ? "<li>No queued actions.</li>"
+            : workup.actions.map { action in
+                "<li><strong>\(escapeHTML(action.type))</strong>: \(escapeHTML(action.label))\(action.personName.map { " - \(escapeHTML($0))" } ?? "")</li>"
+            }.joined(separator: "\n")
+        let couplesHTML = workup.couples.map { couple in
+            """
+            <section class="workup-section">
+                <h2>Couple \(couple.index + 1)</h2>
+                <p>\(escapeHTML(couple.husband.displayName)) and \(escapeHTML(couple.wife.displayName))</p>
+                <p>Children: \(couple.childCount)</p>
+            </section>
+            """
+        }.joined(separator: "\n")
+        let hiskiHTML = workup.hiskiQueries.isEmpty
+            ? "<li>No HisKi birth-span queries available.</li>"
+            : workup.hiskiQueries.map { query in
+                """
+                <li>
+                    <a href="\(escapeHTML(query.url))">\(escapeHTML(query.label))</a>
+                    <span class="workup-muted">couple \(query.coupleIndex + 1), \(query.startYear)-\(query.endYear), \(escapeHTML(query.sourceDescription))</span>
+                </li>
+                """
+            }.joined(separator: "\n")
+        let comparisonHTML = renderWorkupComparison(workup.comparison)
+
+        return """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>\(escapeHTML(workup.familyId)) Workup - Kalvian Roots</title>
+            <style>
+                \(cssStyles)
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                \(navBar)
+                <div class="workup-panel">
+                    <div class="workup-header">
+                        <div>
+                            <h1>\(escapeHTML(workup.familyId)) Workup</h1>
+                            <p class="workup-muted">Source text: \(workup.sourceTextAvailable ? "\(workup.sourceTextLineCount) lines" : "not available")</p>
+                        </div>
+                        <a class="fs-action" href="\(jsonURL)">JSON</a>
+                    </div>
+
+                    <section class="workup-section">
+                        <h2>FamilySearch</h2>
+                        <p>Status: \(escapeHTML(workup.familySearch.extractionStatus))</p>
+                        <p>Anchor: \(escapeHTML(workup.familySearch.anchorPersonId ?? "none"))</p>
+                        <p>Extracted children: \(workup.familySearch.extractedChildCount)</p>
+                        \(workup.familySearch.note.map { "<p class=\"workup-muted\">\(escapeHTML($0))</p>" } ?? "")
+                    </section>
+
+                    \(couplesHTML)
+
+                    <section class="workup-section">
+                        <h2>HisKi Queries</h2>
+                        <ul>\(hiskiHTML)</ul>
+                    </section>
+
+                    <section class="workup-section">
+                        <h2>Actions</h2>
+                        <ul>\(actionsHTML)</ul>
+                    </section>
+
+                    \(comparisonHTML)
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+    }
+
+    private static func renderWorkupComparison(_ comparison: FamilyWorkup.ComparisonSummary?) -> String {
+        guard let comparison else {
+            return """
+            <section class="workup-section">
+                <h2>Comparison</h2>
+                <p>No comparison is available.</p>
+            </section>
+            """
+        }
+
+        let rows = comparison.rows.map { row in
+            """
+            <tr>
+                <td>\(escapeHTML(row.identityName))</td>
+                <td>\(escapeHTML(row.birthDate ?? ""))</td>
+                <td>\(escapeHTML(row.status))</td>
+                <td>\(escapeHTML(row.juuret?.name ?? ""))</td>
+                <td>\(escapeHTML(row.hiski?.name ?? ""))</td>
+                <td>\(escapeHTML(row.familySearch?.name ?? ""))</td>
+            </tr>
+            """
+        }.joined(separator: "\n")
+
+        return """
+        <section class="workup-section">
+            <h2>Comparison</h2>
+            <p class="workup-muted">Rows: \(comparison.rowCount), matches: \(comparison.matchCount), Juuret-only: \(comparison.juuretOnlyCount), HisKi-only: \(comparison.hiskiOnlyCount), FamilySearch-only: \(comparison.familySearchOnlyCount)</p>
+            <table class="comparison-table">
+                <thead>
+                    <tr>
+                        <th>Identity</th>
+                        <th>Birth</th>
+                        <th>Status</th>
+                        <th>Juuret</th>
+                        <th>HisKi</th>
+                        <th>FamilySearch</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    \(rows)
+                </tbody>
+            </table>
+        </section>
         """
     }
 
