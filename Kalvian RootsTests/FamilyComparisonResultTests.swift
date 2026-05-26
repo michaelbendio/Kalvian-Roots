@@ -1813,6 +1813,67 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         )
     }
 
+    func testWebKitFamilySearchLoginPageDetectionIsScopedToFamilySearchHosts() {
+        XCTAssertTrue(
+            FamilySearchWebViewExtractionManager.isFamilySearchLoginPage(
+                URL(string: "https://ident.familysearch.org/en/identity/login/?state=https://www.familysearch.org/en/tree/person/details/K2YQ-1ZY")
+            )
+        )
+        XCTAssertTrue(
+            FamilySearchWebViewExtractionManager.isFamilySearchLoginPage(
+                URL(string: "https://www.familysearch.org/en/auth/login")
+            )
+        )
+        XCTAssertFalse(
+            FamilySearchWebViewExtractionManager.isFamilySearchLoginPage(
+                URL(string: "https://www.familysearch.org/en/tree/person/details/K2YQ-1ZY")
+            )
+        )
+        XCTAssertFalse(
+            FamilySearchWebViewExtractionManager.isFamilySearchLoginPage(
+                URL(string: "https://example.com/en/identity/login")
+            )
+        )
+    }
+
+    func testWebKitFamilySearchCredentialHostsPreferCurrentLoginHost() {
+        XCTAssertEqual(
+            FamilySearchWebViewExtractionManager.keychainCredentialHosts(
+                for: URL(string: "https://ident.familysearch.org/en/identity/login/")
+            ),
+            [
+                "ident.familysearch.org",
+                "www.familysearch.org",
+                "familysearch.org"
+            ]
+        )
+        XCTAssertEqual(
+            FamilySearchWebViewExtractionManager.keychainCredentialHosts(
+                for: URL(string: "https://www.familysearch.org/en/auth/login")
+            ),
+            [
+                "www.familysearch.org",
+                "ident.familysearch.org",
+                "familysearch.org"
+            ]
+        )
+    }
+
+    func testWebKitFamilySearchCredentialScriptFillsAndSubmitsVisibleLoginFields() throws {
+        let script = try FamilySearchWebViewExtractionManager.makeCredentialSignInScript(
+            username: "user@example.test",
+            password: "secret-password"
+        )
+
+        XCTAssertTrue(script.contains(#""username":"user@example.test""#))
+        XCTAssertTrue(script.contains(#""password":"secret-password""#))
+        XCTAssertTrue(script.contains("document.querySelectorAll('input')"))
+        XCTAssertTrue(script.contains("input.type || '').toLowerCase() === 'password'"))
+        XCTAssertTrue(script.contains("preferredButton.click()"))
+        XCTAssertTrue(script.contains("submitted-password"))
+        XCTAssertTrue(script.contains("submitted-username"))
+    }
+
     func testWebKitFamilyMembersSectionWaitProgressMessageReportsDiagnostics() {
         XCTAssertEqual(
             FamilySearchWebViewExtractionManager.familyMembersSectionWaitProgressMessage(

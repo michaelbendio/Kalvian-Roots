@@ -9,6 +9,7 @@ import Foundation
 
 #if os(macOS)
 import AppKit
+import Security
 import WebKit
 
 enum FamilySearchWebViewExtractionError: LocalizedError {
@@ -69,6 +70,11 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         var readyState: String?
     }
 
+    struct FamilySearchCredential: Encodable {
+        var username: String
+        var password: String
+    }
+
     static func isDetailsPageURL(_ urlString: String?, for personId: String) -> Bool {
         guard let urlString,
               let components = URLComponents(string: urlString),
@@ -102,6 +108,113 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         }
 
         return readyState == nil || readyState == "complete"
+    }
+
+    static func isFamilySearchLoginPage(_ url: URL?) -> Bool {
+        guard let url,
+              let host = url.host?.lowercased() else {
+            return false
+        }
+
+        let isFamilySearchHost = host == "familysearch.org"
+            || host.hasSuffix(".familysearch.org")
+        guard isFamilySearchHost else {
+            return false
+        }
+
+        let normalizedPath = url.path.lowercased()
+        return normalizedPath.contains("/login")
+            || normalizedPath.contains("/auth/")
+            || normalizedPath.contains("/identity/")
+    }
+
+    static func keychainCredentialHosts(for url: URL?) -> [String] {
+        var hosts: [String] = []
+        if let host = url?.host?.lowercased(), host.hasSuffix("familysearch.org") {
+            hosts.append(host)
+        }
+
+        hosts.append(contentsOf: [
+            "ident.familysearch.org",
+            "www.familysearch.org",
+            "familysearch.org"
+        ])
+
+        var seen = Set<String>()
+        return hosts.filter { seen.insert($0).inserted }
+    }
+
+    static func makeCredentialSignInScript(username: String, password: String) throws -> String {
+        let credentials = FamilySearchCredential(username: username, password: password)
+        let data = try JSONEncoder().encode(credentials)
+        guard let json = String(data: data, encoding: .utf8) else {
+            throw FamilySearchWebViewExtractionError.javascriptFailed("FamilySearch credential script could not be encoded.")
+        }
+
+        return """
+        (() => {
+            const credentials = \(json);
+            const visible = (element) => {
+                if (!element) return false;
+                const style = window.getComputedStyle(element);
+                const rect = element.getBoundingClientRect();
+                return style.visibility !== 'hidden'
+                    && style.display !== 'none'
+                    && rect.width > 0
+                    && rect.height > 0;
+            };
+            const inputs = Array.from(document.querySelectorAll('input')).filter(visible);
+            const passwordInput = inputs.find(input => (input.type || '').toLowerCase() === 'password');
+            const usernameInput = inputs.find(input => {
+                const type = (input.type || 'text').toLowerCase();
+                const name = [
+                    input.name,
+                    input.id,
+                    input.autocomplete,
+                    input.placeholder,
+                    input.getAttribute('aria-label')
+                ].join(' ').toLowerCase();
+                return ['email', 'text', 'search', 'tel'].includes(type)
+                    && /(user|email|account|username|sign.?in|phone)/i.test(name);
+            }) || inputs.find(input => {
+                const type = (input.type || 'text').toLowerCase();
+                return ['email', 'text'].includes(type);
+            });
+
+            const setValue = (input, value) => {
+                if (!input || input.value === value) return false;
+                input.focus();
+                input.value = value;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+                return true;
+            };
+
+            const usernameFilled = setValue(usernameInput, credentials.username);
+            const passwordFilled = setValue(passwordInput, credentials.password);
+            const buttons = Array.from(document.querySelectorAll('button, input[type="submit"]')).filter(visible);
+            const preferredButton = buttons.find(button => {
+                const text = [
+                    button.innerText,
+                    button.value,
+                    button.getAttribute('aria-label')
+                ].join(' ').toLowerCase();
+                return /(sign.?in|log.?in|next|continue)/i.test(text);
+            });
+
+            if (passwordInput && passwordFilled && preferredButton && !preferredButton.disabled) {
+                preferredButton.click();
+                return 'submitted-password';
+            }
+
+            if (usernameInput && usernameFilled && !passwordInput && preferredButton && !preferredButton.disabled) {
+                preferredButton.click();
+                return 'submitted-username';
+            }
+
+            return usernameFilled || passwordFilled ? 'filled' : 'not-found';
+        })();
+        """
     }
 
     static func familyMembersSectionWaitProgressMessage(
@@ -495,6 +608,7 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
                 self.window?.title = "FamilySearch - \(url)"
             }
 
+            self.attemptFamilySearchCredentialSignInIfNeeded(for: webView.url)
             self.navigationContinuation?.resume()
             self.navigationContinuation = nil
         }
@@ -581,6 +695,79 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         } catch {
             finishExtraction(with: .failure(FamilySearchWebViewExtractionError.decodeFailed(error.localizedDescription)))
         }
+    }
+
+    @MainActor private func attemptFamilySearchCredentialSignInIfNeeded(for url: URL?) {
+        guard Self.isFamilySearchLoginPage(url),
+              let credential = findFamilySearchCredential(for: url) else {
+            return
+        }
+
+        Task { @MainActor [weak self] in
+            for _ in 0..<8 {
+                guard let self, let webView = self.webView else {
+                    return
+                }
+
+                do {
+                    let script = try Self.makeCredentialSignInScript(
+                        username: credential.username,
+                        password: credential.password
+                    )
+                    let result = await self.evaluateJavaScript(script, in: webView)
+                    if result == "submitted-password" || result == "submitted-username" {
+                        return
+                    }
+                } catch {
+                    return
+                }
+
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+        }
+    }
+
+    @MainActor private func evaluateJavaScript(_ script: String, in webView: WKWebView) async -> String? {
+        await withCheckedContinuation { continuation in
+            webView.evaluateJavaScript(script) { result, _ in
+                continuation.resume(returning: result as? String)
+            }
+        }
+    }
+
+    private func findFamilySearchCredential(for url: URL?) -> FamilySearchCredential? {
+        for host in Self.keychainCredentialHosts(for: url) {
+            if let credential = findInternetPasswordCredential(host: host) {
+                return credential
+            }
+        }
+
+        return nil
+    }
+
+    private func findInternetPasswordCredential(host: String) -> FamilySearchCredential? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassInternetPassword,
+            kSecAttrServer as String: host,
+            kSecAttrProtocol as String: kSecAttrProtocolHTTPS,
+            kSecReturnAttributes as String: true,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        guard status == errSecSuccess,
+              let result = item as? [String: Any],
+              let account = result[kSecAttrAccount as String] as? String,
+              let passwordData = result[kSecValueData as String] as? Data,
+              let password = String(data: passwordData, encoding: .utf8),
+              !account.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !password.isEmpty else {
+            return nil
+        }
+
+        return FamilySearchCredential(username: account, password: password)
     }
 
     @MainActor private func finishExtraction(with result: Result<FamilySearchFamilyExtraction, Error>) {
