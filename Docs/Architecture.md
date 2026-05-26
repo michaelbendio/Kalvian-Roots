@@ -308,6 +308,21 @@ UI:
 
     SwiftUI views using @Environment(JuuretApp.self)
 
+Browser interface:
+
+    Server-rendered pages served by the macOS app on port 8081 for trusted
+    Tailscale access. These pages are for family lookup, comparison review,
+    navigation, and citation copying. FamilySearch extraction remains in the
+    Mac app's visible WebKit window.
+
+Conversational tooling:
+
+    Future assistant-callable tools should expose focused Kalvian Roots
+    internals such as family loading, HisKi query construction/parsing,
+    comparison, citation drafting, approved canonical text updates, and project
+    ledger updates. These tools must reuse the same services and comparison
+    pipeline as the SwiftUI and browser interfaces.
+
 Services:
 
     AIParsingService

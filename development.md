@@ -64,16 +64,38 @@ locally for personal use.
 
 ## FamilySearch Workflow
 
-FamilySearch extraction is manual or user-triggered.
-
-Use the workflow in:
+FamilySearch extraction is manual or user-triggered through the visible in-app
+WebKit window on macOS. The supported workflow is documented in:
 
 ```text
 Docs/familysearch-bookmarklet.md
 ```
 
-The generated bookmarklet comes from `FamilySearchDOMService.makeBookmarklet()`.
-Do not maintain a second hand-written bookmarklet.
+The shared DOM extractor comes from
+`FamilySearchDOMService.makeFamilySearchExtractorScript()`. WebKit wraps that
+extractor with `FamilySearchDOMService.makeWebKitExtractionScript(...)` and
+returns structured results to Swift through the
+`kalvianRootsFamilySearchExtraction` message handler.
+
+Do not reintroduce a bookmarklet, FamilySearch API integration, automated
+crawling, or hidden recursive traversal without an explicit design change.
+
+## Browser and Conversational Interfaces
+
+The macOS app starts the browser interface automatically on port 8081. It is
+intended for trusted Tailscale access to family pages, comparison state,
+citations, and navigation while the Mac app remains the local engine for file
+access, cache state, AI parsing, and FamilySearch WebKit extraction.
+
+Planned conversational tooling should expose focused Kalvian Roots internals for
+assistant use instead of duplicating browser behavior. Useful tool boundaries
+include family loading, family network lookup, HisKi query construction/parsing,
+comparison, citation drafting, approved canonical text updates, and project
+ledger updates. These tools should call existing services rather than creating
+parallel parsing or comparison implementations.
+
+Historical references to the old bookmarklet workflow are obsolete. Do not
+maintain a separate hand-written bookmarklet.
 
 ## Validation
 

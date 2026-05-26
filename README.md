@@ -24,7 +24,9 @@ DEVELOPER_DIR="/Applications/Xcode-beta.app/Contents/Developer" xcodebuild test 
 ## Browser Interface (macOS only)
 
 The app includes an HTTP server for browser-based access to family data,
-designed for remote family members to access via Tailscale.
+designed for access from trusted devices on a Tailscale network. This is a
+supported way to use Kalvian Roots away from the Mac that is running the app,
+including from the TSO.
 
 ### Features
 - Server-rendered HTML (no JavaScript framework required)
@@ -34,14 +36,13 @@ designed for remote family members to access via Tailscale.
   - Family IDs navigate between families
 - Citation panel with copy functionality
 - Automatic HisKi citation extraction
-- FamilySearch extraction callback support for the bookmarklet workflow
+- FamilySearch status and links for the current family
 
 ### Setup
-1. Install Tailscale on your Mac and remote devices
+1. Install Tailscale on your Mac and trusted remote devices
 2. The HTTP server starts automatically when the app launches
-3. Access via: `http://[your-tailscale-ip]:8080`
-4. The server binds to all interfaces (0.0.0.0:8080)
-5. FamilySearch extraction callbacks post to `http://127.0.0.1:8081`
+3. Access via: `http://[your-tailscale-ip]:8081`
+4. The server binds to all interfaces (0.0.0.0:8081)
 
 ### Usage
 - Landing page: Enter a family ID to view
@@ -49,12 +50,33 @@ designed for remote family members to access via Tailscale.
 - Citations: Click person names to generate citations
 - HisKi queries: Click dates to search church records
 - Copy citations: Use the Copy button and press Cmd+C/Ctrl+C
-- FamilySearch: Use the bookmarklet workflow documented in `Docs/familysearch-bookmarklet.md`
+- FamilySearch extraction: use the visible in-app WebKit window on the Mac
+  running Kalvian Roots. The remote browser interface does not perform
+  FamilySearch extraction itself.
 
 ### Security
 - Designed for Tailscale network access only
 - No built-in authentication (Tailscale provides network-level security)
 - Do not expose to public internet
+
+### Family Continuity
+
+The current operating model is:
+
+1. Run Kalvian Roots on the Mac that has access to the local
+   `~/Documents/JuuretKälviällä.roots` file and local Application Support cache.
+2. Connect trusted remote devices through Tailscale.
+3. Open `http://[mac-tailscale-ip-or-name]:8081` from the remote browser.
+4. Use the browser interface for lookup, review, navigation, and citation
+   copying.
+5. Use the Mac app's visible WebKit window when FamilySearch extraction is
+   needed.
+
+Future conversational tooling should expose Kalvian Roots internals as
+assistant-callable tools for family lookup, HisKi queries, comparison, citation
+drafting, and progress logging. That tooling should reuse the same deterministic
+app services as the browser interface; it is not a replacement for the browser
+pages.
 
 ## AI services
 - Current implementation: hosted DeepSeek only
@@ -64,7 +86,7 @@ designed for remote family members to access via Tailscale.
 ## Documentation
 - See `Docs/Architecture.md` for architecture and data flow
 - See `Docs/implementation-plan.md` for the staged implementation plan and current status
-- See `Docs/familysearch-bookmarklet.md` for the current FamilySearch extraction workflow
+- See `Docs/familysearch-bookmarklet.md` for the current FamilySearch WebKit extraction workflow
 - See `development.md` for current build, test, and development workflow
 
 ## Targets
