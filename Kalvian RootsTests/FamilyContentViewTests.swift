@@ -237,7 +237,7 @@ final class FamilyContentViewTests: XCTestCase {
         XCTAssertEqual(displayFootnoteText("No marker ★ in body"), "No marker ★ in body")
     }
 
-    func testPersonLineViewReloadsEnhancedDataWhenRenderedPersonChanges() throws {
+    func testPersonLineViewComputesEnhancedDataFromCurrentPersonAndNetwork() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -247,14 +247,12 @@ final class FamilyContentViewTests: XCTestCase {
             encoding: .utf8
         )
 
-        XCTAssertTrue(
-            personLineView.contains(".onChange(of: person.id)"),
-            "SwiftUI may reuse child-row views as comparison rows change; enhanced dates must reload for the new person."
+        XCTAssertFalse(
+            personLineView.contains("@State private var enhancedData"),
+            "Enhanced dates must not be retained as row state; they must reflect the current person and network."
         )
-        XCTAssertTrue(
-            personLineView.contains("private func loadEnhancedData() {\n        enhancedData = nil"),
-            "Enhanced dates must be cleared before any early return so one child cannot inherit another child's death or marriage date."
-        )
+        XCTAssertTrue(personLineView.contains("private var enhancedData: EnhancedPersonData?"))
+        XCTAssertTrue(personLineView.contains("private func loadEnhancedData() -> EnhancedPersonData?"))
     }
     
     // MARK: - PersonLineView Data Tests

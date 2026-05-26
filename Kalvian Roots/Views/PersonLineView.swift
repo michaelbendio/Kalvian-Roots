@@ -23,8 +23,10 @@ struct PersonLineView: View {
     let onSpouseDateClick: (String, EventType, SpouseEnhancedData) -> Void
     let onFamilyIdClick: (String) -> Void
     let supplementalContent: AnyView?
-    
-    @State private var enhancedData: EnhancedPersonData?
+
+    private var enhancedData: EnhancedPersonData? {
+        loadEnhancedData()
+    }
 
     init(
         person: Person,
@@ -118,30 +120,22 @@ struct PersonLineView: View {
         }
         .font(.system(size: 16, design: .monospaced))
         .lineSpacing(1.3)
-        .onAppear {
-            loadEnhancedData()
-        }
-        .onChange(of: person.id) { _ in
-            loadEnhancedData()
-        }
     }
     
     // MARK: - Enhanced Data Loading
     
-    private func loadEnhancedData() {
-        enhancedData = nil
-
-        guard let network = network else { return }
-        guard person.isMarried else { return }
+    private func loadEnhancedData() -> EnhancedPersonData? {
+        guard let network = network else { return nil }
+        guard person.isMarried else { return nil }
         
         // Get asParent family for this person
         guard let asParentFamily = network.getAsParentFamily(for: person) else {
-            return
+            return nil
         }
         
         // Find the matching person in asParent family
         guard let asParentPerson = findMatchingPerson(in: asParentFamily) else {
-            return
+            return nil
         }
         
         // Find spouse enhanced data
@@ -151,7 +145,7 @@ struct PersonLineView: View {
         }
         
         // Extract enhanced dates
-        enhancedData = EnhancedPersonData(
+        return EnhancedPersonData(
             deathDate: asParentPerson.deathDate,
             fullMarriageDate: asParentPerson.fullMarriageDate ?? asParentFamily.primaryCouple?.fullMarriageDate,
             spouse: spouseEnhancedData
