@@ -1902,6 +1902,11 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         )
         XCTAssertTrue(
             FamilySearchWebViewExtractionManager.isFamilySearchLoginPage(
+                URL(string: "https://ident.familysearch.org/cis-web/oauth2/v3/authorization?state=familysearch")
+            )
+        )
+        XCTAssertTrue(
+            FamilySearchWebViewExtractionManager.isFamilySearchLoginPage(
                 URL(string: "https://www.familysearch.org/en/auth/login")
             )
         )
@@ -1913,6 +1918,37 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertFalse(
             FamilySearchWebViewExtractionManager.isFamilySearchLoginPage(
                 URL(string: "https://example.com/en/identity/login")
+            )
+        )
+    }
+
+    func testWebKitFamilySearchCredentialPromptOnlyAppliesToMissingCredentialsOnLoginPages() {
+        XCTAssertTrue(
+            FamilySearchWebViewExtractionManager.shouldPromptForFamilySearchCredential(
+                on: URL(string: "https://ident.familysearch.org/cis-web/oauth2/v3/authorization"),
+                storedCredentialAvailable: false,
+                promptInProgress: false
+            )
+        )
+        XCTAssertFalse(
+            FamilySearchWebViewExtractionManager.shouldPromptForFamilySearchCredential(
+                on: URL(string: "https://ident.familysearch.org/cis-web/oauth2/v3/authorization"),
+                storedCredentialAvailable: true,
+                promptInProgress: false
+            )
+        )
+        XCTAssertFalse(
+            FamilySearchWebViewExtractionManager.shouldPromptForFamilySearchCredential(
+                on: URL(string: "https://ident.familysearch.org/cis-web/oauth2/v3/authorization"),
+                storedCredentialAvailable: false,
+                promptInProgress: true
+            )
+        )
+        XCTAssertFalse(
+            FamilySearchWebViewExtractionManager.shouldPromptForFamilySearchCredential(
+                on: URL(string: "https://www.familysearch.org/en/tree/person/details/K2YQ-1ZY"),
+                storedCredentialAvailable: false,
+                promptInProgress: false
             )
         )
     }
@@ -1950,6 +1986,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains(#""password":"secret-password""#))
         XCTAssertTrue(script.contains("document.querySelectorAll('input')"))
         XCTAssertTrue(script.contains("input.type || '').toLowerCase() === 'password'"))
+        XCTAssertTrue(script.contains("const passwordPresent = !!passwordInput && passwordInput.value === credentials.password;"))
         XCTAssertTrue(script.contains("preferredButton.click()"))
         XCTAssertTrue(script.contains("submitted-password"))
         XCTAssertTrue(script.contains("submitted-username"))

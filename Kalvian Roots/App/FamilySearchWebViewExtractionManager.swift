@@ -50,10 +50,12 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
     @MainActor private var lastBlockedNavigationDuringExtraction: String?
     @MainActor private var extractionProgressLog: ((String) -> Void)?
     @MainActor private var lastExtractionProgressStage: String?
+    @MainActor private var credentialPromptInProgress = false
 
     private let windowWidth: CGFloat = 1180
     private let windowHeight: CGFloat = 840
     private let extractionTimeoutNanoseconds: UInt64 = 90_000_000_000
+    private let familySearchCredentialService = "Kalvian Roots FamilySearch"
 
     private struct TimeoutDiagnostics: Decodable {
         var url: String?
@@ -122,10 +124,24 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
             return false
         }
 
+        if host == "ident.familysearch.org" {
+            return true
+        }
+
         let normalizedPath = url.path.lowercased()
         return normalizedPath.contains("/login")
             || normalizedPath.contains("/auth/")
             || normalizedPath.contains("/identity/")
+    }
+
+    static func shouldPromptForFamilySearchCredential(
+        on url: URL?,
+        storedCredentialAvailable: Bool,
+        promptInProgress: Bool
+    ) -> Bool {
+        isFamilySearchLoginPage(url)
+            && !storedCredentialAvailable
+            && !promptInProgress
     }
 
     static func keychainCredentialHosts(for url: URL?) -> [String] {
@@ -192,6 +208,8 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
 
             const usernameFilled = setValue(usernameInput, credentials.username);
             const passwordFilled = setValue(passwordInput, credentials.password);
+            const usernamePresent = !!usernameInput && usernameInput.value === credentials.username;
+            const passwordPresent = !!passwordInput && passwordInput.value === credentials.password;
             const buttons = Array.from(document.querySelectorAll('button, input[type="submit"]')).filter(visible);
             const preferredButton = buttons.find(button => {
                 const text = [
@@ -202,12 +220,12 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
                 return /(sign.?in|log.?in|next|continue)/i.test(text);
             });
 
-            if (passwordInput && passwordFilled && preferredButton && !preferredButton.disabled) {
+            if (passwordPresent && preferredButton && !preferredButton.disabled) {
                 preferredButton.click();
                 return 'submitted-password';
             }
 
-            if (usernameInput && usernameFilled && !passwordInput && preferredButton && !preferredButton.disabled) {
+            if (usernamePresent && !passwordInput && preferredButton && !preferredButton.disabled) {
                 preferredButton.click();
                 return 'submitted-username';
             }
@@ -698,14 +716,30 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
     }
 
     @MainActor private func attemptFamilySearchCredentialSignInIfNeeded(for url: URL?) {
-        guard Self.isFamilySearchLoginPage(url),
-              let credential = findFamilySearchCredential(for: url) else {
+        guard Self.isFamilySearchLoginPage(url) else {
             return
         }
 
         Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            let credential: FamilySearchCredential
+            if let storedCredential = self.findFamilySearchCredential(for: url) {
+                credential = storedCredential
+            } else if Self.shouldPromptForFamilySearchCredential(
+                on: url,
+                storedCredentialAvailable: false,
+                promptInProgress: self.credentialPromptInProgress
+            ), let promptedCredential = self.promptForFamilySearchCredential() {
+                credential = promptedCredential
+            } else {
+                return
+            }
+
             for _ in 0..<8 {
-                guard let self, let webView = self.webView else {
+                guard let webView = self.webView else {
                     return
                 }
 
@@ -736,6 +770,10 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
     }
 
     private func findFamilySearchCredential(for url: URL?) -> FamilySearchCredential? {
+        if let credential = findAppFamilySearchCredential() {
+            return credential
+        }
+
         for host in Self.keychainCredentialHosts(for: url) {
             if let credential = findInternetPasswordCredential(host: host) {
                 return credential
@@ -743,6 +781,30 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         }
 
         return nil
+    }
+
+    private func findAppFamilySearchCredential() -> FamilySearchCredential? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: familySearchCredentialService,
+            kSecReturnAttributes as String: true,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        guard status == errSecSuccess,
+              let result = item as? [String: Any],
+              let account = result[kSecAttrAccount as String] as? String,
+              let passwordData = result[kSecValueData as String] as? Data,
+              let password = String(data: passwordData, encoding: .utf8),
+              !account.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !password.isEmpty else {
+            return nil
+        }
+
+        return FamilySearchCredential(username: account, password: password)
     }
 
     private func findInternetPasswordCredential(host: String) -> FamilySearchCredential? {
@@ -768,6 +830,68 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         }
 
         return FamilySearchCredential(username: account, password: password)
+    }
+
+    @MainActor private func promptForFamilySearchCredential() -> FamilySearchCredential? {
+        guard !credentialPromptInProgress else {
+            return nil
+        }
+
+        credentialPromptInProgress = true
+        defer { credentialPromptInProgress = false }
+
+        let usernameField = NSTextField(frame: NSRect(x: 0, y: 52, width: 320, height: 24))
+        usernameField.placeholderString = "FamilySearch username or email"
+        let passwordField = NSSecureTextField(frame: NSRect(x: 0, y: 18, width: 320, height: 24))
+        passwordField.placeholderString = "FamilySearch password"
+
+        let accessoryView = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 82))
+        accessoryView.addSubview(usernameField)
+        accessoryView.addSubview(passwordField)
+
+        let alert = NSAlert()
+        alert.messageText = "FamilySearch Sign In"
+        alert.informativeText = "Kalvian Roots will save this credential in your macOS Keychain and use it only for FamilySearch sign-in pages."
+        alert.accessoryView = accessoryView
+        alert.addButton(withTitle: "Sign In")
+        alert.addButton(withTitle: "Cancel")
+        window?.makeKeyAndOrderFront(nil)
+
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            return nil
+        }
+
+        let username = usernameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let password = passwordField.stringValue
+        guard !username.isEmpty, !password.isEmpty else {
+            return nil
+        }
+
+        let credential = FamilySearchCredential(username: username, password: password)
+        saveAppFamilySearchCredential(credential)
+        return credential
+    }
+
+    private func saveAppFamilySearchCredential(_ credential: FamilySearchCredential) {
+        let trimmedUsername = credential.username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedUsername.isEmpty,
+              let passwordData = credential.password.data(using: .utf8) else {
+            return
+        }
+
+        let serviceQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: familySearchCredentialService
+        ]
+        SecItemDelete(serviceQuery as CFDictionary)
+
+        let item: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: familySearchCredentialService,
+            kSecAttrAccount as String: trimmedUsername,
+            kSecValueData as String: passwordData
+        ]
+        SecItemAdd(item as CFDictionary, nil)
     }
 
     @MainActor private func finishExtraction(with result: Result<FamilySearchFamilyExtraction, Error>) {
