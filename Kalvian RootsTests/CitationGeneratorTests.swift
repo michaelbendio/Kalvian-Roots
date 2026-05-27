@@ -442,6 +442,41 @@ final class CitationGeneratorTests: XCTestCase {
         XCTAssertLessThan(mariaRange.lowerBound, mattiRange.lowerBound)
     }
 
+    func testSpouseCitationFallbackMarksSpouseInAsParentFamily() {
+        let child = Person(
+            name: "Matti",
+            patronymic: "Antinp.",
+            birthDate: "23.11.1759",
+            spouse: "Kaarin Riihimäki",
+            noteMarkers: []
+        )
+        let asParentFamily = Family(
+            familyId: "SAKERI 6",
+            pageReferences: ["266"],
+            couples: [
+                Couple(
+                    husband: Person(name: "Matti", patronymic: "Antinp.", birthDate: "23.11.1759", noteMarkers: []),
+                    wife: Person(name: "Kaarin", patronymic: "Tuomaant. Riihimäki", birthDate: "14.01.1763", noteMarkers: []),
+                    fullMarriageDate: "15.11.1782",
+                    children: []
+                )
+            ],
+            notes: [],
+            noteDefinitions: [:]
+        )
+        let spouseTarget = try? XCTUnwrap(asParentFamily.findSpouseInFamily(for: child.name))
+
+        let citation = CitationGenerator.generateMainFamilyCitation(
+            family: asParentFamily,
+            targetPerson: spouseTarget,
+            network: nil,
+            nameEquivalenceManager: nameEquivalenceManager
+        )
+
+        XCTAssertTrue(citation.contains("Information on page 266 includes:"), citation)
+        XCTAssertTrue(citation.contains("→ Kaarin Tuomaant. Riihimäki, b. 14 January 1763"), citation)
+    }
+
     func testCitationWithWidowInfo() {
         // Test: Should include widow/widower information
         // (Would require family with widow notes)

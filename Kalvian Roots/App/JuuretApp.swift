@@ -1518,10 +1518,12 @@ class JuuretApp {
                 if child.spouse == spouseName {
                     if let childAsParentFamily = network.getAsParentFamily(for: child) {
                         logInfo(.citation, "📝 Using child's asParent family as fallback: \(childAsParentFamily.familyId)")
+                        let spouseTarget = childAsParentFamily.findSpouseInFamily(for: child.name) ?? spousePerson
                         return CitationGenerator.generateMainFamilyCitation(
                             family: childAsParentFamily,
-                            targetPerson: nil,
-                            network: network
+                            targetPerson: spouseTarget,
+                            network: network,
+                            nameEquivalenceManager: nameEquivalenceManager
                         )
                     }
                 }
