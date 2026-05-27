@@ -251,7 +251,10 @@ final class FamilyContentViewTests: XCTestCase {
             personLineView.contains("@State private var enhancedData"),
             "Enhanced dates must not be retained as row state; they must reflect the current person and network."
         )
-        XCTAssertTrue(personLineView.contains("private var enhancedData: EnhancedPersonData?"))
+        XCTAssertFalse(personLineView.contains("private var enhancedData: EnhancedPersonData?"))
+        XCTAssertTrue(personLineView.contains("let enhancedData = loadEnhancedData()"))
+        XCTAssertTrue(personLineView.contains("marriageSection(enhancedData: enhancedData)"))
+        XCTAssertTrue(personLineView.contains("private func marriageSection(enhancedData: EnhancedPersonData?) -> some View"))
         XCTAssertTrue(personLineView.contains("private func loadEnhancedData() -> EnhancedPersonData?"))
     }
     

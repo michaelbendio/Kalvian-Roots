@@ -141,7 +141,7 @@ struct FamilyContentView: View {
             !juuretApp.familyChildrenComparisonGroups.isEmpty ||
             !juuretApp.familySearchComparisonDebugMessage.isEmpty
 
-        logInfo(
+        logTrace(
             .ui,
             "🧪 comparison UI render condition evaluated: \(shouldRender) " +
             "(resultRows: \(juuretApp.familySearchComparisonResult?.rows.count ?? 0), " +

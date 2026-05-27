@@ -24,10 +24,6 @@ struct PersonLineView: View {
     let onFamilyIdClick: (String) -> Void
     let supplementalContent: AnyView?
 
-    private var enhancedData: EnhancedPersonData? {
-        loadEnhancedData()
-    }
-
     init(
         person: Person,
         network: FamilyNetwork?,
@@ -47,6 +43,8 @@ struct PersonLineView: View {
     }
     
     var body: some View {
+        let enhancedData = loadEnhancedData()
+
         HStack(alignment: .top, spacing: 6) {
             // Star symbol
             Text("★")
@@ -101,7 +99,7 @@ struct PersonLineView: View {
             
             // Marriage symbol and enhanced date - FOR MARRIED CHILDREN
             if person.isMarried {
-                marriageSection()
+                marriageSection(enhancedData: enhancedData)
             }
             
             // asParent family ID (clickable) - FOR MARRIED CHILDREN
@@ -254,7 +252,7 @@ struct PersonLineView: View {
         }
     }
     
-    private func marriageSection() -> some View {
+    private func marriageSection(enhancedData: EnhancedPersonData?) -> some View {
         HStack(spacing: 4) {
             Text("∞")
                 .font(.system(size: 16, design: .monospaced))
