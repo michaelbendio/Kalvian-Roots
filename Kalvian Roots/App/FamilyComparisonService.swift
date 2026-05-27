@@ -36,6 +36,11 @@ final class FamilyComparisonService {
         "MMMM yyyy",
         "yyyy"
     ]
+    private let genealogyDateLocales = [
+        Locale(identifier: "en_US_POSIX"),
+        Locale(identifier: "sv_SE"),
+        Locale(identifier: "fi_FI")
+    ]
 
     init(nameManager: NameEquivalenceManager) {
         self.nameManager = nameManager
@@ -192,16 +197,18 @@ private extension FamilyComparisonService {
             return nil
         }
 
-        for format in familySearchDateFormats {
-            let formatter = DateFormatter()
-            formatter.calendar = genealogyCalendar
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.timeZone = TimeZone(secondsFromGMT: 0)
-            formatter.isLenient = false
-            formatter.dateFormat = format
+        for locale in genealogyDateLocales {
+            for format in familySearchDateFormats {
+                let formatter = DateFormatter()
+                formatter.calendar = genealogyCalendar
+                formatter.locale = locale
+                formatter.timeZone = TimeZone(secondsFromGMT: 0)
+                formatter.isLenient = false
+                formatter.dateFormat = format
 
-            if let date = formatter.date(from: trimmed) {
-                return date
+                if let date = formatter.date(from: trimmed) {
+                    return date
+                }
             }
         }
 

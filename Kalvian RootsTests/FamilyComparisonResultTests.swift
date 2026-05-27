@@ -144,6 +144,60 @@ final class FamilyComparisonResultTests: XCTestCase {
         XCTAssertEqual(candidate.birthDate, date(1769, 3, 24))
     }
 
+    func testFamilySearchSwedishMonthDatesBecomeCandidateBirthDates() throws {
+        let service = FamilyComparisonService(nameManager: nameManager)
+        let candidates = service.makeFamilySearchCandidates(from: [
+            FamilySearchChild(
+                id: "K2TT-JB4",
+                name: "Helena Thomasdotter Riihimäki",
+                birthDate: "18 maj 1777"
+            ),
+            FamilySearchChild(
+                id: "LHGT-RNG",
+                name: "Maria Karin Tomasdotter Riihimäki",
+                birthDate: "28 februari 1759"
+            ),
+            FamilySearchChild(
+                id: "M88M-B8N",
+                name: "Johannes Thomasson Riihimäki",
+                birthDate: "6 mars 1775"
+            )
+        ])
+
+        XCTAssertEqual(candidates.map(\.birthDate), [
+            date(1777, 5, 18),
+            date(1759, 2, 28),
+            date(1775, 3, 6)
+        ])
+    }
+
+    func testFamilySearchFinnishMonthDatesBecomeCandidateBirthDates() throws {
+        let service = FamilyComparisonService(nameManager: nameManager)
+        let candidates = service.makeFamilySearchCandidates(from: [
+            FamilySearchChild(
+                id: "K2TT-JB4",
+                name: "Helena Tuomaantytär Riihimäki",
+                birthDate: "18 toukokuuta 1777"
+            ),
+            FamilySearchChild(
+                id: "LHGT-RNG",
+                name: "Maria Kaarin Tuomaantytär Riihimäki",
+                birthDate: "28 helmikuuta 1759"
+            ),
+            FamilySearchChild(
+                id: "M88M-B8N",
+                name: "Juho Tuomaanpoika Riihimäki",
+                birthDate: "6 maaliskuuta 1775"
+            )
+        ])
+
+        XCTAssertEqual(candidates.map(\.birthDate), [
+            date(1777, 5, 18),
+            date(1759, 2, 28),
+            date(1775, 3, 6)
+        ])
+    }
+
     func testReviewNotesFlagNearNameRowsWithExactSharedBirthDate() throws {
         let birthDate = date(1751, 11, 27)
         let result = FamilyComparisonResult(
