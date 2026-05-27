@@ -32,6 +32,10 @@ final class FamilyComparisonService {
         "dd MMM yyyy",
         "d MMMM yyyy",
         "dd MMMM yyyy",
+        "d. MMM yyyy",
+        "dd. MMM yyyy",
+        "d. MMMM yyyy",
+        "dd. MMMM yyyy",
         "MMM yyyy",
         "MMMM yyyy",
         "yyyy"

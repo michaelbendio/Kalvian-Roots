@@ -198,6 +198,33 @@ final class FamilyComparisonResultTests: XCTestCase {
         ])
     }
 
+    func testFamilySearchDottedLocalizedMonthDatesBecomeCandidateBirthDates() throws {
+        let service = FamilyComparisonService(nameManager: nameManager)
+        let candidates = service.makeFamilySearchCandidates(from: [
+            FamilySearchChild(
+                id: "GZN2-8NQ",
+                name: "Helena Andersdr.",
+                birthDate: "20. elokuuta 1767"
+            ),
+            FamilySearchChild(
+                id: "LHGT-RNG",
+                name: "Maria Karin Tomasdotter Riihimäki",
+                birthDate: "28. februari 1759"
+            ),
+            FamilySearchChild(
+                id: "M88M-B8N",
+                name: "Johannes Thomasson Riihimäki",
+                birthDate: "6. mars 1775"
+            )
+        ])
+
+        XCTAssertEqual(candidates.map(\.birthDate), [
+            date(1767, 8, 20),
+            date(1759, 2, 28),
+            date(1775, 3, 6)
+        ])
+    }
+
     func testReviewNotesFlagNearNameRowsWithExactSharedBirthDate() throws {
         let birthDate = date(1751, 11, 27)
         let result = FamilyComparisonResult(
