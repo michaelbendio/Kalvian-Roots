@@ -15,6 +15,24 @@ import Logging
 import UIKit
 #endif
 
+enum SpouseChildMatcher {
+    static func isEquivalentSpouseChild(
+        _ child: Person,
+        enhancedSpouse: Person,
+        nameEquivalenceManager: NameEquivalenceManager
+    ) -> Bool {
+        guard let childBirthDate = child.birthDate?.trimmingCharacters(in: .whitespacesAndNewlines),
+              let spouseBirthDate = enhancedSpouse.birthDate?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !childBirthDate.isEmpty,
+              !spouseBirthDate.isEmpty,
+              childBirthDate == spouseBirthDate else {
+            return false
+        }
+
+        return nameEquivalenceManager.areNamesEquivalent(child.name, enhancedSpouse.name)
+    }
+}
+
 /**
  * JuuretApp - Main application coordinator
  *
@@ -1547,7 +1565,25 @@ class JuuretApp {
         network: FamilyNetwork
     ) -> Person? {
         logInfo(.citation, "🔍 Finding enhanced spouse in asChild family")
-        
+
+        // Find which child in the nuclear family has this spouse, then use their
+        // as-parent family to identify variant spouse names by name equivalence + birth date.
+        var childWithSpouse: Person? = nil
+        var enhancedSpouseFromAsParent: Person? = nil
+        for couple in nuclearFamily.couples {
+            for child in couple.children {
+                if child.spouse == spouseName {
+                    childWithSpouse = child
+                    if let childAsParentFamily = network.getAsParentFamily(for: child),
+                       let enhancedSpouse = childAsParentFamily.findSpouseInFamily(for: child.name) {
+                        enhancedSpouseFromAsParent = enhancedSpouse
+                    }
+                    break
+                }
+            }
+            if childWithSpouse != nil { break }
+        }
+
         // Step 1: Find the actual child in the asChild family
         let actualChild = spouseAsChildFamily.allChildren.first { child in
             // Match by name (flexible matching)
@@ -1555,9 +1591,20 @@ class JuuretApp {
             let spouseNameLower = spouseName.lowercased()
             
             // Try exact match or partial match
-            return childNameLower == spouseNameLower ||
-                   spouseNameLower.contains(childNameLower) ||
-                   childNameLower.contains(spouseNameLower.components(separatedBy: " ").first ?? "")
+            if childNameLower == spouseNameLower ||
+               spouseNameLower.contains(childNameLower) ||
+               childNameLower.contains(spouseNameLower.components(separatedBy: " ").first ?? "") {
+                return true
+            }
+
+            guard let enhancedSpouse = enhancedSpouseFromAsParent else {
+                return false
+            }
+            return SpouseChildMatcher.isEquivalentSpouseChild(
+                child,
+                enhancedSpouse: enhancedSpouse,
+                nameEquivalenceManager: nameEquivalenceManager
+            )
         }
         
         guard var spouse = actualChild else {
@@ -1567,36 +1614,19 @@ class JuuretApp {
         
         logInfo(.citation, "✅ Found spouse in asChild family: \(spouse.displayName)")
         
-        // Step 2: Try to enhance with data from their asParent family
-        // Find which child in the nuclear family has this spouse
-        var childWithSpouse: Person? = nil
-        for couple in nuclearFamily.couples {
-            for child in couple.children {
-                if child.spouse == spouseName {
-                    childWithSpouse = child
-                    break
-                }
-            }
-            if childWithSpouse != nil { break }
-        }
-        
-        // If we found the child, look for their asParent family which has enhanced spouse data
-        if let child = childWithSpouse,
-           let childAsParentFamily = network.getAsParentFamily(for: child) {
-            // Find the spouse in the asParent family to get enhanced data
-            if let enhancedSpouse = childAsParentFamily.findSpouseInFamily(for: child.name) {
-                logInfo(.citation, "✅ Found enhanced spouse data in asParent family")
-                // Merge the enhanced data
-                spouse.birthDate = enhancedSpouse.birthDate ?? spouse.birthDate
-                spouse.deathDate = enhancedSpouse.deathDate ?? spouse.deathDate
-                spouse.fullMarriageDate = enhancedSpouse.fullMarriageDate ?? spouse.fullMarriageDate
-                spouse.marriageDate = enhancedSpouse.marriageDate ?? spouse.marriageDate
-            }
+        // Step 2: Merge spouse details from the child's as-parent family when available.
+        if let enhancedSpouse = enhancedSpouseFromAsParent {
+            logInfo(.citation, "✅ Found enhanced spouse data in asParent family")
+            // Merge the enhanced data
+            spouse.birthDate = enhancedSpouse.birthDate ?? spouse.birthDate
+            spouse.deathDate = enhancedSpouse.deathDate ?? spouse.deathDate
+            spouse.fullMarriageDate = enhancedSpouse.fullMarriageDate ?? spouse.fullMarriageDate
+            spouse.marriageDate = enhancedSpouse.marriageDate ?? spouse.marriageDate
         }
         
         return spouse
     }
-    
+
     // MARK: - Hiski Search URL Generation
     
 /*

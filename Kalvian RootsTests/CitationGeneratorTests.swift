@@ -477,6 +477,32 @@ final class CitationGeneratorTests: XCTestCase {
         XCTAssertTrue(citation.contains("→ Kaarin Tuomaant. Riihimäki, b. 14 January 1763"), citation)
     }
 
+    func testSpouseChildMatcherUsesNameEquivalenceAndBirthDate() {
+        let katariinaAsChild = Person(name: "Katariina", birthDate: "14.01.1763", noteMarkers: [])
+        let kaarinAsSpouse = Person(
+            name: "Kaarin",
+            patronymic: "Tuomaant. Riihimäki",
+            birthDate: "14.01.1763",
+            noteMarkers: []
+        )
+        let wrongNameSameBirth = Person(name: "Maria", birthDate: "14.01.1763", noteMarkers: [])
+
+        XCTAssertTrue(
+            SpouseChildMatcher.isEquivalentSpouseChild(
+                katariinaAsChild,
+                enhancedSpouse: kaarinAsSpouse,
+                nameEquivalenceManager: nameEquivalenceManager
+            )
+        )
+        XCTAssertFalse(
+            SpouseChildMatcher.isEquivalentSpouseChild(
+                wrongNameSameBirth,
+                enhancedSpouse: kaarinAsSpouse,
+                nameEquivalenceManager: nameEquivalenceManager
+            )
+        )
+    }
+
     func testCitationWithWidowInfo() {
         // Test: Should include widow/widower information
         // (Would require family with widow notes)
