@@ -715,7 +715,7 @@ enum FamilySearchDOMService {
 
             function dateLikeFromText(text) {
                 const value = clean(text);
-                const fullDate = value.match(/\\b\\d{1,2}\\s+[A-Za-zÅÄÖåäö.]+\\s+\\d{3,4}\\b/);
+                const fullDate = value.match(/\\b\\d{1,2}\\.?\\s+[A-Za-zÅÄÖåäö.]+\\s+\\d{3,4}\\b/);
                 if (fullDate) return fullDate[0];
                 const dottedDate = value.match(/\\b\\d{1,2}\\.\\d{1,2}\\.\\d{3,4}\\b/);
                 if (dottedDate) return dottedDate[0];

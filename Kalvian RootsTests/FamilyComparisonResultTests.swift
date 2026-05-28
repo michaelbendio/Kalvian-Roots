@@ -1711,6 +1711,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("index = parsed.nextIndex"))
         XCTAssertTrue(script.contains("function vitalLabelsFor(label)"))
         XCTAssertTrue(script.contains("function dateLikeFromText(text)"))
+        XCTAssertTrue(script.contains("\\\\b\\\\d{1,2}\\\\.?\\\\s+[A-Za-zÅÄÖåäö.]+\\\\s+\\\\d{3,4}\\\\b"))
         XCTAssertTrue(script.contains("function vitalFromTextBlock(panel, label)"))
         XCTAssertTrue(script.contains("function setExtractionStage(stage)"))
         XCTAssertTrue(script.contains("window.__kalvianRootsFamilySearchStage"))
