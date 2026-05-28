@@ -240,11 +240,11 @@ final class FamilyContentViewTests: XCTestCase {
         )
 
         XCTAssertTrue(
-            familyContentView.contains("let fatherBirthDateMismatchMessage = parentBirthDateMismatchMessage(for: couple.husband)"),
+            familyContentView.contains("let fatherBirthDateMismatch = parentBirthDateMismatch(for: couple.husband)"),
             "Only the father line should calculate the FamilySearch focus-person birth date warning."
         )
         XCTAssertTrue(
-            familyContentView.contains("supplementalContent: fatherBirthDateMismatchMessage.map"),
+            familyContentView.contains("supplementalContent: fatherBirthDateMismatch.map"),
             "The warning should render through the existing supplemental content slot on the father line."
         )
         XCTAssertTrue(
@@ -265,6 +265,17 @@ final class FamilyContentViewTests: XCTestCase {
         )
         XCTAssertTrue(
             familyContentView.contains("accessibilityLabel(\"FamilySearch birth date differs\")")
+        )
+        XCTAssertTrue(
+            familyContentView.contains("@State private var selectedParentBirthDateMismatch: ParentBirthDateMismatch?")
+        )
+        XCTAssertTrue(
+            familyContentView.contains("selectedParentBirthDateMismatch = mismatch"),
+            "Clicking the parent warning asterisk should select a mismatch."
+        )
+        XCTAssertTrue(
+            familyContentView.contains(".popover(item: $selectedParentBirthDateMismatch)"),
+            "The parent warning asterisk should open a popover on click."
         )
     }
 

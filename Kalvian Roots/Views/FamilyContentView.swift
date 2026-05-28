@@ -13,6 +13,19 @@ import AppKit
 import UIKit
 #endif
 
+private struct ParentBirthDateMismatch: Identifiable {
+    let juuretBirthDate: String
+    let familySearchBirthDate: String
+
+    var id: String {
+        "\(juuretBirthDate)|\(familySearchBirthDate)"
+    }
+
+    var message: String {
+        "Juuret birth date \(juuretBirthDate) differs from FamilySearch birth date \(familySearchBirthDate)."
+    }
+}
+
 /**
  * Family content display with authentic genealogy book appearance
  *
@@ -26,6 +39,7 @@ import UIKit
 struct FamilyContentView: View {
     @Environment(JuuretApp.self) private var juuretApp
     @State private var selectedFamilySearchReviewNote: FamilyComparisonReviewNote?
+    @State private var selectedParentBirthDateMismatch: ParentBirthDateMismatch?
     let family: Family
     
     // Citation and Hiski handlers
@@ -272,6 +286,18 @@ struct FamilyContentView: View {
         .frame(width: 360, alignment: .leading)
     }
 
+    private func parentBirthDateMismatchPopover(_ mismatch: ParentBirthDateMismatch) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Review parent birth date")
+                .font(.headline)
+            Text(mismatch.message)
+                .font(.body)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding()
+        .frame(width: 360, alignment: .leading)
+    }
+
     private func comparisonHeader(_ text: String) -> some View {
         Text(text)
             .font(.system(.caption, design: .monospaced).weight(.semibold))
@@ -411,7 +437,7 @@ struct FamilyContentView: View {
     // MARK: - Parent Lines
     
     private func parentLines(couple: Couple) -> some View {
-        let fatherBirthDateMismatchMessage = parentBirthDateMismatchMessage(for: couple.husband)
+        let fatherBirthDateMismatch = parentBirthDateMismatch(for: couple.husband)
 
         return VStack(alignment: .leading, spacing: 2) {
             // Father line
@@ -428,8 +454,8 @@ struct FamilyContentView: View {
                 onFamilyIdClick: { familyId in
                     juuretApp.navigateToFamily(familyId, updateHistory: false)
                 },
-                supplementalContent: fatherBirthDateMismatchMessage.map {
-                    AnyView(parentBirthDateMismatchAsterisk(message: $0))
+                supplementalContent: fatherBirthDateMismatch.map {
+                    AnyView(parentBirthDateMismatchAsterisk($0))
                 }
             )
             
@@ -451,7 +477,7 @@ struct FamilyContentView: View {
         }
     }
 
-    private func parentBirthDateMismatchMessage(for parent: Person) -> String? {
+    private func parentBirthDateMismatch(for parent: Person) -> ParentBirthDateMismatch? {
         guard
             let familySearchParent = matchingFamilySearchFocusPerson(for: parent),
             let juuretBirthDate = parent.birthDate?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -476,7 +502,10 @@ struct FamilyContentView: View {
             return nil
         }
 
-        return "Juuret birth date \(juuretBirthDate) differs from FamilySearch birth date \(familySearchBirthDate)."
+        return ParentBirthDateMismatch(
+            juuretBirthDate: juuretBirthDate,
+            familySearchBirthDate: familySearchBirthDate
+        )
     }
 
     private func matchingFamilySearchFocusPerson(for parent: Person) -> FamilySearchPersonSummary? {
@@ -492,12 +521,20 @@ struct FamilyContentView: View {
         return focusPerson
     }
 
-    private func parentBirthDateMismatchAsterisk(message: String) -> some View {
-        return Text("*")
-            .font(.system(size: 16, weight: .bold, design: .monospaced))
-            .foregroundStyle(Color(hex: "c62828"))
-            .help(message)
-            .accessibilityLabel("FamilySearch birth date differs")
+    private func parentBirthDateMismatchAsterisk(_ mismatch: ParentBirthDateMismatch) -> some View {
+        return Button {
+            selectedParentBirthDateMismatch = mismatch
+        } label: {
+            Text("*")
+                .font(.system(size: 16, weight: .bold, design: .monospaced))
+                .foregroundStyle(Color(hex: "c62828"))
+        }
+        .buttonStyle(.plain)
+        .help(mismatch.message)
+        .accessibilityLabel("FamilySearch birth date differs")
+        .popover(item: $selectedParentBirthDateMismatch) { mismatch in
+            parentBirthDateMismatchPopover(mismatch)
+        }
     }
     
     // MARK: - Marriage Line
