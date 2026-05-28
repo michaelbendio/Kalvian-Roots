@@ -411,7 +411,9 @@ struct FamilyContentView: View {
     // MARK: - Parent Lines
     
     private func parentLines(couple: Couple) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        let fatherBirthDateMismatchMessage = parentBirthDateMismatchMessage(for: couple.husband)
+
+        return VStack(alignment: .leading, spacing: 2) {
             // Father line
             PersonLineView(
                 person: couple.husband,
@@ -425,6 +427,9 @@ struct FamilyContentView: View {
                 onSpouseDateClick: { _, _, _ in },
                 onFamilyIdClick: { familyId in
                     juuretApp.navigateToFamily(familyId, updateHistory: false)
+                },
+                supplementalContent: fatherBirthDateMismatchMessage.map {
+                    AnyView(parentBirthDateMismatchAsterisk(message: $0))
                 }
             )
             
@@ -444,6 +449,55 @@ struct FamilyContentView: View {
                 }
             )
         }
+    }
+
+    private func parentBirthDateMismatchMessage(for parent: Person) -> String? {
+        guard
+            let familySearchParent = matchingFamilySearchFocusPerson(for: parent),
+            let juuretBirthDate = parent.birthDate?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !juuretBirthDate.isEmpty,
+            let familySearchBirthDate = familySearchParent.birthDate?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !familySearchBirthDate.isEmpty
+        else {
+            return nil
+        }
+
+        let comparisonService = FamilyComparisonService(nameManager: juuretApp.nameEquivalenceManager)
+        let familySearchParentCandidate = FamilySearchChild(
+            id: familySearchParent.id ?? "",
+            name: familySearchParent.name,
+            birthDate: familySearchBirthDate
+        )
+        guard
+            let juuretDate = comparisonService.makeJuuretCandidates(from: [parent]).first?.birthDate,
+            let familySearchDate = comparisonService.makeFamilySearchCandidates(from: [familySearchParentCandidate]).first?.birthDate,
+            juuretDate != familySearchDate
+        else {
+            return nil
+        }
+
+        return "Juuret birth date \(juuretBirthDate) differs from FamilySearch birth date \(familySearchBirthDate)."
+    }
+
+    private func matchingFamilySearchFocusPerson(for parent: Person) -> FamilySearchPersonSummary? {
+        guard
+            let parentFamilySearchId = parent.familySearchId?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !parentFamilySearchId.isEmpty,
+            let focusPerson = juuretApp.familySearchExtraction(for: family.familyId)?.focusPerson,
+            focusPerson.id?.trimmingCharacters(in: .whitespacesAndNewlines) == parentFamilySearchId
+        else {
+            return nil
+        }
+
+        return focusPerson
+    }
+
+    private func parentBirthDateMismatchAsterisk(message: String) -> some View {
+        return Text("*")
+            .font(.system(size: 16, weight: .bold, design: .monospaced))
+            .foregroundStyle(Color(hex: "c62828"))
+            .help(message)
+            .accessibilityLabel("FamilySearch birth date differs")
     }
     
     // MARK: - Marriage Line

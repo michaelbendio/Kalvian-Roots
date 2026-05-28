@@ -229,6 +229,67 @@ final class FamilyContentViewTests: XCTestCase {
         )
     }
 
+    func testFatherBirthDateMismatchWarningRequiresMatchingFamilySearchFocusPerson() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        let familyContentView = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/Views/FamilyContentView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(
+            familyContentView.contains("let fatherBirthDateMismatchMessage = parentBirthDateMismatchMessage(for: couple.husband)"),
+            "Only the father line should calculate the FamilySearch focus-person birth date warning."
+        )
+        XCTAssertTrue(
+            familyContentView.contains("supplementalContent: fatherBirthDateMismatchMessage.map"),
+            "The warning should render through the existing supplemental content slot on the father line."
+        )
+        XCTAssertTrue(
+            familyContentView.contains("juuretApp.familySearchExtraction(for: family.familyId)?.focusPerson"),
+            "The warning must use the stored FamilySearch focus person from the current family extraction."
+        )
+        XCTAssertTrue(
+            familyContentView.contains("focusPerson.id?.trimmingCharacters(in: .whitespacesAndNewlines) == parentFamilySearchId"),
+            "The warning must not compare stale or unrelated FamilySearch extraction data."
+        )
+        XCTAssertTrue(
+            familyContentView.contains("comparisonService.makeJuuretCandidates(from: [parent]).first?.birthDate"),
+            "The warning should convert the Juuret parent through PersonCandidate before comparing."
+        )
+        XCTAssertTrue(
+            familyContentView.contains("comparisonService.makeFamilySearchCandidates(from: [familySearchParentCandidate]).first?.birthDate"),
+            "The warning should convert the FamilySearch focus person through PersonCandidate before comparing."
+        )
+        XCTAssertTrue(
+            familyContentView.contains("accessibilityLabel(\"FamilySearch birth date differs\")")
+        )
+    }
+
+    func testFamilySearchAndJuuretFatherBirthDateFormatsParseToComparableDates() {
+        let comparisonService = FamilyComparisonService(nameManager: NameEquivalenceManager())
+        let juuretCandidates = comparisonService.makeJuuretCandidates(from: [
+            Person(name: "Jaakko", birthDate: "02.11.1731")
+        ])
+        let matchingFamilySearchCandidates = comparisonService.makeFamilySearchCandidates(from: [
+            FamilySearchChild(id: "KVG7-BRP", name: "Jaakko Juhonp.", birthDate: "2 November 1731")
+        ])
+        let mismatchedFamilySearchCandidates = comparisonService.makeFamilySearchCandidates(from: [
+            FamilySearchChild(id: "KVG7-BRP", name: "Jaakko Juhonp.", birthDate: "28 February 1763")
+        ])
+
+        XCTAssertEqual(
+            juuretCandidates.first?.birthDate,
+            matchingFamilySearchCandidates.first?.birthDate
+        )
+        XCTAssertNotEqual(
+            juuretCandidates.first?.birthDate,
+            mismatchedFamilySearchCandidates.first?.birthDate
+        )
+    }
+
     func testStoredStarFootnoteMarkersDisplayAsAsterisks() {
         XCTAssertEqual(displayFootnoteMarker("★★"), "**")
         XCTAssertEqual(displayFootnoteMarker("*"), "*")
