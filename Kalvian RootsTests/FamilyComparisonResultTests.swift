@@ -225,7 +225,7 @@ final class FamilyComparisonResultTests: XCTestCase {
         ])
     }
 
-    func testReviewNotesFlagNearNameRowsWithExactSharedBirthDate() throws {
+    func testSameBirthDateWithMatchingNameTokenIsComparisonMatch() throws {
         let birthDate = date(1751, 11, 27)
         let result = FamilyComparisonResult(
             familySearch: [
@@ -253,29 +253,111 @@ final class FamilyComparisonResultTests: XCTestCase {
             ]
         )
 
-        XCTAssertEqual(result.rows.count, 2)
+        XCTAssertEqual(result.rows.count, 1)
         XCTAssertEqual(result.matches.count, 1)
-
-        let notes = FamilyComparisonReviewDetector.notes(for: result.rows)
-        XCTAssertEqual(notes.count, 2)
-
-        let combinedMessages = notes.values.map(\.message).joined(separator: "\n")
-        XCTAssertTrue(combinedMessages.contains("Possible same child on 27 Nov 1751"))
-        XCTAssertTrue(combinedMessages.contains("Juuret has Johannes"))
-        XCTAssertTrue(combinedMessages.contains("FamilySearch has Johannes Eriksson"))
-        XCTAssertTrue(combinedMessages.contains("HisKi has Johanna"))
+        XCTAssertTrue(FamilyComparisonReviewDetector.notes(for: result.rows).isEmpty)
 
         let displayRows = FamilyComparisonReviewDetector.displayRows(for: result.rows)
         XCTAssertEqual(displayRows.count, 1)
 
         let displayRow = try XCTUnwrap(displayRows.first)
-        XCTAssertNotNil(displayRow.reviewNote)
+        XCTAssertNil(displayRow.reviewNote)
         XCTAssertEqual(displayRow.match.juuretKalvialla?.rawName, "Johannes")
         XCTAssertEqual(displayRow.match.hiski?.rawName, "Johanna")
         XCTAssertEqual(displayRow.match.familySearch?.rawName, "Johannes Eriksson")
     }
 
-    func testComparisonGroupDisplayRowsCoalesceReviewNameDiscrepancies() throws {
+    func testSameBirthDateWithSurnameOnlyDifferenceIsComparisonMatch() throws {
+        let birthDate = date(1767, 8, 20)
+        let result = FamilyComparisonResult(
+            familySearch: [
+                candidate(
+                    name: "Helena Andersdr.",
+                    birth: birthDate,
+                    source: .familySearch,
+                    familySearchId: "GZN2-8NQ"
+                )
+            ],
+            juuretKalvialla: [
+                candidate(
+                    name: "Helena",
+                    birth: birthDate,
+                    source: .juuretKalvialla
+                )
+            ],
+            hiski: [
+                candidate(
+                    name: "Helena",
+                    birth: birthDate,
+                    source: .hiski
+                )
+            ]
+        )
+
+        XCTAssertEqual(result.rows.count, 1)
+        XCTAssertEqual(result.matches.count, 1)
+
+        let row = try XCTUnwrap(result.rows.first)
+        XCTAssertEqual(row.juuretKalvialla?.rawName, "Helena")
+        XCTAssertEqual(row.familySearch?.rawName, "Helena Andersdr.")
+        XCTAssertEqual(row.hiski?.rawName, "Helena")
+        XCTAssertTrue(FamilyComparisonReviewDetector.notes(for: result.rows).isEmpty)
+    }
+
+    func testMatchingNameOnDifferentBirthDatesStaysAmbiguousAndSeparate() {
+        let result = FamilyComparisonResult(
+            familySearch: [
+                candidate(
+                    name: "Helena Andersdr.",
+                    birth: date(1767, 8, 20),
+                    source: .familySearch,
+                    familySearchId: "GZN2-8NQ"
+                )
+            ],
+            juuretKalvialla: [
+                candidate(
+                    name: "Helena",
+                    birth: date(1767, 8, 21),
+                    source: .juuretKalvialla
+                )
+            ],
+            hiski: []
+        )
+
+        XCTAssertEqual(result.rows.count, 2)
+        XCTAssertEqual(result.matches.count, 0)
+        XCTAssertEqual(result.familySearchOnly.count, 1)
+        XCTAssertEqual(result.juuretOnly.count, 1)
+    }
+
+    func testSameBirthDateDoesNotMatchOnlyOnSharedPatronymic() {
+        let birthDate = date(1767, 8, 20)
+        let result = FamilyComparisonResult(
+            familySearch: [
+                candidate(
+                    name: "Helena Andersdr.",
+                    birth: birthDate,
+                    source: .familySearch,
+                    familySearchId: "FS-HELENA"
+                )
+            ],
+            juuretKalvialla: [
+                candidate(
+                    name: "Anna Andersdr.",
+                    birth: birthDate,
+                    source: .juuretKalvialla
+                )
+            ],
+            hiski: []
+        )
+
+        XCTAssertEqual(result.rows.count, 2)
+        XCTAssertEqual(result.matches.count, 0)
+        XCTAssertEqual(result.familySearchOnly.count, 1)
+        XCTAssertEqual(result.juuretOnly.count, 1)
+    }
+
+    func testComparisonGroupDisplayRowsUsesSameBirthDateNameMatch() throws {
         let birthDate = date(1751, 11, 27)
         let result = FamilyComparisonResult(
             familySearch: [
@@ -309,13 +391,13 @@ final class FamilyComparisonResultTests: XCTestCase {
             result: result
         )
 
-        XCTAssertEqual(group.result.rows.count, 2)
+        XCTAssertEqual(group.result.rows.count, 1)
         XCTAssertEqual(group.displayRows.count, 1)
         let displayRow = try XCTUnwrap(group.displayRows.first)
         XCTAssertEqual(displayRow.match.juuretKalvialla?.rawName, "Johannes")
         XCTAssertEqual(displayRow.match.hiski?.rawName, "Johanna")
         XCTAssertEqual(displayRow.match.familySearch?.rawName, "Johannes Eriksson")
-        XCTAssertNotNil(displayRow.reviewNote)
+        XCTAssertNil(displayRow.reviewNote)
     }
 
     func testReviewNotesDoNotFlagUnrelatedNamesWithExactSharedBirthDate() {
@@ -2580,9 +2662,10 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
         XCTAssertEqual(group.displayRows.first?.match.familySearch?.familySearchId, "K1K9-QQW")
     }
 
-    func testClipboardTextCoalescesReviewNameDiscrepanciesIntoOneDisplayRow() {
+    func testClipboardTextUsesGroupedSameDateNameMatch() {
         let nameManager = NameEquivalenceManager()
         nameManager.clearAllEquivalences()
+        let service = FamilyComparisonService(nameManager: nameManager)
 
         let birthDate = date(1751, 11, 27)
         let result = FamilyComparisonResult(
@@ -2618,7 +2701,7 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
             debugMessage: "FamilySearch comparison ready",
             debugLines: [],
             rows: result.rows,
-            status: { _ in "unused" }
+            status: { service.status(for: $0) }
         )
 
         let johannesRows = text
@@ -2626,10 +2709,10 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
             .filter { $0.contains("Johannes") || $0.contains("Johanna") }
 
         XCTAssertEqual(johannesRows.count, 1)
-        XCTAssertTrue(text.contains("Johannes\tYes, Johannes, 27 Nov 1751\tYes, Johanna, 27 Nov 1751\tYes, Johannes Eriksson, <FS-JOHANNES>, 27 Nov 1751\tReview name discrepancy"))
+        XCTAssertTrue(text.contains("Johannes\tYes, 27 Nov 1751\tYes, 27 Nov 1751\tYes, <FS-JOHANNES>, 27 Nov 1751\tName mismatch"))
     }
 
-    func testServerComparisonTableCoalescesReviewNameDiscrepanciesIntoOneDisplayRow() {
+    func testServerComparisonTableUsesGroupedSameDateNameMatch() {
         let nameManager = NameEquivalenceManager()
         nameManager.clearAllEquivalences()
 
@@ -2682,12 +2765,11 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
             .split(separator: "\n")
             .filter { $0.contains("Johannes") || $0.contains("Johanna") }
 
-        XCTAssertEqual(johannesLines.filter { $0.contains("<td") }.count, 4)
-        XCTAssertTrue(html.contains("<td class=\"comparison-review-name\""))
-        XCTAssertTrue(html.contains("Yes<br>Johannes<br>27 Nov 1751"))
-        XCTAssertTrue(html.contains("Yes<br>Johanna<br>27 Nov 1751"))
-        XCTAssertTrue(html.contains("Yes<br>Johannes Eriksson<br>&lt;FS-JOHANNES&gt;<br>27 Nov 1751"))
-        XCTAssertTrue(html.contains("Review name discrepancy"))
+        XCTAssertEqual(johannesLines.filter { $0.contains("<td") }.count, 1)
+        XCTAssertFalse(html.contains("<td class=\"comparison-review-name\""))
+        XCTAssertTrue(html.contains("<td>Yes<br>27 Nov 1751</td>"))
+        XCTAssertTrue(html.contains("<td>Yes<br>&lt;FS-JOHANNES&gt;<br>27 Nov 1751</td>"))
+        XCTAssertTrue(html.contains("Name mismatch"))
         XCTAssertFalse(html.contains("HisKi-only"))
         XCTAssertFalse(html.contains("Missing in HisKi"))
     }

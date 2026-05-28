@@ -46,20 +46,24 @@ struct FamilyComparisonResult {
     ) {
 
         enum ComparisonKey: Hashable {
-            case dated(PersonIdentity)
+            case dated(Date, Int)
             case undated(Int)
         }
 
         var identityMap: [ComparisonKey: [PersonCandidate]] = [:]
 
         let allCandidates = familySearch + juuretKalvialla + hiski
+        let datedGroups = Self.groupDatedCandidatesByChild(allCandidates.filter { $0.birthDate != nil })
 
-        // Group candidates by identity
-        for (index, candidate) in allCandidates.enumerated() {
-            let key: ComparisonKey = candidate.birthDate == nil
-                ? .undated(index)
-                : .dated(candidate.identity)
-            identityMap[key, default: []].append(candidate)
+        for (groupIndex, candidates) in datedGroups.enumerated() {
+            guard let birthDate = candidates.first?.birthDate else {
+                continue
+            }
+            identityMap[.dated(birthDate, groupIndex)] = candidates
+        }
+
+        for (index, candidate) in allCandidates.enumerated() where candidate.birthDate == nil {
+            identityMap[.undated(index), default: []].append(candidate)
         }
 
         var matchResults: [Match] = []
@@ -130,6 +134,98 @@ struct FamilyComparisonResult {
         self.familySearchOnly = fsOnly
         self.juuretOnly = jkOnly
         self.hiskiOnly = hkOnly
+    }
+
+    private static func groupDatedCandidatesByChild(_ candidates: [PersonCandidate]) -> [[PersonCandidate]] {
+        let candidatesByBirthDate = Dictionary(grouping: candidates, by: \.birthDate!)
+
+        return candidatesByBirthDate
+            .keys
+            .sorted()
+            .flatMap { birthDate in
+                var groups: [[PersonCandidate]] = []
+
+                for candidate in candidatesByBirthDate[birthDate] ?? [] {
+                    var matchingGroupIndices: [Int] = []
+
+                    for groupIndex in groups.indices where groups[groupIndex].contains(where: {
+                        ChildNameMatcher.candidatesHaveNameMatch(candidate, $0)
+                    }) {
+                        matchingGroupIndices.append(groupIndex)
+                    }
+
+                    guard let firstMatch = matchingGroupIndices.first else {
+                        groups.append([candidate])
+                        continue
+                    }
+
+                    groups[firstMatch].append(candidate)
+
+                    for groupIndex in matchingGroupIndices.dropFirst().reversed() {
+                        groups[firstMatch].append(contentsOf: groups.remove(at: groupIndex))
+                    }
+                }
+
+                return groups
+            }
+    }
+}
+
+private enum ChildNameMatcher {
+    static func candidatesHaveNameMatch(_ left: PersonCandidate, _ right: PersonCandidate) -> Bool {
+        if left.identity.canonicalName == right.identity.canonicalName {
+            return true
+        }
+
+        return namesAreNear(left.rawName, right.rawName)
+    }
+
+    static func namesAreNear(_ left: String, _ right: String) -> Bool {
+        guard let leftToken = comparableGivenToken(from: left),
+              let rightToken = comparableGivenToken(from: right) else {
+            return false
+        }
+
+        if leftToken == rightToken {
+            return true
+        }
+
+        let shorterCount = min(leftToken.count, rightToken.count)
+        guard shorterCount >= 4 else {
+            return false
+        }
+
+        if leftToken.hasPrefix(rightToken) || rightToken.hasPrefix(leftToken) {
+            return true
+        }
+
+        return commonPrefixCount(leftToken, rightToken) >= 5
+    }
+
+    private static func comparableGivenToken(from name: String) -> String? {
+        let token = name
+            .split { !$0.isLetter }
+            .first
+            .map(String.init)?
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "fi_FI"))
+            .filter(\.isLetter)
+
+        guard let token, !token.isEmpty else {
+            return nil
+        }
+
+        return token
+    }
+
+    private static func commonPrefixCount(_ left: String, _ right: String) -> Int {
+        var count = 0
+        for (leftCharacter, rightCharacter) in zip(left, right) {
+            guard leftCharacter == rightCharacter else {
+                break
+            }
+            count += 1
+        }
+        return count
     }
 }
 
@@ -299,7 +395,7 @@ enum FamilyComparisonReviewDetector {
 
         return candidateNames(for: left).contains { leftName in
             candidateNames(for: right).contains { rightName in
-                namesAreNear(leftName, rightName)
+                ChildNameMatcher.namesAreNear(leftName, rightName)
             }
         }
     }
@@ -351,54 +447,6 @@ enum FamilyComparisonReviewDetector {
             row.familySearch?.rawName,
             row.hiski?.rawName
         ].compactMap { $0 }
-    }
-
-    private static func namesAreNear(_ left: String, _ right: String) -> Bool {
-        guard let leftToken = comparableGivenToken(from: left),
-              let rightToken = comparableGivenToken(from: right) else {
-            return false
-        }
-
-        if leftToken == rightToken {
-            return true
-        }
-
-        let shorterCount = min(leftToken.count, rightToken.count)
-        guard shorterCount >= 4 else {
-            return false
-        }
-
-        if leftToken.hasPrefix(rightToken) || rightToken.hasPrefix(leftToken) {
-            return true
-        }
-
-        return commonPrefixCount(leftToken, rightToken) >= 5
-    }
-
-    private static func comparableGivenToken(from name: String) -> String? {
-        let token = name
-            .split { !$0.isLetter }
-            .first
-            .map(String.init)?
-            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "fi_FI"))
-            .filter(\.isLetter)
-
-        guard let token, !token.isEmpty else {
-            return nil
-        }
-
-        return token
-    }
-
-    private static func commonPrefixCount(_ left: String, _ right: String) -> Int {
-        var count = 0
-        for (leftCharacter, rightCharacter) in zip(left, right) {
-            guard leftCharacter == rightCharacter else {
-                break
-            }
-            count += 1
-        }
-        return count
     }
 
     private static func reviewMessage(
