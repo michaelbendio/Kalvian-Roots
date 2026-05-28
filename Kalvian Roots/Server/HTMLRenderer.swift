@@ -1065,11 +1065,14 @@ struct HTMLRenderer {
         }
 
         let rows = comparison.rows.map { row in
-            """
+            let statusHTML = row.reviewNote.map {
+                "\(escapeHTML(row.status))<div class=\"workup-muted\">\(escapeHTML($0))</div>"
+            } ?? escapeHTML(row.status)
+            return """
             <tr>
                 <td>\(escapeHTML(row.identityName))</td>
                 <td>\(escapeHTML(row.birthDate ?? ""))</td>
-                <td>\(escapeHTML(row.status))</td>
+                <td>\(statusHTML)</td>
                 <td>\(escapeHTML(row.juuret?.name ?? ""))</td>
                 <td>\(escapeHTML(row.hiski?.name ?? ""))</td>
                 <td>\(escapeHTML(row.familySearch?.name ?? ""))</td>

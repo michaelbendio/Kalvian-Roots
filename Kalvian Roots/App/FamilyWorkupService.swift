@@ -220,27 +220,40 @@ final class FamilyWorkupService {
     }
 
     private func makeComparisonSummary(_ result: FamilyComparisonResult) -> FamilyWorkup.ComparisonSummary {
-        let reviewNotes = FamilyComparisonReviewDetector.notes(for: result.rows)
-        let rows = result.rows.enumerated().map { index, row in
-            FamilyWorkup.ComparisonRow(
+        let displayRows = FamilyComparisonReviewDetector.displayRows(for: result.rows)
+        let rows = displayRows.map { displayRow in
+            let row = displayRow.match
+            return FamilyWorkup.ComparisonRow(
                 identityName: row.identity.canonicalName,
                 birthDate: formatDate(row.identity.birthDate),
-                status: comparisonService.status(for: row),
+                status: status(for: displayRow),
                 familySearch: row.familySearch.map(makeCandidateSummary),
                 juuret: row.juuretKalvialla.map(makeCandidateSummary),
                 hiski: row.hiski.map(makeCandidateSummary),
-                reviewNote: reviewNotes[index]?.message
+                reviewNote: displayRow.reviewNote?.message
             )
         }
 
         return FamilyWorkup.ComparisonSummary(
-            rowCount: result.rows.count,
+            rowCount: rows.count,
             matchCount: result.matches.count,
             familySearchOnlyCount: result.familySearchOnly.count,
             juuretOnlyCount: result.juuretOnly.count,
             hiskiOnlyCount: result.hiskiOnly.count,
             rows: rows
         )
+    }
+
+    private func status(for row: FamilyComparisonDisplayRow) -> String {
+        guard let reviewNote = row.reviewNote else {
+            return comparisonService.status(for: row.match)
+        }
+
+        if reviewNote.message.localizedCaseInsensitiveContains("date discrepancy") {
+            return "Review date discrepancy"
+        }
+
+        return "Review name discrepancy"
     }
 
     private func makeActions(

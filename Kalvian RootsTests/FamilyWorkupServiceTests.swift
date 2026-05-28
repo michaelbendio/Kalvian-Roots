@@ -84,6 +84,56 @@ final class FamilyWorkupServiceTests: XCTestCase {
         XCTAssertTrue(workup.actions.contains { $0.type == "citation.juuret" && $0.personName == "Liisa" })
     }
 
+    func testWorkupMergesNearbySameNameDateDiscrepancyIntoReviewAction() throws {
+        let nameManager = NameEquivalenceManager()
+        let service = FamilyWorkupService(nameEquivalenceManager: nameManager)
+        let comparisonService = FamilyComparisonService(nameManager: nameManager)
+        let family = Family(
+            familyId: "SAKERI 1",
+            pageReferences: ["264"],
+            husband: Person(name: "Matti", familySearchId: "K8JR-2W8"),
+            wife: Person(name: "Kaarin"),
+            children: [
+                Person(name: "Malin", birthDate: "26.07.1707")
+            ]
+        )
+        let hiskiRows = [
+            HiskiService.HiskiFamilyBirthRow(
+                birthDate: "26.05.1707",
+                childName: "Malin",
+                fatherName: "Matti",
+                motherName: "Kaarin",
+                recordPath: "/hiski/test"
+            )
+        ]
+        let familySearchChildren = [
+            FamilySearchChild(id: "M8ZN-MBH", name: "Malin Mattsson", birthDate: "26 May 1707")
+        ]
+        let result = comparisonService.compare(
+            juuretCandidates: comparisonService.makeJuuretCandidates(from: family.allChildren),
+            hiskiCandidates: comparisonService.makeHiskiCandidates(from: hiskiRows),
+            familySearchCandidates: comparisonService.makeFamilySearchCandidates(from: familySearchChildren)
+        )
+
+        let workup = service.makeWorkup(
+            family: family,
+            network: FamilyNetwork(mainFamily: family),
+            sourceText: "SAKERI 1\nMalin",
+            familySearchExtraction: FamilySearchFamilyExtraction(
+                sourcePersonId: "K8JR-2W8",
+                children: familySearchChildren
+            ),
+            familySearchPersonId: "K8JR-2W8",
+            comparisonResult: result
+        )
+
+        XCTAssertEqual(workup.comparison?.rowCount, 1)
+        XCTAssertEqual(workup.comparison?.rows.first?.status, "Review date discrepancy")
+        XCTAssertTrue(workup.comparison?.rows.first?.reviewNote?.contains("Possible same child with date discrepancy") == true)
+        XCTAssertTrue(workup.actions.contains { $0.type == "review.comparison" && $0.personName == "Malin" })
+        XCTAssertFalse(workup.actions.contains { $0.type == "citation.juuret" && $0.personName == "Malin" })
+    }
+
     func testWorkupRendererShowsFamilySearchExtractionButtonWhenNeeded() throws {
         let service = FamilyWorkupService(nameEquivalenceManager: NameEquivalenceManager())
         let family = Family(
