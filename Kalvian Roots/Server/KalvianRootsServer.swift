@@ -317,6 +317,10 @@ final class HTTPHandler: ChannelInboundHandler {
             logger.info("[\(requestID!)] 👪 Handling family route: \(p)")
             return try await handleFamilyRoute(path: p, queryItems: queryItems)
 
+        case (.POST, let p) where p.starts(with: "/family/"):
+            logger.info("[\(requestID!)] 👪 Handling family POST route: \(p)")
+            return try await handleFamilyRoute(path: p, queryItems: queryItems)
+
         default:
             logger.warning("[\(requestID!)] ❓ Unknown route: \(method) \(path)")
             return .error(.notFound, "Not Found")
@@ -551,6 +555,16 @@ final class HTTPHandler: ChannelInboundHandler {
                 session: sessionResult.session,
                 format: "json"
             )
+
+        case "familysearch-extract":
+            logger.info("[\(requestID!)] 🧬 Handling FamilySearch extraction request")
+            return await handleFamilySearchExtractionRequest(
+                familyId: canonicalID,
+                network: network,
+                homeId: homeId,
+                setCookieHeader: setCookieHeader,
+                session: sessionResult.session
+            )
             
         case nil:
             logger.info("[\(requestID!)] 🏠 Rendering family display (no sub-route)")
@@ -674,6 +688,79 @@ final class HTTPHandler: ChannelInboundHandler {
         }
         
         return .html(html, headers: responseHeaders)
+    }
+
+    @MainActor
+    private func handleFamilySearchExtractionRequest(
+        familyId: String,
+        network: FamilyNetwork,
+        homeId: String?,
+        setCookieHeader: String?,
+        session: BrowserSession
+    ) async -> HTTPResponse {
+        guard requestMethod == .POST else {
+            return .error(.methodNotAllowed, "FamilySearch extraction requires POST")
+        }
+
+        guard let familySearchPersonId = network.mainFamily.primaryCouple?.husband.familySearchId
+                ?? network.mainFamily.primaryCouple?.wife.familySearchId
+                ?? juuretApp?.primaryFamilySearchParentIdInSourceText(for: familyId) else {
+            return .redirect(
+                workupRedirectURL(familyId: familyId, homeId: homeId, status: "missing-familysearch-id"),
+                headers: responseHeaders(setCookieHeader: setCookieHeader)
+            )
+        }
+
+        do {
+            let extraction = try await FamilySearchWebViewExtractionManager.shared.openDetailsPageAndExtract(
+                personId: familySearchPersonId,
+                log: { [weak self] message in
+                    self?.logger.info("[\(self?.requestID?.uuidString ?? "unknown")] \(message)")
+                }
+            )
+
+            session.storeFamilySearchExtraction(extraction, for: familyId)
+            juuretApp?.storeFamilySearchExtraction(extraction, for: familyId, rerunComparison: false)
+
+            let status = extraction.isSuccessful ? "extracted" : "extraction-returned-\(extraction.status ?? "unknown")"
+            return .redirect(
+                workupRedirectURL(familyId: familyId, homeId: homeId, status: status),
+                headers: responseHeaders(setCookieHeader: setCookieHeader)
+            )
+        } catch {
+            logger.error(
+                "[\(requestID!)] FamilySearch WebKit extraction failed",
+                metadata: ["error": "\(error.localizedDescription)"]
+            )
+            return .redirect(
+                workupRedirectURL(familyId: familyId, homeId: homeId, status: "extraction-failed"),
+                headers: responseHeaders(setCookieHeader: setCookieHeader)
+            )
+        }
+    }
+
+    private func responseHeaders(setCookieHeader: String?) -> HTTPHeaders {
+        var responseHeaders = HTTPHeaders()
+        if let setCookieHeader {
+            responseHeaders.add(name: "Set-Cookie", value: setCookieHeader)
+        }
+        return responseHeaders
+    }
+
+    private func workupRedirectURL(familyId: String, homeId: String?, status: String) -> String {
+        var queryItems = [URLQueryItem(name: "familysearch", value: status)]
+        if let homeId, homeId != familyId {
+            queryItems.append(URLQueryItem(name: "home", value: homeId))
+        }
+
+        var components = URLComponents()
+        components.queryItems = queryItems
+        let query = components.percentEncodedQuery.map { "?\($0)" } ?? ""
+        return "/family/\(Self.urlPathEncode(familyId))/workup\(query)"
+    }
+
+    private static func urlPathEncode(_ string: String) -> String {
+        string.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? string
     }
 
     // MARK: - Workup Handler

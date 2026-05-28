@@ -950,6 +950,9 @@ struct HTMLRenderer {
             color: #666;
             font-size: 13px;
         }
+        .workup-action-form {
+            margin-top: 12px;
+        }
         """
     }
 
@@ -960,6 +963,19 @@ struct HTMLRenderer {
     ) -> String {
         let navBar = renderNavigationBar(homeId: homeId, displayedId: family.familyId)
         let jsonURL = "/family/\(urlEncode(family.familyId))/workup.json"
+        let extractionURL = "/family/\(urlEncode(family.familyId))/familysearch-extract" + (family.familyId == homeId ? "" : "?home=\(urlEncode(homeId))")
+        let familySearchActionHTML: String
+        if workup.familySearch.extractionStatus == "available" {
+            familySearchActionHTML = ""
+        } else if workup.familySearch.anchorPersonId != nil {
+            familySearchActionHTML = """
+            <form method="post" action="\(extractionURL)" class="workup-action-form">
+                <button type="submit" class="fs-action">Run FamilySearch Extraction</button>
+            </form>
+            """
+        } else {
+            familySearchActionHTML = ""
+        }
         let actionsHTML = workup.actions.isEmpty
             ? "<li>No queued actions.</li>"
             : workup.actions.map { action in
@@ -1015,6 +1031,7 @@ struct HTMLRenderer {
                         <p>Anchor: \(escapeHTML(workup.familySearch.anchorPersonId ?? "none"))</p>
                         <p>Extracted children: \(workup.familySearch.extractedChildCount)</p>
                         \(workup.familySearch.note.map { "<p class=\"workup-muted\">\(escapeHTML($0))</p>" } ?? "")
+                        \(familySearchActionHTML)
                     </section>
 
                     \(couplesHTML)

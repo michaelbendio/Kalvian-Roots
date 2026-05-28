@@ -83,4 +83,61 @@ final class FamilyWorkupServiceTests: XCTestCase {
         XCTAssertEqual(workup.comparison?.rows.first?.status, "Juuret-only")
         XCTAssertTrue(workup.actions.contains { $0.type == "citation.juuret" && $0.personName == "Liisa" })
     }
+
+    func testWorkupRendererShowsFamilySearchExtractionButtonWhenNeeded() throws {
+        let service = FamilyWorkupService(nameEquivalenceManager: NameEquivalenceManager())
+        let family = Family(
+            familyId: "SAKERI 1",
+            pageReferences: ["264"],
+            husband: Person(name: "Matti", familySearchId: "K8JR-2W8"),
+            wife: Person(name: "Kaarin"),
+            children: [
+                Person(name: "Maria", birthDate: "05.03.1697")
+            ]
+        )
+        let workup = service.makeWorkup(
+            family: family,
+            network: FamilyNetwork(mainFamily: family),
+            sourceText: "SAKERI 1\nMaria",
+            familySearchExtraction: nil,
+            familySearchPersonId: "K8JR-2W8",
+            comparisonResult: nil
+        )
+
+        let html = HTMLRenderer.renderWorkup(workup, family: family, homeId: family.familyId)
+
+        XCTAssertTrue(html.contains(#"<form method="post" action="/family/SAKERI%201/familysearch-extract""#))
+        XCTAssertTrue(html.contains("Run FamilySearch Extraction"))
+    }
+
+    func testWorkupRendererHidesFamilySearchExtractionButtonAfterExtraction() throws {
+        let service = FamilyWorkupService(nameEquivalenceManager: NameEquivalenceManager())
+        let family = Family(
+            familyId: "SAKERI 1",
+            pageReferences: ["264"],
+            husband: Person(name: "Matti", familySearchId: "K8JR-2W8"),
+            wife: Person(name: "Kaarin"),
+            children: [
+                Person(name: "Maria", birthDate: "05.03.1697")
+            ]
+        )
+        let workup = service.makeWorkup(
+            family: family,
+            network: FamilyNetwork(mainFamily: family),
+            sourceText: "SAKERI 1\nMaria",
+            familySearchExtraction: FamilySearchFamilyExtraction(
+                sourcePersonId: "K8JR-2W8",
+                children: [
+                    FamilySearchChild(id: "TEST-123", name: "Maria", birthDate: "5 March 1697")
+                ]
+            ),
+            familySearchPersonId: "K8JR-2W8",
+            comparisonResult: nil
+        )
+
+        let html = HTMLRenderer.renderWorkup(workup, family: family, homeId: family.familyId)
+
+        XCTAssertFalse(html.contains("familysearch-extract"))
+        XCTAssertFalse(html.contains("Run FamilySearch Extraction"))
+    }
 }

@@ -250,7 +250,7 @@ final class FamilyWorkupService {
         var actions: [FamilyWorkup.ActionSummary] = []
         let hasFamilySearchExtraction = familySearch.extractionStatus == "available"
 
-        if familySearch.extractionStatus == "not-extracted" {
+        if familySearch.extractionStatus == "not-extracted" || familySearch.extractionStatus == "failed" {
             actions.append(
                 FamilyWorkup.ActionSummary(
                     type: "familysearch.extract",
