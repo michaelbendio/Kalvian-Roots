@@ -15,7 +15,13 @@ struct HTMLRenderer {
 
     // MARK: - Landing Page
 
-    static func renderLandingPage(error: String? = nil) -> String {
+    static func renderLandingPage(error: String? = nil, requestHost: String? = nil) -> String {
+        let host = requestHost?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let displayHost = host?.isEmpty == false ? host! : "127.0.0.1:8081"
+        let baseURL = "http://\(displayHost)"
+        let accessMode = isLocalHost(displayHost) ? "local Mac browser" : "remote browser"
+        let sampleWorkupURL = "\(baseURL)/family/SAKERI%201/workup"
+
         return """
         <!DOCTYPE html>
         <html lang="en">
@@ -26,7 +32,7 @@ struct HTMLRenderer {
             <style>
                 \(cssStyles)
                 .landing-container {
-                    max-width: 600px;
+                    max-width: 760px;
                     margin: 100px auto;
                     padding: 40px;
                     background: white;
@@ -71,6 +77,11 @@ struct HTMLRenderer {
                 button:hover {
                     background: #0052a3;
                 }
+                .button-row {
+                    display: flex;
+                    gap: 10px;
+                    flex-wrap: wrap;
+                }
                 .error-message {
                     color: #dc3545;
                     margin-top: 10px;
@@ -78,26 +89,97 @@ struct HTMLRenderer {
                     background: #fee;
                     border-radius: 4px;
                 }
+                .remote-panel {
+                    margin-top: 28px;
+                    padding-top: 22px;
+                    border-top: 1px solid #e5e5e5;
+                }
+                .remote-panel h2 {
+                    font-size: 18px;
+                    margin: 0 0 12px 0;
+                }
+                .remote-grid {
+                    display: grid;
+                    grid-template-columns: minmax(130px, auto) 1fr;
+                    gap: 8px 14px;
+                    align-items: baseline;
+                }
+                .remote-label {
+                    color: #666;
+                    font-size: 13px;
+                }
+                .remote-value {
+                    overflow-wrap: anywhere;
+                }
+                .remote-note {
+                    margin-top: 14px;
+                    color: #666;
+                    font-size: 13px;
+                }
             </style>
         </head>
         <body>
             <div class="landing-container">
                 <h1>Kalvian Roots Browser</h1>
-                <form method="GET" action="/family">
+                <form method="GET" action="/family" id="familyForm">
                     <div class="form-group">
                         <label for="family">Enter Family ID:</label>
                         <input type="text" id="family" name="id"
                                placeholder="e.g., KORPI 6"
-                               required autofocus>
+                               required autofocus
+                               oninput="updateWorkupPreview()">
                         \(error == "invalid" ? """
                         <div class="error-message">
                             Invalid family ID. Please check and try again.
                         </div>
                         """ : "")
                     </div>
-                    <button type="submit">Go</button>
+                    <div class="button-row">
+                        <button type="submit">Open Family</button>
+                        <button type="button" onclick="openWorkup()">Open Workup</button>
+                    </div>
                 </form>
+                <div class="remote-panel">
+                    <h2>Server / Remote Access</h2>
+                    <div class="remote-grid">
+                        <div class="remote-label">Status</div>
+                        <div class="remote-value">Kalvian Roots server is running on port 8081.</div>
+                        <div class="remote-label">This browser</div>
+                        <div class="remote-value">\(escapeHTML(accessMode))</div>
+                        <div class="remote-label">Current URL</div>
+                        <div class="remote-value"><code>\(escapeHTML(baseURL))</code></div>
+                        <div class="remote-label">Workup URL</div>
+                        <div class="remote-value"><code id="workupPreview">\(escapeHTML(sampleWorkupURL))</code></div>
+                    </div>
+                    <p class="remote-note">
+                        From Tailscale, use this Mac's Tailscale name or 100.x address with port 8081.
+                        FamilySearch WebKit extraction opens on the Mac running Kalvian Roots.
+                    </p>
+                </div>
             </div>
+            <script>
+                function canonicalFamilyId() {
+                    const input = document.getElementById('family');
+                    return input.value.trim().toUpperCase();
+                }
+                function workupURLFor(value) {
+                    const familyId = value || 'SAKERI 1';
+                    return '/family/' + encodeURIComponent(familyId).replace(/%20/g, '%20') + '/workup';
+                }
+                function updateWorkupPreview() {
+                    const preview = document.getElementById('workupPreview');
+                    preview.textContent = window.location.origin + workupURLFor(canonicalFamilyId());
+                }
+                function openWorkup() {
+                    const familyId = canonicalFamilyId();
+                    if (!familyId) {
+                        document.getElementById('family').focus();
+                        return;
+                    }
+                    window.location.href = workupURLFor(familyId);
+                }
+                updateWorkupPreview();
+            </script>
         </body>
         </html>
         """
@@ -1229,6 +1311,14 @@ struct HTMLRenderer {
     
     private static func urlEncode(_ string: String) -> String {
         return string.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? string
+    }
+
+    private static func isLocalHost(_ host: String) -> Bool {
+        let normalized = host.lowercased()
+        return normalized.hasPrefix("127.0.0.1")
+            || normalized.hasPrefix("localhost")
+            || normalized.hasPrefix("[::1]")
+            || normalized.hasPrefix("::1")
     }
 
     private static func buildQueryParams(_ params: [String: String?]) -> String {

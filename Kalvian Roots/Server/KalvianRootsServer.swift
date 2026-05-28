@@ -254,7 +254,10 @@ final class HTTPHandler: ChannelInboundHandler {
         case (.GET, "/"):
             logger.info("[\(requestID!)] 🏠 Handling landing page")
             let error = queryItems.first(where: { $0.name == "error" })?.value
-            let html = HTMLRenderer.renderLandingPage(error: error)
+            let html = HTMLRenderer.renderLandingPage(
+                error: error,
+                requestHost: requestHeaders?.first(name: "Host")
+            )
             return .html(html)
 
         case (.POST, "/"):
