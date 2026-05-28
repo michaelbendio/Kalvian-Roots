@@ -2110,9 +2110,16 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("document.querySelectorAll('input')"))
         XCTAssertTrue(script.contains("input.type || '').toLowerCase() === 'password'"))
         XCTAssertTrue(script.contains("const passwordPresent = !!passwordInput && passwordInput.value === credentials.password;"))
+        XCTAssertTrue(script.contains("Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set"))
+        XCTAssertTrue(script.contains("new KeyboardEvent(type"))
+        XCTAssertTrue(script.contains("key === 'Enter' ? 13"))
+        XCTAssertTrue(script.contains("dispatchKeyboardEvent(passwordInput, 'keydown', 'Enter')"))
+        XCTAssertTrue(script.contains("new InputEvent('input'"))
         XCTAssertTrue(script.contains("preferredButton.click()"))
         XCTAssertTrue(script.contains("submitted-password"))
         XCTAssertTrue(script.contains("submitted-username"))
+        XCTAssertTrue(script.contains("entered-password"))
+        XCTAssertTrue(script.contains("entered-username"))
     }
 
     func testWebKitFamilyMembersSectionWaitProgressMessageReportsDiagnostics() {

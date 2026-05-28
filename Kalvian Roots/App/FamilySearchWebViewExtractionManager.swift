@@ -197,12 +197,38 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
                 return ['email', 'text'].includes(type);
             });
 
+            const dispatchKeyboardEvent = (input, type, key) => {
+                if (!input) return;
+                input.dispatchEvent(new KeyboardEvent(type, {
+                    key,
+                    code: key === 'Enter' ? 'Enter' : undefined,
+                    keyCode: key === 'Enter' ? 13 : undefined,
+                    which: key === 'Enter' ? 13 : undefined,
+                    bubbles: true,
+                    cancelable: true
+                }));
+            };
+
             const setValue = (input, value) => {
                 if (!input || input.value === value) return false;
                 input.focus();
-                input.value = value;
+                const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+                if (setter) {
+                    setter.call(input, value);
+                } else {
+                    input.value = value;
+                }
+                dispatchKeyboardEvent(input, 'keydown', value.slice(-1));
                 input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new InputEvent('input', {
+                    bubbles: true,
+                    cancelable: true,
+                    data: value.slice(-1),
+                    inputType: 'insertText'
+                }));
+                input.dispatchEvent(new Event('keyup', { bubbles: true }));
                 input.dispatchEvent(new Event('change', { bubbles: true }));
+                input.blur();
                 return true;
             };
 
@@ -222,12 +248,28 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
 
             if (passwordPresent && preferredButton && !preferredButton.disabled) {
                 preferredButton.click();
+                dispatchKeyboardEvent(passwordInput, 'keydown', 'Enter');
+                dispatchKeyboardEvent(passwordInput, 'keyup', 'Enter');
                 return 'submitted-password';
             }
 
             if (usernamePresent && !passwordInput && preferredButton && !preferredButton.disabled) {
                 preferredButton.click();
+                dispatchKeyboardEvent(usernameInput, 'keydown', 'Enter');
+                dispatchKeyboardEvent(usernameInput, 'keyup', 'Enter');
                 return 'submitted-username';
+            }
+
+            if (passwordPresent) {
+                dispatchKeyboardEvent(passwordInput, 'keydown', 'Enter');
+                dispatchKeyboardEvent(passwordInput, 'keyup', 'Enter');
+                return 'entered-password';
+            }
+
+            if (usernamePresent && !passwordInput) {
+                dispatchKeyboardEvent(usernameInput, 'keydown', 'Enter');
+                dispatchKeyboardEvent(usernameInput, 'keyup', 'Enter');
+                return 'entered-username';
             }
 
             return usernameFilled || passwordFilled ? 'filled' : 'not-found';
@@ -749,7 +791,8 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
                         password: credential.password
                     )
                     let result = await self.evaluateJavaScript(script, in: webView)
-                    if result == "submitted-password" || result == "submitted-username" {
+                    if result == "submitted-password" || result == "submitted-username"
+                        || result == "entered-password" || result == "entered-username" {
                         return
                     }
                 } catch {
