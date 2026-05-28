@@ -876,6 +876,47 @@ final class FamilyComparisonServiceTests: XCTestCase {
         XCTAssertTrue(candidates.allSatisfy { $0.hiskiCitation == nil })
     }
 
+    func testHelenaDateFormatsAcrossSourcesCollapseIntoOneComparisonRow() throws {
+        let familySearchCandidates = service.makeFamilySearchCandidates(from: [
+            FamilySearchChild(
+                id: "GZN2-8NQ",
+                name: "Helena Andersdr.",
+                birthDate: "20. elokuuta 1767"
+            )
+        ])
+        let juuretCandidates = service.makeJuuretCandidates(from: [
+            Person(name: "Helena", birthDate: "20.08.1767", noteMarkers: [])
+        ])
+        let hiskiCandidates = service.makeHiskiCandidates(from: [
+            HiskiService.HiskiFamilyBirthRow(
+                birthDate: "20.8.1767",
+                childName: "Helena",
+                fatherName: "Anders",
+                motherName: "Maria",
+                recordPath: "/hiski?en+0265+kastetut+1767"
+            )
+        ])
+
+        XCTAssertEqual(familySearchCandidates.first?.birthDate, date(1767, 8, 20))
+        XCTAssertEqual(juuretCandidates.first?.birthDate, date(1767, 8, 20))
+        XCTAssertEqual(hiskiCandidates.first?.birthDate, date(1767, 8, 20))
+
+        let result = service.compare(
+            juuretCandidates: juuretCandidates,
+            hiskiCandidates: hiskiCandidates,
+            familySearchCandidates: familySearchCandidates
+        )
+
+        XCTAssertEqual(result.rows.count, 1)
+        XCTAssertEqual(result.matches.count, 1)
+        XCTAssertTrue(FamilyComparisonReviewDetector.displayRows(for: result.rows).allSatisfy { $0.reviewNote == nil })
+
+        let row = try XCTUnwrap(result.rows.first)
+        XCTAssertEqual(row.juuretKalvialla?.rawName, "Helena")
+        XCTAssertEqual(row.hiski?.rawName, "Helena")
+        XCTAssertEqual(row.familySearch?.rawName, "Helena Andersdr.")
+    }
+
     func testMakeJuuretCandidatesReturnsEmptyForEmptyInput() {
         let candidates = service.makeJuuretCandidates(from: [])
 
