@@ -203,6 +203,10 @@ private extension FamilyComparisonService {
 
         for locale in genealogyDateLocales {
             for format in familySearchDateFormats {
+                guard dateString(trimmed, matchesFormatShape: format) else {
+                    continue
+                }
+
                 let formatter = DateFormatter()
                 formatter.calendar = genealogyCalendar
                 formatter.locale = locale
@@ -217,6 +221,22 @@ private extension FamilyComparisonService {
         }
 
         return nil
+    }
+
+    private func dateString(_ value: String, matchesFormatShape format: String) -> Bool {
+        switch format {
+        case "d.M.yyyy", "dd.MM.yyyy":
+            return value.range(of: #"^\d{1,2}\.\d{1,2}\.\d{4}$"#, options: .regularExpression) != nil
+        case "d MMM yyyy", "dd MMM yyyy", "d MMMM yyyy", "dd MMMM yyyy",
+             "d. MMM yyyy", "dd. MMM yyyy", "d. MMMM yyyy", "dd. MMMM yyyy":
+            return value.range(of: #"^\d{1,2}\.?\s+\p{L}+\.?\s+\d{4}$"#, options: .regularExpression) != nil
+        case "MMM yyyy", "MMMM yyyy":
+            return value.range(of: #"^\p{L}+\.?\s+\d{4}$"#, options: .regularExpression) != nil
+        case "yyyy":
+            return value.range(of: #"^\d{4}$"#, options: .regularExpression) != nil
+        default:
+            return false
+        }
     }
 
     func familySearchChildrenWithHiskiBirthDates(

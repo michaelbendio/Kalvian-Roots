@@ -225,6 +225,42 @@ final class FamilyComparisonResultTests: XCTestCase {
         ])
     }
 
+    func testDottedFinnishFullDateDoesNotFallBackToMonthYear() throws {
+        let service = FamilyComparisonService(nameManager: nameManager)
+        let candidates = service.makeFamilySearchCandidates(from: [
+            FamilySearchChild(
+                id: "GZN2-8NQ",
+                name: "Helena Andersdr.",
+                birthDate: "20. elokuuta 1767"
+            )
+        ])
+
+        let candidate = try XCTUnwrap(candidates.first)
+        XCTAssertEqual(candidate.birthDate, date(1767, 8, 20))
+        XCTAssertNotEqual(candidate.birthDate, date(1767, 8, 1))
+    }
+
+    func testMonthYearAndYearOnlyDatesStillParseWhenDayIsAbsent() throws {
+        let service = FamilyComparisonService(nameManager: nameManager)
+        let candidates = service.makeFamilySearchCandidates(from: [
+            FamilySearchChild(
+                id: "MONTH-YEAR",
+                name: "Helena Andersdr.",
+                birthDate: "elokuuta 1767"
+            ),
+            FamilySearchChild(
+                id: "YEAR-ONLY",
+                name: "Maria",
+                birthDate: "1767"
+            )
+        ])
+
+        XCTAssertEqual(candidates.map(\.birthDate), [
+            date(1767, 8, 1),
+            date(1767, 1, 1)
+        ])
+    }
+
     func testSameBirthDateWithMatchingNameTokenIsComparisonMatch() throws {
         let birthDate = date(1751, 11, 27)
         let result = FamilyComparisonResult(
