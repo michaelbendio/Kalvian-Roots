@@ -257,16 +257,30 @@ enum FamilySearchDOMService {
                 };
             }
 
+            function datesFromHeadingText(text) {
+                const value = clean(text);
+                return value.match(/\\b\\d{1,2}\\s+[A-Za-zÅÄÖåäö.]+\\s+\\d{3,4}\\b/g) || [];
+            }
+
+            function personNameFromHeadingText(text) {
+                const value = clean(text).replace(/\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/ig, '');
+                const firstDate = value.match(/\\b\\d{1,2}\\s+[A-Za-zÅÄÖåäö.]+\\s+\\d{3,4}\\b/);
+                const beforeDates = firstDate ? value.slice(0, firstDate.index) : value;
+                return clean(beforeDates.replace(/(Male|Female|Unknown)$/i, ''));
+            }
+
             function extractPersonSummary() {
-                const name = clean((extractionDocument().querySelector('h1') || {}).textContent);
+                const headingText = visibleText(extractionDocument().querySelector('h1')) || clean((extractionDocument().querySelector('h1') || {}).textContent);
+                const headingDates = datesFromHeadingText(headingText);
+                const name = personNameFromHeadingText(headingText) || clean((extractionDocument().querySelector('h1') || {}).textContent);
                 const birth = extractVital('Birth');
                 const death = extractVital('Death');
                 return {
                     id: personIdFromURL(),
                     name,
-                    birthDate: birth.date,
+                    birthDate: birth.date || headingDates[0] || null,
                     birthPlace: birth.place,
-                    deathDate: death.date,
+                    deathDate: death.date || headingDates[1] || null,
                     deathPlace: death.place,
                     lifeSpan: null
                 };
