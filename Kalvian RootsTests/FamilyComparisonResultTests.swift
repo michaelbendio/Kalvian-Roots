@@ -667,7 +667,7 @@ final class FamilyComparisonResultTests: XCTestCase {
         XCTAssertEqual(displayRow.match.hiski?.rawName, "Malin")
         XCTAssertEqual(
             displayRow.reviewNote?.message,
-            "Possible same child with date discrepancy: Juuret has Malin; FamilySearch has Malin; HisKi has Malin."
+            "Possible same child with date discrepancy: Juuret has Malin (26 Jul 1707); FamilySearch has Malin (26 May 1707); HisKi has Malin (26 May 1707)."
         )
     }
 

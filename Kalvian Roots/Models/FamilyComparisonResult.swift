@@ -508,7 +508,11 @@ enum FamilyComparisonReviewDetector {
             return nil
         }
 
-        return "\(label) has \(candidate.rawName)"
+        if let birthDate = candidate.birthDate {
+            return "\(label) has \(candidate.rawName) (\(formatDate(birthDate)))"
+        }
+
+        return "\(label) has \(candidate.rawName) (unknown birth)"
     }
 
     private static func formatDate(_ date: Date) -> String {
