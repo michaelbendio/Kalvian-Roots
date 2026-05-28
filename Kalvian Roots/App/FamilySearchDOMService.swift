@@ -688,7 +688,7 @@ enum FamilySearchDOMService {
             }
 
             function isVitalLabel(line) {
-                return /^(Birth|Born|Christening|Christened|Baptism|Baptized|Death|Died|Burial|Buried|Sex|Parents and Siblings|Spouses and Children|Vitals)$/i.test(clean(line));
+                return /^(Birth|Born|Christening|Christened|Baptism|Baptized|Death|Died|Burial|Buried)(?:\\s*[•·]\\s*\\d+\\s+Sources?)?$|^(Sex|Parents and Siblings|Spouses and Children|Vitals)$/i.test(clean(line));
             }
 
             function vitalLabelsFor(label) {
@@ -736,8 +736,9 @@ enum FamilySearchDOMService {
 
                 const text = lines.join('\\n');
                 const labelPattern = labels.join('|');
-                const nextLabelPattern = 'Birth|Born|Christening|Christened|Baptism|Baptized|Death|Died|Burial|Buried|Sex|Parents and Siblings|Spouses and Children|Vitals';
-                const match = text.match(new RegExp('(?:' + labelPattern + ')\\\\s*[:\\\\n ]+([\\\\s\\\\S]*?)(?=\\\\n(?:' + nextLabelPattern + ')\\\\b|$)', 'i'));
+                const sourceCountSuffix = '(?:\\\\s*[•·]\\\\s*\\\\d+\\\\s+Sources?)?';
+                const nextLabelPattern = '(?:Birth|Born|Christening|Christened|Baptism|Baptized|Death|Died|Burial|Buried)' + sourceCountSuffix + '|Sex|Parents and Siblings|Spouses and Children|Vitals';
+                const match = text.match(new RegExp('(?:' + labelPattern + ')' + sourceCountSuffix + '\\\\s*[:\\\\n ]+([\\\\s\\\\S]*?)(?=\\\\n(?:' + nextLabelPattern + ')\\\\b|$)', 'i'));
                 if (!match) return null;
                 const segmentLines = match[1].split('\\n').map(clean).filter(Boolean);
                 if (segmentLines.length === 0) return null;

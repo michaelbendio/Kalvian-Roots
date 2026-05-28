@@ -268,6 +268,22 @@ final class FamilyContentViewTests: XCTestCase {
         )
     }
 
+    func testFamilySearchDebugPanelIncludesFocusPersonVitals() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        let juuretApp = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/App/JuuretApp.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(juuretApp.contains("FamilySearch focus person ID:"))
+        XCTAssertTrue(juuretApp.contains("FamilySearch focus person name:"))
+        XCTAssertTrue(juuretApp.contains("FamilySearch focus person birth date:"))
+        XCTAssertTrue(juuretApp.contains("FamilySearch focus person death date:"))
+    }
+
     func testFamilySearchAndJuuretFatherBirthDateFormatsParseToComparableDates() {
         let comparisonService = FamilyComparisonService(nameManager: NameEquivalenceManager())
         let juuretCandidates = comparisonService.makeJuuretCandidates(from: [

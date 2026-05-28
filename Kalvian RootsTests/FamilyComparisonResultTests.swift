@@ -1716,6 +1716,8 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("window.__kalvianRootsFamilySearchStage"))
         XCTAssertTrue(script.contains("const textBlockVital = vitalFromTextBlock(extractionDocument(), label);"))
         XCTAssertTrue(script.contains("Birth|Born|Christening|Christened|Baptism|Baptized|Death|Died|Burial|Buried"))
+        XCTAssertTrue(script.contains("sourceCountSuffix"))
+        XCTAssertTrue(script.contains("\\\\s*[•·]\\\\s*\\\\d+\\\\s+Sources?"))
         XCTAssertTrue(script.contains("function extractPersonSummaryFromDocument(doc, fallbackId)"))
         XCTAssertFalse(script.contains("function extractChildDetailsFromPersonPage(summary)"))
         XCTAssertFalse(script.contains("function extractChildDetailsFromFetchedHTML(summary, notes)"))
