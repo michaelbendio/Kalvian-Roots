@@ -183,6 +183,52 @@ class FormatActionTests(unittest.TestCase):
             ),
         )
 
+    def test_source_update_preview_shows_matching_source_lines_without_editing(self):
+        action = {
+            "id": "source-update",
+            "type": "source.update.familysearch-id",
+            "personName": "Liisa",
+            "personId": "AB12-CD",
+            "requiresApproval": True,
+            "approvalPrompt": "Should I add AB12-CD to Liisa?",
+            "context": {
+                "birthDate": "1760-06-12",
+                "juuret": {
+                    "name": "Liisa",
+                    "birthDate": "1760-06-12",
+                },
+            },
+        }
+        source_text = "\n".join(
+            [
+                "TEST 2",
+                "Lapset",
+                "Liisa 12.06.1760",
+            ]
+        )
+
+        self.assertEqual(
+            format_action.format_source_update_preview(action, source_text),
+            "\n".join(
+                [
+                    "Should I add AB12-CD to Liisa?",
+                    "",
+                    "Action: source.update.familysearch-id",
+                    "ID: source-update",
+                    "Person: Liisa (AB12-CD)",
+                    "Birth: 1760-06-12",
+                    "",
+                    "Juuret: Liisa, 1760-06-12",
+                    "",
+                    "Requires explicit approval before changing source data.",
+                    "",
+                    "Source update preview:",
+                    "3: Liisa 12.06.1760",
+                    "No source edit was applied.",
+                ]
+            ),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,6 +2,7 @@
 import argparse
 import json
 import sys
+from datetime import datetime
 
 
 def candidate_line(label, candidate):
@@ -61,6 +62,59 @@ def format_action(action, fallback_action_id=None):
         lines.append("")
         lines.append("Requires explicit approval before changing source data.")
 
+    return "\n".join(lines)
+
+
+def source_date_variants(iso_date):
+    if not iso_date:
+        return []
+
+    variants = [iso_date]
+    try:
+        date = datetime.strptime(iso_date, "%Y-%m-%d")
+    except ValueError:
+        return variants
+
+    variants.append(f"{date.day}.{date.month}.{date.year}")
+    variants.append(f"{date.day:02d}.{date.month:02d}.{date.year}")
+    return list(dict.fromkeys(variants))
+
+
+def matching_source_lines(source_text, action):
+    context = action.get("context") or {}
+    juuret = context.get("juuret") or {}
+    name = (juuret.get("name") or action.get("personName") or "").casefold()
+    date_variants = source_date_variants(context.get("birthDate"))
+
+    matches = []
+    for index, line in enumerate(source_text.splitlines(), start=1):
+        folded = line.casefold()
+        has_name = name and name in folded
+        has_date = any(variant in line for variant in date_variants)
+        if has_name and (has_date or not date_variants):
+            matches.append((index, line))
+
+    return matches
+
+
+def format_source_update_preview(action, source_text, fallback_action_id=None):
+    lines = [format_action(action, fallback_action_id=fallback_action_id)]
+    lines.append("")
+    lines.append("Source update preview:")
+
+    if action.get("type") != "source.update.familysearch-id":
+        lines.append("This action is not a FamilySearch ID source update.")
+        lines.append("No source edit was applied.")
+        return "\n".join(lines)
+
+    matches = matching_source_lines(source_text, action)
+    if matches:
+        for line_number, line in matches:
+            lines.append(f"{line_number}: {line}")
+    else:
+        lines.append("No unique source line match found from action name/date context.")
+
+    lines.append("No source edit was applied.")
     return "\n".join(lines)
 
 
@@ -154,6 +208,7 @@ def main():
     action_parser.add_argument("action_id")
     proposal_parser = subparsers.add_parser("proposal")
     proposal_parser.add_argument("action_id")
+    proposal_parser.add_argument("--source-text")
 
     args = parser.parse_args()
     workup = load_workup()
@@ -183,6 +238,16 @@ def main():
 
     if args.command == "action":
         print(json.dumps(action, indent=2, sort_keys=True))
+    elif args.source_text:
+        with open(args.source_text, "r", encoding="utf-8") as source_file:
+            source_text = source_file.read()
+        print(
+            format_source_update_preview(
+                action,
+                source_text,
+                fallback_action_id=args.action_id,
+            )
+        )
     else:
         print(format_action(action, fallback_action_id=args.action_id))
     return 0
