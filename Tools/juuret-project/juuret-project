@@ -10,7 +10,11 @@ Usage:
   juuret-project action FAMILY_ID ACTION_ID [--host http://127.0.0.1:8081]
   juuret-project proposal FAMILY_ID ACTION_ID [--host http://127.0.0.1:8081]
 
-The Kalvian Roots macOS app must be running for this first slice.
+Options:
+  --host URL            Kalvian Roots server URL.
+  --workup-json PATH    Read an already captured workup JSON file instead of calling the app.
+
+The Kalvian Roots macOS app must be running unless --workup-json is used.
 USAGE
 }
 
@@ -25,6 +29,7 @@ shift
 host="http://127.0.0.1:8081"
 family_id=""
 action_id=""
+workup_json_path=""
 
 case "$command_name" in
   workup|actions|next)
@@ -56,6 +61,14 @@ while [[ $# -gt 0 ]]; do
       host="$2"
       shift 2
       ;;
+    --workup-json)
+      if [[ $# -lt 2 ]]; then
+        usage
+        exit 64
+      fi
+      workup_json_path="$2"
+      shift 2
+      ;;
     *)
       usage
       exit 64
@@ -67,7 +80,11 @@ encoded_family_id="$(
   python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$family_id"
 )"
 
-workup_json="$(curl --fail --silent --show-error "$host/family/$encoded_family_id/workup.json")"
+if [[ -n "$workup_json_path" ]]; then
+  workup_json="$(< "$workup_json_path")"
+else
+  workup_json="$(curl --fail --silent --show-error "$host/family/$encoded_family_id/workup.json")"
+fi
 
 case "$command_name" in
   workup)
