@@ -13,6 +13,12 @@ Fetch the full workup JSON:
 Tools/juuret-project/juuret-project workup "SAKERI 1"
 ```
 
+Fetch the canonical family source text as plain text:
+
+```sh
+Tools/juuret-project/juuret-project source "SAKERI 1"
+```
+
 Show a compact checkpoint:
 
 ```sh
