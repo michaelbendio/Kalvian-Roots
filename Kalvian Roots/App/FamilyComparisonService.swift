@@ -164,7 +164,7 @@ private extension FamilyComparisonService {
             birthDate: parseGenealogyDate(person.birthDate),
             source: .juuretKalvialla,
             nameManager: nameManager,
-            familySearchId: nil,
+            familySearchId: person.familySearchId,
             hiskiCitation: nil
         )
     }

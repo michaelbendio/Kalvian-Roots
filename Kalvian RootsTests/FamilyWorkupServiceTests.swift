@@ -151,6 +151,93 @@ final class FamilyWorkupServiceTests: XCTestCase {
         XCTAssertTrue(html.contains("FamilySearch: Liisa Mattsdotter, 1760-06-12, AB12-CD"))
     }
 
+    func testWorkupDoesNotProposeSourceUpdateWhenJuuretAlreadyHasMatchingFamilySearchId() throws {
+        let nameManager = NameEquivalenceManager()
+        let service = FamilyWorkupService(nameEquivalenceManager: nameManager)
+        let comparisonService = FamilyComparisonService(nameManager: nameManager)
+        let family = Family(
+            familyId: "TEST 2A",
+            pageReferences: ["2"],
+            husband: Person(name: "Matti"),
+            wife: Person(name: "Maria"),
+            children: [
+                Person(name: "Liisa", birthDate: "12.06.1760", familySearchId: "AB12-CD")
+            ]
+        )
+        let familySearchChildren = [
+            FamilySearchChild(id: "AB12-CD", name: "Liisa Mattsdotter", birthDate: "12 June 1760")
+        ]
+        let result = comparisonService.compare(
+            juuretCandidates: comparisonService.makeJuuretCandidates(from: family.allChildren),
+            hiskiCandidates: [],
+            familySearchCandidates: comparisonService.makeFamilySearchCandidates(from: familySearchChildren)
+        )
+
+        let workup = service.makeWorkup(
+            family: family,
+            network: nil,
+            sourceText: "TEST 2A\nLiisa <AB12-CD>",
+            familySearchExtraction: FamilySearchFamilyExtraction(
+                sourcePersonId: "TEST-FS",
+                children: familySearchChildren
+            ),
+            familySearchPersonId: "TEST-FS",
+            comparisonResult: result
+        )
+
+        XCTAssertFalse(workup.actions.contains { $0.type == "source.update.familysearch-id" })
+        XCTAssertFalse(workup.actions.contains { $0.type == "review.familysearch-id-mismatch" })
+        XCTAssertEqual(workup.comparison?.rows.first?.juuret?.familySearchId, "AB12-CD")
+    }
+
+    func testWorkupProposesReviewWhenJuuretAndFamilySearchIdsDiffer() throws {
+        let nameManager = NameEquivalenceManager()
+        let service = FamilyWorkupService(nameEquivalenceManager: nameManager)
+        let comparisonService = FamilyComparisonService(nameManager: nameManager)
+        let family = Family(
+            familyId: "TEST 2B",
+            pageReferences: ["2"],
+            husband: Person(name: "Matti"),
+            wife: Person(name: "Maria"),
+            children: [
+                Person(name: "Maria", birthDate: "12.02.1696", familySearchId: "PD55-86C")
+            ]
+        )
+        let familySearchChildren = [
+            FamilySearchChild(id: "M8ZK-DQP", name: "Maria Mattsson", birthDate: "12 February 1696")
+        ]
+        let result = comparisonService.compare(
+            juuretCandidates: comparisonService.makeJuuretCandidates(from: family.allChildren),
+            hiskiCandidates: [],
+            familySearchCandidates: comparisonService.makeFamilySearchCandidates(from: familySearchChildren)
+        )
+
+        let workup = service.makeWorkup(
+            family: family,
+            network: nil,
+            sourceText: "TEST 2B\nMaria <PD55-86C>",
+            familySearchExtraction: FamilySearchFamilyExtraction(
+                sourcePersonId: "TEST-FS",
+                children: familySearchChildren
+            ),
+            familySearchPersonId: "TEST-FS",
+            comparisonResult: result
+        )
+
+        XCTAssertFalse(workup.actions.contains { $0.type == "source.update.familysearch-id" })
+        let mismatchAction = try XCTUnwrap(workup.actions.first {
+            $0.type == "review.familysearch-id-mismatch"
+        })
+        XCTAssertEqual(mismatchAction.personName, "Maria")
+        XCTAssertEqual(mismatchAction.personId, "M8ZK-DQP")
+        XCTAssertEqual(
+            mismatchAction.approvalPrompt,
+            "Juuret has PD55-86C for Maria, but FamilySearch extraction matched M8ZK-DQP. Which ID is correct?"
+        )
+        XCTAssertEqual(mismatchAction.context?.juuret?.familySearchId, "PD55-86C")
+        XCTAssertEqual(mismatchAction.context?.familySearch?.familySearchId, "M8ZK-DQP")
+    }
+
     func testWorkupActionContextIncludesCoupleIndexForMatchedJuuretChild() throws {
         let nameManager = NameEquivalenceManager()
         let service = FamilyWorkupService(nameEquivalenceManager: nameManager)

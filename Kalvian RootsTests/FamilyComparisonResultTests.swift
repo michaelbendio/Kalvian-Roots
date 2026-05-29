@@ -912,6 +912,16 @@ final class FamilyComparisonServiceTests: XCTestCase {
         XCTAssertTrue(candidates.allSatisfy { $0.hiskiCitation == nil })
     }
 
+    func testMakeJuuretCandidatesPreservesFamilySearchIds() throws {
+        let candidates = service.makeJuuretCandidates(from: [
+            Person(name: "Maria", birthDate: "12.02.1696", familySearchId: "PD55-86C")
+        ])
+
+        let candidate = try XCTUnwrap(candidates.first)
+        XCTAssertEqual(candidate.rawName, "Maria")
+        XCTAssertEqual(candidate.familySearchId, "PD55-86C")
+    }
+
     func testHelenaDateFormatsAcrossSourcesCollapseIntoOneComparisonRow() throws {
         let familySearchCandidates = service.makeFamilySearchCandidates(from: [
             FamilySearchChild(

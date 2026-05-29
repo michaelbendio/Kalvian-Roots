@@ -305,20 +305,36 @@ final class FamilyWorkupService {
 
         for row in comparison?.rows ?? [] {
             if let juuret = row.juuret,
-               juuret.familySearchId == nil,
                let familySearchId = row.familySearch?.familySearchId {
-                actions.append(
-                    makeAction(
-                        familyId: familyId,
-                        type: "source.update.familysearch-id",
-                        label: "Propose adding this FamilySearch ID to the canonical Juuret source text.",
-                        personName: juuret.name,
-                        personId: familySearchId,
-                        requiresApproval: true,
-                        approvalPrompt: "Should I add \(familySearchId) to \(juuret.name) in the canonical Juuret source text?",
-                        row: row
+                if let juuretFamilySearchId = juuret.familySearchId {
+                    if juuretFamilySearchId != familySearchId {
+                        actions.append(
+                            makeAction(
+                                familyId: familyId,
+                                type: "review.familysearch-id-mismatch",
+                                label: "Review conflicting FamilySearch IDs before changing source data.",
+                                personName: juuret.name,
+                                personId: familySearchId,
+                                requiresApproval: true,
+                                approvalPrompt: "Juuret has \(juuretFamilySearchId) for \(juuret.name), but FamilySearch extraction matched \(familySearchId). Which ID is correct?",
+                                row: row
+                            )
+                        )
+                    }
+                } else {
+                    actions.append(
+                        makeAction(
+                            familyId: familyId,
+                            type: "source.update.familysearch-id",
+                            label: "Propose adding this FamilySearch ID to the canonical Juuret source text.",
+                            personName: juuret.name,
+                            personId: familySearchId,
+                            requiresApproval: true,
+                            approvalPrompt: "Should I add \(familySearchId) to \(juuret.name) in the canonical Juuret source text?",
+                            row: row
+                        )
                     )
-                )
+                }
             }
 
             switch row.status {
