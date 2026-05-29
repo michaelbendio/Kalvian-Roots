@@ -63,6 +63,57 @@ class FormatActionTests(unittest.TestCase):
 
         self.assertEqual(format_action.next_action(actions), actions[1])
 
+    def test_formats_workup_summary_with_next_action(self):
+        workup = {
+            "familyId": "SAKERI 1",
+            "sourceTextLineCount": 14,
+            "familySearch": {
+                "extractionStatus": "available",
+                "extractedChildCount": 12,
+            },
+            "couples": [{}, {}],
+            "comparison": {
+                "rowCount": 12,
+                "matchCount": 9,
+                "juuretOnlyCount": 1,
+                "hiskiOnlyCount": 0,
+                "familySearchOnlyCount": 2,
+            },
+            "actions": [
+                {
+                    "id": "SAKERI 1:familysearch.add-child:gusta",
+                    "type": "familysearch.add-child",
+                    "requiresApproval": True,
+                    "label": "Review whether this child should be added.",
+                },
+                {
+                    "id": "SAKERI 1:review.comparison:malin",
+                    "type": "review.comparison",
+                    "requiresApproval": True,
+                },
+            ],
+        }
+
+        self.assertEqual(
+            format_action.format_summary(workup),
+            "\n".join(
+                [
+                    "Family: SAKERI 1",
+                    "Source text lines: 14",
+                    "FamilySearch: available, children 12",
+                    "Couples: 2",
+                    "Comparison: rows 12, matches 9, Juuret-only 1, HisKi-only 0, FamilySearch-only 2",
+                    "Actions:",
+                    "- familysearch.add-child: 1",
+                    "- review.comparison: 1",
+                    "",
+                    "Next:",
+                    "Review whether this child should be added.",
+                    "ID: SAKERI 1:familysearch.add-child:gusta",
+                ]
+            ),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

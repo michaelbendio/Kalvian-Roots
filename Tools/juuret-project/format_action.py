@@ -78,13 +78,66 @@ def next_action(actions):
     return actions[0] if actions else None
 
 
-def load_actions():
-    return json.load(sys.stdin).get("actions", [])
+def format_summary(workup):
+    family_search = workup.get("familySearch") or {}
+    comparison = workup.get("comparison") or {}
+    actions = workup.get("actions") or []
+    couples = workup.get("couples") or []
+
+    action_counts = {}
+    for action in actions:
+        action_type = action.get("type") or "unknown"
+        action_counts[action_type] = action_counts.get(action_type, 0) + 1
+
+    lines = [
+        f"Family: {workup.get('familyId', 'unknown')}",
+        f"Source text lines: {workup.get('sourceTextLineCount', 0)}",
+        (
+            "FamilySearch: "
+            + (family_search.get("extractionStatus") or "unknown")
+            + f", children {family_search.get('extractedChildCount', 0)}"
+        ),
+        f"Couples: {len(couples)}",
+    ]
+
+    if comparison:
+        lines.append(
+            "Comparison: "
+            + f"rows {comparison.get('rowCount', 0)}, "
+            + f"matches {comparison.get('matchCount', 0)}, "
+            + f"Juuret-only {comparison.get('juuretOnlyCount', 0)}, "
+            + f"HisKi-only {comparison.get('hiskiOnlyCount', 0)}, "
+            + f"FamilySearch-only {comparison.get('familySearchOnlyCount', 0)}"
+        )
+    else:
+        lines.append("Comparison: unavailable")
+
+    if action_counts:
+        lines.append("Actions:")
+        for action_type in sorted(action_counts):
+            lines.append(f"- {action_type}: {action_counts[action_type]}")
+    else:
+        lines.append("Actions: none")
+
+    action = next_action(actions)
+    if action:
+        lines.append("")
+        lines.append("Next:")
+        lines.append(action.get("approvalPrompt") or action.get("label") or action.get("type") or action.get("id"))
+        if action.get("id"):
+            lines.append("ID: " + action["id"])
+
+    return "\n".join(lines)
+
+
+def load_workup():
+    return json.load(sys.stdin)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Format Juuret Project workup actions.")
     subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers.add_parser("summary")
     subparsers.add_parser("actions")
     subparsers.add_parser("next")
     action_parser = subparsers.add_parser("action")
@@ -93,7 +146,12 @@ def main():
     proposal_parser.add_argument("action_id")
 
     args = parser.parse_args()
-    actions = load_actions()
+    workup = load_workup()
+    actions = workup.get("actions", [])
+
+    if args.command == "summary":
+        print(format_summary(workup))
+        return 0
 
     if args.command == "actions":
         print(json.dumps(actions, indent=2, sort_keys=True))

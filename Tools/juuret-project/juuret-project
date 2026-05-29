@@ -5,6 +5,7 @@ usage() {
   cat >&2 <<'USAGE'
 Usage:
   juuret-project workup FAMILY_ID [--host http://127.0.0.1:8081]
+  juuret-project summary FAMILY_ID [--host http://127.0.0.1:8081]
   juuret-project actions FAMILY_ID [--host http://127.0.0.1:8081]
   juuret-project next FAMILY_ID [--host http://127.0.0.1:8081]
   juuret-project action FAMILY_ID ACTION_ID [--host http://127.0.0.1:8081]
@@ -32,7 +33,7 @@ action_id=""
 workup_json_path=""
 
 case "$command_name" in
-  workup|actions|next)
+  workup|summary|actions|next)
     family_id="$1"
     shift
     ;;
@@ -89,6 +90,9 @@ fi
 case "$command_name" in
   workup)
     print -r -- "$workup_json"
+    ;;
+  summary)
+    python3 "${0:A:h}/format_action.py" summary <<< "$workup_json"
     ;;
   actions)
     python3 "${0:A:h}/format_action.py" actions <<< "$workup_json"
