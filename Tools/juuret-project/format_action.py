@@ -197,17 +197,34 @@ def proposed_source_edit(action, source_line):
 
 
 def format_source_edit_dry_run(action, source_text, fallback_action_id=None):
+    lines, edit = source_edit_preview_lines(
+        action,
+        source_text,
+        fallback_action_id=fallback_action_id,
+        title="Source edit dry run:",
+        final_line="No source edit was applied.",
+    )
+    return "\n".join(lines)
+
+
+def source_edit_preview_lines(
+    action,
+    source_text,
+    fallback_action_id=None,
+    title="Source edit dry run:",
+    final_line="No source edit was applied.",
+):
     lines = [format_action(action, fallback_action_id=fallback_action_id)]
     lines.append("")
-    lines.append("Source edit dry run:")
+    lines.append(title)
 
     if action.get("type") not in {
         "source.update.familysearch-id",
         "review.familysearch-id-mismatch",
     }:
         lines.append("This action type does not support a source edit dry run.")
-        lines.append("No source edit was applied.")
-        return "\n".join(lines)
+        lines.append(final_line)
+        return lines, None
 
     matches = matching_source_lines(source_text, action)
     if len(matches) != 1:
@@ -217,15 +234,15 @@ def format_source_edit_dry_run(action, source_text, fallback_action_id=None):
                 lines.append(f"{line_number}: {line}")
         else:
             lines.append("No unique source line match found from action name/date context.")
-        lines.append("No source edit was applied.")
-        return "\n".join(lines)
+        lines.append(final_line)
+        return lines, None
 
     line_number, old_line = matches[0]
     new_line, reason = proposed_source_edit(action, old_line)
     if reason:
         lines.append(reason)
-        lines.append("No source edit was applied.")
-        return "\n".join(lines)
+        lines.append(final_line)
+        return lines, None
 
     lines.extend(
         [
@@ -234,10 +251,37 @@ def format_source_edit_dry_run(action, source_text, fallback_action_id=None):
             old_line,
             "New:",
             new_line,
-            "No source edit was applied.",
+            final_line,
         ]
     )
-    return "\n".join(lines)
+    return lines, {
+        "line_number": line_number,
+        "old_line": old_line,
+        "new_line": new_line,
+    }
+
+
+def apply_source_edit(action, source_text, fallback_action_id=None):
+    lines, edit = source_edit_preview_lines(
+        action,
+        source_text,
+        fallback_action_id=fallback_action_id,
+        title="Source edit apply:",
+        final_line="No source edit was applied.",
+    )
+
+    if edit is None:
+        return source_text, "\n".join(lines), False
+
+    old_line = edit["old_line"]
+    new_line = edit["new_line"]
+    if source_text.count(old_line) != 1:
+        lines.append("The matched source line is not unique in the full source file.")
+        lines.append("No source edit was applied.")
+        return source_text, "\n".join(lines), False
+
+    lines[-1] = "Source edit applied."
+    return source_text.replace(old_line, new_line, 1), "\n".join(lines), True
 
 
 def find_action(actions, action_id):
@@ -336,6 +380,7 @@ def main():
     proposal_parser.add_argument("--source-text")
     proposal_parser.add_argument("--source-context", choices=["source-update", "id-mismatch"])
     proposal_parser.add_argument("--source-edit-dry-run", action="store_true")
+    proposal_parser.add_argument("--source-edit-apply", action="store_true")
 
     args = parser.parse_args()
     workup = load_workup()
@@ -372,7 +417,16 @@ def main():
     elif args.source_text:
         with open(args.source_text, "r", encoding="utf-8") as source_file:
             source_text = source_file.read()
-        if args.source_edit_dry_run:
+        if args.source_edit_apply:
+            updated_text, preview, applied = apply_source_edit(
+                action,
+                source_text,
+                fallback_action_id=args.action_id,
+            )
+            if applied:
+                with open(args.source_text, "w", encoding="utf-8") as source_file:
+                    source_file.write(updated_text)
+        elif args.source_edit_dry_run:
             preview = format_source_edit_dry_run(
                 action,
                 source_text,

@@ -424,6 +424,62 @@ class FormatActionTests(unittest.TestCase):
         self.assertIn("Multiple matching source lines found; manual review is required.", preview)
         self.assertTrue(preview.endswith("No source edit was applied."))
 
+    def test_apply_source_edit_replaces_mismatched_familysearch_id(self):
+        action = {
+            "id": "mismatch",
+            "type": "review.familysearch-id-mismatch",
+            "personName": "Maria",
+            "personId": "M8ZK-DQP",
+            "requiresApproval": True,
+            "approvalPrompt": "Juuret has PD55-86C for Maria, but FamilySearch extraction matched M8ZK-DQP. Which ID is correct?",
+            "context": {
+                "birthDate": "1696-02-12",
+                "juuret": {
+                    "name": "Maria",
+                    "birthDate": "1696-02-12",
+                    "familySearchId": "PD55-86C",
+                },
+                "familySearch": {
+                    "name": "Maria Mattsson",
+                    "birthDate": "1696-02-12",
+                    "familySearchId": "M8ZK-DQP",
+                },
+            },
+        }
+        source_text = "SAKERI 1\n★ 12.02.1696 \tMaria <PD55-86C>\t† 13.05.1697\n"
+
+        updated_text, preview, applied = format_action.apply_source_edit(action, source_text)
+
+        self.assertTrue(applied)
+        self.assertIn("Source edit apply:", preview)
+        self.assertIn("Source edit applied.", preview)
+        self.assertIn("Maria <M8ZK-DQP>", updated_text)
+        self.assertNotIn("Maria <PD55-86C>", updated_text)
+
+    def test_apply_source_edit_refuses_ambiguous_matches_without_writing(self):
+        action = {
+            "id": "source-update",
+            "type": "source.update.familysearch-id",
+            "personName": "Liisa",
+            "personId": "AB12-CD",
+            "requiresApproval": True,
+            "context": {
+                "birthDate": "1760-06-12",
+                "juuret": {
+                    "name": "Liisa",
+                    "birthDate": "1760-06-12",
+                },
+            },
+        }
+        source_text = "Liisa 12.06.1760\nLiisa 12.06.1760 duplicate\n"
+
+        updated_text, preview, applied = format_action.apply_source_edit(action, source_text)
+
+        self.assertFalse(applied)
+        self.assertEqual(updated_text, source_text)
+        self.assertIn("Multiple matching source lines found; manual review is required.", preview)
+        self.assertTrue(preview.endswith("No source edit was applied."))
+
 
 if __name__ == "__main__":
     unittest.main()

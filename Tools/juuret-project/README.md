@@ -68,6 +68,19 @@ Show a proposed old/new source line without editing the canonical file:
 Tools/juuret-project/juuret-project source-edit-dry-run "SAKERI 1" "ACTION_ID"
 ```
 
+Apply an approved source edit to the canonical roots file:
+
+```sh
+Tools/juuret-project/juuret-project source-edit-apply "SAKERI 1" "ACTION_ID"
+```
+
+Use a non-default roots file for an apply:
+
+```sh
+Tools/juuret-project/juuret-project source-edit-apply "SAKERI 1" "ACTION_ID" \
+  --roots-file /path/to/JuuretKälviällä.roots
+```
+
 Focus on FamilySearch ID source updates:
 
 ```sh
@@ -96,6 +109,6 @@ Tools/juuret-project/juuret-project source-update-preview "SAKERI 1" "ACTION_ID"
 
 ## Approval Boundary
 
-Commands that show proposals do not edit the canonical Juuret source text.
-They produce approval-ready text for the conversation. Source changes still
-require explicit approval before any write path is implemented or invoked.
+Commands that show proposals or dry-runs do not edit the canonical Juuret
+source text. `source-edit-apply` is the explicit write command and should only
+be run after the proposed old/new source line has been reviewed and approved.

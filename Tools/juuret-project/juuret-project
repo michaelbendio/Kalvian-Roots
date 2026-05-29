@@ -14,11 +14,13 @@ Usage:
   juuret-project source-update-preview FAMILY_ID ACTION_ID [--host http://127.0.0.1:8081]
   juuret-project id-mismatch-preview FAMILY_ID ACTION_ID [--host http://127.0.0.1:8081]
   juuret-project source-edit-dry-run FAMILY_ID ACTION_ID [--host http://127.0.0.1:8081]
+  juuret-project source-edit-apply FAMILY_ID ACTION_ID [--host http://127.0.0.1:8081]
 
 Options:
   --host URL            Kalvian Roots server URL.
   --workup-json PATH    Read an already captured workup JSON file instead of calling the app.
   --source-text PATH    Read already captured source text for source-update-preview.
+  --roots-file PATH     Roots file to edit for source-edit-apply.
   --type TYPE           Limit summary/actions/next to one action type.
   --kind KIND           Limit summary/actions/next to source-update or id-mismatch.
 
@@ -39,6 +41,7 @@ family_id=""
 action_id=""
 workup_json_path=""
 source_text_path=""
+roots_file_path="${HOME}/Documents/JuuretKälviällä.roots"
 action_type=""
 action_kind=""
 
@@ -47,7 +50,7 @@ case "$command_name" in
     family_id="$1"
     shift
     ;;
-  action|proposal|source-update-preview|id-mismatch-preview|source-edit-dry-run)
+  action|proposal|source-update-preview|id-mismatch-preview|source-edit-dry-run|source-edit-apply)
     if [[ $# -lt 2 ]]; then
       usage
       exit 64
@@ -86,6 +89,14 @@ while [[ $# -gt 0 ]]; do
         exit 64
       fi
       source_text_path="$2"
+      shift 2
+      ;;
+    --roots-file)
+      if [[ $# -lt 2 ]]; then
+        usage
+        exit 64
+      fi
+      roots_file_path="$2"
       shift 2
       ;;
     --type)
@@ -192,5 +203,12 @@ case "$command_name" in
       curl --fail --silent --show-error "$host/family/$encoded_family_id/source.txt" > "$fetched_source_text_path"
       python3 "${0:A:h}/format_action.py" proposal "$action_id" --source-text "$fetched_source_text_path" --source-edit-dry-run <<< "$workup_json"
     fi
+    ;;
+  source-edit-apply)
+    if [[ ! -f "$roots_file_path" ]]; then
+      print -u2 -- "Roots file not found: $roots_file_path"
+      exit 66
+    fi
+    python3 "${0:A:h}/format_action.py" proposal "$action_id" --source-text "$roots_file_path" --source-edit-apply <<< "$workup_json"
     ;;
 esac

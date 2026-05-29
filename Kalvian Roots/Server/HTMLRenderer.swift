@@ -1177,7 +1177,7 @@ struct HTMLRenderer {
             "<div class=\"workup-action-prompt\">\(escapeHTML($0))</div>"
         } ?? ""
         let contextHTML = action.context.map(renderWorkupActionContext) ?? ""
-        let sourceEditDryRunCommandHTML = renderSourceEditDryRunCommand(action)
+        let sourceEditCommandHTML = renderSourceEditCommands(action)
 
         return """
         <li>
@@ -1188,30 +1188,42 @@ struct HTMLRenderer {
             </div>
             \(approvalHTML)
             \(contextHTML)
-            \(sourceEditDryRunCommandHTML)
+            \(sourceEditCommandHTML)
         </li>
         """
     }
 
-    private static func renderSourceEditDryRunCommand(_ action: FamilyWorkup.ActionSummary) -> String {
+    private static func renderSourceEditCommands(_ action: FamilyWorkup.ActionSummary) -> String {
         guard action.type == "source.update.familysearch-id" ||
                 action.type == "review.familysearch-id-mismatch" else {
             return ""
         }
 
-        let command = [
-            "Tools/juuret-project/juuret-project",
-            "source-edit-dry-run",
-            shellQuote(action.familyId),
-            shellQuote(action.id)
-        ].joined(separator: " ")
+        let dryRunCommand = sourceEditCommand(action, commandName: "source-edit-dry-run")
+        let applyCommand = sourceEditCommand(action, commandName: "source-edit-apply")
 
         return """
         <div class="workup-action-copy-row workup-muted">
-            <code class="workup-action-command">\(escapeHTML(command))</code>
-            <button type="button" class="workup-copy-button" data-copy="\(escapeHTML(command))" onclick="copyWorkupValue(this)">Copy Command</button>
+            <code class="workup-action-command">\(escapeHTML(dryRunCommand))</code>
+            <button type="button" class="workup-copy-button" data-copy="\(escapeHTML(dryRunCommand))" onclick="copyWorkupValue(this)">Copy Dry Run</button>
+        </div>
+        <div class="workup-action-copy-row workup-muted">
+            <code class="workup-action-command">\(escapeHTML(applyCommand))</code>
+            <button type="button" class="workup-copy-button" data-copy="\(escapeHTML(applyCommand))" onclick="copyWorkupValue(this)">Copy Apply</button>
         </div>
         """
+    }
+
+    private static func sourceEditCommand(
+        _ action: FamilyWorkup.ActionSummary,
+        commandName: String
+    ) -> String {
+        [
+            "Tools/juuret-project/juuret-project",
+            commandName,
+            shellQuote(action.familyId),
+            shellQuote(action.id)
+        ].joined(separator: " ")
     }
 
     private static func renderWorkupActionContext(_ context: FamilyWorkup.ActionContext) -> String {
