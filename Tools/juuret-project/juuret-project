@@ -6,7 +6,9 @@ usage() {
 Usage:
   juuret-project workup FAMILY_ID [--host http://127.0.0.1:8081]
   juuret-project actions FAMILY_ID [--host http://127.0.0.1:8081]
+  juuret-project next FAMILY_ID [--host http://127.0.0.1:8081]
   juuret-project action FAMILY_ID ACTION_ID [--host http://127.0.0.1:8081]
+  juuret-project proposal FAMILY_ID ACTION_ID [--host http://127.0.0.1:8081]
 
 The Kalvian Roots macOS app must be running for this first slice.
 USAGE
@@ -25,11 +27,11 @@ family_id=""
 action_id=""
 
 case "$command_name" in
-  workup|actions)
+  workup|actions|next)
     family_id="$1"
     shift
     ;;
-  action)
+  action|proposal)
     if [[ $# -lt 2 ]]; then
       usage
       exit 64
@@ -74,6 +76,72 @@ case "$command_name" in
   actions)
     python3 -c 'import json, sys; print(json.dumps(json.load(sys.stdin).get("actions", []), indent=2, sort_keys=True))' <<< "$workup_json"
     ;;
+  next)
+    python3 -c '
+import json
+import sys
+
+actions = json.load(sys.stdin).get("actions", [])
+action = next((candidate for candidate in actions if candidate.get("requiresApproval")), None)
+if action is None and actions:
+    action = actions[0]
+if action is None:
+    print("No queued actions.")
+    raise SystemExit(0)
+
+def candidate_line(label, candidate):
+    if not candidate:
+        return None
+
+    parts = [candidate.get("name")]
+    if candidate.get("birthDate"):
+        parts.append(candidate["birthDate"])
+    if candidate.get("familySearchId"):
+        parts.append(candidate["familySearchId"])
+    if candidate.get("hiskiCitation"):
+        parts.append(candidate["hiskiCitation"])
+
+    return f"{label}: " + ", ".join(part for part in parts if part)
+
+context = action.get("context") or {}
+lines = []
+lines.append(action.get("approvalPrompt") or action.get("label") or action.get("type") or "Action proposal")
+lines.append("")
+lines.append("Action: " + action.get("type", "unknown"))
+lines.append("ID: " + action.get("id", ""))
+
+person_name = action.get("personName")
+person_id = action.get("personId")
+if person_name or person_id:
+    person = person_name or "unknown person"
+    if person_id:
+        person = f"{person} ({person_id})"
+    lines.append(f"Person: {person}")
+
+if context.get("coupleIndex") is not None:
+    lines.append("Couple: " + str(context["coupleIndex"] + 1))
+if context.get("status"):
+    lines.append("Status: " + context["status"])
+if context.get("birthDate"):
+    lines.append("Birth: " + context["birthDate"])
+
+source_lines = [
+    candidate_line("Juuret", context.get("juuret")),
+    candidate_line("HisKi", context.get("hiski")),
+    candidate_line("FamilySearch", context.get("familySearch")),
+]
+source_lines = [line for line in source_lines if line]
+if source_lines:
+    lines.append("")
+    lines.extend(source_lines)
+
+if action.get("requiresApproval"):
+    lines.append("")
+    lines.append("Requires explicit approval before changing source data.")
+
+print("\n".join(lines))
+' <<< "$workup_json"
+    ;;
   action)
     python3 -c '
 import json
@@ -88,6 +156,72 @@ for action in actions:
 
 print(f"Action not found: {action_id}", file=sys.stderr)
 raise SystemExit(66)
+' "$action_id" <<< "$workup_json"
+    ;;
+  proposal)
+    python3 -c '
+import json
+import sys
+
+action_id = sys.argv[1]
+actions = json.load(sys.stdin).get("actions", [])
+
+action = next((candidate for candidate in actions if candidate.get("id") == action_id), None)
+if action is None:
+    print(f"Action not found: {action_id}", file=sys.stderr)
+    raise SystemExit(66)
+
+def candidate_line(label, candidate):
+    if not candidate:
+        return None
+
+    parts = [candidate.get("name")]
+    if candidate.get("birthDate"):
+        parts.append(candidate["birthDate"])
+    if candidate.get("familySearchId"):
+        parts.append(candidate["familySearchId"])
+    if candidate.get("hiskiCitation"):
+        parts.append(candidate["hiskiCitation"])
+
+    return f"{label}: " + ", ".join(part for part in parts if part)
+
+context = action.get("context") or {}
+lines = []
+lines.append(action.get("approvalPrompt") or action.get("label") or action.get("type") or "Action proposal")
+lines.append("")
+lines.append("Action: " + action.get("type", "unknown"))
+lines.append("ID: " + action.get("id", action_id))
+
+person_name = action.get("personName")
+person_id = action.get("personId")
+if person_name or person_id:
+    person = person_name or "unknown person"
+    if person_id:
+        person = f"{person} ({person_id})"
+    lines.append(f"Person: {person}")
+
+if context.get("coupleIndex") is not None:
+    lines.append("Couple: " + str(context["coupleIndex"] + 1))
+if context.get("status"):
+    lines.append("Status: " + context["status"])
+if context.get("birthDate"):
+    lines.append("Birth: " + context["birthDate"])
+
+source_lines = [
+    candidate_line("Juuret", context.get("juuret")),
+    candidate_line("HisKi", context.get("hiski")),
+    candidate_line("FamilySearch", context.get("familySearch")),
+]
+source_lines = [line for line in source_lines if line]
+if source_lines:
+    lines.append("")
+    lines.extend(source_lines)
+
+if action.get("requiresApproval"):
+    lines.append("")
+    lines.append("Requires explicit approval before changing source data.")
+
+print("\n".join(lines))
 ' "$action_id" <<< "$workup_json"
     ;;
 esac
