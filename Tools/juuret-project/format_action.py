@@ -4,6 +4,19 @@ import json
 import sys
 from datetime import datetime
 
+ACTION_KIND_TYPES = {
+    "source-update": "source.update.familysearch-id",
+    "id-mismatch": "review.familysearch-id-mismatch",
+}
+
+
+def action_type_for(kind=None, action_type=None):
+    if action_type:
+        return action_type
+    if not kind:
+        return None
+    return ACTION_KIND_TYPES[kind]
+
 
 def candidate_line(label, candidate):
     if not candidate:
@@ -234,10 +247,13 @@ def main():
     subparsers = parser.add_subparsers(dest="command", required=True)
     summary_parser = subparsers.add_parser("summary")
     summary_parser.add_argument("--type", dest="action_type")
+    summary_parser.add_argument("--kind", choices=sorted(ACTION_KIND_TYPES))
     actions_parser = subparsers.add_parser("actions")
     actions_parser.add_argument("--type", dest="action_type")
+    actions_parser.add_argument("--kind", choices=sorted(ACTION_KIND_TYPES))
     next_parser = subparsers.add_parser("next")
     next_parser.add_argument("--type", dest="action_type")
+    next_parser.add_argument("--kind", choices=sorted(ACTION_KIND_TYPES))
     action_parser = subparsers.add_parser("action")
     action_parser.add_argument("action_id")
     proposal_parser = subparsers.add_parser("proposal")
@@ -248,18 +264,22 @@ def main():
     args = parser.parse_args()
     workup = load_workup()
     actions = workup.get("actions", [])
+    requested_action_type = action_type_for(
+        kind=getattr(args, "kind", None),
+        action_type=getattr(args, "action_type", None),
+    )
 
     if args.command == "summary":
-        print(format_summary(workup, action_type=args.action_type))
+        print(format_summary(workup, action_type=requested_action_type))
         return 0
 
     if args.command == "actions":
-        actions = filter_actions(actions, action_type=args.action_type)
+        actions = filter_actions(actions, action_type=requested_action_type)
         print(json.dumps(actions, indent=2, sort_keys=True))
         return 0
 
     if args.command == "next":
-        action = next_action(actions, action_type=args.action_type)
+        action = next_action(actions, action_type=requested_action_type)
         if action is None:
             print("No queued actions.")
             return 0

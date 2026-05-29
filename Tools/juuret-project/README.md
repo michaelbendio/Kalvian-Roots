@@ -65,13 +65,13 @@ Tools/juuret-project/juuret-project id-mismatch-preview "SAKERI 1" "ACTION_ID"
 Focus on FamilySearch ID source updates:
 
 ```sh
-Tools/juuret-project/juuret-project next "SAKERI 1" --type source.update.familysearch-id
+Tools/juuret-project/juuret-project next "SAKERI 1" --kind source-update
 ```
 
 Focus on FamilySearch ID mismatches:
 
 ```sh
-Tools/juuret-project/juuret-project next "SAKERI 1" --type review.familysearch-id-mismatch
+Tools/juuret-project/juuret-project next "SAKERI 1" --kind id-mismatch
 ```
 
 Use a saved workup JSON file:

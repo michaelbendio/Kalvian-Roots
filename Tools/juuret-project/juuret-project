@@ -19,6 +19,7 @@ Options:
   --workup-json PATH    Read an already captured workup JSON file instead of calling the app.
   --source-text PATH    Read already captured source text for source-update-preview.
   --type TYPE           Limit summary/actions/next to one action type.
+  --kind KIND           Limit summary/actions/next to source-update or id-mismatch.
 
 The Kalvian Roots macOS app must be running unless --workup-json is used.
 USAGE
@@ -38,6 +39,7 @@ action_id=""
 workup_json_path=""
 source_text_path=""
 action_type=""
+action_kind=""
 
 case "$command_name" in
   workup|source|summary|actions|next)
@@ -93,6 +95,14 @@ while [[ $# -gt 0 ]]; do
       action_type="$2"
       shift 2
       ;;
+    --kind)
+      if [[ $# -lt 2 ]]; then
+        usage
+        exit 64
+      fi
+      action_kind="$2"
+      shift 2
+      ;;
     *)
       usage
       exit 64
@@ -122,6 +132,8 @@ case "$command_name" in
   summary)
     if [[ -n "$action_type" ]]; then
       python3 "${0:A:h}/format_action.py" summary --type "$action_type" <<< "$workup_json"
+    elif [[ -n "$action_kind" ]]; then
+      python3 "${0:A:h}/format_action.py" summary --kind "$action_kind" <<< "$workup_json"
     else
       python3 "${0:A:h}/format_action.py" summary <<< "$workup_json"
     fi
@@ -129,6 +141,8 @@ case "$command_name" in
   actions)
     if [[ -n "$action_type" ]]; then
       python3 "${0:A:h}/format_action.py" actions --type "$action_type" <<< "$workup_json"
+    elif [[ -n "$action_kind" ]]; then
+      python3 "${0:A:h}/format_action.py" actions --kind "$action_kind" <<< "$workup_json"
     else
       python3 "${0:A:h}/format_action.py" actions <<< "$workup_json"
     fi
@@ -136,6 +150,8 @@ case "$command_name" in
   next)
     if [[ -n "$action_type" ]]; then
       python3 "${0:A:h}/format_action.py" next --type "$action_type" <<< "$workup_json"
+    elif [[ -n "$action_kind" ]]; then
+      python3 "${0:A:h}/format_action.py" next --kind "$action_kind" <<< "$workup_json"
     else
       python3 "${0:A:h}/format_action.py" next <<< "$workup_json"
     fi

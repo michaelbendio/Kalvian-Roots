@@ -85,6 +85,19 @@ class FormatActionTests(unittest.TestCase):
             actions[1],
         )
 
+    def test_action_type_for_named_kind(self):
+        self.assertEqual(
+            format_action.action_type_for(kind="id-mismatch"),
+            "review.familysearch-id-mismatch",
+        )
+        self.assertEqual(
+            format_action.action_type_for(
+                kind="id-mismatch",
+                action_type="review.hiski-only",
+            ),
+            "review.hiski-only",
+        )
+
     def test_formats_workup_summary_with_next_action(self):
         workup = {
             "familyId": "SAKERI 1",
