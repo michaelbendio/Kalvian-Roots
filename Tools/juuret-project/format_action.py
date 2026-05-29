@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import re
 import sys
 from datetime import datetime
 
@@ -165,6 +166,80 @@ def format_id_mismatch_preview(action, source_text, fallback_action_id=None):
     )
 
 
+def proposed_source_edit(action, source_line):
+    context = action.get("context") or {}
+    juuret = context.get("juuret") or {}
+    family_search = context.get("familySearch") or {}
+    new_id = action.get("personId") or family_search.get("familySearchId")
+    old_id = juuret.get("familySearchId")
+    person_name = juuret.get("name") or action.get("personName")
+    action_type = action.get("type")
+
+    if not new_id:
+        return None, "No FamilySearch ID is available for the proposed edit."
+
+    if action_type == "source.update.familysearch-id":
+        if re.search(r"<[A-Z0-9]{4}-[A-Z0-9]{3,}>", source_line):
+            return None, "Matched source line already contains a FamilySearch ID."
+        if not person_name or person_name not in source_line:
+            return None, "Matched source line does not contain the Juuret person name exactly."
+        return source_line.replace(person_name, f"{person_name} <{new_id}>", 1), None
+
+    if action_type == "review.familysearch-id-mismatch":
+        if not old_id:
+            return None, "Juuret does not provide the old FamilySearch ID needed for replacement."
+        old_token = f"<{old_id}>"
+        if old_token not in source_line:
+            return None, f"Matched source line does not contain {old_token}."
+        return source_line.replace(old_token, f"<{new_id}>", 1), None
+
+    return None, "This action type does not support a source edit dry run."
+
+
+def format_source_edit_dry_run(action, source_text, fallback_action_id=None):
+    lines = [format_action(action, fallback_action_id=fallback_action_id)]
+    lines.append("")
+    lines.append("Source edit dry run:")
+
+    if action.get("type") not in {
+        "source.update.familysearch-id",
+        "review.familysearch-id-mismatch",
+    }:
+        lines.append("This action type does not support a source edit dry run.")
+        lines.append("No source edit was applied.")
+        return "\n".join(lines)
+
+    matches = matching_source_lines(source_text, action)
+    if len(matches) != 1:
+        if matches:
+            lines.append("Multiple matching source lines found; manual review is required.")
+            for line_number, line in matches:
+                lines.append(f"{line_number}: {line}")
+        else:
+            lines.append("No unique source line match found from action name/date context.")
+        lines.append("No source edit was applied.")
+        return "\n".join(lines)
+
+    line_number, old_line = matches[0]
+    new_line, reason = proposed_source_edit(action, old_line)
+    if reason:
+        lines.append(reason)
+        lines.append("No source edit was applied.")
+        return "\n".join(lines)
+
+    lines.extend(
+        [
+            f"Line: {line_number}",
+            "Old:",
+            old_line,
+            "New:",
+            new_line,
+            "No source edit was applied.",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def find_action(actions, action_id):
     for action in actions:
         if action.get("id") == action_id:
@@ -260,6 +335,7 @@ def main():
     proposal_parser.add_argument("action_id")
     proposal_parser.add_argument("--source-text")
     proposal_parser.add_argument("--source-context", choices=["source-update", "id-mismatch"])
+    proposal_parser.add_argument("--source-edit-dry-run", action="store_true")
 
     args = parser.parse_args()
     workup = load_workup()
@@ -296,7 +372,13 @@ def main():
     elif args.source_text:
         with open(args.source_text, "r", encoding="utf-8") as source_file:
             source_text = source_file.read()
-        if args.source_context == "id-mismatch":
+        if args.source_edit_dry_run:
+            preview = format_source_edit_dry_run(
+                action,
+                source_text,
+                fallback_action_id=args.action_id,
+            )
+        elif args.source_context == "id-mismatch":
             preview = format_id_mismatch_preview(
                 action,
                 source_text,

@@ -327,6 +327,103 @@ class FormatActionTests(unittest.TestCase):
             ),
         )
 
+    def test_source_edit_dry_run_adds_missing_familysearch_id_without_writing(self):
+        action = {
+            "id": "source-update",
+            "type": "source.update.familysearch-id",
+            "personName": "Liisa",
+            "personId": "AB12-CD",
+            "requiresApproval": True,
+            "approvalPrompt": "Should I add AB12-CD to Liisa?",
+            "context": {
+                "birthDate": "1760-06-12",
+                "juuret": {
+                    "name": "Liisa",
+                    "birthDate": "1760-06-12",
+                },
+            },
+        }
+        source_text = "TEST 2\n★ 12.06.1760 \tLiisa\t† 1761\n"
+
+        self.assertEqual(
+            format_action.format_source_edit_dry_run(action, source_text),
+            "\n".join(
+                [
+                    "Should I add AB12-CD to Liisa?",
+                    "",
+                    "Action: source.update.familysearch-id",
+                    "ID: source-update",
+                    "Person: Liisa (AB12-CD)",
+                    "Birth: 1760-06-12",
+                    "",
+                    "Juuret: Liisa, 1760-06-12",
+                    "",
+                    "Requires explicit approval before changing source data.",
+                    "",
+                    "Source edit dry run:",
+                    "Line: 2",
+                    "Old:",
+                    "★ 12.06.1760 \tLiisa\t† 1761",
+                    "New:",
+                    "★ 12.06.1760 \tLiisa <AB12-CD>\t† 1761",
+                    "No source edit was applied.",
+                ]
+            ),
+        )
+
+    def test_source_edit_dry_run_replaces_mismatched_familysearch_id_without_writing(self):
+        action = {
+            "id": "mismatch",
+            "type": "review.familysearch-id-mismatch",
+            "personName": "Maria",
+            "personId": "M8ZK-DQP",
+            "requiresApproval": True,
+            "approvalPrompt": "Juuret has PD55-86C for Maria, but FamilySearch extraction matched M8ZK-DQP. Which ID is correct?",
+            "context": {
+                "birthDate": "1696-02-12",
+                "juuret": {
+                    "name": "Maria",
+                    "birthDate": "1696-02-12",
+                    "familySearchId": "PD55-86C",
+                },
+                "familySearch": {
+                    "name": "Maria Mattsson",
+                    "birthDate": "1696-02-12",
+                    "familySearchId": "M8ZK-DQP",
+                },
+            },
+        }
+        source_text = "SAKERI 1\n★ 12.02.1696 \tMaria <PD55-86C>\t† 13.05.1697\n"
+
+        preview = format_action.format_source_edit_dry_run(action, source_text)
+
+        self.assertIn("Source edit dry run:", preview)
+        self.assertIn("★ 12.02.1696 \tMaria <PD55-86C>\t† 13.05.1697", preview)
+        self.assertIn("★ 12.02.1696 \tMaria <M8ZK-DQP>\t† 13.05.1697", preview)
+        self.assertTrue(preview.endswith("No source edit was applied."))
+
+    def test_source_edit_dry_run_refuses_ambiguous_matches(self):
+        action = {
+            "id": "source-update",
+            "type": "source.update.familysearch-id",
+            "personName": "Liisa",
+            "personId": "AB12-CD",
+            "requiresApproval": True,
+            "context": {
+                "birthDate": "1760-06-12",
+                "juuret": {
+                    "name": "Liisa",
+                    "birthDate": "1760-06-12",
+                },
+            },
+        }
+        source_text = "Liisa 12.06.1760\nLiisa 12.06.1760 duplicate\n"
+
+        preview = format_action.format_source_edit_dry_run(action, source_text)
+
+        self.assertIn("Multiple matching source lines found; manual review is required.", preview)
+        self.assertTrue(preview.endswith("No source edit was applied."))
+
 
 if __name__ == "__main__":
     unittest.main()

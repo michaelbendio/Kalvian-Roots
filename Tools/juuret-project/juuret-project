@@ -13,6 +13,7 @@ Usage:
   juuret-project proposal FAMILY_ID ACTION_ID [--host http://127.0.0.1:8081]
   juuret-project source-update-preview FAMILY_ID ACTION_ID [--host http://127.0.0.1:8081]
   juuret-project id-mismatch-preview FAMILY_ID ACTION_ID [--host http://127.0.0.1:8081]
+  juuret-project source-edit-dry-run FAMILY_ID ACTION_ID [--host http://127.0.0.1:8081]
 
 Options:
   --host URL            Kalvian Roots server URL.
@@ -46,7 +47,7 @@ case "$command_name" in
     family_id="$1"
     shift
     ;;
-  action|proposal|source-update-preview|id-mismatch-preview)
+  action|proposal|source-update-preview|id-mismatch-preview|source-edit-dry-run)
     if [[ $# -lt 2 ]]; then
       usage
       exit 64
@@ -180,6 +181,16 @@ case "$command_name" in
       trap 'rm -f "$fetched_source_text_path"' EXIT
       curl --fail --silent --show-error "$host/family/$encoded_family_id/source.txt" > "$fetched_source_text_path"
       python3 "${0:A:h}/format_action.py" proposal "$action_id" --source-text "$fetched_source_text_path" --source-context id-mismatch <<< "$workup_json"
+    fi
+    ;;
+  source-edit-dry-run)
+    if [[ -n "$source_text_path" ]]; then
+      python3 "${0:A:h}/format_action.py" proposal "$action_id" --source-text "$source_text_path" --source-edit-dry-run <<< "$workup_json"
+    else
+      fetched_source_text_path="$(mktemp)"
+      trap 'rm -f "$fetched_source_text_path"' EXIT
+      curl --fail --silent --show-error "$host/family/$encoded_family_id/source.txt" > "$fetched_source_text_path"
+      python3 "${0:A:h}/format_action.py" proposal "$action_id" --source-text "$fetched_source_text_path" --source-edit-dry-run <<< "$workup_json"
     fi
     ;;
 esac

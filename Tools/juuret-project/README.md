@@ -62,6 +62,12 @@ Preview the source line context for a FamilySearch ID mismatch review:
 Tools/juuret-project/juuret-project id-mismatch-preview "SAKERI 1" "ACTION_ID"
 ```
 
+Show a proposed old/new source line without editing the canonical file:
+
+```sh
+Tools/juuret-project/juuret-project source-edit-dry-run "SAKERI 1" "ACTION_ID"
+```
+
 Focus on FamilySearch ID source updates:
 
 ```sh
