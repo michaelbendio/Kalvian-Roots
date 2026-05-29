@@ -16,6 +16,7 @@ Usage:
 Options:
   --host URL            Kalvian Roots server URL.
   --workup-json PATH    Read an already captured workup JSON file instead of calling the app.
+  --source-text PATH    Read already captured source text for source-update-preview.
   --type TYPE           Limit summary/actions/next to one action type.
 
 The Kalvian Roots macOS app must be running unless --workup-json is used.
@@ -34,6 +35,7 @@ host="http://127.0.0.1:8081"
 family_id=""
 action_id=""
 workup_json_path=""
+source_text_path=""
 action_type=""
 
 case "$command_name" in
@@ -72,6 +74,14 @@ while [[ $# -gt 0 ]]; do
         exit 64
       fi
       workup_json_path="$2"
+      shift 2
+      ;;
+    --source-text)
+      if [[ $# -lt 2 ]]; then
+        usage
+        exit 64
+      fi
+      source_text_path="$2"
       shift 2
       ;;
     --type)
@@ -136,9 +146,13 @@ case "$command_name" in
     python3 "${0:A:h}/format_action.py" proposal "$action_id" <<< "$workup_json"
     ;;
   source-update-preview)
-    source_text_path="$(mktemp)"
-    trap 'rm -f "$source_text_path"' EXIT
-    curl --fail --silent --show-error "$host/family/$encoded_family_id/source.txt" > "$source_text_path"
-    python3 "${0:A:h}/format_action.py" proposal "$action_id" --source-text "$source_text_path" <<< "$workup_json"
+    if [[ -n "$source_text_path" ]]; then
+      python3 "${0:A:h}/format_action.py" proposal "$action_id" --source-text "$source_text_path" <<< "$workup_json"
+    else
+      fetched_source_text_path="$(mktemp)"
+      trap 'rm -f "$fetched_source_text_path"' EXIT
+      curl --fail --silent --show-error "$host/family/$encoded_family_id/source.txt" > "$fetched_source_text_path"
+      python3 "${0:A:h}/format_action.py" proposal "$action_id" --source-text "$fetched_source_text_path" <<< "$workup_json"
+    fi
     ;;
 esac

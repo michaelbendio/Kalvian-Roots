@@ -68,6 +68,14 @@ Use a saved workup JSON file:
 Tools/juuret-project/juuret-project summary "SAKERI 1" --workup-json /path/to/workup.json
 ```
 
+Preview a source update fully offline:
+
+```sh
+Tools/juuret-project/juuret-project source-update-preview "SAKERI 1" "ACTION_ID" \
+  --workup-json /path/to/workup.json \
+  --source-text /path/to/source.txt
+```
+
 ## Approval Boundary
 
 Commands that show proposals do not edit the canonical Juuret source text.
