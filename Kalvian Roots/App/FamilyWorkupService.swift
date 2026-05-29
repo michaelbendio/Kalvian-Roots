@@ -276,6 +276,20 @@ final class FamilyWorkupService {
         }
 
         for row in comparison?.rows ?? [] {
+            if let juuret = row.juuret,
+               juuret.familySearchId == nil,
+               let familySearchId = row.familySearch?.familySearchId {
+                actions.append(
+                    FamilyWorkup.ActionSummary(
+                        type: "source.update.familysearch-id",
+                        label: "Propose adding this FamilySearch ID to the canonical Juuret source text.",
+                        personName: juuret.name,
+                        personId: familySearchId,
+                        requiresApproval: true
+                    )
+                )
+            }
+
             switch row.status {
             case "Missing in FamilySearch":
                 if hasFamilySearchExtraction {

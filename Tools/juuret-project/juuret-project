@@ -5,6 +5,7 @@ usage() {
   cat >&2 <<'USAGE'
 Usage:
   juuret-project workup FAMILY_ID [--host http://127.0.0.1:8081]
+  juuret-project actions FAMILY_ID [--host http://127.0.0.1:8081]
 
 The Kalvian Roots macOS app must be running for this first slice.
 USAGE
@@ -22,7 +23,7 @@ host="http://127.0.0.1:8081"
 family_id=""
 
 case "$command_name" in
-  workup)
+  workup|actions)
     family_id="$1"
     shift
     ;;
@@ -53,4 +54,13 @@ encoded_family_id="$(
   python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$family_id"
 )"
 
-curl --fail --silent --show-error "$host/family/$encoded_family_id/workup.json"
+workup_json="$(curl --fail --silent --show-error "$host/family/$encoded_family_id/workup.json")"
+
+case "$command_name" in
+  workup)
+    print -r -- "$workup_json"
+    ;;
+  actions)
+    python3 -c 'import json, sys; print(json.dumps(json.load(sys.stdin).get("actions", []), indent=2, sort_keys=True))' <<< "$workup_json"
+    ;;
+esac

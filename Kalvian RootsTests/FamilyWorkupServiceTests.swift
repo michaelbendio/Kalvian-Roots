@@ -84,6 +84,48 @@ final class FamilyWorkupServiceTests: XCTestCase {
         XCTAssertTrue(workup.actions.contains { $0.type == "citation.juuret" && $0.personName == "Liisa" })
     }
 
+    func testWorkupProposesApprovedFamilySearchIdSourceUpdateForMatchedChild() throws {
+        let nameManager = NameEquivalenceManager()
+        let service = FamilyWorkupService(nameEquivalenceManager: nameManager)
+        let comparisonService = FamilyComparisonService(nameManager: nameManager)
+        let family = Family(
+            familyId: "TEST 2",
+            pageReferences: ["2"],
+            husband: Person(name: "Matti"),
+            wife: Person(name: "Maria"),
+            children: [
+                Person(name: "Liisa", birthDate: "12.06.1760")
+            ]
+        )
+        let familySearchChildren = [
+            FamilySearchChild(id: "AB12-CD", name: "Liisa Mattsdotter", birthDate: "12 June 1760")
+        ]
+        let result = comparisonService.compare(
+            juuretCandidates: comparisonService.makeJuuretCandidates(from: family.allChildren),
+            hiskiCandidates: [],
+            familySearchCandidates: comparisonService.makeFamilySearchCandidates(from: familySearchChildren)
+        )
+
+        let workup = service.makeWorkup(
+            family: family,
+            network: nil,
+            sourceText: "TEST 2\nLiisa",
+            familySearchExtraction: FamilySearchFamilyExtraction(
+                sourcePersonId: "TEST-FS",
+                children: familySearchChildren
+            ),
+            familySearchPersonId: "TEST-FS",
+            comparisonResult: result
+        )
+
+        XCTAssertTrue(workup.actions.contains {
+            $0.type == "source.update.familysearch-id" &&
+            $0.personName == "Liisa" &&
+            $0.personId == "AB12-CD" &&
+            $0.requiresApproval
+        })
+    }
+
     func testWorkupMergesNearbySameNameDateDiscrepancyIntoReviewAction() throws {
         let nameManager = NameEquivalenceManager()
         let service = FamilyWorkupService(nameEquivalenceManager: nameManager)
