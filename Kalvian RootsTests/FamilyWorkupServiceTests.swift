@@ -45,6 +45,10 @@ final class FamilyWorkupServiceTests: XCTestCase {
         XCTAssertFalse(workup.hiskiQueries.isEmpty)
         XCTAssertTrue(workup.hiskiQueries.contains { $0.label == "primary HisKi parent query" })
         XCTAssertTrue(workup.actions.contains { $0.type == "familysearch.extract" })
+        let extractionAction = try XCTUnwrap(workup.actions.first { $0.type == "familysearch.extract" })
+        XCTAssertEqual(extractionAction.id, "SAKERI 1:familysearch.extract:K8JR-2W8")
+        XCTAssertEqual(extractionAction.familyId, "SAKERI 1")
+        XCTAssertNil(extractionAction.context)
     }
 
     func testWorkupSummarizesComparisonRowsAndActions() throws {
@@ -118,12 +122,25 @@ final class FamilyWorkupServiceTests: XCTestCase {
             comparisonResult: result
         )
 
-        XCTAssertTrue(workup.actions.contains {
+        let sourceUpdateAction = try XCTUnwrap(workup.actions.first {
             $0.type == "source.update.familysearch-id" &&
             $0.personName == "Liisa" &&
-            $0.personId == "AB12-CD" &&
-            $0.requiresApproval
+            $0.personId == "AB12-CD"
         })
+        XCTAssertTrue(sourceUpdateAction.requiresApproval)
+        XCTAssertEqual(sourceUpdateAction.id, "TEST 2:source.update.familysearch-id:elis:1760-06-12:AB12-CD:Liisa")
+        XCTAssertEqual(sourceUpdateAction.familyId, "TEST 2")
+        XCTAssertEqual(
+            sourceUpdateAction.approvalPrompt,
+            "Should I add AB12-CD to Liisa in the canonical Juuret source text?"
+        )
+        XCTAssertEqual(sourceUpdateAction.context?.identityName, "elis")
+        XCTAssertEqual(sourceUpdateAction.context?.birthDate, "1760-06-12")
+        XCTAssertEqual(sourceUpdateAction.context?.status, "Missing in HisKi")
+        XCTAssertEqual(sourceUpdateAction.context?.juuret?.name, "Liisa")
+        XCTAssertNil(sourceUpdateAction.context?.juuret?.familySearchId)
+        XCTAssertEqual(sourceUpdateAction.context?.familySearch?.name, "Liisa Mattsdotter")
+        XCTAssertEqual(sourceUpdateAction.context?.familySearch?.familySearchId, "AB12-CD")
     }
 
     func testWorkupMergesNearbySameNameDateDiscrepancyIntoReviewAction() throws {

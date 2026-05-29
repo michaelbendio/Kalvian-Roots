@@ -71,11 +71,25 @@ struct FamilyWorkup: Codable, Equatable {
     }
 
     struct ActionSummary: Codable, Equatable {
+        let id: String
+        let familyId: String
         let type: String
         let label: String
         let personName: String?
         let personId: String?
         let requiresApproval: Bool
+        let approvalPrompt: String?
+        let context: ActionContext?
+    }
+
+    struct ActionContext: Codable, Equatable {
+        let coupleIndex: Int?
+        let identityName: String?
+        let birthDate: String?
+        let status: String?
+        let familySearch: CandidateSummary?
+        let juuret: CandidateSummary?
+        let hiski: CandidateSummary?
     }
 
     let familyId: String
@@ -149,6 +163,7 @@ final class FamilyWorkupService {
             hiskiQueries: hiskiQueries,
             comparison: comparison,
             actions: makeActions(
+                familyId: family.familyId,
                 familySearch: familySearchSummary,
                 comparison: comparison
             )
@@ -257,6 +272,7 @@ final class FamilyWorkupService {
     }
 
     private func makeActions(
+        familyId: String,
         familySearch: FamilyWorkup.FamilySearchSummary,
         comparison: FamilyWorkup.ComparisonSummary?
     ) -> [FamilyWorkup.ActionSummary] {
@@ -265,12 +281,15 @@ final class FamilyWorkupService {
 
         if familySearch.extractionStatus == "not-extracted" || familySearch.extractionStatus == "failed" {
             actions.append(
-                FamilyWorkup.ActionSummary(
+                makeAction(
+                    familyId: familyId,
                     type: "familysearch.extract",
                     label: "Run in-app FamilySearch WebKit extraction on the Mac.",
                     personName: nil,
                     personId: familySearch.anchorPersonId,
-                    requiresApproval: false
+                    requiresApproval: false,
+                    approvalPrompt: nil,
+                    row: nil
                 )
             )
         }
@@ -280,12 +299,15 @@ final class FamilyWorkupService {
                juuret.familySearchId == nil,
                let familySearchId = row.familySearch?.familySearchId {
                 actions.append(
-                    FamilyWorkup.ActionSummary(
+                    makeAction(
+                        familyId: familyId,
                         type: "source.update.familysearch-id",
                         label: "Propose adding this FamilySearch ID to the canonical Juuret source text.",
                         personName: juuret.name,
                         personId: familySearchId,
-                        requiresApproval: true
+                        requiresApproval: true,
+                        approvalPrompt: "Should I add \(familySearchId) to \(juuret.name) in the canonical Juuret source text?",
+                        row: row
                     )
                 )
             }
@@ -294,58 +316,73 @@ final class FamilyWorkupService {
             case "Missing in FamilySearch":
                 if hasFamilySearchExtraction {
                     actions.append(
-                        FamilyWorkup.ActionSummary(
+                        makeAction(
+                            familyId: familyId,
                             type: "familysearch.add-child",
                             label: "Review whether this Juuret/HisKi child should be added to FamilySearch.",
                             personName: row.juuret?.name ?? row.hiski?.name,
                             personId: nil,
-                            requiresApproval: true
+                            requiresApproval: true,
+                            approvalPrompt: nil,
+                            row: row
                         )
                     )
                 }
             case "Juuret-only":
                 if hasFamilySearchExtraction {
                     actions.append(
-                        FamilyWorkup.ActionSummary(
+                        makeAction(
+                            familyId: familyId,
                             type: "citation.juuret",
                             label: "Prepare a Juuret citation for this person.",
                             personName: row.juuret?.name,
                             personId: row.juuret?.familySearchId,
-                            requiresApproval: true
+                            requiresApproval: true,
+                            approvalPrompt: nil,
+                            row: row
                         )
                     )
                 }
             case "HisKi-only":
                 actions.append(
-                    FamilyWorkup.ActionSummary(
+                    makeAction(
+                        familyId: familyId,
                         type: "review.hiski-only",
                         label: "Review HisKi-only child before proposing FamilySearch changes.",
                         personName: row.hiski?.name,
                         personId: nil,
-                        requiresApproval: true
+                        requiresApproval: true,
+                        approvalPrompt: nil,
+                        row: row
                     )
                 )
             case "FamilySearch date needed":
                 if hasFamilySearchExtraction {
                     actions.append(
-                        FamilyWorkup.ActionSummary(
+                        makeAction(
+                            familyId: familyId,
                             type: "familysearch.date-needed",
                             label: "Review FamilySearch date evidence for this child.",
                             personName: row.familySearch?.name,
                             personId: row.familySearch?.familySearchId,
-                            requiresApproval: false
+                            requiresApproval: false,
+                            approvalPrompt: nil,
+                            row: row
                         )
                     )
                 }
             default:
                 if row.reviewNote != nil {
                     actions.append(
-                        FamilyWorkup.ActionSummary(
+                        makeAction(
+                            familyId: familyId,
                             type: "review.comparison",
                             label: "Review possible comparison discrepancy.",
                             personName: row.juuret?.name ?? row.familySearch?.name ?? row.hiski?.name,
                             personId: row.familySearch?.familySearchId,
-                            requiresApproval: true
+                            requiresApproval: true,
+                            approvalPrompt: nil,
+                            row: row
                         )
                     )
                 }
@@ -353,6 +390,65 @@ final class FamilyWorkupService {
         }
 
         return actions
+    }
+
+    private func makeAction(
+        familyId: String,
+        type: String,
+        label: String,
+        personName: String?,
+        personId: String?,
+        requiresApproval: Bool,
+        approvalPrompt: String?,
+        row: FamilyWorkup.ComparisonRow?
+    ) -> FamilyWorkup.ActionSummary {
+        FamilyWorkup.ActionSummary(
+            id: actionId(
+                familyId: familyId,
+                type: type,
+                row: row,
+                personName: personName,
+                personId: personId
+            ),
+            familyId: familyId,
+            type: type,
+            label: label,
+            personName: personName,
+            personId: personId,
+            requiresApproval: requiresApproval,
+            approvalPrompt: approvalPrompt,
+            context: row.map {
+                FamilyWorkup.ActionContext(
+                    coupleIndex: nil,
+                    identityName: $0.identityName,
+                    birthDate: $0.birthDate,
+                    status: $0.status,
+                    familySearch: $0.familySearch,
+                    juuret: $0.juuret,
+                    hiski: $0.hiski
+                )
+            }
+        )
+    }
+
+    private func actionId(
+        familyId: String,
+        type: String,
+        row: FamilyWorkup.ComparisonRow?,
+        personName: String?,
+        personId: String?
+    ) -> String {
+        [
+            familyId,
+            type,
+            row?.identityName,
+            row?.birthDate,
+            personId,
+            personName
+        ]
+        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+        .joined(separator: ":")
     }
 
     private func makePersonSummary(_ person: Person) -> FamilyWorkup.PersonSummary {
