@@ -49,6 +49,13 @@ Show one action as proposal text:
 Tools/juuret-project/juuret-project proposal "SAKERI 1" "ACTION_ID"
 ```
 
+Preview the source line context for a FamilySearch ID source update without
+editing the canonical file:
+
+```sh
+Tools/juuret-project/juuret-project source-update-preview "SAKERI 1" "ACTION_ID"
+```
+
 Focus on FamilySearch ID source updates:
 
 ```sh
