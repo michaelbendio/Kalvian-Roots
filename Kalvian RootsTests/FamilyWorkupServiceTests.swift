@@ -149,6 +149,9 @@ final class FamilyWorkupServiceTests: XCTestCase {
         XCTAssertTrue(html.contains("Couple 1"))
         XCTAssertTrue(html.contains("Juuret: Liisa, 1760-06-12"))
         XCTAssertTrue(html.contains("FamilySearch: Liisa Mattsdotter, 1760-06-12, AB12-CD"))
+        XCTAssertTrue(html.contains("Copy ID"))
+        XCTAssertTrue(html.contains("Copy Command"))
+        XCTAssertTrue(html.contains("Tools/juuret-project/juuret-project source-edit-dry-run"))
     }
 
     func testWorkupDoesNotProposeSourceUpdateWhenJuuretAlreadyHasMatchingFamilySearchId() throws {
@@ -236,6 +239,11 @@ final class FamilyWorkupServiceTests: XCTestCase {
         )
         XCTAssertEqual(mismatchAction.context?.juuret?.familySearchId, "PD55-86C")
         XCTAssertEqual(mismatchAction.context?.familySearch?.familySearchId, "M8ZK-DQP")
+
+        let html = HTMLRenderer.renderWorkup(workup, family: family, homeId: family.familyId)
+        XCTAssertTrue(html.contains("review.familysearch-id-mismatch"))
+        XCTAssertTrue(html.contains("Copy Command"))
+        XCTAssertTrue(html.contains("Tools/juuret-project/juuret-project source-edit-dry-run"))
     }
 
     func testWorkupActionContextIncludesCoupleIndexForMatchedJuuretChild() throws {

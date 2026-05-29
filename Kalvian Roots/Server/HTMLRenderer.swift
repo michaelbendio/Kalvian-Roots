@@ -1029,9 +1029,30 @@ struct HTMLRenderer {
             margin-bottom: 8px;
         }
         .workup-action-id {
-            display: block;
-            margin-top: 3px;
             word-break: break-word;
+        }
+        .workup-action-copy-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 3px;
+            flex-wrap: wrap;
+        }
+        .workup-action-command {
+            word-break: break-word;
+        }
+        .workup-copy-button {
+            border: 1px solid #ccc;
+            background: #fff;
+            color: #333;
+            border-radius: 4px;
+            padding: 3px 8px;
+            font: inherit;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .workup-copy-button:hover {
+            background: #f3f3f3;
         }
         .workup-action-prompt {
             margin-top: 4px;
@@ -1144,6 +1165,7 @@ struct HTMLRenderer {
                     \(comparisonHTML)
                 </div>
             </div>
+            \(workupCopyScript)
         </body>
         </html>
         """
@@ -1155,14 +1177,40 @@ struct HTMLRenderer {
             "<div class=\"workup-action-prompt\">\(escapeHTML($0))</div>"
         } ?? ""
         let contextHTML = action.context.map(renderWorkupActionContext) ?? ""
+        let sourceEditDryRunCommandHTML = renderSourceEditDryRunCommand(action)
 
         return """
         <li>
             <strong>\(escapeHTML(action.type))</strong>: \(escapeHTML(action.label))\(personHTML)
-            <code class="workup-action-id">\(escapeHTML(action.id))</code>
+            <div class="workup-action-copy-row">
+                <code class="workup-action-id">\(escapeHTML(action.id))</code>
+                <button type="button" class="workup-copy-button" data-copy="\(escapeHTML(action.id))" onclick="copyWorkupValue(this)">Copy ID</button>
+            </div>
             \(approvalHTML)
             \(contextHTML)
+            \(sourceEditDryRunCommandHTML)
         </li>
+        """
+    }
+
+    private static func renderSourceEditDryRunCommand(_ action: FamilyWorkup.ActionSummary) -> String {
+        guard action.type == "source.update.familysearch-id" ||
+                action.type == "review.familysearch-id-mismatch" else {
+            return ""
+        }
+
+        let command = [
+            "Tools/juuret-project/juuret-project",
+            "source-edit-dry-run",
+            shellQuote(action.familyId),
+            shellQuote(action.id)
+        ].joined(separator: " ")
+
+        return """
+        <div class="workup-action-copy-row workup-muted">
+            <code class="workup-action-command">\(escapeHTML(command))</code>
+            <button type="button" class="workup-copy-button" data-copy="\(escapeHTML(command))" onclick="copyWorkupValue(this)">Copy Command</button>
+        </div>
         """
     }
 
@@ -1289,6 +1337,38 @@ struct HTMLRenderer {
         </script>
         """
     }
+
+    private static var workupCopyScript: String {
+        """
+        <script>
+        function copyWorkupValue(button) {
+            const value = button.getAttribute('data-copy') || '';
+            const originalText = button.textContent;
+
+            function markCopied() {
+                button.textContent = 'Copied';
+                setTimeout(() => {
+                    button.textContent = originalText;
+                }, 1500);
+            }
+
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(value).then(markCopied);
+                return;
+            }
+
+            const textarea = document.createElement('textarea');
+            textarea.value = value;
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            document.execCommand('copy');
+            textarea.remove();
+            markCopied();
+        }
+        </script>
+        """
+    }
     
     private static var navigationScript: String {
         return """
@@ -1389,6 +1469,10 @@ struct HTMLRenderer {
             .replacingOccurrences(of: "'", with: "\\'")
             .replacingOccurrences(of: "\n", with: "\\n")
             .replacingOccurrences(of: "\r", with: "\\r")
+    }
+
+    private static func shellQuote(_ string: String) -> String {
+        "'\(string.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
     
     private static func urlEncode(_ string: String) -> String {
