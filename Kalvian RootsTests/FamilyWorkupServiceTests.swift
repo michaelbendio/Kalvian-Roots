@@ -149,6 +149,10 @@ final class FamilyWorkupServiceTests: XCTestCase {
         XCTAssertTrue(html.contains("Couple 1"))
         XCTAssertTrue(html.contains("Juuret: Liisa, 1760-06-12"))
         XCTAssertTrue(html.contains("FamilySearch: Liisa Mattsdotter, 1760-06-12, AB12-CD"))
+        XCTAssertTrue(html.contains(#"id="review-queue""#))
+        XCTAssertTrue(html.contains("href=\"#source-updates\""))
+        XCTAssertTrue(html.contains(#"id="source-updates""#))
+        XCTAssertTrue(html.contains("Source Updates"))
         XCTAssertTrue(html.contains("Copy ID"))
         XCTAssertTrue(html.contains("Copy Dry Run"))
         XCTAssertTrue(html.contains("Copy Apply"))
@@ -244,6 +248,10 @@ final class FamilyWorkupServiceTests: XCTestCase {
 
         let html = HTMLRenderer.renderWorkup(workup, family: family, homeId: family.familyId)
         XCTAssertTrue(html.contains("review.familysearch-id-mismatch"))
+        XCTAssertTrue(html.contains(#"id="review-queue""#))
+        XCTAssertTrue(html.contains("href=\"#familysearch-id-mismatches\""))
+        XCTAssertTrue(html.contains(#"id="familysearch-id-mismatches""#))
+        XCTAssertTrue(html.contains("FamilySearch ID Mismatches"))
         XCTAssertTrue(html.contains("Copy Dry Run"))
         XCTAssertTrue(html.contains("Copy Apply"))
         XCTAssertTrue(html.contains("Tools/juuret-project/juuret-project source-edit-dry-run"))
@@ -426,6 +434,8 @@ final class FamilyWorkupServiceTests: XCTestCase {
 
         let html = HTMLRenderer.renderWorkup(workup, family: family, homeId: family.familyId)
 
+        XCTAssertTrue(html.contains("Review Queue"))
+        XCTAssertTrue(html.contains("Other Actions"))
         XCTAssertTrue(html.contains(#"<form method="post" action="/family/SAKERI%201/familysearch-extract""#))
         XCTAssertTrue(html.contains("Run FamilySearch Extraction"))
     }

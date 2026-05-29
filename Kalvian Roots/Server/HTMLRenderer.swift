@@ -1028,6 +1028,24 @@ struct HTMLRenderer {
         .workup-section li {
             margin-bottom: 8px;
         }
+        .workup-review-nav {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        .workup-review-link {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 5px 9px;
+            color: #333;
+            background: #fafafa;
+            text-decoration: none;
+            font-size: 13px;
+        }
+        .workup-review-link:hover {
+            background: #f0f0f0;
+        }
         .workup-action-id {
             word-break: break-word;
         }
@@ -1094,9 +1112,8 @@ struct HTMLRenderer {
         } else {
             familySearchActionHTML = ""
         }
-        let actionsHTML = workup.actions.isEmpty
-            ? "<li>No queued actions.</li>"
-            : workup.actions.map(renderWorkupAction).joined(separator: "\n")
+        let reviewQueueHTML = renderWorkupReviewQueue(workup.actions)
+        let actionSectionsHTML = renderWorkupActionSections(workup.actions)
         let couplesHTML = workup.couples.map { couple in
             """
             <section class="workup-section">
@@ -1157,10 +1174,8 @@ struct HTMLRenderer {
                         <ul>\(hiskiHTML)</ul>
                     </section>
 
-                    <section class="workup-section">
-                        <h2>Actions</h2>
-                        <ul>\(actionsHTML)</ul>
-                    </section>
+                    \(reviewQueueHTML)
+                    \(actionSectionsHTML)
 
                     \(comparisonHTML)
                 </div>
@@ -1168,6 +1183,91 @@ struct HTMLRenderer {
             \(workupCopyScript)
         </body>
         </html>
+        """
+    }
+
+    private static func renderWorkupReviewQueue(_ actions: [FamilyWorkup.ActionSummary]) -> String {
+        guard !actions.isEmpty else {
+            return """
+            <section class="workup-section" id="review-queue">
+                <h2>Review Queue</h2>
+                <p class="workup-muted">No queued actions.</p>
+            </section>
+            """
+        }
+
+        let mismatchCount = actions.filter { $0.type == "review.familysearch-id-mismatch" }.count
+        let sourceUpdateCount = actions.filter { $0.type == "source.update.familysearch-id" }.count
+        let otherCount = actions.count - mismatchCount - sourceUpdateCount
+        let links = [
+            ("familysearch-id-mismatches", "ID Mismatches", mismatchCount),
+            ("source-updates", "Source Updates", sourceUpdateCount),
+            ("other-actions", "Other Actions", otherCount)
+        ]
+            .filter { $0.2 > 0 }
+            .map { id, label, count in
+                "<a class=\"workup-review-link\" href=\"#\(id)\">\(label) (\(count))</a>"
+            }
+            .joined(separator: "\n")
+
+        return """
+        <section class="workup-section" id="review-queue">
+            <h2>Review Queue</h2>
+            <p class="workup-muted">\(actions.count) queued \(actions.count == 1 ? "action" : "actions") for collaborative review.</p>
+            <nav class="workup-review-nav">
+                \(links)
+            </nav>
+        </section>
+        """
+    }
+
+    private static func renderWorkupActionSections(_ actions: [FamilyWorkup.ActionSummary]) -> String {
+        guard !actions.isEmpty else {
+            return ""
+        }
+
+        let mismatches = actions.filter { $0.type == "review.familysearch-id-mismatch" }
+        let sourceUpdates = actions.filter { $0.type == "source.update.familysearch-id" }
+        let otherActions = actions.filter {
+            $0.type != "review.familysearch-id-mismatch" &&
+                $0.type != "source.update.familysearch-id"
+        }
+
+        return [
+            renderWorkupActionSection(
+                id: "familysearch-id-mismatches",
+                title: "FamilySearch ID Mismatches",
+                actions: mismatches
+            ),
+            renderWorkupActionSection(
+                id: "source-updates",
+                title: "Source Updates",
+                actions: sourceUpdates
+            ),
+            renderWorkupActionSection(
+                id: "other-actions",
+                title: "Other Actions",
+                actions: otherActions
+            )
+        ]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+    }
+
+    private static func renderWorkupActionSection(
+        id: String,
+        title: String,
+        actions: [FamilyWorkup.ActionSummary]
+    ) -> String {
+        guard !actions.isEmpty else {
+            return ""
+        }
+
+        return """
+        <section class="workup-section" id="\(id)">
+            <h2>\(escapeHTML(title))</h2>
+            <ul>\(actions.map(renderWorkupAction).joined(separator: "\n"))</ul>
+        </section>
         """
     }
 
