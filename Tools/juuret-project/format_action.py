@@ -71,17 +71,24 @@ def find_action(actions, action_id):
     return None
 
 
-def next_action(actions):
+def filter_actions(actions, action_type=None):
+    if not action_type:
+        return actions
+    return [action for action in actions if action.get("type") == action_type]
+
+
+def next_action(actions, action_type=None):
+    actions = filter_actions(actions, action_type)
     for action in actions:
         if action.get("requiresApproval"):
             return action
     return actions[0] if actions else None
 
 
-def format_summary(workup):
+def format_summary(workup, action_type=None):
     family_search = workup.get("familySearch") or {}
     comparison = workup.get("comparison") or {}
-    actions = workup.get("actions") or []
+    actions = filter_actions(workup.get("actions") or [], action_type)
     couples = workup.get("couples") or []
 
     action_counts = {}
@@ -137,9 +144,12 @@ def load_workup():
 def main():
     parser = argparse.ArgumentParser(description="Format Juuret Project workup actions.")
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("summary")
-    subparsers.add_parser("actions")
-    subparsers.add_parser("next")
+    summary_parser = subparsers.add_parser("summary")
+    summary_parser.add_argument("--type", dest="action_type")
+    actions_parser = subparsers.add_parser("actions")
+    actions_parser.add_argument("--type", dest="action_type")
+    next_parser = subparsers.add_parser("next")
+    next_parser.add_argument("--type", dest="action_type")
     action_parser = subparsers.add_parser("action")
     action_parser.add_argument("action_id")
     proposal_parser = subparsers.add_parser("proposal")
@@ -150,15 +160,16 @@ def main():
     actions = workup.get("actions", [])
 
     if args.command == "summary":
-        print(format_summary(workup))
+        print(format_summary(workup, action_type=args.action_type))
         return 0
 
     if args.command == "actions":
+        actions = filter_actions(actions, action_type=args.action_type)
         print(json.dumps(actions, indent=2, sort_keys=True))
         return 0
 
     if args.command == "next":
-        action = next_action(actions)
+        action = next_action(actions, action_type=args.action_type)
         if action is None:
             print("No queued actions.")
             return 0

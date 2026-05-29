@@ -63,6 +63,28 @@ class FormatActionTests(unittest.TestCase):
 
         self.assertEqual(format_action.next_action(actions), actions[1])
 
+    def test_next_action_can_filter_by_type(self):
+        actions = [
+            {
+                "id": "review",
+                "type": "review.comparison",
+                "requiresApproval": True,
+            },
+            {
+                "id": "source-update",
+                "type": "source.update.familysearch-id",
+                "requiresApproval": True,
+            },
+        ]
+
+        self.assertEqual(
+            format_action.next_action(
+                actions,
+                action_type="source.update.familysearch-id",
+            ),
+            actions[1],
+        )
+
     def test_formats_workup_summary_with_next_action(self):
         workup = {
             "familyId": "SAKERI 1",
@@ -110,6 +132,53 @@ class FormatActionTests(unittest.TestCase):
                     "Next:",
                     "Review whether this child should be added.",
                     "ID: SAKERI 1:familysearch.add-child:gusta",
+                ]
+            ),
+        )
+
+    def test_summary_can_filter_action_counts_by_type(self):
+        workup = {
+            "familyId": "SAKERI 1",
+            "sourceTextLineCount": 14,
+            "familySearch": {
+                "extractionStatus": "available",
+                "extractedChildCount": 12,
+            },
+            "couples": [{}],
+            "comparison": None,
+            "actions": [
+                {
+                    "id": "review",
+                    "type": "review.comparison",
+                    "requiresApproval": True,
+                },
+                {
+                    "id": "source-update",
+                    "type": "source.update.familysearch-id",
+                    "requiresApproval": True,
+                    "approvalPrompt": "Should I add AB12-CD to Liisa?",
+                },
+            ],
+        }
+
+        self.assertEqual(
+            format_action.format_summary(
+                workup,
+                action_type="source.update.familysearch-id",
+            ),
+            "\n".join(
+                [
+                    "Family: SAKERI 1",
+                    "Source text lines: 14",
+                    "FamilySearch: available, children 12",
+                    "Couples: 1",
+                    "Comparison: unavailable",
+                    "Actions:",
+                    "- source.update.familysearch-id: 1",
+                    "",
+                    "Next:",
+                    "Should I add AB12-CD to Liisa?",
+                    "ID: source-update",
                 ]
             ),
         )

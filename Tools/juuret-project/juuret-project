@@ -14,6 +14,7 @@ Usage:
 Options:
   --host URL            Kalvian Roots server URL.
   --workup-json PATH    Read an already captured workup JSON file instead of calling the app.
+  --type TYPE           Limit summary/actions/next to one action type.
 
 The Kalvian Roots macOS app must be running unless --workup-json is used.
 USAGE
@@ -31,6 +32,7 @@ host="http://127.0.0.1:8081"
 family_id=""
 action_id=""
 workup_json_path=""
+action_type=""
 
 case "$command_name" in
   workup|summary|actions|next)
@@ -70,6 +72,14 @@ while [[ $# -gt 0 ]]; do
       workup_json_path="$2"
       shift 2
       ;;
+    --type)
+      if [[ $# -lt 2 ]]; then
+        usage
+        exit 64
+      fi
+      action_type="$2"
+      shift 2
+      ;;
     *)
       usage
       exit 64
@@ -92,13 +102,25 @@ case "$command_name" in
     print -r -- "$workup_json"
     ;;
   summary)
-    python3 "${0:A:h}/format_action.py" summary <<< "$workup_json"
+    if [[ -n "$action_type" ]]; then
+      python3 "${0:A:h}/format_action.py" summary --type "$action_type" <<< "$workup_json"
+    else
+      python3 "${0:A:h}/format_action.py" summary <<< "$workup_json"
+    fi
     ;;
   actions)
-    python3 "${0:A:h}/format_action.py" actions <<< "$workup_json"
+    if [[ -n "$action_type" ]]; then
+      python3 "${0:A:h}/format_action.py" actions --type "$action_type" <<< "$workup_json"
+    else
+      python3 "${0:A:h}/format_action.py" actions <<< "$workup_json"
+    fi
     ;;
   next)
-    python3 "${0:A:h}/format_action.py" next <<< "$workup_json"
+    if [[ -n "$action_type" ]]; then
+      python3 "${0:A:h}/format_action.py" next --type "$action_type" <<< "$workup_json"
+    else
+      python3 "${0:A:h}/format_action.py" next <<< "$workup_json"
+    fi
     ;;
   action)
     python3 "${0:A:h}/format_action.py" action "$action_id" <<< "$workup_json"
