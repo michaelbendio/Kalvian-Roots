@@ -56,10 +56,22 @@ editing the canonical file:
 Tools/juuret-project/juuret-project source-update-preview "SAKERI 1" "ACTION_ID"
 ```
 
+Preview the source line context for a FamilySearch ID mismatch review:
+
+```sh
+Tools/juuret-project/juuret-project id-mismatch-preview "SAKERI 1" "ACTION_ID"
+```
+
 Focus on FamilySearch ID source updates:
 
 ```sh
 Tools/juuret-project/juuret-project next "SAKERI 1" --type source.update.familysearch-id
+```
+
+Focus on FamilySearch ID mismatches:
+
+```sh
+Tools/juuret-project/juuret-project next "SAKERI 1" --type review.familysearch-id-mismatch
 ```
 
 Use a saved workup JSON file:

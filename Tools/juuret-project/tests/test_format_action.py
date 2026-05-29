@@ -260,6 +260,60 @@ class FormatActionTests(unittest.TestCase):
         self.assertIn("2: Liisa 12.06.1760", preview)
         self.assertIn("3: Liisa 12.06.1760 duplicate", preview)
 
+    def test_id_mismatch_preview_shows_matching_source_line_without_editing(self):
+        action = {
+            "id": "mismatch",
+            "type": "review.familysearch-id-mismatch",
+            "personName": "Maria",
+            "personId": "M8ZK-DQP",
+            "requiresApproval": True,
+            "approvalPrompt": "Juuret has PD55-86C for Maria, but FamilySearch extraction matched M8ZK-DQP. Which ID is correct?",
+            "context": {
+                "birthDate": "1696-02-12",
+                "juuret": {
+                    "name": "Maria",
+                    "birthDate": "1696-02-12",
+                    "familySearchId": "PD55-86C",
+                },
+                "familySearch": {
+                    "name": "Maria Mattsson",
+                    "birthDate": "1696-02-12",
+                    "familySearchId": "M8ZK-DQP",
+                },
+            },
+        }
+        source_text = "\n".join(
+            [
+                "SAKERI 1",
+                "Lapset",
+                "Maria <PD55-86C> 12.02.1696",
+            ]
+        )
+
+        self.assertEqual(
+            format_action.format_id_mismatch_preview(action, source_text),
+            "\n".join(
+                [
+                    "Juuret has PD55-86C for Maria, but FamilySearch extraction matched M8ZK-DQP. Which ID is correct?",
+                    "",
+                    "Action: review.familysearch-id-mismatch",
+                    "ID: mismatch",
+                    "Person: Maria (M8ZK-DQP)",
+                    "Birth: 1696-02-12",
+                    "",
+                    "Juuret: Maria, 1696-02-12, PD55-86C",
+                    "FamilySearch: Maria Mattsson, 1696-02-12, M8ZK-DQP",
+                    "",
+                    "Requires explicit approval before changing source data.",
+                    "",
+                    "FamilySearch ID mismatch preview:",
+                    "Matched source line:",
+                    "3: Maria <PD55-86C> 12.02.1696",
+                    "No source edit was applied.",
+                ]
+            ),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

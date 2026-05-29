@@ -97,13 +97,20 @@ def matching_source_lines(source_text, action):
     return matches
 
 
-def format_source_update_preview(action, source_text, fallback_action_id=None):
+def format_source_context_preview(
+    action,
+    source_text,
+    fallback_action_id=None,
+    expected_type=None,
+    title="Source context preview:",
+    wrong_type_message=None,
+):
     lines = [format_action(action, fallback_action_id=fallback_action_id)]
     lines.append("")
-    lines.append("Source update preview:")
+    lines.append(title)
 
-    if action.get("type") != "source.update.familysearch-id":
-        lines.append("This action is not a FamilySearch ID source update.")
+    if expected_type and action.get("type") != expected_type:
+        lines.append(wrong_type_message or f"This action is not {expected_type}.")
         lines.append("No source edit was applied.")
         return "\n".join(lines)
 
@@ -121,6 +128,28 @@ def format_source_update_preview(action, source_text, fallback_action_id=None):
 
     lines.append("No source edit was applied.")
     return "\n".join(lines)
+
+
+def format_source_update_preview(action, source_text, fallback_action_id=None):
+    return format_source_context_preview(
+        action,
+        source_text,
+        fallback_action_id=fallback_action_id,
+        expected_type="source.update.familysearch-id",
+        title="Source update preview:",
+        wrong_type_message="This action is not a FamilySearch ID source update.",
+    )
+
+
+def format_id_mismatch_preview(action, source_text, fallback_action_id=None):
+    return format_source_context_preview(
+        action,
+        source_text,
+        fallback_action_id=fallback_action_id,
+        expected_type="review.familysearch-id-mismatch",
+        title="FamilySearch ID mismatch preview:",
+        wrong_type_message="This action is not a FamilySearch ID mismatch review.",
+    )
 
 
 def find_action(actions, action_id):
@@ -214,6 +243,7 @@ def main():
     proposal_parser = subparsers.add_parser("proposal")
     proposal_parser.add_argument("action_id")
     proposal_parser.add_argument("--source-text")
+    proposal_parser.add_argument("--source-context", choices=["source-update", "id-mismatch"])
 
     args = parser.parse_args()
     workup = load_workup()
@@ -246,13 +276,19 @@ def main():
     elif args.source_text:
         with open(args.source_text, "r", encoding="utf-8") as source_file:
             source_text = source_file.read()
-        print(
-            format_source_update_preview(
+        if args.source_context == "id-mismatch":
+            preview = format_id_mismatch_preview(
                 action,
                 source_text,
                 fallback_action_id=args.action_id,
             )
-        )
+        else:
+            preview = format_source_update_preview(
+                action,
+                source_text,
+                fallback_action_id=args.action_id,
+            )
+        print(preview)
     else:
         print(format_action(action, fallback_action_id=args.action_id))
     return 0
