@@ -52,6 +52,7 @@ struct FamilyWorkup: Codable, Equatable {
     }
 
     struct ComparisonRow: Codable, Equatable {
+        let coupleIndex: Int?
         let identityName: String
         let birthDate: String?
         let status: String
@@ -130,7 +131,7 @@ final class FamilyWorkupService {
         comparisonResult: FamilyComparisonResult?
     ) -> FamilyWorkup {
         let hiskiQueries = makeHiskiQueries(for: family)
-        let comparison = comparisonResult.map(makeComparisonSummary)
+        let comparison = comparisonResult.map { makeComparisonSummary($0, family: family) }
         let familySearchSummary = makeFamilySearchSummary(
             extraction: familySearchExtraction,
             familySearchPersonId: familySearchPersonId
@@ -234,11 +235,19 @@ final class FamilyWorkupService {
         )
     }
 
-    private func makeComparisonSummary(_ result: FamilyComparisonResult) -> FamilyWorkup.ComparisonSummary {
+    private func makeComparisonSummary(
+        _ result: FamilyComparisonResult,
+        family: Family
+    ) -> FamilyWorkup.ComparisonSummary {
+        let coupleIndexByIdentity = makeCoupleIndexByJuuretIdentity(for: family)
         let displayRows = FamilyComparisonReviewDetector.displayRows(for: result.rows)
         let rows = displayRows.map { displayRow in
             let row = displayRow.match
             return FamilyWorkup.ComparisonRow(
+                coupleIndex: coupleIndexByIdentity[comparisonIdentityKey(
+                    identityName: row.identity.canonicalName,
+                    birthDate: row.identity.birthDate
+                )],
                 identityName: row.identity.canonicalName,
                 birthDate: formatDate(row.identity.birthDate),
                 status: status(for: displayRow),
@@ -419,7 +428,7 @@ final class FamilyWorkupService {
             approvalPrompt: approvalPrompt,
             context: row.map {
                 FamilyWorkup.ActionContext(
-                    coupleIndex: nil,
+                    coupleIndex: $0.coupleIndex,
                     identityName: $0.identityName,
                     birthDate: $0.birthDate,
                     status: $0.status,
@@ -441,6 +450,7 @@ final class FamilyWorkupService {
         [
             familyId,
             type,
+            row?.coupleIndex.map(String.init),
             row?.identityName,
             row?.birthDate,
             personId,
@@ -478,5 +488,33 @@ final class FamilyWorkupService {
         }
 
         return displayDateFormatter.string(from: date)
+    }
+
+    private func makeCoupleIndexByJuuretIdentity(for family: Family) -> [String: Int] {
+        var indexSetsByKey: [String: Set<Int>] = [:]
+
+        for (index, couple) in family.couples.enumerated() {
+            let candidates = comparisonService.makeJuuretCandidates(from: couple.children)
+            for candidate in candidates {
+                let key = comparisonIdentityKey(
+                    identityName: candidate.identity.canonicalName,
+                    birthDate: candidate.identity.birthDate
+                )
+                indexSetsByKey[key, default: []].insert(index)
+            }
+        }
+
+        var result: [String: Int] = [:]
+        for (key, indexes) in indexSetsByKey where indexes.count == 1 {
+            result[key] = indexes.first
+        }
+        return result
+    }
+
+    private func comparisonIdentityKey(identityName: String, birthDate: Date?) -> String {
+        [
+            identityName,
+            formatDate(birthDate) ?? ""
+        ].joined(separator: "|")
     }
 }

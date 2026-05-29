@@ -128,12 +128,13 @@ final class FamilyWorkupServiceTests: XCTestCase {
             $0.personId == "AB12-CD"
         })
         XCTAssertTrue(sourceUpdateAction.requiresApproval)
-        XCTAssertEqual(sourceUpdateAction.id, "TEST 2:source.update.familysearch-id:elis:1760-06-12:AB12-CD:Liisa")
+        XCTAssertEqual(sourceUpdateAction.id, "TEST 2:source.update.familysearch-id:0:elis:1760-06-12:AB12-CD:Liisa")
         XCTAssertEqual(sourceUpdateAction.familyId, "TEST 2")
         XCTAssertEqual(
             sourceUpdateAction.approvalPrompt,
             "Should I add AB12-CD to Liisa in the canonical Juuret source text?"
         )
+        XCTAssertEqual(sourceUpdateAction.context?.coupleIndex, 0)
         XCTAssertEqual(sourceUpdateAction.context?.identityName, "elis")
         XCTAssertEqual(sourceUpdateAction.context?.birthDate, "1760-06-12")
         XCTAssertEqual(sourceUpdateAction.context?.status, "Missing in HisKi")
@@ -141,6 +142,60 @@ final class FamilyWorkupServiceTests: XCTestCase {
         XCTAssertNil(sourceUpdateAction.context?.juuret?.familySearchId)
         XCTAssertEqual(sourceUpdateAction.context?.familySearch?.name, "Liisa Mattsdotter")
         XCTAssertEqual(sourceUpdateAction.context?.familySearch?.familySearchId, "AB12-CD")
+    }
+
+    func testWorkupActionContextIncludesCoupleIndexForMatchedJuuretChild() throws {
+        let nameManager = NameEquivalenceManager()
+        let service = FamilyWorkupService(nameEquivalenceManager: nameManager)
+        let comparisonService = FamilyComparisonService(nameManager: nameManager)
+        let family = Family(
+            familyId: "TEST 3",
+            pageReferences: ["3"],
+            couples: [
+                Couple(
+                    husband: Person(name: "Matti"),
+                    wife: Person(name: "Maria"),
+                    children: [
+                        Person(name: "Liisa", birthDate: "12.06.1760")
+                    ]
+                ),
+                Couple(
+                    husband: Person(name: "Matti"),
+                    wife: Person(name: "Kaisa"),
+                    children: [
+                        Person(name: "Anna", birthDate: "14.04.1764")
+                    ]
+                )
+            ]
+        )
+        let familySearchChildren = [
+            FamilySearchChild(id: "CD34-EF", name: "Anna Mattsdotter", birthDate: "14 April 1764")
+        ]
+        let result = comparisonService.compare(
+            juuretCandidates: comparisonService.makeJuuretCandidates(from: family.allChildren),
+            hiskiCandidates: [],
+            familySearchCandidates: comparisonService.makeFamilySearchCandidates(from: familySearchChildren)
+        )
+
+        let workup = service.makeWorkup(
+            family: family,
+            network: nil,
+            sourceText: "TEST 3\nAnna",
+            familySearchExtraction: FamilySearchFamilyExtraction(
+                sourcePersonId: "TEST-FS",
+                children: familySearchChildren
+            ),
+            familySearchPersonId: "TEST-FS",
+            comparisonResult: result
+        )
+
+        let sourceUpdateAction = try XCTUnwrap(workup.actions.first {
+            $0.type == "source.update.familysearch-id" &&
+            $0.personName == "Anna" &&
+            $0.personId == "CD34-EF"
+        })
+        XCTAssertEqual(sourceUpdateAction.context?.coupleIndex, 1)
+        XCTAssertEqual(sourceUpdateAction.id, "TEST 3:source.update.familysearch-id:1:anna:1764-04-14:CD34-EF:Anna")
     }
 
     func testWorkupMergesNearbySameNameDateDiscrepancyIntoReviewAction() throws {
