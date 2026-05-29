@@ -165,6 +165,7 @@ final class FamilyWorkupService {
             comparison: comparison,
             actions: makeActions(
                 familyId: family.familyId,
+                sourceText: sourceText,
                 familySearch: familySearchSummary,
                 comparison: comparison
             )
@@ -282,6 +283,7 @@ final class FamilyWorkupService {
 
     private func makeActions(
         familyId: String,
+        sourceText: String?,
         familySearch: FamilyWorkup.FamilySearchSummary,
         comparison: FamilyWorkup.ComparisonSummary?
     ) -> [FamilyWorkup.ActionSummary] {
@@ -322,18 +324,25 @@ final class FamilyWorkupService {
                         )
                     }
                 } else {
-                    actions.append(
-                        makeAction(
-                            familyId: familyId,
-                            type: "source.update.familysearch-id",
-                            label: "Propose adding this FamilySearch ID to the canonical Juuret source text.",
-                            personName: juuret.name,
-                            personId: familySearchId,
-                            requiresApproval: true,
-                            approvalPrompt: "Should I add \(familySearchId) to \(juuret.name) in the canonical Juuret source text?",
-                            row: row
+                    if !sourceTextAlreadyContainsFamilySearchId(
+                        sourceText,
+                        name: juuret.name,
+                        birthDate: juuret.birthDate,
+                        familySearchId: familySearchId
+                    ) {
+                        actions.append(
+                            makeAction(
+                                familyId: familyId,
+                                type: "source.update.familysearch-id",
+                                label: "Propose adding this FamilySearch ID to the canonical Juuret source text.",
+                                personName: juuret.name,
+                                personId: familySearchId,
+                                requiresApproval: true,
+                                approvalPrompt: "Should I add \(familySearchId) to \(juuret.name) in the canonical Juuret source text?",
+                                row: row
+                            )
                         )
-                    )
+                    }
                 }
             }
 
@@ -415,6 +424,39 @@ final class FamilyWorkupService {
         }
 
         return actions
+    }
+
+    private func sourceTextAlreadyContainsFamilySearchId(
+        _ sourceText: String?,
+        name: String,
+        birthDate: String?,
+        familySearchId: String
+    ) -> Bool {
+        guard let sourceText else {
+            return false
+        }
+
+        let expectedDate = sourceDateString(fromDisplayDate: birthDate)
+        let expectedId = "<\(familySearchId)>"
+
+        return sourceText.components(separatedBy: .newlines).contains { line in
+            line.contains(name) &&
+                line.contains(expectedId) &&
+                (expectedDate == nil || line.contains(expectedDate!))
+        }
+    }
+
+    private func sourceDateString(fromDisplayDate displayDate: String?) -> String? {
+        guard let displayDate else {
+            return nil
+        }
+
+        let parts = displayDate.split(separator: "-")
+        guard parts.count == 3 else {
+            return nil
+        }
+
+        return "\(parts[2]).\(parts[1]).\(parts[0])"
     }
 
     private func makeAction(
