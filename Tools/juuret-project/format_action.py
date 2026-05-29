@@ -108,7 +108,12 @@ def format_source_update_preview(action, source_text, fallback_action_id=None):
         return "\n".join(lines)
 
     matches = matching_source_lines(source_text, action)
-    if matches:
+    if len(matches) == 1:
+        lines.append("Matched source line:")
+        for line_number, line in matches:
+            lines.append(f"{line_number}: {line}")
+    elif matches:
+        lines.append("Multiple matching source lines found; manual review is required.")
         for line_number, line in matches:
             lines.append(f"{line_number}: {line}")
     else:

@@ -223,11 +223,42 @@ class FormatActionTests(unittest.TestCase):
                     "Requires explicit approval before changing source data.",
                     "",
                     "Source update preview:",
+                    "Matched source line:",
                     "3: Liisa 12.06.1760",
                     "No source edit was applied.",
                 ]
             ),
         )
+
+    def test_source_update_preview_flags_multiple_matching_source_lines(self):
+        action = {
+            "id": "source-update",
+            "type": "source.update.familysearch-id",
+            "personName": "Liisa",
+            "personId": "AB12-CD",
+            "requiresApproval": True,
+            "approvalPrompt": "Should I add AB12-CD to Liisa?",
+            "context": {
+                "birthDate": "1760-06-12",
+                "juuret": {
+                    "name": "Liisa",
+                    "birthDate": "1760-06-12",
+                },
+            },
+        }
+        source_text = "\n".join(
+            [
+                "TEST 2",
+                "Liisa 12.06.1760",
+                "Liisa 12.06.1760 duplicate",
+            ]
+        )
+
+        preview = format_action.format_source_update_preview(action, source_text)
+
+        self.assertIn("Multiple matching source lines found; manual review is required.", preview)
+        self.assertIn("2: Liisa 12.06.1760", preview)
+        self.assertIn("3: Liisa 12.06.1760 duplicate", preview)
 
 
 if __name__ == "__main__":
