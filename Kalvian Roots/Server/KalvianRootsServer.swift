@@ -112,6 +112,7 @@ final class HTTPHandler: ChannelInboundHandler {
     private enum HTTPResponse {
         case html(String, status: HTTPResponseStatus = .ok, headers: HTTPHeaders = HTTPHeaders())
         case json(String, status: HTTPResponseStatus = .ok, headers: HTTPHeaders = HTTPHeaders())
+        case text(String, status: HTTPResponseStatus = .ok, headers: HTTPHeaders = HTTPHeaders())
         case redirect(String, headers: HTTPHeaders = HTTPHeaders())
         case error(HTTPResponseStatus, String, headers: HTTPHeaders = HTTPHeaders())
     }
@@ -535,6 +536,13 @@ final class HTTPHandler: ChannelInboundHandler {
                 homeId: homeId,
                 setCookieHeader: setCookieHeader,
                 session: sessionResult.session
+            )
+
+        case "source.txt":
+            logger.info("[\(requestID!)] 📄 Handling SOURCE TEXT request")
+            return await handleSourceTextRequest(
+                familyId: canonicalID,
+                setCookieHeader: setCookieHeader
             )
 
         case "workup":
@@ -1039,6 +1047,31 @@ final class HTTPHandler: ChannelInboundHandler {
         
         return .html(html, headers: responseHeaders)
     }
+
+    @MainActor
+    private func handleSourceTextRequest(
+        familyId: String,
+        setCookieHeader: String?
+    ) async -> HTTPResponse {
+        logger.info("[\(requestID!)] 📄 Extracting source text response for: \(familyId)")
+
+        var responseHeaders = HTTPHeaders()
+        if let setCookieHeader {
+            responseHeaders.add(name: "Set-Cookie", value: setCookieHeader)
+        }
+
+        guard let app = juuretApp,
+              let sourceText = app.fileManager.extractFamilyText(familyId: familyId) else {
+            logger.error("[\(requestID!)] ❌ Failed to extract source text response for: \(familyId)")
+            return .error(
+                .notFound,
+                "Failed to extract source text for family \(familyId)",
+                headers: responseHeaders
+            )
+        }
+
+        return .text(sourceText, headers: responseHeaders)
+    }
     
     // MARK: - Helper Methods
     
@@ -1333,6 +1366,15 @@ final class HTTPHandler: ChannelInboundHandler {
                 body: json,
                 status: status,
                 contentType: "application/json; charset=utf-8",
+                headers: headers
+            )
+
+        case .text(let text, let status, let headers):
+            sendBody(
+                context: context,
+                body: text,
+                status: status,
+                contentType: "text/plain; charset=utf-8",
                 headers: headers
             )
 

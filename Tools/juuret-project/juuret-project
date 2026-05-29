@@ -5,6 +5,7 @@ usage() {
   cat >&2 <<'USAGE'
 Usage:
   juuret-project workup FAMILY_ID [--host http://127.0.0.1:8081]
+  juuret-project source FAMILY_ID [--host http://127.0.0.1:8081]
   juuret-project summary FAMILY_ID [--host http://127.0.0.1:8081]
   juuret-project actions FAMILY_ID [--host http://127.0.0.1:8081]
   juuret-project next FAMILY_ID [--host http://127.0.0.1:8081]
@@ -35,7 +36,7 @@ workup_json_path=""
 action_type=""
 
 case "$command_name" in
-  workup|summary|actions|next)
+  workup|source|summary|actions|next)
     family_id="$1"
     shift
     ;;
@@ -90,6 +91,11 @@ done
 encoded_family_id="$(
   python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$family_id"
 )"
+
+if [[ "$command_name" == "source" ]]; then
+  curl --fail --silent --show-error "$host/family/$encoded_family_id/source.txt"
+  exit 0
+fi
 
 if [[ -n "$workup_json_path" ]]; then
   workup_json="$(< "$workup_json_path")"
