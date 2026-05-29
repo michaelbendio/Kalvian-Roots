@@ -1028,6 +1028,21 @@ struct HTMLRenderer {
         .workup-section li {
             margin-bottom: 8px;
         }
+        .workup-action-id {
+            display: block;
+            margin-top: 3px;
+            word-break: break-word;
+        }
+        .workup-action-prompt {
+            margin-top: 4px;
+            font-weight: 700;
+        }
+        .workup-action-context {
+            margin-top: 4px;
+        }
+        .workup-action-context div {
+            margin-top: 2px;
+        }
         .workup-muted {
             color: #666;
             font-size: 13px;
@@ -1060,9 +1075,7 @@ struct HTMLRenderer {
         }
         let actionsHTML = workup.actions.isEmpty
             ? "<li>No queued actions.</li>"
-            : workup.actions.map { action in
-                "<li><strong>\(escapeHTML(action.type))</strong>: \(escapeHTML(action.label))\(action.personName.map { " - \(escapeHTML($0))" } ?? "")</li>"
-            }.joined(separator: "\n")
+            : workup.actions.map(renderWorkupAction).joined(separator: "\n")
         let couplesHTML = workup.couples.map { couple in
             """
             <section class="workup-section">
@@ -1134,6 +1147,75 @@ struct HTMLRenderer {
         </body>
         </html>
         """
+    }
+
+    private static func renderWorkupAction(_ action: FamilyWorkup.ActionSummary) -> String {
+        let personHTML = action.personName.map { " - \(escapeHTML($0))" } ?? ""
+        let approvalHTML = action.approvalPrompt.map {
+            "<div class=\"workup-action-prompt\">\(escapeHTML($0))</div>"
+        } ?? ""
+        let contextHTML = action.context.map(renderWorkupActionContext) ?? ""
+
+        return """
+        <li>
+            <strong>\(escapeHTML(action.type))</strong>: \(escapeHTML(action.label))\(personHTML)
+            <code class="workup-action-id">\(escapeHTML(action.id))</code>
+            \(approvalHTML)
+            \(contextHTML)
+        </li>
+        """
+    }
+
+    private static func renderWorkupActionContext(_ context: FamilyWorkup.ActionContext) -> String {
+        var rows: [String] = []
+
+        if let coupleIndex = context.coupleIndex {
+            rows.append("Couple \(coupleIndex + 1)")
+        }
+
+        if let status = context.status {
+            let date = context.birthDate.map { ", \($0)" } ?? ""
+            rows.append("\(status)\(date)")
+        } else if let birthDate = context.birthDate {
+            rows.append(birthDate)
+        }
+
+        rows.append(contentsOf: [
+            renderWorkupCandidateSummary(label: "Juuret", candidate: context.juuret),
+            renderWorkupCandidateSummary(label: "HisKi", candidate: context.hiski),
+            renderWorkupCandidateSummary(label: "FamilySearch", candidate: context.familySearch)
+        ].compactMap { $0 })
+
+        guard !rows.isEmpty else {
+            return ""
+        }
+
+        return """
+        <div class="workup-action-context workup-muted">
+            \(rows.map { "<div>\(escapeHTML($0))</div>" }.joined(separator: "\n"))
+        </div>
+        """
+    }
+
+    private static func renderWorkupCandidateSummary(
+        label: String,
+        candidate: FamilyWorkup.CandidateSummary?
+    ) -> String? {
+        guard let candidate else {
+            return nil
+        }
+
+        var parts = ["\(label): \(candidate.name)"]
+        if let birthDate = candidate.birthDate {
+            parts.append(birthDate)
+        }
+        if let familySearchId = candidate.familySearchId {
+            parts.append(familySearchId)
+        }
+        if let hiskiCitation = candidate.hiskiCitation {
+            parts.append(hiskiCitation)
+        }
+        return parts.joined(separator: ", ")
     }
 
     private static func renderWorkupComparison(_ comparison: FamilyWorkup.ComparisonSummary?) -> String {

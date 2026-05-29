@@ -142,6 +142,13 @@ final class FamilyWorkupServiceTests: XCTestCase {
         XCTAssertNil(sourceUpdateAction.context?.juuret?.familySearchId)
         XCTAssertEqual(sourceUpdateAction.context?.familySearch?.name, "Liisa Mattsdotter")
         XCTAssertEqual(sourceUpdateAction.context?.familySearch?.familySearchId, "AB12-CD")
+
+        let html = HTMLRenderer.renderWorkup(workup, family: family, homeId: family.familyId)
+        XCTAssertTrue(html.contains("TEST 2:source.update.familysearch-id:0:elis:1760-06-12:AB12-CD:Liisa"))
+        XCTAssertTrue(html.contains("Should I add AB12-CD to Liisa in the canonical Juuret source text?"))
+        XCTAssertTrue(html.contains("Couple 1"))
+        XCTAssertTrue(html.contains("Juuret: Liisa, 1760-06-12"))
+        XCTAssertTrue(html.contains("FamilySearch: Liisa Mattsdotter, 1760-06-12, AB12-CD"))
     }
 
     func testWorkupActionContextIncludesCoupleIndexForMatchedJuuretChild() throws {
