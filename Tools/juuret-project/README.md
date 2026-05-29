@@ -1,0 +1,62 @@
+# Juuret Project CLI
+
+This is the first conversation-oriented tool surface for Kalvian Roots workups.
+It reads the app's `/workup.json` output and formats it for chat-driven review.
+
+The Kalvian Roots macOS app must be running unless `--workup-json` is used.
+
+## Commands
+
+Fetch the full workup JSON:
+
+```sh
+Tools/juuret-project/juuret-project workup "SAKERI 1"
+```
+
+Show a compact checkpoint:
+
+```sh
+Tools/juuret-project/juuret-project summary "SAKERI 1"
+```
+
+List queued actions as JSON:
+
+```sh
+Tools/juuret-project/juuret-project actions "SAKERI 1"
+```
+
+Show the next approval-oriented proposal:
+
+```sh
+Tools/juuret-project/juuret-project next "SAKERI 1"
+```
+
+Show one action as JSON:
+
+```sh
+Tools/juuret-project/juuret-project action "SAKERI 1" "ACTION_ID"
+```
+
+Show one action as proposal text:
+
+```sh
+Tools/juuret-project/juuret-project proposal "SAKERI 1" "ACTION_ID"
+```
+
+Focus on FamilySearch ID source updates:
+
+```sh
+Tools/juuret-project/juuret-project next "SAKERI 1" --type source.update.familysearch-id
+```
+
+Use a saved workup JSON file:
+
+```sh
+Tools/juuret-project/juuret-project summary "SAKERI 1" --workup-json /path/to/workup.json
+```
+
+## Approval Boundary
+
+Commands that show proposals do not edit the canonical Juuret source text.
+They produce approval-ready text for the conversation. Source changes still
+require explicit approval before any write path is implemented or invoked.
