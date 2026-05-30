@@ -173,6 +173,10 @@ Source Pipelines
         4. Open each record page
         5. Extract citation URL
 
+    HisKi birth-span results are candidate pools, not family
+    reconstructions. See Docs/hiski-birthspan-review.md for the review
+    discipline and FamilySearch duplicate-risk workflow.
+
 
     Output:
 
