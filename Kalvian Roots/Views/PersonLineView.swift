@@ -260,6 +260,7 @@ struct PersonLineView: View {
             
             // Enhanced marriage date (brown brackets) or regular date
             if let marriageDate = enhancedData?.fullMarriageDate ?? person.fullMarriageDate {
+                let displayDate = displayMarriageDate(marriageDate)
                 HStack(spacing: 2) {
                     if enhancedData?.fullMarriageDate != nil {
                         // Enhanced date in brown brackets
@@ -269,9 +270,9 @@ struct PersonLineView: View {
                     }
                     
                     Button(action: {
-                        onDateClick(marriageDate, .marriage)
+                        onDateClick(displayDate, .marriage)
                     }) {
-                        Text(marriageDate)
+                        Text(displayDate)
                             .font(.system(size: 16, design: .monospaced))
                             .foregroundColor(enhancedData?.fullMarriageDate != nil ? Color(hex: "8b4513") : Color(hex: "0066cc"))
                     }
@@ -285,7 +286,7 @@ struct PersonLineView: View {
                 }
             } else if let marriageDate = person.marriageDate {
                 // Regular 2-digit marriage date (clickable blue)
-                clickableDate(marriageDate, type: .marriage)
+                clickableDate(displayMarriageDate(marriageDate), type: .marriage)
             }
             
             // Spouse name (clickable)
@@ -386,6 +387,33 @@ struct PersonLineView: View {
                     .foregroundColor(.secondary)
             )
         }
+    }
+
+    private func displayMarriageDate(_ date: String) -> String {
+        let trimmed = date.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parentBirthYear = CitationGenerator.extractBirthYear(from: person)
+
+        if trimmed.contains(".") {
+            let components = trimmed.components(separatedBy: ".")
+            if components.count == 3,
+               components[2].count == 2,
+               let twoDigitYear = Int(components[2]) {
+                let fullYear = CitationGenerator.inferCentury(
+                    for: twoDigitYear,
+                    parentBirthYear: parentBirthYear
+                )
+                return "\(components[0]).\(components[1]).\(fullYear)"
+            }
+        }
+
+        if trimmed.count == 2, let twoDigitYear = Int(trimmed) {
+            return String(CitationGenerator.inferCentury(
+                for: twoDigitYear,
+                parentBirthYear: parentBirthYear
+            ))
+        }
+
+        return trimmed
     }
 }
 

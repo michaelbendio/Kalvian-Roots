@@ -84,9 +84,14 @@ struct FamilyTokenizer {
 
         // Marriage date
         if let marriageDate = couple.fullMarriageDate ?? couple.marriageDate {
+            let displayDate = displayMarriageDate(
+                marriageDate,
+                parentBirthYear: CitationGenerator.extractBirthYear(from: couple.husband)
+                    ?? CitationGenerator.extractBirthYear(from: couple.wife)
+            )
             tokens.append(.symbol("∞"))
             tokens.append(.text(" "))
-            tokens.append(.date(marriageDate, eventType: .marriage, person: nil,
+            tokens.append(.date(displayDate, eventType: .marriage, person: nil,
                               spouse1: couple.husband, spouse2: couple.wife))
             tokens.append(.lineBreak)
         }
@@ -178,11 +183,11 @@ struct FamilyTokenizer {
         }
 
         // Marriage info
-        if let marriageDate = child.marriageDate {
-            tokens.append(.text(" "))
-            tokens.append(.symbol("∞"))
-            tokens.append(.text(" \(marriageDate)"))
-        } else if let fullMarriageDate = child.fullMarriageDate {
+        if let marriageDate = child.fullMarriageDate ?? child.marriageDate {
+            let displayDate = displayMarriageDate(
+                marriageDate,
+                parentBirthYear: CitationGenerator.extractBirthYear(from: child)
+            )
             tokens.append(.text(" "))
             tokens.append(.symbol("∞"))
             tokens.append(.text(" "))
@@ -192,10 +197,10 @@ struct FamilyTokenizer {
                 // Create temporary Person objects for the marriage link
                 let childPerson = child
                 let spousePerson = Person(name: spouse, noteMarkers: [])
-                tokens.append(.date(fullMarriageDate, eventType: .marriage, person: nil,
-                                  spouse1: childPerson, spouse2: spousePerson))
+                tokens.append(.date(displayDate, eventType: .marriage, person: nil,
+                                    spouse1: childPerson, spouse2: spousePerson))
             } else {
-                tokens.append(.text(fullMarriageDate))
+                tokens.append(.text(displayDate))
             }
         }
 
@@ -240,6 +245,32 @@ struct FamilyTokenizer {
         case 10: return "X"
         default: return String(number)
         }
+    }
+
+    private func displayMarriageDate(_ date: String, parentBirthYear: Int?) -> String {
+        let trimmed = date.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if trimmed.contains(".") {
+            let components = trimmed.components(separatedBy: ".")
+            if components.count == 3,
+               components[2].count == 2,
+               let twoDigitYear = Int(components[2]) {
+                let fullYear = CitationGenerator.inferCentury(
+                    for: twoDigitYear,
+                    parentBirthYear: parentBirthYear
+                )
+                return "\(components[0]).\(components[1]).\(fullYear)"
+            }
+        }
+
+        if trimmed.count == 2, let twoDigitYear = Int(trimmed) {
+            return String(CitationGenerator.inferCentury(
+                for: twoDigitYear,
+                parentBirthYear: parentBirthYear
+            ))
+        }
+
+        return trimmed
     }
 }
 

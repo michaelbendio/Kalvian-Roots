@@ -120,6 +120,40 @@ final class FamilyContentViewTests: XCTestCase {
         XCTAssertNotNil(couple.fullMarriageDate, "Full marriage date present")
         XCTAssertEqual(couple.fullMarriageDate, "03.11.1780", "Marriage date correct")
     }
+
+    #if os(macOS)
+    func testTokenizerDisplaysInferredCenturyForChildMarriageDate() {
+        let child = Person(
+            name: "Anna Kreeta",
+            birthDate: "12.12.1795",
+            fullMarriageDate: "24.10.18",
+            spouse: "Juho Hassinen"
+        )
+        let family = Family(
+            familyId: "RITA II 3",
+            pageReferences: ["313"],
+            couples: [
+                Couple(
+                    husband: Person(name: "Matti", patronymic: "Erikinp.", birthDate: "08.01.1772"),
+                    wife: Person(name: "Maria", patronymic: "Simont.", birthDate: "19.06.1776"),
+                    fullMarriageDate: "07.06.93",
+                    children: [child]
+                )
+            ]
+        )
+
+        let tokens = FamilyTokenizer().tokenizeFamily(family: family, network: nil)
+        let renderedDates = tokens.compactMap { token -> String? in
+            if case .date(let date, .marriage, _, _, _) = token {
+                return date
+            }
+            return nil
+        }
+
+        XCTAssertTrue(renderedDates.contains("24.10.1818"))
+        XCTAssertFalse(renderedDates.contains("24.10.18"))
+    }
+    #endif
     
     func testChildrenSectionHasData() {
         // Given: Test family with children

@@ -540,7 +540,13 @@ struct FamilyContentView: View {
     // MARK: - Marriage Line
     
     private func marriageLine(date: String, couple: Couple) -> some View {
-        HStack(spacing: 4) {
+        let displayDate = displayMarriageDate(
+            date,
+            parentBirthYear: CitationGenerator.extractBirthYear(from: couple.husband)
+                ?? CitationGenerator.extractBirthYear(from: couple.wife)
+        )
+
+        return HStack(spacing: 4) {
             Text("∞")
                 .applyFamilyLineStyle()
             
@@ -550,13 +556,13 @@ struct FamilyContentView: View {
                         for: couple.husband,
                         eventType: EventType.marriage,
                         familyId: family.familyId,
-                        explicitDate: date,
+                        explicitDate: displayDate,
                         spouseName: couple.wife.name
                     )
                     onShowHiski(result)
                 }
             }) {
-                Text(date)
+                Text(displayDate)
                     .applyFamilyLineStyle()
                     .foregroundColor(Color(hex: "0066cc"))
             }
@@ -565,6 +571,32 @@ struct FamilyContentView: View {
             Text(".")
                 .applyFamilyLineStyle()
         }
+    }
+
+    private func displayMarriageDate(_ date: String, parentBirthYear: Int?) -> String {
+        let trimmed = date.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if trimmed.contains(".") {
+            let components = trimmed.components(separatedBy: ".")
+            if components.count == 3,
+               components[2].count == 2,
+               let twoDigitYear = Int(components[2]) {
+                let fullYear = CitationGenerator.inferCentury(
+                    for: twoDigitYear,
+                    parentBirthYear: parentBirthYear
+                )
+                return "\(components[0]).\(components[1]).\(fullYear)"
+            }
+        }
+
+        if trimmed.count == 2, let twoDigitYear = Int(trimmed) {
+            return String(CitationGenerator.inferCentury(
+                for: twoDigitYear,
+                parentBirthYear: parentBirthYear
+            ))
+        }
+
+        return trimmed
     }
     
     // MARK: - Children Section

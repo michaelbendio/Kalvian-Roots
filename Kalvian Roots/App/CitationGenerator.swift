@@ -828,8 +828,8 @@ struct CitationGenerator {
         // Default fallback
         return 1700 + twoDigitYear
     }
-    
-    private static func extractBirthYear(from person: Person) -> Int? {
+
+    static func extractBirthYear(from person: Person) -> Int? {
         guard let birthDate = person.birthDate else { return nil }
         
         // Handle DD.MM.YYYY format
