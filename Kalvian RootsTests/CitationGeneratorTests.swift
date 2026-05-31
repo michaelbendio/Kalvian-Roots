@@ -442,6 +442,62 @@ final class CitationGeneratorTests: XCTestCase {
         XCTAssertLessThan(mariaRange.lowerBound, mattiRange.lowerBound)
     }
 
+    func testAdditionalSpouseUsesNewHusbandWhenWifeRemarries() {
+        let firstHusband = Person(
+            name: "Matti",
+            patronymic: "Erikinp.",
+            birthDate: "08.01.1772",
+            deathDate: "31.08.1807",
+            noteMarkers: []
+        )
+        let continuingWife = Person(
+            name: "Maria",
+            patronymic: "Simont.",
+            birthDate: "19.06.1776",
+            noteMarkers: []
+        )
+        let secondHusband = Person(
+            name: "Matti",
+            patronymic: "Juhonp. Huhtla 2",
+            birthDate: "11.04.1782",
+            noteMarkers: []
+        )
+        let family = Family(
+            familyId: "RITA II 3",
+            pageReferences: ["313"],
+            couples: [
+                Couple(
+                    husband: firstHusband,
+                    wife: continuingWife,
+                    fullMarriageDate: "07.06.1793",
+                    children: [
+                        Person(name: "Anna Kreeta", birthDate: "12.12.1795", fullMarriageDate: "24.10.1818", spouse: "Juho Hassinen", noteMarkers: []),
+                        Person(name: "Matti", birthDate: "12.12.1799", fullMarriageDate: "09.11.1826", spouse: "Kaisa Nurila", noteMarkers: [])
+                    ]
+                ),
+                Couple(
+                    husband: secondHusband,
+                    wife: continuingWife,
+                    fullMarriageDate: "31.10.1810",
+                    children: [
+                        Person(name: "Juho", birthDate: "29.03.1813", noteMarkers: [])
+                    ]
+                )
+            ],
+            notes: [],
+            noteDefinitions: [:]
+        )
+
+        let citation = CitationGenerator.generateMainFamilyCitation(
+            family: family,
+            targetPerson: family.couples[0].children[0],
+            network: nil
+        )
+
+        XCTAssertTrue(citation.contains("Additional spouse:\nMatti Juhonp. Huhtla 2, b. 11 April 1782"))
+        XCTAssertFalse(citation.contains("Additional spouse:\nMaria Simont."))
+    }
+
     func testSpouseCitationFallbackMarksSpouseInAsParentFamily() {
         let child = Person(
             name: "Matti",

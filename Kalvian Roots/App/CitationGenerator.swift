@@ -231,7 +231,7 @@ struct CitationGenerator {
     private static func formatAdditionalSpouseSection(couple: Couple, family: Family) -> String {
         var section = "Additional spouse:\n"
         
-        var spouseInfo = formatParentCompact(couple.wife)
+        var spouseInfo = formatParentCompact(additionalSpouse(in: couple, family: family))
         
         let additionalCouples = family.couples.filter { $0 != family.primaryCouple }
         if let index = additionalCouples.firstIndex(of: couple),
@@ -252,6 +252,41 @@ struct CitationGenerator {
         }
         
         return section
+    }
+
+    private static func additionalSpouse(in couple: Couple, family: Family) -> Person {
+        guard let primaryCouple = family.primaryCouple else {
+            return couple.wife
+        }
+
+        let primaryParents = [primaryCouple.husband, primaryCouple.wife]
+        let husbandContinues = primaryParents.contains { sameContinuingParent(couple.husband, $0) }
+        let wifeContinues = primaryParents.contains { sameContinuingParent(couple.wife, $0) }
+
+        if husbandContinues && !wifeContinues {
+            return couple.wife
+        }
+
+        if wifeContinues && !husbandContinues {
+            return couple.husband
+        }
+
+        return couple.wife
+    }
+
+    private static func sameContinuingParent(_ left: Person, _ right: Person) -> Bool {
+        guard left.displayName == right.displayName else {
+            return false
+        }
+
+        switch (left.birthDate, right.birthDate) {
+        case let (leftBirth?, rightBirth?):
+            return leftBirth == rightBirth
+        case (nil, nil):
+            return true
+        default:
+            return false
+        }
     }
     
     private static func formatNotesSection(family: Family) -> String {
