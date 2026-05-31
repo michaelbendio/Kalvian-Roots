@@ -469,16 +469,16 @@ final class CitationGeneratorTests: XCTestCase {
                 Couple(
                     husband: firstHusband,
                     wife: continuingWife,
-                    fullMarriageDate: "07.06.1793",
+                    fullMarriageDate: "07.06.93",
                     children: [
-                        Person(name: "Anna Kreeta", birthDate: "12.12.1795", fullMarriageDate: "24.10.1818", spouse: "Juho Hassinen", noteMarkers: []),
-                        Person(name: "Matti", birthDate: "12.12.1799", fullMarriageDate: "09.11.1826", spouse: "Kaisa Nurila", noteMarkers: [])
+                        Person(name: "Anna Kreeta", birthDate: "12.12.1795", fullMarriageDate: "24.10.18", spouse: "Juho Hassinen", noteMarkers: []),
+                        Person(name: "Matti", birthDate: "12.12.1799", fullMarriageDate: "09.11.26", spouse: "Kaisa Nurila", noteMarkers: [])
                     ]
                 ),
                 Couple(
                     husband: secondHusband,
                     wife: continuingWife,
-                    fullMarriageDate: "31.10.1810",
+                    fullMarriageDate: "31.10.10",
                     children: [
                         Person(name: "Juho", birthDate: "29.03.1813", noteMarkers: [])
                     ]
@@ -495,7 +495,11 @@ final class CitationGeneratorTests: XCTestCase {
         )
 
         XCTAssertTrue(citation.contains("Additional spouse:\nMatti Juhonp. Huhtla 2, b. 11 April 1782"))
+        XCTAssertTrue(citation.contains("m. 31 October 1810"))
+        XCTAssertTrue(citation.contains("→ Anna Kreeta, b. 12 December 1795, m. Juho Hassinen 24 October 1818"))
+        XCTAssertTrue(citation.contains("Matti, b. 12 December 1799, m. Kaisa Nurila 9 November 1826"))
         XCTAssertFalse(citation.contains("Additional spouse:\nMaria Simont."))
+        XCTAssertFalse(citation.contains("31 October 1710"))
     }
 
     func testSpouseCitationFallbackMarksSpouseInAsParentFamily() {

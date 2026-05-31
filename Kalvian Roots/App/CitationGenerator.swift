@@ -165,12 +165,13 @@ struct CitationGenerator {
         let wifePrefix = wifeIsTarget ? "→ " : ""
         section += wifePrefix + formatParentCompact(couple.wife) + "\n"
         
+        let parentBirthYear = extractBirthYear(from: couple.husband)
+                            ?? extractBirthYear(from: couple.wife)
+
         // Marriage date formatting...
         if let fullMarriageDate = couple.fullMarriageDate {
-            section += "m. \(formatDate(fullMarriageDate))\n"
+            section += "m. \(formatDate(fullMarriageDate, parentBirthYear: parentBirthYear))\n"
         } else if let marriageDate = couple.marriageDate {
-            let parentBirthYear = extractBirthYear(from: couple.husband)
-                                ?? extractBirthYear(from: couple.wife)
             section += "m. \(extractMarriageYear(marriageDate, parentBirthYear: parentBirthYear))\n"
         }
         
@@ -245,10 +246,13 @@ struct CitationGenerator {
         }
         section += spouseInfo + "\n"
         
+        let parentBirthYear = extractBirthYear(from: couple.husband)
+                            ?? extractBirthYear(from: couple.wife)
+
         if let fullMarriageDate = couple.fullMarriageDate {
-            section += "m. \(formatDate(fullMarriageDate))\n"
+            section += "m. \(formatDate(fullMarriageDate, parentBirthYear: parentBirthYear))\n"
         } else if let marriageDate = couple.marriageDate {
-            section += "m. \(formatDate(marriageDate))\n"
+            section += "m. \(extractMarriageYear(marriageDate, parentBirthYear: parentBirthYear))\n"
         }
         
         return section
