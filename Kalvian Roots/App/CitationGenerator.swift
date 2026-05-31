@@ -275,7 +275,20 @@ struct CitationGenerator {
             return couple.husband
         }
 
+        if isUnknownPlaceholder(couple.wife) && !isUnknownPlaceholder(couple.husband) {
+            return couple.husband
+        }
+
+        if isUnknownPlaceholder(couple.husband) && !isUnknownPlaceholder(couple.wife) {
+            return couple.wife
+        }
+
         return couple.wife
+    }
+
+    private static func isUnknownPlaceholder(_ person: Person) -> Bool {
+        let name = person.displayName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return name == "unknown" || name == "(unknown)"
     }
 
     private static func sameContinuingParent(_ left: Person, _ right: Person) -> Bool {
