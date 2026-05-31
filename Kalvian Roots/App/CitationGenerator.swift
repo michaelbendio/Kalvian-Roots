@@ -784,7 +784,7 @@ struct CitationGenerator {
         
         // If already full date, format it
         if trimmed.contains(".") {
-            return formatDate(trimmed)
+            return formatDate(trimmed, parentBirthYear: parentBirthYear)
         }
         
         // If 4-digit year, return as-is

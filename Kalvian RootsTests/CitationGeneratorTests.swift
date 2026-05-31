@@ -478,7 +478,7 @@ final class CitationGeneratorTests: XCTestCase {
                 Couple(
                     husband: secondHusband,
                     wife: continuingWife,
-                    fullMarriageDate: "31.10.10",
+                    marriageDate: "31.10.10",
                     children: [
                         Person(name: "Juho", birthDate: "29.03.1813", noteMarkers: [])
                     ]
