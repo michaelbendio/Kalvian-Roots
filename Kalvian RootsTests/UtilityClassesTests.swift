@@ -319,6 +319,23 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertTrue(true, "Should set current family")
     }
 
+    func testBuildBirthSearchUrlIncludesAvailableParentGivenNames() throws {
+        let url = try service.buildBirthSearchUrl(
+            name: "Carin",
+            date: "1.9.1801",
+            fatherName: "Matts",
+            motherName: "Carin"
+        )
+
+        let values = try queryValues(in: url)
+
+        XCTAssertEqual(values["etunimi"], "Carin")
+        XCTAssertEqual(values["alkuvuosi"], "1.9.1801")
+        XCTAssertEqual(values["loppuvuosi"], "1.9.1801")
+        XCTAssertEqual(values["ietunimi"], "Matts")
+        XCTAssertEqual(values["aetunimi"], "Carin")
+    }
+
     func testBuildFamilyBirthSearchUrlUsesBoundedFamilyQueryParameters() throws {
         let url = try service.buildFamilyBirthSearchUrl(
             fatherName: "Elias",

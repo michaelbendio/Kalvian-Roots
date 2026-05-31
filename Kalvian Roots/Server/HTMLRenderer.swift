@@ -350,7 +350,9 @@ struct HTMLRenderer {
                         "name": person.name,
                         "birth": person.birthDate,
                         "event": eventType.rawValue,
-                        "date": date
+                        "date": date,
+                        "father": person.fatherName,
+                        "mother": person.motherName
                     ])
                     html += """
                     <a href="/family/\(urlEncode(familyId))/hiski?\(params)\(homeParam)"

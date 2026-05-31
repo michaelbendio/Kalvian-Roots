@@ -852,6 +852,8 @@ final class HTTPHandler: ChannelInboundHandler {
         let birthDate = queryItems.first(where: { $0.name == "birth" })?.value
         let eventType = queryItems.first(where: { $0.name == "event" })?.value
         let date = queryItems.first(where: { $0.name == "date" })?.value
+        let fatherName = queryItems.first(where: { $0.name == "father" })?.value
+        let motherName = queryItems.first(where: { $0.name == "mother" })?.value
         
         // For marriage, we have two spouses
         let spouse1 = queryItems.first(where: { $0.name == "spouse1" })?.value
@@ -866,6 +868,8 @@ final class HTTPHandler: ChannelInboundHandler {
                 "birthDate": "\(birthDate ?? "nil")",
                 "eventType": "\(eventType ?? "nil")",
                 "date": "\(date ?? "nil")",
+                "fatherName": "\(fatherName ?? "nil")",
+                "motherName": "\(motherName ?? "nil")",
                 "spouse1": "\(spouse1 ?? "nil")",
                 "spouse2": "\(spouse2 ?? "nil")"
             ]
@@ -892,7 +896,8 @@ final class HTTPHandler: ChannelInboundHandler {
             let result = await hiskiService.queryBirthWithResult(
                 name: personName,
                 date: searchDate,
-                fatherName: nil,
+                fatherName: fatherName,
+                motherName: motherName,
                 mode: .httpOnly
             )
             

@@ -158,5 +158,15 @@ extension Person {
             self.motherName = mother
         }
     }
-}
 
+    func withHiskiParentNames(father: String?, mother: String?) -> Person {
+        var copy = self
+        if copy.fatherName?.isEmpty != false {
+            copy.fatherName = father
+        }
+        if copy.motherName?.isEmpty != false {
+            copy.motherName = mother
+        }
+        return copy
+    }
+}

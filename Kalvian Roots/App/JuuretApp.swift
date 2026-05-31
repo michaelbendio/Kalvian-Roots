@@ -458,6 +458,7 @@ class JuuretApp {
                 name: person.name,
                 date: birthDate,
                 fatherName: person.fatherName,
+                motherName: person.motherName,
                 mode: mode
             )
             

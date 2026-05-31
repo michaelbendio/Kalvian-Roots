@@ -532,7 +532,13 @@ class HiskiService {
     /**
      * Query birth record and return result abstraction
      */
-    func queryBirthWithResult(name: String, date: String, fatherName: String? = nil, mode: HiskiExtractionMode = .webView) async -> HiskiQueryResult {
+    func queryBirthWithResult(
+        name: String,
+        date: String,
+        fatherName: String? = nil,
+        motherName: String? = nil,
+        mode: HiskiExtractionMode = .webView
+    ) async -> HiskiQueryResult {
         do {
             let swedishName = normalizeForHiskiQuery(name)
             let firstName = swedishName.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishName
@@ -543,15 +549,27 @@ class HiskiService {
                 fatherFirstName = swedishFather.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines)
             }
 
+            var motherFirstName: String? = nil
+            if let mother = motherName {
+                let swedishMother = normalizeForHiskiQuery(mother)
+                motherFirstName = swedishMother.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+
             let formattedDate = formatDateForHiski(date)
 
             logInfo(.app, "🔍 Hiski Birth Query (mode: \(mode)):")
             logInfo(.app, "  Name: \(firstName)")
             logInfo(.app, "  Father: \(fatherFirstName ?? "unknown")")
+            logInfo(.app, "  Mother: \(motherFirstName ?? "unknown")")
             logInfo(.app, "  Date: \(formattedDate)")
 
             // Build search URL
-            let searchUrl = try buildBirthSearchUrl(name: firstName, date: formattedDate, fatherName: fatherFirstName)
+            let searchUrl = try buildBirthSearchUrl(
+                name: firstName,
+                date: formattedDate,
+                fatherName: fatherFirstName,
+                motherName: motherFirstName
+            )
 
             // Fetch search results HTML
             let (searchData, _) = try await URLSession.shared.data(from: searchUrl)
@@ -706,7 +724,7 @@ class HiskiService {
         )
     }
     
-    func queryBirth(name: String, date: String, fatherName: String? = nil) async throws -> HiskiCitation {
+    func queryBirth(name: String, date: String, fatherName: String? = nil, motherName: String? = nil) async throws -> HiskiCitation {
         let swedishName = normalizeForHiskiQuery(name)
         let firstName = swedishName.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishName
         
@@ -714,6 +732,12 @@ class HiskiService {
         if let father = fatherName {
             let swedishFather = normalizeForHiskiQuery(father)
             fatherFirstName = swedishFather.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        var motherFirstName: String? = nil
+        if let mother = motherName {
+            let swedishMother = normalizeForHiskiQuery(mother)
+            motherFirstName = swedishMother.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         
         let formattedDate = formatDateForHiski(date)
@@ -724,9 +748,17 @@ class HiskiService {
         if let father = fatherFirstName {
             logInfo(.app, "  Father: \(father)")
         }
+        if let mother = motherFirstName {
+            logInfo(.app, "  Mother: \(mother)")
+        }
         
         // Build search URL
-        let searchUrl = try buildBirthSearchUrl(name: firstName, date: formattedDate, fatherName: fatherFirstName)
+        let searchUrl = try buildBirthSearchUrl(
+            name: firstName,
+            date: formattedDate,
+            fatherName: fatherFirstName,
+            motherName: motherFirstName
+        )
         
         // Fetch search results HTML
         let (searchData, _) = try await URLSession.shared.data(from: searchUrl)
@@ -1306,7 +1338,7 @@ class HiskiService {
 
     // MARK: - URL Building
 
-    private func buildBirthSearchUrl(name: String, date: String, fatherName: String? = nil) throws -> URL {
+    func buildBirthSearchUrl(name: String, date: String, fatherName: String? = nil, motherName: String? = nil) throws -> URL {
         var params = [
             "komento": "haku",
             "srk": parishes,
@@ -1333,6 +1365,10 @@ class HiskiService {
         
         if let fatherFirst = fatherName, !fatherFirst.isEmpty {
             params["ietunimi"] = fatherFirst
+        }
+
+        if let motherFirst = motherName, !motherFirst.isEmpty {
+            params["aetunimi"] = motherFirst
         }
         
         return try buildSearchUrl(params: params)

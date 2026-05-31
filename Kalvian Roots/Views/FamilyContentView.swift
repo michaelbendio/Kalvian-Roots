@@ -607,7 +607,7 @@ struct FamilyContentView: View {
             
             // Child lines
             ForEach(couple.children) { child in
-                juuretChildLine(child)
+                juuretChildLine(child, couple: couple)
             }
         }
     }
@@ -620,6 +620,7 @@ struct FamilyContentView: View {
                 if let child = juuretChild(for: displayRow.match, in: group.couple) {
                     juuretChildLine(
                         child,
+                        couple: group.couple,
                         supplementalContent: comparisonSupplement(for: displayRow, juuretChild: child)
                     )
                 } else {
@@ -632,15 +633,20 @@ struct FamilyContentView: View {
         }
     }
 
-    private func juuretChildLine(_ child: Person, supplementalContent: AnyView? = nil) -> some View {
-        PersonLineView(
-            person: child,
+    private func juuretChildLine(_ child: Person, couple: Couple, supplementalContent: AnyView? = nil) -> some View {
+        let childWithParents = child.withHiskiParentNames(
+            father: couple.husband.displayName,
+            mother: couple.wife.displayName
+        )
+
+        return PersonLineView(
+            person: childWithParents,
             network: juuretApp.familyNetworkWorkflow?.getFamilyNetwork(),
             onNameClick: { person in
                 generateCitationFor(person)
             },
             onDateClick: { date, eventType in
-                generateHiskiFor(person: child, date: date, eventType: eventType)
+                generateHiskiFor(person: childWithParents, date: date, eventType: eventType)
             },
             onSpouseDateClick: { date, eventType, spouseData in
                 let spousePerson = Person(name: spouseData.fullName, birthDate: spouseData.birthDate, deathDate: spouseData.deathDate, noteMarkers: [])

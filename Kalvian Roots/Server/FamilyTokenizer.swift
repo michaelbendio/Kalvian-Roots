@@ -103,7 +103,7 @@ struct FamilyTokenizer {
 
             // Children
             for child in couple.children {
-                tokens.append(contentsOf: tokenizeChild(child: child, family: family, network: network))
+                tokens.append(contentsOf: tokenizeChild(child: child, couple: couple, family: family, network: network))
                 tokens.append(.lineBreak)
             }
         }
@@ -156,25 +156,29 @@ struct FamilyTokenizer {
         return tokens
     }
 
-    private func tokenizeChild(child: Person, family: Family, network: FamilyNetwork?) -> [FamilyToken] {
+    private func tokenizeChild(child: Person, couple: Couple, family: Family, network: FamilyNetwork?) -> [FamilyToken] {
         var tokens: [FamilyToken] = []
+        let childWithParents = child.withHiskiParentNames(
+            father: couple.husband.displayName,
+            mother: couple.wife.displayName
+        )
 
         // Birth symbol and date
         tokens.append(.symbol("★"))
         tokens.append(.text(" "))
 
-        if let birthDate = child.birthDate {
-            tokens.append(.date(birthDate, eventType: .birth, person: child, spouse1: nil, spouse2: nil))
+        if let birthDate = childWithParents.birthDate {
+            tokens.append(.date(birthDate, eventType: .birth, person: childWithParents, spouse1: nil, spouse2: nil))
             tokens.append(.text(" "))
         }
 
         // Name (clickable)
-        tokens.append(.person(name: child.name, birthDate: child.birthDate))
+        tokens.append(.person(name: childWithParents.name, birthDate: childWithParents.birthDate))
 
         // Enhanced death date from asParent family
         if let network = network,
-           let asParentFamily = network.getAsParentFamily(for: child),
-           let deathDate = findDeathDate(for: child, in: asParentFamily) {
+           let asParentFamily = network.getAsParentFamily(for: childWithParents),
+           let deathDate = findDeathDate(for: childWithParents, in: asParentFamily) {
             tokens.append(.text(" ["))
             tokens.append(.symbol("†"))
             tokens.append(.text(" "))
@@ -183,19 +187,19 @@ struct FamilyTokenizer {
         }
 
         // Marriage info
-        if let marriageDate = child.fullMarriageDate ?? child.marriageDate {
+        if let marriageDate = childWithParents.fullMarriageDate ?? childWithParents.marriageDate {
             let displayDate = displayMarriageDate(
                 marriageDate,
-                parentBirthYear: CitationGenerator.extractBirthYear(from: child)
+                parentBirthYear: CitationGenerator.extractBirthYear(from: childWithParents)
             )
             tokens.append(.text(" "))
             tokens.append(.symbol("∞"))
             tokens.append(.text(" "))
 
             // For child's marriage, we need to find their spouse
-            if let spouse = child.spouse {
+            if let spouse = childWithParents.spouse {
                 // Create temporary Person objects for the marriage link
-                let childPerson = child
+                let childPerson = childWithParents
                 let spousePerson = Person(name: spouse, noteMarkers: [])
                 tokens.append(.date(displayDate, eventType: .marriage, person: nil,
                                     spouse1: childPerson, spouse2: spousePerson))
@@ -205,13 +209,13 @@ struct FamilyTokenizer {
         }
 
         // Spouse name (clickable)
-        if let spouse = child.spouse {
+        if let spouse = childWithParents.spouse {
             tokens.append(.text(" "))
             tokens.append(.person(name: spouse, birthDate: nil))
         }
 
         // asParent family reference
-        if let asParent = child.asParent {
+        if let asParent = childWithParents.asParent {
             tokens.append(.text(" as_parent "))
             tokens.append(.familyId(asParent))
         }

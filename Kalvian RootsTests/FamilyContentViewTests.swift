@@ -153,6 +153,26 @@ final class FamilyContentViewTests: XCTestCase {
         XCTAssertTrue(renderedDates.contains("24.10.1818"))
         XCTAssertFalse(renderedDates.contains("24.10.18"))
     }
+
+    func testRenderedChildBirthHiskiLinksIncludeCoupleParentNames() {
+        let child = Person(name: "Carin", birthDate: "1.9.1801")
+        let family = Family(
+            familyId: "HASSINEN 1",
+            pageReferences: ["1"],
+            couples: [
+                Couple(
+                    husband: Person(name: "Matts", patronymic: "Anderss. Hassinen"),
+                    wife: Person(name: "Carin", patronymic: "Thomadr."),
+                    children: [child]
+                )
+            ]
+        )
+
+        let html = HTMLRenderer.renderFamily(family: family, network: nil)
+
+        XCTAssertTrue(html.contains("father=Matts%20Anderss.%20Hassinen"))
+        XCTAssertTrue(html.contains("mother=Carin%20Thomadr."))
+    }
     #endif
     
     func testChildrenSectionHasData() {
