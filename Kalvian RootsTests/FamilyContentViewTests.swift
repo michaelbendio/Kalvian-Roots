@@ -154,6 +154,54 @@ final class FamilyContentViewTests: XCTestCase {
         XCTAssertFalse(renderedDates.contains("24.10.18"))
     }
 
+    func testTokenizerPlacesMarriedChildFootnoteBeforeAsParentFamily() {
+        let child = Person(
+            name: "Maria",
+            birthDate: "05.12.1774",
+            fullMarriageDate: "1794",
+            spouse: "Antti Rita",
+            asParent: "Rita II 14",
+            noteMarkers: ["*"]
+        )
+        let family = Family(
+            familyId: "SAKERI 7",
+            pageReferences: ["266"],
+            couples: [
+                Couple(
+                    husband: Person(name: "Antti", patronymic: "Simonp."),
+                    wife: Person(name: "Liisa", patronymic: "Sigfridint."),
+                    children: [child]
+                )
+            ],
+            noteDefinitions: ["*": "Muutti 1801 Sakeri 9."]
+        )
+
+        let tokens = FamilyTokenizer().tokenizeFamily(family: family, network: nil)
+        let rendered = tokens.map { token -> String in
+            switch token {
+            case .text(let text):
+                return text
+            case .person(let name, _):
+                return name
+            case .date(let date, _, _, _, _):
+                return date
+            case .familyId(let id):
+                return id
+            case .enhanced(let text):
+                return text
+            case .symbol(let symbol):
+                return symbol
+            case .lineBreak:
+                return "\n"
+            case .sectionHeader(let title):
+                return title
+            }
+        }.joined()
+
+        XCTAssertTrue(rendered.contains("Antti Rita * as_parent Rita II 14"))
+        XCTAssertFalse(rendered.contains("Antti Rita as_parent Rita II 14 *"))
+    }
+
     func testRenderedChildBirthHiskiLinksIncludeCoupleParentNames() {
         let child = Person(name: "Carin", birthDate: "1.9.1801")
         let family = Family(

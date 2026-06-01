@@ -212,12 +212,22 @@ struct FamilyTokenizer {
         if let spouse = childWithParents.spouse {
             tokens.append(.text(" "))
             tokens.append(.person(name: spouse, birthDate: nil))
+
+            if !childWithParents.noteMarkers.isEmpty {
+                tokens.append(.text(" "))
+                tokens.append(.text(childWithParents.noteMarkers.map(displayFootnoteMarker).joined(separator: " ")))
+            }
         }
 
         // asParent family reference
         if let asParent = childWithParents.asParent {
             tokens.append(.text(" as_parent "))
             tokens.append(.familyId(asParent))
+        }
+
+        if childWithParents.spouse == nil && !childWithParents.noteMarkers.isEmpty {
+            tokens.append(.text(" "))
+            tokens.append(.text(childWithParents.noteMarkers.map(displayFootnoteMarker).joined(separator: " ")))
         }
 
         return tokens

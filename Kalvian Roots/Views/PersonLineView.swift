@@ -108,7 +108,7 @@ struct PersonLineView: View {
             }
             
             // Note markers (* ** etc.)
-            if !person.noteMarkers.isEmpty {
+            if !person.noteMarkers.isEmpty && !rendersNoteMarkersWithSpouse {
                 Text(verbatim: person.noteMarkers.map(displayFootnoteMarker).joined(separator: " "))
                     .font(.system(size: 16, design: .monospaced))
                     .foregroundColor(.secondary)
@@ -118,6 +118,10 @@ struct PersonLineView: View {
         }
         .font(.system(size: 16, design: .monospaced))
         .lineSpacing(1.3)
+    }
+
+    private var rendersNoteMarkersWithSpouse: Bool {
+        person.spouse != nil && person.isMarried
     }
     
     // MARK: - Enhanced Data Loading
@@ -299,6 +303,12 @@ struct PersonLineView: View {
                         .foregroundColor(Color(hex: "0066cc"))
                 }
                 .buttonStyle(.plain)
+
+                if rendersNoteMarkersWithSpouse && !person.noteMarkers.isEmpty {
+                    Text(verbatim: person.noteMarkers.map(displayFootnoteMarker).joined(separator: " "))
+                        .font(.system(size: 16, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
             }
             
             // Spouse enhanced dates (brown brackets)
