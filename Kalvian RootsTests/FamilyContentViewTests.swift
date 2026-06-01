@@ -160,7 +160,7 @@ final class FamilyContentViewTests: XCTestCase {
             birthDate: "05.12.1774",
             fullMarriageDate: "1794",
             spouse: "Antti Rita",
-            asParent: "Rita II 14",
+            asParent: "Rita II 4",
             noteMarkers: ["*"]
         )
         let family = Family(
@@ -198,8 +198,13 @@ final class FamilyContentViewTests: XCTestCase {
             }
         }.joined()
 
-        XCTAssertTrue(rendered.contains("Antti Rita * as_parent Rita II 14"))
-        XCTAssertFalse(rendered.contains("Antti Rita as_parent Rita II 14 *"))
+        XCTAssertTrue(rendered.contains("Antti Rita * as_parent Rita II 4"))
+        XCTAssertFalse(rendered.contains("Antti Rita as_parent Rita II 4 *"))
+    }
+
+    func testCorrectedSakeriSevenAsParentReferenceIsValidFamilyId() {
+        XCTAssertTrue(FamilyIDs.isValid(familyId: "Rita II 4"))
+        XCTAssertFalse(FamilyIDs.isValid(familyId: "Rita II 14"))
     }
 
     func testRenderedChildBirthHiskiLinksIncludeCoupleParentNames() {
