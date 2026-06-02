@@ -376,6 +376,7 @@ struct HTMLRenderer {
         let moreActions = workup.actions.count > 5
             ? "<p class=\"workup-muted\">\(workup.actions.count - 5) more \(workup.actions.count - 5 == 1 ? "action" : "actions") on the full workup page.</p>"
             : ""
+        let reviewPacket = familyReviewPacketText(workup)
 
         return """
         <section class="family-review-panel" id="family-review-queue">
@@ -384,8 +385,12 @@ struct HTMLRenderer {
                     <h2>Review Queue</h2>
                     <p class="workup-muted">\(workup.actions.count) queued \(workup.actions.count == 1 ? "action" : "actions") for collaborative review.</p>
                 </div>
-                <a class="family-workspace-action" href="\(escapeHTML(workupURL))#review-queue">Open full workup</a>
+                <div class="family-review-tools">
+                    <button type="button" class="workup-copy-button" onclick="copyFamilyReviewPacket(this)">Copy review packet</button>
+                    <a class="family-workspace-action" href="\(escapeHTML(workupURL))#review-queue">Open full workup</a>
+                </div>
             </div>
+            <textarea id="familyReviewPacketText" class="copy-source-textarea" readonly>\(escapeHTML(reviewPacket))</textarea>
             <div class="family-review-counts">
                 \(counts)
             </div>
@@ -395,6 +400,74 @@ struct HTMLRenderer {
             \(moreActions)
         </section>
         """
+    }
+
+    private static func familyReviewPacketText(_ workup: FamilyWorkup) -> String {
+        var lines = [
+            "Kalvian Roots Review Queue",
+            "Family: \(workup.familyId)",
+            "Actions: \(workup.actions.count)"
+        ]
+
+        for (index, action) in workup.actions.enumerated() {
+            lines.append("")
+            lines.append("\(index + 1). \(action.type)\(action.personName.map { " - \($0)" } ?? "")")
+            lines.append("ID: \(action.id)")
+            lines.append("Label: \(action.label)")
+            if let approvalPrompt = action.approvalPrompt {
+                lines.append("Approval: \(approvalPrompt)")
+            }
+            if let context = action.context {
+                lines.append(contentsOf: familyReviewPacketContextLines(context))
+            }
+            if action.type == "source.update.familysearch-id" ||
+                action.type == "review.familysearch-id-mismatch" {
+                lines.append("Dry run: \(sourceEditCommand(action, commandName: "source-edit-dry-run"))")
+                lines.append("Apply: \(sourceEditCommand(action, commandName: "source-edit-apply"))")
+            }
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    private static func familyReviewPacketContextLines(_ context: FamilyWorkup.ActionContext) -> [String] {
+        var lines: [String] = []
+        if let coupleIndex = context.coupleIndex {
+            lines.append("Couple: \(coupleIndex + 1)")
+        }
+        if let status = context.status {
+            lines.append("Status: \(status)")
+        }
+        if let birthDate = context.birthDate {
+            lines.append("Birth: \(birthDate)")
+        }
+        lines.append(contentsOf: [
+            renderPlainCandidateSummary(label: "Juuret", candidate: context.juuret),
+            renderPlainCandidateSummary(label: "HisKi", candidate: context.hiski),
+            renderPlainCandidateSummary(label: "FamilySearch", candidate: context.familySearch)
+        ].compactMap { $0 })
+        return lines
+    }
+
+    private static func renderPlainCandidateSummary(
+        label: String,
+        candidate: FamilyWorkup.CandidateSummary?
+    ) -> String? {
+        guard let candidate else {
+            return nil
+        }
+
+        var parts = ["\(label): \(candidate.name)"]
+        if let birthDate = candidate.birthDate {
+            parts.append(birthDate)
+        }
+        if let familySearchId = candidate.familySearchId {
+            parts.append(familySearchId)
+        }
+        if let hiskiCitation = candidate.hiskiCitation {
+            parts.append(hiskiCitation)
+        }
+        return parts.joined(separator: ", ")
     }
 
     private static func renderFamilyReviewAction(_ action: FamilyWorkup.ActionSummary) -> String {
@@ -1094,6 +1167,13 @@ struct HTMLRenderer {
         .family-review-header h2 {
             font-size: 18px;
             margin: 0 0 2px 0;
+        }
+        .family-review-tools {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: flex-end;
         }
         .family-review-counts {
             display: flex;
@@ -1833,6 +1913,34 @@ struct HTMLRenderer {
             textarea.select();
             document.execCommand('copy');
             textarea.remove();
+            markCopied();
+        }
+
+        function copyFamilyReviewPacket(button) {
+            const textarea = document.getElementById('familyReviewPacketText');
+            if (!textarea) {
+                return;
+            }
+
+            const originalText = button?.textContent;
+            function markCopied() {
+                if (!button || !originalText) {
+                    return;
+                }
+                button.textContent = 'Copied';
+                setTimeout(() => {
+                    button.textContent = originalText;
+                }, 1500);
+            }
+
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(textarea.value).then(markCopied);
+                return;
+            }
+
+            textarea.focus();
+            textarea.select();
+            document.execCommand('copy');
             markCopied();
         }
         </script>
