@@ -610,8 +610,12 @@ struct HTMLRenderer {
         }
 
         let rowsHTML: String
+        let comparisonRows = comparisonResult.map { FamilyComparisonReviewDetector.displayRows(for: $0.rows) } ?? []
+        let reviewCount = comparisonRows.filter { $0.reviewNote != nil }.count
+        let comparisonSummary: String
         if let comparisonResult {
-            let rows = FamilyComparisonReviewDetector.displayRows(for: comparisonResult.rows).map { displayRow in
+            comparisonSummary = "\(comparisonRows.count) \(comparisonRows.count == 1 ? "row" : "rows"), \(reviewCount) needing review"
+            let rows = comparisonRows.map { displayRow in
                 let match = displayRow.match
                 let displayName = match.juuretKalvialla?.rawName
                     ?? match.hiski?.rawName
@@ -640,8 +644,14 @@ struct HTMLRenderer {
                 ? "<tr><td colspan=\"5\">No comparison rows.</td></tr>"
                 : rows
         } else {
+            comparisonSummary = "Comparison has not run"
             rowsHTML = "<tr><td colspan=\"5\">Comparison has not run.</td></tr>"
         }
+        let clipboardText = comparisonClipboardText(
+            comparisonResult: comparisonResult,
+            familySearchExtraction: familySearchExtraction,
+            familySearchPersonId: familySearchPersonId
+        )
 
         return """
         <div class="comparison-panel" id="children-comparison">
@@ -649,25 +659,56 @@ struct HTMLRenderer {
                 <div>
                     <div class="comparison-title">Children Comparison</div>
                     <div class="comparison-couple">\(escapeHTML(coupleHeader))</div>
+                    <div class="comparison-summary">\(escapeHTML(comparisonSummary))</div>
                 </div>
+                <button type="button" class="copy-button comparison-copy-button" onclick="copyComparisonText()">Copy comparison text</button>
             </div>
+            <textarea id="comparisonText" class="copy-source-textarea" readonly>\(escapeHTML(clipboardText))</textarea>
             \(extractionSummary)
-            <table class="comparison-table">
-                <thead>
-                    <tr>
-                        <th>Child name</th>
-                        <th>Juuret</th>
-                        <th>HisKi</th>
-                        <th>FamilySearch</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    \(rowsHTML)
-                </tbody>
-            </table>
+            <div class="comparison-table-wrap">
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>Child name</th>
+                            <th>Juuret</th>
+                            <th>HisKi</th>
+                            <th>FamilySearch</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        \(rowsHTML)
+                    </tbody>
+                </table>
+            </div>
         </div>
         """
+    }
+
+    private static func comparisonClipboardText(
+        comparisonResult: FamilyComparisonResult?,
+        familySearchExtraction: FamilySearchFamilyExtraction?,
+        familySearchPersonId: String?
+    ) -> String {
+        let debugMessage: String
+        if let extraction = familySearchExtraction {
+            debugMessage = extraction.isSuccessful
+                ? "FamilySearch comparison ready"
+                : "FamilySearch extraction failed (\(extraction.status ?? "extractorError")): \(extraction.failureReason ?? "unknown failure")"
+        } else if comparisonResult != nil {
+            debugMessage = "FamilySearch comparison ready"
+        } else if familySearchPersonId != nil {
+            debugMessage = "FamilySearch children have not been imported for this family."
+        } else {
+            debugMessage = "Comparison has not run"
+        }
+
+        return FamilySearchComparisonClipboardFormatter.text(
+            debugMessage: debugMessage,
+            debugLines: [],
+            rows: comparisonResult?.rows ?? [],
+            status: comparisonStatus(for:)
+        )
     }
 
     private static func renderCandidateCell(_ candidate: PersonCandidate?, includeName: Bool = false) -> String {
@@ -1094,10 +1135,21 @@ struct HTMLRenderer {
             font-weight: bold;
             color: #333;
         }
-        .comparison-couple, .fs-debug-summary {
+        .comparison-couple, .comparison-summary, .fs-debug-summary {
             color: #666;
             font-size: 13px;
             margin-top: 4px;
+        }
+        .comparison-copy-button {
+            white-space: nowrap;
+        }
+        .copy-source-textarea {
+            position: absolute;
+            left: -10000px;
+            top: auto;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
         }
         .fs-action {
             display: inline-block;
@@ -1124,6 +1176,12 @@ struct HTMLRenderer {
             border-collapse: collapse;
             font-size: 13px;
             margin-top: 12px;
+        }
+        .comparison-table-wrap {
+            overflow-x: auto;
+        }
+        .comparison-table-wrap .comparison-table {
+            min-width: 760px;
         }
         .comparison-table th,
         .comparison-table td {
@@ -1590,6 +1648,26 @@ struct HTMLRenderer {
                 setTimeout(() => {
                     hint.style.display = 'none';
                 }, 3000);
+            }
+        }
+
+        function copyComparisonText() {
+            const textarea = document.getElementById('comparisonText');
+            if (!textarea) {
+                return;
+            }
+
+            textarea.focus();
+            textarea.select();
+            document.execCommand('copy');
+
+            const button = document.querySelector('.comparison-copy-button');
+            if (button) {
+                const originalText = button.textContent;
+                button.textContent = 'Copied';
+                setTimeout(() => {
+                    button.textContent = originalText;
+                }, 1500);
             }
         }
         </script>
