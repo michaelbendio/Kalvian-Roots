@@ -1465,6 +1465,21 @@ struct HTMLRenderer {
         .workup-review-link:hover {
             background: #f0f0f0;
         }
+        .review-queue-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+        }
+        .review-queue-table th,
+        .review-queue-table td {
+            border: 1px solid #ddd;
+            padding: 7px 8px;
+            text-align: left;
+            vertical-align: top;
+        }
+        .review-queue-table th {
+            background: #f5f5f5;
+        }
         .workup-action-id {
             word-break: break-word;
         }
@@ -1555,7 +1570,7 @@ struct HTMLRenderer {
         } else {
             familySearchActionHTML = ""
         }
-        let reviewQueueHTML = renderWorkupReviewQueue(workup.actions)
+        let reviewQueueHTML = renderWorkupReviewQueue(workup.actions, homeId: homeId)
         let actionSectionsHTML = renderWorkupActionSections(workup.actions, homeId: homeId)
         let couplesHTML = workup.couples.map { couple in
             """
@@ -1697,7 +1712,10 @@ struct HTMLRenderer {
         """
     }
 
-    private static func renderWorkupReviewQueue(_ actions: [FamilyWorkup.ActionSummary]) -> String {
+    private static func renderWorkupReviewQueue(
+        _ actions: [FamilyWorkup.ActionSummary],
+        homeId: String
+    ) -> String {
         guard !actions.isEmpty else {
             return """
             <section class="workup-section" id="review-queue">
@@ -1720,6 +1738,7 @@ struct HTMLRenderer {
                 "<a class=\"workup-review-link\" href=\"#\(id)\">\(label) (\(count))</a>"
             }
             .joined(separator: "\n")
+        let rows = renderWorkupReviewQueueRows(actions, homeId: homeId)
 
         return """
         <section class="workup-section" id="review-queue">
@@ -1728,8 +1747,60 @@ struct HTMLRenderer {
             <nav class="workup-review-nav">
                 \(links)
             </nav>
+            <table class="review-queue-table">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Person</th>
+                        <th>Status</th>
+                        <th>Birth</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    \(rows)
+                </tbody>
+            </table>
         </section>
         """
+    }
+
+    private static func renderWorkupReviewQueueRows(
+        _ actions: [FamilyWorkup.ActionSummary],
+        homeId: String
+    ) -> String {
+        actions.map { action in
+            let actionURL = actionDetailURL(action, homeId: homeId)
+            return """
+            <tr>
+                <td>\(escapeHTML(reviewQueueTypeLabel(action.type)))</td>
+                <td>\(escapeHTML(action.personName ?? ""))</td>
+                <td>\(escapeHTML(action.context?.status ?? ""))</td>
+                <td>\(escapeHTML(action.context?.birthDate ?? ""))</td>
+                <td>
+                    <a class="workup-copy-button" href="\(escapeHTML(actionURL))">Open</a>
+                    <button type="button" class="workup-copy-button" data-copy="\(escapeHTML(action.id))" onclick="copyWorkupValue(this)">Copy ID</button>
+                </td>
+            </tr>
+            """
+        }.joined(separator: "\n")
+    }
+
+    private static func reviewQueueTypeLabel(_ type: String) -> String {
+        switch type {
+        case "review.familysearch-id-mismatch":
+            return "ID mismatch"
+        case "source.update.familysearch-id":
+            return "Source update"
+        case "review.comparison":
+            return "Comparison review"
+        case "citation.juuret":
+            return "Juuret citation"
+        case "familysearch.extract":
+            return "FamilySearch extraction"
+        default:
+            return type
+        }
     }
 
     private static func renderWorkupActionSections(
