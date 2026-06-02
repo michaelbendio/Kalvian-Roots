@@ -171,6 +171,8 @@ final class FamilyWorkupServiceTests: XCTestCase {
             workup: workup
         )
         XCTAssertTrue(familyHTML.contains(#"id="family-review-queue""#))
+        XCTAssertTrue(familyHTML.contains("1 queued action"))
+        XCTAssertTrue(familyHTML.contains(##"href="#family-review-queue">Review</a>"##))
         XCTAssertTrue(familyHTML.contains("Review Queue"))
         XCTAssertTrue(familyHTML.contains("1 queued action for collaborative review."))
         XCTAssertTrue(familyHTML.contains("Source updates: 1"))
@@ -181,6 +183,10 @@ final class FamilyWorkupServiceTests: XCTestCase {
         XCTAssertTrue(familyHTML.contains("Copy Apply"))
         XCTAssertLessThan(
             familyHTML.range(of: "class=\"family-content\"")!.lowerBound,
+            familyHTML.range(of: #"id="family-review-queue""#)!.lowerBound
+        )
+        XCTAssertLessThan(
+            familyHTML.range(of: ##"href="#family-review-queue">Review</a>"##)!.lowerBound,
             familyHTML.range(of: #"id="family-review-queue""#)!.lowerBound
         )
         XCTAssertLessThan(

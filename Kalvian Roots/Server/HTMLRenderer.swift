@@ -232,7 +232,8 @@ struct HTMLRenderer {
             sourceText: sourceText,
             comparisonResult: comparisonResult,
             familySearchExtraction: familySearchExtraction,
-            familySearchPersonId: familySearchPersonId
+            familySearchPersonId: familySearchPersonId,
+            workup: workup
         )
         let reviewQueuePanel = renderFamilyReviewQueuePanel(
             workup: workup,
@@ -278,7 +279,8 @@ struct HTMLRenderer {
         sourceText: String?,
         comparisonResult: FamilyComparisonResult?,
         familySearchExtraction: FamilySearchFamilyExtraction?,
-        familySearchPersonId: String?
+        familySearchPersonId: String?,
+        workup: FamilyWorkup?
     ) -> String {
         let sourceURL = "/family/\(urlEncode(displayedId))/source" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
         let workupURL = "/family/\(urlEncode(displayedId))/workup" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
@@ -301,6 +303,14 @@ struct HTMLRenderer {
         } else {
             familySearchStatus = "No FamilySearch anchor"
         }
+        let reviewStatus: String
+        if let workup {
+            reviewStatus = workup.actions.isEmpty
+                ? "No queued actions"
+                : "\(workup.actions.count) queued \(workup.actions.count == 1 ? "action" : "actions")"
+        } else {
+            reviewStatus = "Review queue not loaded"
+        }
 
         let familySearchAction = familySearchURL.map {
             "<a class=\"family-workspace-action\" href=\"\(escapeHTML($0))\">FamilySearch</a>"
@@ -308,6 +318,9 @@ struct HTMLRenderer {
         let comparisonAction = comparisonResult == nil && familySearchPersonId == nil
             ? ""
             : "<a class=\"family-workspace-action\" href=\"\(escapeHTML(comparisonURL))\">Comparison</a>"
+        let reviewAction = (workup?.actions.isEmpty == false)
+            ? "<a class=\"family-workspace-action\" href=\"#family-review-queue\">Review</a>"
+            : ""
 
         return """
         <section class="family-workspace" aria-label="Family review status">
@@ -322,11 +335,13 @@ struct HTMLRenderer {
                     <span>\(escapeHTML(sourceStatus))</span>
                     <span>\(escapeHTML(comparisonStatus))</span>
                     <span>\(escapeHTML(familySearchStatus))</span>
+                    <span>\(escapeHTML(reviewStatus))</span>
                 </div>
             </div>
             <div class="family-workspace-actions">
                 <a class="family-workspace-action" href="\(escapeHTML(sourceURL))">Source</a>
                 <a class="family-workspace-action" href="\(escapeHTML(workupURL))">Workup</a>
+                \(reviewAction)
                 \(comparisonAction)
                 \(familySearchAction)
             </div>
