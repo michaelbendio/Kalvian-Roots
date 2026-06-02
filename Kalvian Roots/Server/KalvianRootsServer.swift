@@ -901,7 +901,8 @@ final class HTTPHandler: ChannelInboundHandler {
             workup,
             family: network.mainFamily,
             homeId: homeId ?? familyId,
-            actionId: actionId
+            actionId: actionId,
+            sourceText: sourceText
         )
 
         return .html(html, headers: responseHeaders(setCookieHeader: setCookieHeader))

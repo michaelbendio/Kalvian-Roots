@@ -1503,6 +1503,28 @@ struct HTMLRenderer {
         .workup-action-context div {
             margin-top: 2px;
         }
+        .source-edit-preview {
+            margin-top: 14px;
+            border-top: 1px solid #e0e0e0;
+            padding-top: 12px;
+        }
+        .source-edit-preview h3 {
+            margin: 0 0 8px 0;
+            font-size: 16px;
+        }
+        .source-edit-line-label {
+            margin-top: 8px;
+            font-weight: 700;
+        }
+        .source-edit-preview pre {
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            background: #fafafa;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 8px;
+            margin: 4px 0 0 0;
+        }
         .workup-muted {
             color: #666;
             font-size: 13px;
@@ -1611,7 +1633,8 @@ struct HTMLRenderer {
         _ workup: FamilyWorkup,
         family: Family,
         homeId: String,
-        actionId: String
+        actionId: String,
+        sourceText: String? = nil
     ) -> String {
         let navBar = renderNavigationBar(homeId: homeId, displayedId: family.familyId)
         let workupURL = "/family/\(urlEncode(family.familyId))/workup" + (family.familyId == homeId ? "" : "?home=\(urlQueryEncode(homeId))")
@@ -1619,11 +1642,15 @@ struct HTMLRenderer {
         let title = action.map { "\($0.type) - \(family.familyId)" } ?? "Action Not Found - \(family.familyId)"
         let actionHTML: String
         if let action {
+            let previewHTML = sourceText.map {
+                renderSourceEditPreview(action, sourceText: $0)
+            } ?? ""
             actionHTML = """
             <section class="workup-section">
                 <h2>\(escapeHTML(action.type))\(action.personName.map { " - \(escapeHTML($0))" } ?? "")</h2>
                 <p>\(escapeHTML(action.label))</p>
                 <ul>\(renderWorkupAction(action, homeId: homeId))</ul>
+                \(previewHTML)
             </section>
             """
         } else {
@@ -1820,6 +1847,143 @@ struct HTMLRenderer {
             shellQuote(action.familyId),
             shellQuote(action.id)
         ].joined(separator: " ")
+    }
+
+    private static func renderSourceEditPreview(
+        _ action: FamilyWorkup.ActionSummary,
+        sourceText: String
+    ) -> String {
+        guard action.type == "source.update.familysearch-id" ||
+                action.type == "review.familysearch-id-mismatch" else {
+            return ""
+        }
+
+        let matches = matchingSourceLines(sourceText: sourceText, action: action)
+        if matches.count != 1 {
+            let message: String
+            if matches.isEmpty {
+                message = "No unique source line match found from action name/date context."
+            } else {
+                message = "Multiple matching source lines found; manual review is required."
+            }
+            let matchHTML = matches.map { lineNumber, line in
+                "<div><strong>\(lineNumber):</strong> \(escapeHTML(line))</div>"
+            }.joined(separator: "\n")
+            return """
+            <div class="source-edit-preview">
+                <h3>Source Edit Dry Run</h3>
+                <p class="workup-muted">\(escapeHTML(message))</p>
+                \(matchHTML)
+                <p class="workup-muted">No source edit was applied.</p>
+            </div>
+            """
+        }
+
+        let match = matches[0]
+        let proposal = proposedSourceEdit(action, sourceLine: match.line)
+        guard let newLine = proposal.newLine else {
+            return """
+            <div class="source-edit-preview">
+                <h3>Source Edit Dry Run</h3>
+                <p class="workup-muted">\(escapeHTML(proposal.reason ?? "No source edit is available."))</p>
+                <p class="workup-muted">No source edit was applied.</p>
+            </div>
+            """
+        }
+
+        return """
+        <div class="source-edit-preview">
+            <h3>Source Edit Dry Run</h3>
+            <p class="workup-muted">Line: \(match.lineNumber)</p>
+            <div class="source-edit-line-label">Old</div>
+            <pre>\(escapeHTML(match.line))</pre>
+            <div class="source-edit-line-label">New</div>
+            <pre>\(escapeHTML(newLine))</pre>
+            <p class="workup-muted">No source edit was applied.</p>
+        </div>
+        """
+    }
+
+    private static func matchingSourceLines(
+        sourceText: String,
+        action: FamilyWorkup.ActionSummary
+    ) -> [(lineNumber: Int, line: String)] {
+        let juuret = action.context?.juuret
+        let name = (juuret?.name ?? action.personName ?? "").lowercased()
+        let dateVariants = sourceDateVariants(action.context?.birthDate)
+
+        return sourceText
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .enumerated()
+            .compactMap { offset, lineSubstring in
+                let line = String(lineSubstring)
+                let folded = line.lowercased()
+                let hasName = !name.isEmpty && folded.contains(name)
+                let hasDate = dateVariants.contains { line.contains($0) }
+                if hasName && (hasDate || dateVariants.isEmpty) {
+                    return (offset + 1, line)
+                }
+                return nil
+            }
+    }
+
+    private static func sourceDateVariants(_ isoDate: String?) -> [String] {
+        guard let isoDate, !isoDate.isEmpty else {
+            return []
+        }
+
+        var variants = [isoDate]
+        let parts = isoDate.split(separator: "-").compactMap { Int($0) }
+        if parts.count == 3 {
+            let year = parts[0]
+            let month = parts[1]
+            let day = parts[2]
+            variants.append("\(day).\(month).\(year)")
+            variants.append(String(format: "%02d.%02d.%04d", day, month, year))
+        }
+        var seen: Set<String> = []
+        return variants.filter { seen.insert($0).inserted }
+    }
+
+    private static func proposedSourceEdit(
+        _ action: FamilyWorkup.ActionSummary,
+        sourceLine: String
+    ) -> (newLine: String?, reason: String?) {
+        let juuret = action.context?.juuret
+        let familySearch = action.context?.familySearch
+        let newId = action.personId ?? familySearch?.familySearchId
+        let oldId = juuret?.familySearchId
+        let personName = juuret?.name ?? action.personName
+
+        guard let newId, !newId.isEmpty else {
+            return (nil, "No FamilySearch ID is available for the proposed edit.")
+        }
+
+        if action.type == "source.update.familysearch-id" {
+            if sourceLine.range(of: #"<[A-Z0-9]{4}-[A-Z0-9]{3,}>"#, options: .regularExpression) != nil {
+                return (nil, "Matched source line already contains a FamilySearch ID.")
+            }
+            guard let personName, sourceLine.contains(personName) else {
+                return (nil, "Matched source line does not contain the Juuret person name exactly.")
+            }
+            guard let nameRange = sourceLine.range(of: personName) else {
+                return (nil, "Matched source line does not contain the Juuret person name exactly.")
+            }
+            return (sourceLine.replacingOccurrences(of: personName, with: "\(personName) <\(newId)>", options: [], range: nameRange), nil)
+        }
+
+        if action.type == "review.familysearch-id-mismatch" {
+            guard let oldId, !oldId.isEmpty else {
+                return (nil, "Juuret does not provide the old FamilySearch ID needed for replacement.")
+            }
+            let oldToken = "<\(oldId)>"
+            guard sourceLine.contains(oldToken) else {
+                return (nil, "Matched source line does not contain \(oldToken).")
+            }
+            return (sourceLine.replacingOccurrences(of: oldToken, with: "<\(newId)>"), nil)
+        }
+
+        return (nil, "This action type does not support a source edit dry run.")
     }
 
     private static func actionDetailURL(

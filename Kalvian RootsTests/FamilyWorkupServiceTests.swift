@@ -165,12 +165,21 @@ final class FamilyWorkupServiceTests: XCTestCase {
             workup,
             family: family,
             homeId: family.familyId,
-            actionId: sourceUpdateAction.id
+            actionId: sourceUpdateAction.id,
+            sourceText: """
+            TEST 2
+            ★ 12.06.1760 Liisa
+            """
         )
         XCTAssertTrue(actionHTML.contains("TEST 2 Action"))
         XCTAssertTrue(actionHTML.contains("Dedicated review view for one queued workup action."))
         XCTAssertTrue(actionHTML.contains("source.update.familysearch-id - Liisa"))
         XCTAssertTrue(actionHTML.contains("Should I add AB12-CD to Liisa in the canonical Juuret source text?"))
+        XCTAssertTrue(actionHTML.contains("Source Edit Dry Run"))
+        XCTAssertTrue(actionHTML.contains("Line: 2"))
+        XCTAssertTrue(actionHTML.contains("★ 12.06.1760 Liisa"))
+        XCTAssertTrue(actionHTML.contains("★ 12.06.1760 Liisa &lt;AB12-CD&gt;"))
+        XCTAssertTrue(actionHTML.contains("No source edit was applied."))
         XCTAssertTrue(actionHTML.contains("Copy Dry Run"))
         XCTAssertTrue(actionHTML.contains("Copy Apply"))
         XCTAssertTrue(actionHTML.contains(#"href="/family/TEST%202/workup#review-queue""#))
@@ -322,13 +331,22 @@ final class FamilyWorkupServiceTests: XCTestCase {
             workup,
             family: family,
             homeId: family.familyId,
-            actionId: mismatchAction.id
+            actionId: mismatchAction.id,
+            sourceText: """
+            TEST 2B
+            ★ 12.02.1696 Maria <PD55-86C>
+            """
         )
         XCTAssertTrue(actionHTML.contains("TEST 2B Action"))
         XCTAssertTrue(actionHTML.contains("review.familysearch-id-mismatch - Maria"))
         XCTAssertTrue(actionHTML.contains("Juuret has PD55-86C for Maria, but FamilySearch extraction matched M8ZK-DQP. Which ID is correct?"))
         XCTAssertTrue(actionHTML.contains("Juuret: Maria, 1696-02-12, PD55-86C"))
         XCTAssertTrue(actionHTML.contains("FamilySearch: Maria Mattsson, 1696-02-12, M8ZK-DQP"))
+        XCTAssertTrue(actionHTML.contains("Source Edit Dry Run"))
+        XCTAssertTrue(actionHTML.contains("Line: 2"))
+        XCTAssertTrue(actionHTML.contains("★ 12.02.1696 Maria &lt;PD55-86C&gt;"))
+        XCTAssertTrue(actionHTML.contains("★ 12.02.1696 Maria &lt;M8ZK-DQP&gt;"))
+        XCTAssertTrue(actionHTML.contains("No source edit was applied."))
         XCTAssertTrue(actionHTML.contains("Copy Dry Run"))
         XCTAssertTrue(actionHTML.contains("Copy Apply"))
     }
