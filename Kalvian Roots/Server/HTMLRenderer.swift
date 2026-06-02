@@ -251,10 +251,10 @@ struct HTMLRenderer {
                 \(workspaceHeader)
                 \(citationPanel)
                 \(sourcePanel)
-                \(comparisonPanel)
                 <div class="family-content">
                     \(familyHTML)
                 </div>
+                \(comparisonPanel)
             </div>
             \(copyButtonScript)
             \(navigationScript)
@@ -274,6 +274,7 @@ struct HTMLRenderer {
     ) -> String {
         let sourceURL = "/family/\(urlEncode(displayedId))/source" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
         let workupURL = "/family/\(urlEncode(displayedId))/workup" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
+        let comparisonURL = "#children-comparison"
         let familySearchURL = familySearchPersonId.map { FamilySearchDOMService.detailsURL(for: $0) }
         let sourceStatus = sourceText == nil ? "Source hidden" : "Source visible"
         let comparisonStatus: String
@@ -296,27 +297,29 @@ struct HTMLRenderer {
         let familySearchAction = familySearchURL.map {
             "<a class=\"family-workspace-action\" href=\"\(escapeHTML($0))\">FamilySearch</a>"
         } ?? ""
+        let comparisonAction = comparisonResult == nil && familySearchPersonId == nil
+            ? ""
+            : "<a class=\"family-workspace-action\" href=\"\(escapeHTML(comparisonURL))\">Comparison</a>"
 
         return """
-        <section class="family-workspace">
-            <div class="family-workspace-title-row">
-                <div>
-                    <h1>\(escapeHTML(family.familyId))</h1>
-                    <p class="family-workspace-pages">Pages: \(escapeHTML(family.pageReferences.joined(separator: ", ")))</p>
-                </div>
-                <div class="family-workspace-counts">
+        <section class="family-workspace" aria-label="Family review status">
+            <div class="family-workspace-main">
+                <div class="family-workspace-family">
+                    <span class="family-workspace-title">\(escapeHTML(family.familyId))</span>
+                    <span class="family-workspace-pages">Pages: \(escapeHTML(family.pageReferences.joined(separator: ", ")))</span>
                     <span>\(family.couples.count) \(family.couples.count == 1 ? "couple" : "couples")</span>
                     <span>\(family.allChildren.count) \(family.allChildren.count == 1 ? "child" : "children")</span>
                 </div>
-            </div>
-            <div class="family-workspace-status">
-                <span>\(escapeHTML(sourceStatus))</span>
-                <span>\(escapeHTML(comparisonStatus))</span>
-                <span>\(escapeHTML(familySearchStatus))</span>
+                <div class="family-workspace-status">
+                    <span>\(escapeHTML(sourceStatus))</span>
+                    <span>\(escapeHTML(comparisonStatus))</span>
+                    <span>\(escapeHTML(familySearchStatus))</span>
+                </div>
             </div>
             <div class="family-workspace-actions">
                 <a class="family-workspace-action" href="\(escapeHTML(sourceURL))">Source</a>
                 <a class="family-workspace-action" href="\(escapeHTML(workupURL))">Workup</a>
+                \(comparisonAction)
                 \(familySearchAction)
             </div>
         </section>
@@ -641,7 +644,7 @@ struct HTMLRenderer {
         }
 
         return """
-        <div class="comparison-panel">
+        <div class="comparison-panel" id="children-comparison">
             <div class="comparison-header">
                 <div>
                     <div class="comparison-title">Children Comparison</div>
@@ -860,55 +863,62 @@ struct HTMLRenderer {
             color: #333;
         }
         .family-workspace {
-            background: #fefdf8;
-            padding: 20px 24px;
+            background: white;
+            padding: 10px 12px;
             border-radius: 8px;
-            margin-bottom: 20px;
+            margin-bottom: 12px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .family-workspace-title-row {
             display: flex;
             justify-content: space-between;
-            gap: 16px;
-            align-items: flex-start;
+            gap: 12px;
+            align-items: center;
         }
-        .family-workspace h1 {
-            margin: 0;
-            font-size: 22px;
-            color: #0066cc;
+        .family-workspace-main {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
         }
-        .family-workspace-pages {
-            margin-top: 3px;
-            color: #666;
-            font-size: 14px;
-        }
-        .family-workspace-counts,
+        .family-workspace-family,
         .family-workspace-status,
         .family-workspace-actions {
             display: flex;
             gap: 8px;
+            align-items: center;
             flex-wrap: wrap;
         }
-        .family-workspace-counts span,
+        .family-workspace-title {
+            font-weight: 700;
+            color: #0066cc;
+            font-size: 15px;
+        }
+        .family-workspace-pages {
+            color: #666;
+        }
+        .family-workspace-family span,
         .family-workspace-status span {
             border: 1px solid #ddd;
             border-radius: 4px;
-            padding: 3px 8px;
+            padding: 2px 7px;
             background: #fff;
             color: #555;
             font-size: 13px;
         }
-        .family-workspace-status {
-            margin-top: 12px;
+        .family-workspace-family .family-workspace-title {
+            border: none;
+            padding-left: 0;
+            color: #0066cc;
         }
-        .family-workspace-actions {
-            margin-top: 12px;
+        .family-workspace-family .family-workspace-pages {
+            border: none;
+            padding-left: 0;
+            color: #666;
         }
         .family-workspace-action {
             display: inline-block;
             border: 1px solid #0066cc;
             border-radius: 4px;
-            padding: 5px 10px;
+            padding: 3px 8px;
             color: #0066cc;
             background: #fff;
             text-decoration: none;
@@ -916,6 +926,12 @@ struct HTMLRenderer {
         }
         .family-workspace-action:hover {
             background: #eef6ff;
+        }
+        @media (max-width: 760px) {
+            .family-workspace {
+                align-items: flex-start;
+                flex-direction: column;
+            }
         }
         .family-content {
             background: #fefdf8;

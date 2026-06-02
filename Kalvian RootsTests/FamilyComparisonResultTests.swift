@@ -1850,7 +1850,8 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         )
 
         XCTAssertTrue(html.contains("class=\"family-workspace\""))
-        XCTAssertTrue(html.contains("<h1>AHOKANGAS 2</h1>"))
+        XCTAssertTrue(html.contains("aria-label=\"Family review status\""))
+        XCTAssertTrue(html.contains("<span class=\"family-workspace-title\">AHOKANGAS 2</span>"))
         XCTAssertTrue(html.contains("Pages: 1"))
         XCTAssertTrue(html.contains("1 couple"))
         XCTAssertTrue(html.contains("0 children"))
@@ -1859,8 +1860,14 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(html.contains("FamilySearch ready"))
         XCTAssertTrue(html.contains("href=\"/family/AHOKANGAS%202/source\""))
         XCTAssertTrue(html.contains("href=\"/family/AHOKANGAS%202/workup\""))
+        XCTAssertTrue(html.contains("href=\"#children-comparison\""))
+        XCTAssertTrue(html.contains("id=\"children-comparison\""))
         XCTAssertTrue(html.contains("Open FamilySearch Details page"))
         XCTAssertTrue(html.contains("href=\"https://www.familysearch.org/en/tree/person/details/KJJH-2QK\""))
+        XCTAssertLessThan(
+            html.range(of: "class=\"family-content\"")!.lowerBound,
+            html.range(of: "id=\"children-comparison\"")!.lowerBound
+        )
         XCTAssertFalse(html.localizedCaseInsensitiveContains("bookmarklet"))
         XCTAssertFalse(html.contains("Copy bookmarklet"))
         XCTAssertFalse(html.localizedCaseInsensitiveContains("Atlas"))
