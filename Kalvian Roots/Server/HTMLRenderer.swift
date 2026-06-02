@@ -197,6 +197,7 @@ struct HTMLRenderer {
         comparisonResult: FamilyComparisonResult? = nil,
         familySearchExtraction: FamilySearchFamilyExtraction? = nil,
         familySearchPersonId: String? = nil,
+        workup: FamilyWorkup? = nil,
         hiskiChildSearchRequestsByCouple: [Int: HiskiService.FamilyBirthSearchRequest] = [:]
     ) -> String {
         let tokenizer = FamilyTokenizer()
@@ -233,6 +234,11 @@ struct HTMLRenderer {
             familySearchExtraction: familySearchExtraction,
             familySearchPersonId: familySearchPersonId
         )
+        let reviewQueuePanel = renderFamilyReviewQueuePanel(
+            workup: workup,
+            displayedId: displayedId,
+            homeId: actualHomeId
+        )
 
         return """
         <!DOCTYPE html>
@@ -254,9 +260,11 @@ struct HTMLRenderer {
                 <div class="family-content">
                     \(familyHTML)
                 </div>
+                \(reviewQueuePanel)
                 \(comparisonPanel)
             </div>
             \(copyButtonScript)
+            \(workupCopyScript)
             \(navigationScript)
         </body>
         </html>
@@ -323,6 +331,74 @@ struct HTMLRenderer {
                 \(familySearchAction)
             </div>
         </section>
+        """
+    }
+
+    private static func renderFamilyReviewQueuePanel(
+        workup: FamilyWorkup?,
+        displayedId: String,
+        homeId: String
+    ) -> String {
+        guard let workup, !workup.actions.isEmpty else {
+            return ""
+        }
+
+        let workupURL = "/family/\(urlEncode(displayedId))/workup" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
+        let mismatchCount = workup.actions.filter { $0.type == "review.familysearch-id-mismatch" }.count
+        let sourceUpdateCount = workup.actions.filter { $0.type == "source.update.familysearch-id" }.count
+        let otherCount = workup.actions.count - mismatchCount - sourceUpdateCount
+        let counts = [
+            ("ID mismatches", mismatchCount),
+            ("Source updates", sourceUpdateCount),
+            ("Other", otherCount)
+        ]
+            .filter { $0.1 > 0 }
+            .map { label, count in
+                "<span>\(escapeHTML(label)): \(count)</span>"
+            }
+            .joined(separator: "\n")
+        let displayedActions = workup.actions.prefix(5).map(renderFamilyReviewAction).joined(separator: "\n")
+        let moreActions = workup.actions.count > 5
+            ? "<p class=\"workup-muted\">\(workup.actions.count - 5) more \(workup.actions.count - 5 == 1 ? "action" : "actions") on the full workup page.</p>"
+            : ""
+
+        return """
+        <section class="family-review-panel" id="family-review-queue">
+            <div class="family-review-header">
+                <div>
+                    <h2>Review Queue</h2>
+                    <p class="workup-muted">\(workup.actions.count) queued \(workup.actions.count == 1 ? "action" : "actions") for collaborative review.</p>
+                </div>
+                <a class="family-workspace-action" href="\(escapeHTML(workupURL))#review-queue">Open full workup</a>
+            </div>
+            <div class="family-review-counts">
+                \(counts)
+            </div>
+            <ul class="family-review-actions">
+                \(displayedActions)
+            </ul>
+            \(moreActions)
+        </section>
+        """
+    }
+
+    private static func renderFamilyReviewAction(_ action: FamilyWorkup.ActionSummary) -> String {
+        let personHTML = action.personName.map { " - \(escapeHTML($0))" } ?? ""
+        let approvalHTML = action.approvalPrompt.map {
+            "<div class=\"workup-action-prompt\">\(escapeHTML($0))</div>"
+        } ?? ""
+        let sourceEditCommandHTML = renderSourceEditCommands(action)
+
+        return """
+        <li>
+            <strong>\(escapeHTML(action.type))</strong>: \(escapeHTML(action.label))\(personHTML)
+            <div class="workup-action-copy-row">
+                <code class="workup-action-id">\(escapeHTML(action.id))</code>
+                <button type="button" class="workup-copy-button" data-copy="\(escapeHTML(action.id))" onclick="copyWorkupValue(this)">Copy ID</button>
+            </div>
+            \(approvalHTML)
+            \(sourceEditCommandHTML)
+        </li>
         """
     }
     
@@ -973,6 +1049,9 @@ struct HTMLRenderer {
                 align-items: flex-start;
                 flex-direction: column;
             }
+            .family-review-header {
+                flex-direction: column;
+            }
         }
         .family-content {
             background: #fefdf8;
@@ -981,6 +1060,45 @@ struct HTMLRenderer {
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             font-size: 16px;
             white-space: pre-wrap;
+        }
+        .family-review-panel {
+            background: white;
+            padding: 16px 18px;
+            border-radius: 8px;
+            margin-top: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .family-review-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+        .family-review-header h2 {
+            font-size: 18px;
+            margin: 0 0 2px 0;
+        }
+        .family-review-counts {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .family-review-counts span {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 2px 7px;
+            background: #fff;
+            color: #555;
+            font-size: 13px;
+        }
+        .family-review-actions {
+            margin-left: 22px;
+        }
+        .family-review-actions li {
+            margin-bottom: 12px;
         }
         .section-header {
             font-size: 18px;

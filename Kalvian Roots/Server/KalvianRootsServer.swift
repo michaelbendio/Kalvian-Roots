@@ -593,6 +593,16 @@ final class HTTPHandler: ChannelInboundHandler {
             let familySearchPersonId = network.mainFamily.primaryCouple?.husband.familySearchId
                 ?? network.mainFamily.primaryCouple?.wife.familySearchId
                 ?? juuretApp?.primaryFamilySearchParentIdInSourceText(for: canonicalID)
+            let sourceText = juuretApp?.fileManager.extractFamilyText(familyId: canonicalID)
+            let workup = FamilyWorkupService(nameEquivalenceManager: sessionResult.session.nameEquivalenceManager)
+                .makeWorkup(
+                    family: network.mainFamily,
+                    network: network,
+                    sourceText: sourceText,
+                    familySearchExtraction: familySearchExtraction,
+                    familySearchPersonId: familySearchPersonId,
+                    comparisonResult: comparisonResult
+                )
             let html = HTMLRenderer.renderFamily(
                 family: network.mainFamily,
                 network: network,
@@ -600,6 +610,7 @@ final class HTTPHandler: ChannelInboundHandler {
                 comparisonResult: comparisonResult,
                 familySearchExtraction: familySearchExtraction,
                 familySearchPersonId: familySearchPersonId,
+                workup: workup,
                 hiskiChildSearchRequestsByCouple: hiskiChildSearchRequestsByCouple
             )
 

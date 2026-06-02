@@ -158,6 +158,35 @@ final class FamilyWorkupServiceTests: XCTestCase {
         XCTAssertTrue(html.contains("Copy Apply"))
         XCTAssertTrue(html.contains("Tools/juuret-project/juuret-project source-edit-dry-run"))
         XCTAssertTrue(html.contains("Tools/juuret-project/juuret-project source-edit-apply"))
+
+        let familyHTML = HTMLRenderer.renderFamily(
+            family: family,
+            network: nil,
+            comparisonResult: result,
+            familySearchExtraction: FamilySearchFamilyExtraction(
+                sourcePersonId: "TEST-FS",
+                children: familySearchChildren
+            ),
+            familySearchPersonId: "TEST-FS",
+            workup: workup
+        )
+        XCTAssertTrue(familyHTML.contains(#"id="family-review-queue""#))
+        XCTAssertTrue(familyHTML.contains("Review Queue"))
+        XCTAssertTrue(familyHTML.contains("1 queued action for collaborative review."))
+        XCTAssertTrue(familyHTML.contains("Source updates: 1"))
+        XCTAssertTrue(familyHTML.contains(#"href="/family/TEST%202/workup#review-queue""#))
+        XCTAssertTrue(familyHTML.contains("TEST 2:source.update.familysearch-id:0:elis:1760-06-12:AB12-CD:Liisa"))
+        XCTAssertTrue(familyHTML.contains("Copy ID"))
+        XCTAssertTrue(familyHTML.contains("Copy Dry Run"))
+        XCTAssertTrue(familyHTML.contains("Copy Apply"))
+        XCTAssertLessThan(
+            familyHTML.range(of: "class=\"family-content\"")!.lowerBound,
+            familyHTML.range(of: #"id="family-review-queue""#)!.lowerBound
+        )
+        XCTAssertLessThan(
+            familyHTML.range(of: #"id="family-review-queue""#)!.lowerBound,
+            familyHTML.range(of: #"id="children-comparison""#)!.lowerBound
+        )
     }
 
     func testWorkupDoesNotProposeSourceUpdateWhenJuuretAlreadyHasMatchingFamilySearchId() throws {
