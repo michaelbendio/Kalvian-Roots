@@ -224,6 +224,15 @@ struct HTMLRenderer {
             familySearchExtraction: familySearchExtraction,
             familySearchPersonId: familySearchPersonId
         )
+        let workspaceHeader = renderFamilyWorkspaceHeader(
+            family: family,
+            displayedId: displayedId,
+            homeId: actualHomeId,
+            sourceText: sourceText,
+            comparisonResult: comparisonResult,
+            familySearchExtraction: familySearchExtraction,
+            familySearchPersonId: familySearchPersonId
+        )
 
         return """
         <!DOCTYPE html>
@@ -239,6 +248,7 @@ struct HTMLRenderer {
         <body>
             <div class="container">
                 \(navBar)
+                \(workspaceHeader)
                 \(citationPanel)
                 \(sourcePanel)
                 \(comparisonPanel)
@@ -250,6 +260,66 @@ struct HTMLRenderer {
             \(navigationScript)
         </body>
         </html>
+        """
+    }
+
+    private static func renderFamilyWorkspaceHeader(
+        family: Family,
+        displayedId: String,
+        homeId: String,
+        sourceText: String?,
+        comparisonResult: FamilyComparisonResult?,
+        familySearchExtraction: FamilySearchFamilyExtraction?,
+        familySearchPersonId: String?
+    ) -> String {
+        let sourceURL = "/family/\(urlEncode(displayedId))/source" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
+        let workupURL = "/family/\(urlEncode(displayedId))/workup" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
+        let familySearchURL = familySearchPersonId.map { FamilySearchDOMService.detailsURL(for: $0) }
+        let sourceStatus = sourceText == nil ? "Source hidden" : "Source visible"
+        let comparisonStatus: String
+        if let comparisonResult {
+            comparisonStatus = "\(FamilyComparisonReviewDetector.displayRows(for: comparisonResult.rows).count) comparison rows"
+        } else {
+            comparisonStatus = "Comparison not loaded"
+        }
+        let familySearchStatus: String
+        if let extraction = familySearchExtraction {
+            familySearchStatus = extraction.isSuccessful
+                ? "\(extraction.children.count) FamilySearch children"
+                : "FamilySearch extraction failed"
+        } else if familySearchPersonId != nil {
+            familySearchStatus = "FamilySearch ready"
+        } else {
+            familySearchStatus = "No FamilySearch anchor"
+        }
+
+        let familySearchAction = familySearchURL.map {
+            "<a class=\"family-workspace-action\" href=\"\(escapeHTML($0))\">FamilySearch</a>"
+        } ?? ""
+
+        return """
+        <section class="family-workspace">
+            <div class="family-workspace-title-row">
+                <div>
+                    <h1>\(escapeHTML(family.familyId))</h1>
+                    <p class="family-workspace-pages">Pages: \(escapeHTML(family.pageReferences.joined(separator: ", ")))</p>
+                </div>
+                <div class="family-workspace-counts">
+                    <span>\(family.couples.count) \(family.couples.count == 1 ? "couple" : "couples")</span>
+                    <span>\(family.allChildren.count) \(family.allChildren.count == 1 ? "child" : "children")</span>
+                </div>
+            </div>
+            <div class="family-workspace-status">
+                <span>\(escapeHTML(sourceStatus))</span>
+                <span>\(escapeHTML(comparisonStatus))</span>
+                <span>\(escapeHTML(familySearchStatus))</span>
+            </div>
+            <div class="family-workspace-actions">
+                <a class="family-workspace-action" href="\(escapeHTML(sourceURL))">Source</a>
+                <a class="family-workspace-action" href="\(escapeHTML(workupURL))">Workup</a>
+                \(familySearchAction)
+            </div>
+        </section>
         """
     }
     
@@ -788,6 +858,64 @@ struct HTMLRenderer {
             font-size: 18px;
             font-weight: bold;
             color: #333;
+        }
+        .family-workspace {
+            background: #fefdf8;
+            padding: 20px 24px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .family-workspace-title-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: flex-start;
+        }
+        .family-workspace h1 {
+            margin: 0;
+            font-size: 22px;
+            color: #0066cc;
+        }
+        .family-workspace-pages {
+            margin-top: 3px;
+            color: #666;
+            font-size: 14px;
+        }
+        .family-workspace-counts,
+        .family-workspace-status,
+        .family-workspace-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .family-workspace-counts span,
+        .family-workspace-status span {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 3px 8px;
+            background: #fff;
+            color: #555;
+            font-size: 13px;
+        }
+        .family-workspace-status {
+            margin-top: 12px;
+        }
+        .family-workspace-actions {
+            margin-top: 12px;
+        }
+        .family-workspace-action {
+            display: inline-block;
+            border: 1px solid #0066cc;
+            border-radius: 4px;
+            padding: 5px 10px;
+            color: #0066cc;
+            background: #fff;
+            text-decoration: none;
+            font-size: 13px;
+        }
+        .family-workspace-action:hover {
+            background: #eef6ff;
         }
         .family-content {
             background: #fefdf8;

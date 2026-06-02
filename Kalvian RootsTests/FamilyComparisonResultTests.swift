@@ -1849,6 +1849,16 @@ final class FamilySearchDOMServiceTests: XCTestCase {
             familySearchPersonId: "KJJH-2QK"
         )
 
+        XCTAssertTrue(html.contains("class=\"family-workspace\""))
+        XCTAssertTrue(html.contains("<h1>AHOKANGAS 2</h1>"))
+        XCTAssertTrue(html.contains("Pages: 1"))
+        XCTAssertTrue(html.contains("1 couple"))
+        XCTAssertTrue(html.contains("0 children"))
+        XCTAssertTrue(html.contains("Source hidden"))
+        XCTAssertTrue(html.contains("Comparison not loaded"))
+        XCTAssertTrue(html.contains("FamilySearch ready"))
+        XCTAssertTrue(html.contains("href=\"/family/AHOKANGAS%202/source\""))
+        XCTAssertTrue(html.contains("href=\"/family/AHOKANGAS%202/workup\""))
         XCTAssertTrue(html.contains("Open FamilySearch Details page"))
         XCTAssertTrue(html.contains("href=\"https://www.familysearch.org/en/tree/person/details/KJJH-2QK\""))
         XCTAssertFalse(html.localizedCaseInsensitiveContains("bookmarklet"))
