@@ -187,9 +187,53 @@ final class FamilyWorkupServiceTests: XCTestCase {
         XCTAssertTrue(actionHTML.contains("★ 12.06.1760 Liisa"))
         XCTAssertTrue(actionHTML.contains("★ 12.06.1760 Liisa &lt;AB12-CD&gt;"))
         XCTAssertTrue(actionHTML.contains("No source edit was applied."))
+        XCTAssertTrue(actionHTML.contains("Action 1 of 1"))
+        XCTAssertTrue(actionHTML.contains(#"<span class="workup-review-link disabled">Previous</span>"#))
+        XCTAssertTrue(actionHTML.contains(#"<span class="workup-review-link disabled">Next</span>"#))
         XCTAssertTrue(actionHTML.contains("Copy Dry Run"))
         XCTAssertTrue(actionHTML.contains("Copy Apply"))
         XCTAssertTrue(actionHTML.contains(#"href="/family/TEST%202/workup#review-queue""#))
+
+        let secondAction = FamilyWorkup.ActionSummary(
+            id: "TEST 2:review.comparison:0:anna:1762-01-01:Anna",
+            familyId: "TEST 2",
+            type: "review.comparison",
+            label: "Review comparison row before proposing changes.",
+            personName: "Anna",
+            personId: nil,
+            requiresApproval: false,
+            approvalPrompt: nil,
+            context: FamilyWorkup.ActionContext(
+                coupleIndex: 0,
+                identityName: "anna",
+                birthDate: "1762-01-01",
+                status: "Review date discrepancy",
+                familySearch: nil,
+                juuret: nil,
+                hiski: nil
+            )
+        )
+        let twoActionWorkup = FamilyWorkup(
+            familyId: workup.familyId,
+            pageReferences: workup.pageReferences,
+            sourceTextAvailable: workup.sourceTextAvailable,
+            sourceTextLineCount: workup.sourceTextLineCount,
+            couples: workup.couples,
+            network: workup.network,
+            familySearch: workup.familySearch,
+            hiskiQueries: workup.hiskiQueries,
+            comparison: workup.comparison,
+            actions: [sourceUpdateAction, secondAction]
+        )
+        let firstActionHTML = HTMLRenderer.renderWorkupActionDetail(
+            twoActionWorkup,
+            family: family,
+            homeId: family.familyId,
+            actionId: sourceUpdateAction.id
+        )
+        XCTAssertTrue(firstActionHTML.contains("Action 1 of 2"))
+        XCTAssertTrue(firstActionHTML.contains(#"<span class="workup-review-link disabled">Previous</span>"#))
+        XCTAssertTrue(firstActionHTML.contains(#"href="/family/TEST%202/workup-action?action=TEST%202:review.comparison:0:anna:1762-01-01:Anna">Next</a>"#))
 
         let familyHTML = HTMLRenderer.renderFamily(
             family: family,

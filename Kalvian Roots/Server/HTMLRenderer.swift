@@ -1465,6 +1465,18 @@ struct HTMLRenderer {
         .workup-review-link:hover {
             background: #f0f0f0;
         }
+        .workup-review-link.disabled {
+            color: #888;
+            background: #f0f0f0;
+            cursor: default;
+        }
+        .action-detail-nav {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin: 0 0 12px 0;
+        }
         .review-queue-table {
             width: 100%;
             border-collapse: collapse;
@@ -1654,6 +1666,11 @@ struct HTMLRenderer {
         let navBar = renderNavigationBar(homeId: homeId, displayedId: family.familyId)
         let workupURL = "/family/\(urlEncode(family.familyId))/workup" + (family.familyId == homeId ? "" : "?home=\(urlQueryEncode(homeId))")
         let action = workup.actions.first { $0.id == actionId }
+        let navigationHTML = renderActionDetailNavigation(
+            workup.actions,
+            currentActionId: actionId,
+            homeId: homeId
+        )
         let title = action.map { "\($0.type) - \(family.familyId)" } ?? "Action Not Found - \(family.familyId)"
         let actionHTML: String
         if let action {
@@ -1703,12 +1720,39 @@ struct HTMLRenderer {
                         </div>
                         <a class="fs-action" href="\(escapeHTML(workupURL))#review-queue">Review Queue</a>
                     </div>
+                    \(navigationHTML)
                     \(actionHTML)
+                    \(navigationHTML)
                 </div>
             </div>
             \(workupCopyScript)
         </body>
         </html>
+        """
+    }
+
+    private static func renderActionDetailNavigation(
+        _ actions: [FamilyWorkup.ActionSummary],
+        currentActionId: String,
+        homeId: String
+    ) -> String {
+        guard let index = actions.firstIndex(where: { $0.id == currentActionId }) else {
+            return ""
+        }
+
+        let previousHTML = index > 0
+            ? "<a class=\"workup-review-link\" href=\"\(escapeHTML(actionDetailURL(actions[index - 1], homeId: homeId)))\">Previous</a>"
+            : "<span class=\"workup-review-link disabled\">Previous</span>"
+        let nextHTML = index + 1 < actions.count
+            ? "<a class=\"workup-review-link\" href=\"\(escapeHTML(actionDetailURL(actions[index + 1], homeId: homeId)))\">Next</a>"
+            : "<span class=\"workup-review-link disabled\">Next</span>"
+
+        return """
+        <nav class="action-detail-nav">
+            \(previousHTML)
+            <span class="workup-muted">Action \(index + 1) of \(actions.count)</span>
+            \(nextHTML)
+        </nav>
         """
     }
 
