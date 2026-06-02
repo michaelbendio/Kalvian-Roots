@@ -476,6 +476,7 @@ struct HTMLRenderer {
             "<div class=\"workup-action-prompt\">\(escapeHTML($0))</div>"
         } ?? ""
         let sourceEditCommandHTML = renderSourceEditCommands(action)
+        let actionURL = actionDetailURL(action, homeId: nil)
 
         return """
         <li>
@@ -483,6 +484,7 @@ struct HTMLRenderer {
             <div class="workup-action-copy-row">
                 <code class="workup-action-id">\(escapeHTML(action.id))</code>
                 <button type="button" class="workup-copy-button" data-copy="\(escapeHTML(action.id))" onclick="copyWorkupValue(this)">Copy ID</button>
+                <a class="workup-copy-button" href="\(escapeHTML(actionURL))">Open</a>
             </div>
             \(approvalHTML)
             \(sourceEditCommandHTML)
@@ -1485,6 +1487,8 @@ struct HTMLRenderer {
             font: inherit;
             font-size: 12px;
             cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
         }
         .workup-copy-button:hover {
             background: #f3f3f3;
@@ -1530,7 +1534,7 @@ struct HTMLRenderer {
             familySearchActionHTML = ""
         }
         let reviewQueueHTML = renderWorkupReviewQueue(workup.actions)
-        let actionSectionsHTML = renderWorkupActionSections(workup.actions)
+        let actionSectionsHTML = renderWorkupActionSections(workup.actions, homeId: homeId)
         let couplesHTML = workup.couples.map { couple in
             """
             <section class="workup-section">
@@ -1603,6 +1607,69 @@ struct HTMLRenderer {
         """
     }
 
+    static func renderWorkupActionDetail(
+        _ workup: FamilyWorkup,
+        family: Family,
+        homeId: String,
+        actionId: String
+    ) -> String {
+        let navBar = renderNavigationBar(homeId: homeId, displayedId: family.familyId)
+        let workupURL = "/family/\(urlEncode(family.familyId))/workup" + (family.familyId == homeId ? "" : "?home=\(urlQueryEncode(homeId))")
+        let action = workup.actions.first { $0.id == actionId }
+        let title = action.map { "\($0.type) - \(family.familyId)" } ?? "Action Not Found - \(family.familyId)"
+        let actionHTML: String
+        if let action {
+            actionHTML = """
+            <section class="workup-section">
+                <h2>\(escapeHTML(action.type))\(action.personName.map { " - \(escapeHTML($0))" } ?? "")</h2>
+                <p>\(escapeHTML(action.label))</p>
+                <ul>\(renderWorkupAction(action, homeId: homeId))</ul>
+            </section>
+            """
+        } else {
+            actionHTML = """
+            <section class="workup-section">
+                <h2>Action Not Found</h2>
+                <p class="workup-muted">No queued action matched this action ID.</p>
+                <div class="workup-action-copy-row">
+                    <code class="workup-action-id">\(escapeHTML(actionId))</code>
+                    <button type="button" class="workup-copy-button" data-copy="\(escapeHTML(actionId))" onclick="copyWorkupValue(this)">Copy ID</button>
+                </div>
+            </section>
+            """
+        }
+
+        return """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>\(escapeHTML(title))</title>
+            <style>
+                \(cssStyles)
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                \(navBar)
+                <div class="workup-panel">
+                    <div class="workup-header">
+                        <div>
+                            <h1>\(escapeHTML(family.familyId)) Action</h1>
+                            <p class="workup-muted">Dedicated review view for one queued workup action.</p>
+                        </div>
+                        <a class="fs-action" href="\(escapeHTML(workupURL))#review-queue">Review Queue</a>
+                    </div>
+                    \(actionHTML)
+                </div>
+            </div>
+            \(workupCopyScript)
+        </body>
+        </html>
+        """
+    }
+
     private static func renderWorkupReviewQueue(_ actions: [FamilyWorkup.ActionSummary]) -> String {
         guard !actions.isEmpty else {
             return """
@@ -1638,7 +1705,10 @@ struct HTMLRenderer {
         """
     }
 
-    private static func renderWorkupActionSections(_ actions: [FamilyWorkup.ActionSummary]) -> String {
+    private static func renderWorkupActionSections(
+        _ actions: [FamilyWorkup.ActionSummary],
+        homeId: String
+    ) -> String {
         guard !actions.isEmpty else {
             return ""
         }
@@ -1654,17 +1724,20 @@ struct HTMLRenderer {
             renderWorkupActionSection(
                 id: "familysearch-id-mismatches",
                 title: "FamilySearch ID Mismatches",
-                actions: mismatches
+                actions: mismatches,
+                homeId: homeId
             ),
             renderWorkupActionSection(
                 id: "source-updates",
                 title: "Source Updates",
-                actions: sourceUpdates
+                actions: sourceUpdates,
+                homeId: homeId
             ),
             renderWorkupActionSection(
                 id: "other-actions",
                 title: "Other Actions",
-                actions: otherActions
+                actions: otherActions,
+                homeId: homeId
             )
         ]
             .filter { !$0.isEmpty }
@@ -1674,7 +1747,8 @@ struct HTMLRenderer {
     private static func renderWorkupActionSection(
         id: String,
         title: String,
-        actions: [FamilyWorkup.ActionSummary]
+        actions: [FamilyWorkup.ActionSummary],
+        homeId: String
     ) -> String {
         guard !actions.isEmpty else {
             return ""
@@ -1683,18 +1757,22 @@ struct HTMLRenderer {
         return """
         <section class="workup-section" id="\(id)">
             <h2>\(escapeHTML(title))</h2>
-            <ul>\(actions.map(renderWorkupAction).joined(separator: "\n"))</ul>
+            <ul>\(actions.map { renderWorkupAction($0, homeId: homeId) }.joined(separator: "\n"))</ul>
         </section>
         """
     }
 
-    private static func renderWorkupAction(_ action: FamilyWorkup.ActionSummary) -> String {
+    private static func renderWorkupAction(
+        _ action: FamilyWorkup.ActionSummary,
+        homeId: String
+    ) -> String {
         let personHTML = action.personName.map { " - \(escapeHTML($0))" } ?? ""
         let approvalHTML = action.approvalPrompt.map {
             "<div class=\"workup-action-prompt\">\(escapeHTML($0))</div>"
         } ?? ""
         let contextHTML = action.context.map(renderWorkupActionContext) ?? ""
         let sourceEditCommandHTML = renderSourceEditCommands(action)
+        let actionURL = actionDetailURL(action, homeId: homeId)
 
         return """
         <li>
@@ -1702,6 +1780,7 @@ struct HTMLRenderer {
             <div class="workup-action-copy-row">
                 <code class="workup-action-id">\(escapeHTML(action.id))</code>
                 <button type="button" class="workup-copy-button" data-copy="\(escapeHTML(action.id))" onclick="copyWorkupValue(this)">Copy ID</button>
+                <a class="workup-copy-button" href="\(escapeHTML(actionURL))">Open</a>
             </div>
             \(approvalHTML)
             \(contextHTML)
@@ -1741,6 +1820,17 @@ struct HTMLRenderer {
             shellQuote(action.familyId),
             shellQuote(action.id)
         ].joined(separator: " ")
+    }
+
+    private static func actionDetailURL(
+        _ action: FamilyWorkup.ActionSummary,
+        homeId: String?
+    ) -> String {
+        var queryItems = ["action=\(urlQueryEncode(action.id))"]
+        if let homeId, homeId != action.familyId {
+            queryItems.append("home=\(urlQueryEncode(homeId))")
+        }
+        return "/family/\(urlEncode(action.familyId))/workup-action?\(queryItems.joined(separator: "&"))"
     }
 
     private static func renderWorkupActionContext(_ context: FamilyWorkup.ActionContext) -> String {
@@ -2054,6 +2144,10 @@ struct HTMLRenderer {
     
     private static func urlEncode(_ string: String) -> String {
         return string.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? string
+    }
+
+    private static func urlQueryEncode(_ string: String) -> String {
+        return string.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? string
     }
 
     private static func isLocalHost(_ host: String) -> Bool {

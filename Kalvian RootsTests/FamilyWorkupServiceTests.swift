@@ -154,10 +154,26 @@ final class FamilyWorkupServiceTests: XCTestCase {
         XCTAssertTrue(html.contains(#"id="source-updates""#))
         XCTAssertTrue(html.contains("Source Updates"))
         XCTAssertTrue(html.contains("Copy ID"))
+        XCTAssertTrue(html.contains("Open"))
+        XCTAssertTrue(html.contains(#"href="/family/TEST%202/workup-action?action=TEST%202:source.update.familysearch-id:0:elis:1760-06-12:AB12-CD:Liisa""#))
         XCTAssertTrue(html.contains("Copy Dry Run"))
         XCTAssertTrue(html.contains("Copy Apply"))
         XCTAssertTrue(html.contains("Tools/juuret-project/juuret-project source-edit-dry-run"))
         XCTAssertTrue(html.contains("Tools/juuret-project/juuret-project source-edit-apply"))
+
+        let actionHTML = HTMLRenderer.renderWorkupActionDetail(
+            workup,
+            family: family,
+            homeId: family.familyId,
+            actionId: sourceUpdateAction.id
+        )
+        XCTAssertTrue(actionHTML.contains("TEST 2 Action"))
+        XCTAssertTrue(actionHTML.contains("Dedicated review view for one queued workup action."))
+        XCTAssertTrue(actionHTML.contains("source.update.familysearch-id - Liisa"))
+        XCTAssertTrue(actionHTML.contains("Should I add AB12-CD to Liisa in the canonical Juuret source text?"))
+        XCTAssertTrue(actionHTML.contains("Copy Dry Run"))
+        XCTAssertTrue(actionHTML.contains("Copy Apply"))
+        XCTAssertTrue(actionHTML.contains(#"href="/family/TEST%202/workup#review-queue""#))
 
         let familyHTML = HTMLRenderer.renderFamily(
             family: family,
@@ -185,6 +201,8 @@ final class FamilyWorkupServiceTests: XCTestCase {
         XCTAssertTrue(familyHTML.contains("Dry run: Tools/juuret-project/juuret-project source-edit-dry-run"))
         XCTAssertTrue(familyHTML.contains("Apply: Tools/juuret-project/juuret-project source-edit-apply"))
         XCTAssertTrue(familyHTML.contains("Copy ID"))
+        XCTAssertTrue(familyHTML.contains("Open"))
+        XCTAssertTrue(familyHTML.contains(#"href="/family/TEST%202/workup-action?action=TEST%202:source.update.familysearch-id:0:elis:1760-06-12:AB12-CD:Liisa""#))
         XCTAssertTrue(familyHTML.contains("Copy Dry Run"))
         XCTAssertTrue(familyHTML.contains("Copy Apply"))
         XCTAssertLessThan(
@@ -286,6 +304,7 @@ final class FamilyWorkupServiceTests: XCTestCase {
         )
         XCTAssertEqual(mismatchAction.context?.juuret?.familySearchId, "PD55-86C")
         XCTAssertEqual(mismatchAction.context?.familySearch?.familySearchId, "M8ZK-DQP")
+        XCTAssertEqual(mismatchAction.id, "TEST 2B:review.familysearch-id-mismatch:0:maija:1696-02-12:M8ZK-DQP:Maria")
 
         let html = HTMLRenderer.renderWorkup(workup, family: family, homeId: family.familyId)
         XCTAssertTrue(html.contains("review.familysearch-id-mismatch"))
@@ -293,10 +312,25 @@ final class FamilyWorkupServiceTests: XCTestCase {
         XCTAssertTrue(html.contains("href=\"#familysearch-id-mismatches\""))
         XCTAssertTrue(html.contains(#"id="familysearch-id-mismatches""#))
         XCTAssertTrue(html.contains("FamilySearch ID Mismatches"))
+        XCTAssertTrue(html.contains(#"href="/family/TEST%202B/workup-action?action=TEST%202B:review.familysearch-id-mismatch:0:maija:1696-02-12:M8ZK-DQP:Maria""#))
         XCTAssertTrue(html.contains("Copy Dry Run"))
         XCTAssertTrue(html.contains("Copy Apply"))
         XCTAssertTrue(html.contains("Tools/juuret-project/juuret-project source-edit-dry-run"))
         XCTAssertTrue(html.contains("Tools/juuret-project/juuret-project source-edit-apply"))
+
+        let actionHTML = HTMLRenderer.renderWorkupActionDetail(
+            workup,
+            family: family,
+            homeId: family.familyId,
+            actionId: mismatchAction.id
+        )
+        XCTAssertTrue(actionHTML.contains("TEST 2B Action"))
+        XCTAssertTrue(actionHTML.contains("review.familysearch-id-mismatch - Maria"))
+        XCTAssertTrue(actionHTML.contains("Juuret has PD55-86C for Maria, but FamilySearch extraction matched M8ZK-DQP. Which ID is correct?"))
+        XCTAssertTrue(actionHTML.contains("Juuret: Maria, 1696-02-12, PD55-86C"))
+        XCTAssertTrue(actionHTML.contains("FamilySearch: Maria Mattsson, 1696-02-12, M8ZK-DQP"))
+        XCTAssertTrue(actionHTML.contains("Copy Dry Run"))
+        XCTAssertTrue(actionHTML.contains("Copy Apply"))
     }
 
     func testWorkupActionContextIncludesCoupleIndexForMatchedJuuretChild() throws {

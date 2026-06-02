@@ -567,6 +567,17 @@ final class HTTPHandler: ChannelInboundHandler {
                 format: "json"
             )
 
+        case "workup-action":
+            logger.info("[\(requestID!)] 🧰 Handling WORKUP ACTION request")
+            return await handleWorkupActionRequest(
+                familyId: canonicalID,
+                network: network,
+                homeId: homeId,
+                setCookieHeader: setCookieHeader,
+                session: sessionResult.session,
+                queryItems: queryItems
+            )
+
         case "familysearch-extract":
             logger.info("[\(requestID!)] 🧬 Handling FamilySearch extraction request")
             return await handleFamilySearchExtractionRequest(
@@ -845,6 +856,55 @@ final class HTTPHandler: ChannelInboundHandler {
         )
 
         return .html(html, headers: responseHeaders)
+    }
+
+    @MainActor
+    private func handleWorkupActionRequest(
+        familyId: String,
+        network: FamilyNetwork,
+        homeId: String?,
+        setCookieHeader: String?,
+        session: BrowserSession,
+        queryItems: [URLQueryItem]
+    ) async -> HTTPResponse {
+        guard let actionId = queryItems.first(where: { $0.name == "action" })?.value,
+              !actionId.isEmpty else {
+            return .error(
+                .badRequest,
+                "Missing action query parameter",
+                headers: responseHeaders(setCookieHeader: setCookieHeader)
+            )
+        }
+
+        let familySearchExtraction = session.familySearchExtraction(for: familyId)
+            ?? juuretApp?.familySearchExtraction(for: familyId)
+        let comparisonResult = await makeChildrenComparisonResult(
+            family: network.mainFamily,
+            familySearchExtraction: familySearchExtraction,
+            session: session
+        )
+        let familySearchPersonId = network.mainFamily.primaryCouple?.husband.familySearchId
+            ?? network.mainFamily.primaryCouple?.wife.familySearchId
+            ?? juuretApp?.primaryFamilySearchParentIdInSourceText(for: familyId)
+        let sourceText = juuretApp?.fileManager.extractFamilyText(familyId: familyId)
+        let workup = FamilyWorkupService(nameEquivalenceManager: session.nameEquivalenceManager)
+            .makeWorkup(
+                family: network.mainFamily,
+                network: network,
+                sourceText: sourceText,
+                familySearchExtraction: familySearchExtraction,
+                familySearchPersonId: familySearchPersonId,
+                comparisonResult: comparisonResult
+            )
+
+        let html = HTMLRenderer.renderWorkupActionDetail(
+            workup,
+            family: network.mainFamily,
+            homeId: homeId ?? familyId,
+            actionId: actionId
+        )
+
+        return .html(html, headers: responseHeaders(setCookieHeader: setCookieHeader))
     }
     
     // MARK: - Hiski Handler
