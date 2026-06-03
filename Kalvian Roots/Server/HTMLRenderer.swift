@@ -195,6 +195,7 @@ struct HTMLRenderer {
         sourceText: String? = nil,
         errorMessage: String? = nil,
         comparisonResult: FamilyComparisonResult? = nil,
+        comparisonGroups: [FamilyChildrenComparisonGroup] = [],
         familySearchExtraction: FamilySearchFamilyExtraction? = nil,
         familySearchPersonId: String? = nil,
         workup: FamilyWorkup? = nil,
@@ -214,6 +215,7 @@ struct HTMLRenderer {
             familyId: displayedId,
             homeId: actualHomeId,
             comparisonResult: comparisonResult,
+            comparisonGroups: comparisonGroups,
             hiskiChildSearchRequestsByCouple: hiskiChildSearchRequestsByCouple,
             showsSourceMarkers: citationText == nil
         )
@@ -385,6 +387,7 @@ struct HTMLRenderer {
         familyId: String,
         homeId: String,
         comparisonResult: FamilyComparisonResult?,
+        comparisonGroups: [FamilyChildrenComparisonGroup],
         hiskiChildSearchRequestsByCouple: [Int: HiskiService.FamilyBirthSearchRequest],
         showsSourceMarkers: Bool
     ) -> String {
@@ -396,7 +399,10 @@ struct HTMLRenderer {
         </div>
         """)
 
-        let comparisonGroup = comparisonResult.flatMap {
+        let comparisonGroupsByCouple = Dictionary(
+            uniqueKeysWithValues: comparisonGroups.map { ($0.coupleIndex, $0) }
+        )
+        let primaryComparisonGroup = comparisonGroupsByCouple[0] ?? comparisonResult.flatMap {
             FamilyChildrenComparisonGroup.primaryCoupleFallback(for: family, result: $0)
         }
 
@@ -413,7 +419,8 @@ struct HTMLRenderer {
                 isAdditional: index > 0
             ))
 
-            if index == 0, let comparisonGroup, !comparisonGroup.displayRows.isEmpty {
+            let comparisonGroup = comparisonGroupsByCouple[index] ?? (index == 0 ? primaryComparisonGroup : nil)
+            if let comparisonGroup, !comparisonGroup.displayRows.isEmpty {
                 if let request = hiskiChildSearchRequestsByCouple[index] {
                     html.append(renderLapsetHeader(url: request.url.absoluteString))
                 } else {

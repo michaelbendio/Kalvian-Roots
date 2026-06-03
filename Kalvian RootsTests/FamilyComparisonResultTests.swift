@@ -1924,6 +1924,64 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertFalse(html.contains("id=\"children-comparison\""))
     }
 
+    func testServerRenderedFamilyUsesComparisonGroupsForAdditionalCouples() {
+        let nameManager = NameEquivalenceManager()
+        nameManager.clearAllEquivalences()
+        let firstCouple = Couple(
+            husband: Person(name: "Matti"),
+            wife: Person(name: "Kaarin", deathDate: "28.08.1785"),
+            marriageDate: "12.11.1779",
+            children: []
+        )
+        let secondCouple = Couple(
+            husband: Person(name: "Matti"),
+            wife: Person(name: "Anna"),
+            marriageDate: "04.06.1786",
+            children: [
+                Person(name: "Maria", birthDate: "01.05.1788")
+            ]
+        )
+        let family = Family(
+            familyId: "REMARRIED 1",
+            pageReferences: ["1"],
+            couples: [firstCouple, secondCouple]
+        )
+        let secondCoupleResult = FamilyComparisonResult(
+            familySearch: [],
+            juuretKalvialla: [
+                PersonCandidate(
+                    name: "Maria",
+                    birthDate: date(1788, 5, 1),
+                    source: .juuretKalvialla,
+                    nameManager: nameManager
+                )
+            ],
+            hiski: [
+                PersonCandidate(
+                    name: "Maria",
+                    birthDate: date(1788, 5, 1),
+                    source: .hiski,
+                    nameManager: nameManager
+                )
+            ]
+        )
+        let comparisonGroup = FamilyChildrenComparisonGroup(
+            coupleIndex: 1,
+            couple: secondCouple,
+            hiskiSearchRequests: [],
+            result: secondCoupleResult
+        )
+
+        let html = HTMLRenderer.renderFamily(
+            family: family,
+            network: nil,
+            comparisonGroups: [comparisonGroup]
+        )
+
+        XCTAssertTrue(html.contains("II puoliso"))
+        XCTAssertTrue(html.contains(">Maria</a> <span class=\"source-markers\">J, H</span>"))
+    }
+
     func testServerRenderedFamilyHidesSourceMarkersWhenCitationPanelIsOpen() {
         let nameManager = NameEquivalenceManager()
         nameManager.clearAllEquivalences()

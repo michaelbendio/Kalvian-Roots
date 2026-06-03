@@ -592,11 +592,21 @@ final class HTTPHandler: ChannelInboundHandler {
             logger.info("[\(requestID!)] 🏠 Rendering family display (no sub-route)")
             let familySearchExtraction = sessionResult.session.familySearchExtraction(for: canonicalID)
                 ?? juuretApp?.familySearchExtraction(for: canonicalID)
-            let comparisonResult = await makeChildrenComparisonResult(
+            let comparisonGroups = await makeChildrenComparisonGroups(
                 family: network.mainFamily,
                 familySearchExtraction: familySearchExtraction,
                 session: sessionResult.session
             )
+            let comparisonResult: FamilyComparisonResult?
+            if let firstGroupResult = comparisonGroups.first?.result {
+                comparisonResult = firstGroupResult
+            } else {
+                comparisonResult = await makeChildrenComparisonResult(
+                    family: network.mainFamily,
+                    familySearchExtraction: familySearchExtraction,
+                    session: sessionResult.session
+                )
+            }
             let hiskiChildSearchRequestsByCouple = makeHiskiChildSearchRequestsByCouple(
                 family: network.mainFamily,
                 session: sessionResult.session
@@ -619,6 +629,7 @@ final class HTTPHandler: ChannelInboundHandler {
                 network: network,
                 homeId: homeId,
                 comparisonResult: comparisonResult,
+                comparisonGroups: comparisonGroups,
                 familySearchExtraction: familySearchExtraction,
                 familySearchPersonId: familySearchPersonId,
                 workup: workup,
@@ -1325,6 +1336,104 @@ final class HTTPHandler: ChannelInboundHandler {
         }
         
         return .html(html, headers: responseHeaders)
+    }
+
+    @MainActor
+    private func makeChildrenComparisonGroups(
+        family: Family,
+        familySearchExtraction: FamilySearchFamilyExtraction?,
+        session: BrowserSession
+    ) async -> [FamilyChildrenComparisonGroup] {
+        let comparisonService = FamilyComparisonService(nameManager: session.nameEquivalenceManager)
+        let hiskiService = HiskiService(nameEquivalenceManager: session.nameEquivalenceManager)
+        hiskiService.setCurrentFamily(family.familyId)
+        let builder = FamilyChildrenComparisonBuilder(
+            hiskiService: hiskiService,
+            comparisonService: comparisonService,
+            loadHiskiSearchHtml: loadHiskiSearchHtml,
+            log: { [weak self] message in
+                self?.logger.info("[\(self?.requestID?.uuidString ?? "unknown")] \(message)")
+            }
+        )
+        let familySearchChildrenByCouple = familySearchChildrenByCouple(
+            for: family,
+            extraction: familySearchExtraction
+        )
+        var groups: [FamilyChildrenComparisonGroup] = []
+
+        for (coupleIndex, couple) in family.couples.enumerated() {
+            let familySearchChildren = familySearchChildrenByCouple[coupleIndex] ?? []
+            guard !couple.children.isEmpty || !familySearchChildren.isEmpty else {
+                continue
+            }
+
+            do {
+                if let buildResult = try await builder.buildGroup(
+                    couple: couple,
+                    coupleIndex: coupleIndex,
+                    familySearchChildren: familySearchChildren,
+                    loadCitationProposals: false
+                ) {
+                    groups.append(buildResult.group)
+                } else {
+                    let result = comparisonService.compare(
+                        juuretCandidates: comparisonService.makeJuuretCandidates(from: couple.children),
+                        hiskiCandidates: [],
+                        familySearchCandidates: comparisonService.makeFamilySearchCandidates(from: familySearchChildren)
+                    )
+                    groups.append(
+                        FamilyChildrenComparisonGroup(
+                            coupleIndex: coupleIndex,
+                            couple: couple,
+                            hiskiSearchRequests: [],
+                            result: result
+                        )
+                    )
+                }
+            } catch {
+                logger.warning(
+                    "[\(requestID!)] Family child comparison group fell back without HisKi",
+                    metadata: [
+                        "couple": "\(coupleIndex + 1)",
+                        "error": "\(error.localizedDescription)"
+                    ]
+                )
+                let result = comparisonService.compare(
+                    juuretCandidates: comparisonService.makeJuuretCandidates(from: couple.children),
+                    hiskiCandidates: [],
+                    familySearchCandidates: comparisonService.makeFamilySearchCandidates(from: familySearchChildren)
+                )
+                groups.append(
+                    FamilyChildrenComparisonGroup(
+                        coupleIndex: coupleIndex,
+                        couple: couple,
+                        hiskiSearchRequests: [],
+                        result: result
+                    )
+                )
+            }
+        }
+
+        return groups
+    }
+
+    private func familySearchChildrenByCouple(
+        for family: Family,
+        extraction: FamilySearchFamilyExtraction?
+    ) -> [Int: [FamilySearchChild]] {
+        guard let extraction, extraction.isSuccessful else {
+            return [:]
+        }
+
+        guard let spouseGroups = extraction.spouseGroups, !spouseGroups.isEmpty else {
+            return extraction.children.isEmpty ? [:] : [0: extraction.children]
+        }
+
+        return FamilySearchSpouseGroupMatcher.childrenByCouple(
+            family: family,
+            spouseGroups: spouseGroups,
+            fallbackChildren: extraction.children
+        )
     }
 
     @MainActor
