@@ -1,27 +1,31 @@
 import XCTest
+#if os(macOS)
+import AppKit
+#endif
 @testable import Kalvian_Roots
 
 final class LandingPageRendererTests: XCTestCase {
-    func testLandingPageShowsRemoteAccessPanelForTailscaleHost() {
+    func testLandingPageUsesBookCoverWithOnlyFamilyInput() {
         let html = HTMLRenderer.renderLandingPage(
             requestHost: "macbook.tailnet.ts.net:8081"
         )
 
-        XCTAssertTrue(html.contains("Server / Remote Access"))
-        XCTAssertTrue(html.contains("Kalvian Roots server is running on port 8081."))
-        XCTAssertTrue(html.contains("remote browser"))
-        XCTAssertTrue(html.contains("http://macbook.tailnet.ts.net:8081"))
-        XCTAssertTrue(html.contains("http://macbook.tailnet.ts.net:8081/family/SAKERI%201/workup"))
-        XCTAssertTrue(html.contains("Open Workup"))
+        XCTAssertTrue(html.contains("url('/assets/juuret-kalvialla-cover.png')"))
+        XCTAssertTrue(html.contains(#"<main class="landing-page">"#))
+        XCTAssertTrue(html.contains(#"<label for="family">Enter Family ID</label>"#))
+        XCTAssertTrue(html.contains(#"<input type="text" id="family" name="id""#))
+        XCTAssertFalse(html.contains("Kalvian Roots Browser</h1>"))
+        XCTAssertFalse(html.contains("Open Workup"))
+        XCTAssertFalse(html.contains("Server / Remote Access"))
     }
 
-    func testLandingPageIdentifiesLocalHostAccess() {
+    func testLandingPageKeepsInvalidFamilyError() {
         let html = HTMLRenderer.renderLandingPage(
+            error: "invalid",
             requestHost: "127.0.0.1:8081"
         )
 
-        XCTAssertTrue(html.contains("local Mac browser"))
-        XCTAssertTrue(html.contains("http://127.0.0.1:8081"))
+        XCTAssertTrue(html.contains("Invalid family ID. Please check and try again."))
     }
 
     func testLandingPageReturnKeyOpensReloadedFamilyPage() {
@@ -33,6 +37,27 @@ final class LandingPageRendererTests: XCTestCase {
         XCTAssertTrue(html.contains("function familyURLFor(value)"))
         XCTAssertTrue(html.contains("'?reload=1'"))
         XCTAssertTrue(html.contains("window.location.href = familyURLFor(familyId);"))
-        XCTAssertTrue(html.contains(#"<button type="submit">Open Family</button>"#))
+        XCTAssertFalse(html.contains(#"<button type="submit">Open Family</button>"#))
     }
+
+    func testServerRoutesLandingCoverAsset() throws {
+        let server = try String(
+            contentsOfFile: #filePath
+                .replacingOccurrences(
+                    of: "Kalvian RootsTests/LandingPageRendererTests.swift",
+                    with: "Kalvian Roots/Server/KalvianRootsServer.swift"
+                ),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(server.contains(#"case (.GET, "/assets/juuret-kalvialla-cover.png"):"#))
+        XCTAssertTrue(server.contains("landingCoverAssetResponse()"))
+        XCTAssertTrue(server.contains(#"contentType: "image/png""#))
+    }
+
+    #if os(macOS)
+    func testLandingCoverAssetIsBundled() {
+        XCTAssertNotNil(NSImage(named: "JuuretCover"))
+    }
+    #endif
 }

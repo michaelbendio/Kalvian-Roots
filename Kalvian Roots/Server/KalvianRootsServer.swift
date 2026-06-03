@@ -7,6 +7,7 @@
 //
 
 #if os(macOS)
+import AppKit
 import Foundation
 import NIO
 import NIOCore
@@ -113,6 +114,7 @@ final class HTTPHandler: ChannelInboundHandler {
         case html(String, status: HTTPResponseStatus = .ok, headers: HTTPHeaders = HTTPHeaders())
         case json(String, status: HTTPResponseStatus = .ok, headers: HTTPHeaders = HTTPHeaders())
         case text(String, status: HTTPResponseStatus = .ok, headers: HTTPHeaders = HTTPHeaders())
+        case data(Data, contentType: String, status: HTTPResponseStatus = .ok, headers: HTTPHeaders = HTTPHeaders())
         case redirect(String, headers: HTTPHeaders = HTTPHeaders())
         case error(HTTPResponseStatus, String, headers: HTTPHeaders = HTTPHeaders())
     }
@@ -261,6 +263,10 @@ final class HTTPHandler: ChannelInboundHandler {
             )
             return .html(html)
 
+        case (.GET, "/assets/juuret-kalvialla-cover.png"):
+            logger.info("[\(requestID!)] 🖼️ Handling landing cover asset")
+            return landingCoverAssetResponse()
+
         case (.POST, "/"):
             logger.info("[\(requestID!)] 📝 Handling landing page POST")
             return handleLandingPagePost()
@@ -332,6 +338,28 @@ final class HTTPHandler: ChannelInboundHandler {
     }
 
     // MARK: - Route Handlers (MainActor)
+
+    @MainActor
+    private func landingCoverAssetResponse() -> HTTPResponse {
+        guard let data = landingCoverPNGData() else {
+            logger.error("[\(requestID!)] ❌ Landing cover asset not found")
+            return .error(.notFound, "Not Found")
+        }
+
+        var headers = HTTPHeaders()
+        headers.add(name: "Cache-Control", value: "public, max-age=86400")
+        return .data(data, contentType: "image/png", headers: headers)
+    }
+
+    private func landingCoverPNGData() -> Data? {
+        guard let image = NSImage(named: "JuuretCover"),
+              let tiffData = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiffData) else {
+            return nil
+        }
+
+        return bitmap.representation(using: .png, properties: [:])
+    }
 
     @MainActor
     private func handleLandingPagePost() -> HTTPResponse {
@@ -1577,6 +1605,15 @@ final class HTTPHandler: ChannelInboundHandler {
                 headers: headers
             )
 
+        case .data(let data, let contentType, let status, let headers):
+            sendData(
+                context: context,
+                data: data,
+                status: status,
+                contentType: contentType,
+                headers: headers
+            )
+
         case .redirect(let location, let headers):
             sendRedirect(context: context, location: location, headers: headers)
 
@@ -1598,6 +1635,55 @@ final class HTTPHandler: ChannelInboundHandler {
             contentType: "text/html; charset=utf-8",
             headers: headers
         )
+    }
+
+    private func sendData(
+        context: ChannelHandlerContext,
+        data: Data,
+        status: HTTPResponseStatus,
+        contentType: String,
+        headers: HTTPHeaders
+    ) {
+        var responseHeaders = headers
+        responseHeaders.add(
+            name: "Content-Type",
+            value: contentType
+        )
+        responseHeaders.add(
+            name: "Content-Length",
+            value: String(data.count)
+        )
+
+        if isKeepAlive {
+            responseHeaders.add(name: "Connection", value: "keep-alive")
+        }
+
+        let head = HTTPResponseHead(
+            version: .http1_1,
+            status: status,
+            headers: responseHeaders
+        )
+
+        context.write(wrapOutboundOut(.head(head)), promise: nil)
+
+        var responseBody =
+            context.channel.allocator.buffer(
+                capacity: data.count
+            )
+        responseBody.writeBytes(data)
+
+        context.write(
+            wrapOutboundOut(.body(.byteBuffer(responseBody))),
+            promise: nil
+        )
+
+        context.writeAndFlush(
+            wrapOutboundOut(.end(nil))
+        ).whenComplete { _ in
+            if !self.isKeepAlive {
+                context.close(promise: nil)
+            }
+        }
     }
 
     private func sendBody(

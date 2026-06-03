@@ -16,12 +16,6 @@ struct HTMLRenderer {
     // MARK: - Landing Page
 
     static func renderLandingPage(error: String? = nil, requestHost: String? = nil) -> String {
-        let host = requestHost?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let displayHost = host?.isEmpty == false ? host! : "127.0.0.1:8081"
-        let baseURL = "http://\(displayHost)"
-        let accessMode = isLocalHost(displayHost) ? "local Mac browser" : "remote browser"
-        let sampleWorkupURL = "\(baseURL)/family/SAKERI%201/workup"
-
         return """
         <!DOCTYPE html>
         <html lang="en">
@@ -31,147 +25,95 @@ struct HTMLRenderer {
             <title>Kalvian Roots</title>
             <style>
                 \(cssStyles)
-                .landing-container {
-                    max-width: 760px;
-                    margin: 100px auto;
-                    padding: 40px;
-                    background: white;
-                    border-radius: 8px;
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                body {
+                    background: #102f5f;
                 }
-                h1 {
-                    color: #333;
-                    margin-bottom: 30px;
+                .landing-page {
+                    min-height: 100vh;
+                    display: grid;
+                    grid-template-columns: minmax(0, 1fr);
+                    place-items: center;
+                    padding: 32px;
+                    background:
+                        linear-gradient(rgba(8, 24, 48, 0.18), rgba(8, 24, 48, 0.5)),
+                        url('/assets/juuret-kalvialla-cover.png') center / contain no-repeat,
+                        #102f5f;
+                }
+                .landing-container {
+                    width: min(560px, 100%);
+                    align-self: end;
+                    margin-bottom: 8vh;
                 }
                 .form-group {
-                    margin-bottom: 20px;
+                    display: grid;
+                    gap: 10px;
                 }
                 label {
                     display: block;
-                    margin-bottom: 8px;
-                    color: #666;
-                    font-weight: 500;
+                    color: white;
+                    font-size: clamp(18px, 2.4vw, 28px);
+                    font-weight: 700;
+                    text-shadow: 0 2px 8px rgba(0,0,0,0.55);
                 }
                 input[type="text"] {
                     width: 100%;
-                    padding: 12px;
-                    border: 2px solid #ddd;
-                    border-radius: 4px;
-                    font-size: 16px;
+                    padding: 14px 16px;
+                    border: 2px solid rgba(255,255,255,0.85);
+                    border-radius: 6px;
+                    background: rgba(255,255,255,0.92);
+                    color: #1f2937;
+                    font-size: 22px;
                     font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+                    box-shadow: 0 8px 22px rgba(0,0,0,0.24);
                 }
                 input[type="text"]:focus {
                     outline: none;
-                    border-color: #0066cc;
-                }
-                button {
-                    background: #0066cc;
-                    color: white;
-                    border: none;
-                    padding: 12px 30px;
-                    border-radius: 4px;
-                    font-size: 16px;
-                    cursor: pointer;
-                    font-weight: 500;
-                }
-                button:hover {
-                    background: #0052a3;
-                }
-                .button-row {
-                    display: flex;
-                    gap: 10px;
-                    flex-wrap: wrap;
+                    border-color: white;
                 }
                 .error-message {
-                    color: #dc3545;
-                    margin-top: 10px;
+                    color: #9f1239;
                     padding: 10px;
-                    background: #fee;
+                    background: rgba(255,255,255,0.92);
                     border-radius: 4px;
+                    box-shadow: 0 8px 22px rgba(0,0,0,0.24);
                 }
-                .remote-panel {
-                    margin-top: 28px;
-                    padding-top: 22px;
-                    border-top: 1px solid #e5e5e5;
-                }
-                .remote-panel h2 {
-                    font-size: 18px;
-                    margin: 0 0 12px 0;
-                }
-                .remote-grid {
-                    display: grid;
-                    grid-template-columns: minmax(130px, auto) 1fr;
-                    gap: 8px 14px;
-                    align-items: baseline;
-                }
-                .remote-label {
-                    color: #666;
-                    font-size: 13px;
-                }
-                .remote-value {
-                    overflow-wrap: anywhere;
-                }
-                .remote-note {
-                    margin-top: 14px;
-                    color: #666;
-                    font-size: 13px;
+                @media (max-width: 700px) {
+                    .landing-page {
+                        padding: 22px;
+                        background-size: cover;
+                    }
+                    .landing-container {
+                        margin-bottom: 6vh;
+                    }
                 }
             </style>
         </head>
         <body>
-            <div class="landing-container">
-                <h1>Kalvian Roots Browser</h1>
+            <main class="landing-page">
+            <div class="landing-container" aria-label="Kalvian Roots Browser">
                 <form method="GET" action="/family" id="familyForm" onsubmit="return openFamily(event)">
                     <div class="form-group">
-                        <label for="family">Enter Family ID:</label>
+                        <label for="family">Enter Family ID</label>
                         <input type="text" id="family" name="id"
                                placeholder="e.g., KORPI 6"
                                required autofocus
-                               oninput="updateWorkupPreview()">
+                               autocomplete="off">
                         \(error == "invalid" ? """
                         <div class="error-message">
                             Invalid family ID. Please check and try again.
                         </div>
                         """ : "")
                     </div>
-                    <div class="button-row">
-                        <button type="submit">Open Family</button>
-                        <button type="button" onclick="openWorkup()">Open Workup</button>
-                    </div>
                 </form>
-                <div class="remote-panel">
-                    <h2>Server / Remote Access</h2>
-                    <div class="remote-grid">
-                        <div class="remote-label">Status</div>
-                        <div class="remote-value">Kalvian Roots server is running on port 8081.</div>
-                        <div class="remote-label">This browser</div>
-                        <div class="remote-value">\(escapeHTML(accessMode))</div>
-                        <div class="remote-label">Current URL</div>
-                        <div class="remote-value"><code>\(escapeHTML(baseURL))</code></div>
-                        <div class="remote-label">Workup URL</div>
-                        <div class="remote-value"><code id="workupPreview">\(escapeHTML(sampleWorkupURL))</code></div>
-                    </div>
-                    <p class="remote-note">
-                        From Tailscale, use this Mac's Tailscale name or 100.x address with port 8081.
-                        FamilySearch WebKit extraction opens on the Mac running Kalvian Roots.
-                    </p>
-                </div>
             </div>
+            </main>
             <script>
                 function canonicalFamilyId() {
                     const input = document.getElementById('family');
                     return input.value.trim().toUpperCase();
                 }
-                function workupURLFor(value) {
-                    const familyId = value || 'SAKERI 1';
-                    return '/family/' + encodeURIComponent(familyId).replace(/%20/g, '%20') + '/workup';
-                }
                 function familyURLFor(value) {
                     return '/family/' + encodeURIComponent(value).replace(/%20/g, '%20') + '?reload=1';
-                }
-                function updateWorkupPreview() {
-                    const preview = document.getElementById('workupPreview');
-                    preview.textContent = window.location.origin + workupURLFor(canonicalFamilyId());
                 }
                 function openFamily(event) {
                     if (event) {
@@ -185,15 +127,6 @@ struct HTMLRenderer {
                     window.location.href = familyURLFor(familyId);
                     return false;
                 }
-                function openWorkup() {
-                    const familyId = canonicalFamilyId();
-                    if (!familyId) {
-                        document.getElementById('family').focus();
-                        return;
-                    }
-                    window.location.href = workupURLFor(familyId);
-                }
-                updateWorkupPreview();
             </script>
         </body>
         </html>
@@ -3244,14 +3177,6 @@ struct HTMLRenderer {
 
     private static func urlQueryEncode(_ string: String) -> String {
         return string.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? string
-    }
-
-    private static func isLocalHost(_ host: String) -> Bool {
-        let normalized = host.lowercased()
-        return normalized.hasPrefix("127.0.0.1")
-            || normalized.hasPrefix("localhost")
-            || normalized.hasPrefix("[::1]")
-            || normalized.hasPrefix("::1")
     }
 
     private static func buildQueryParams(_ params: [String: String?]) -> String {
