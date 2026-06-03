@@ -10,13 +10,16 @@ final class LandingPageRendererTests: XCTestCase {
             requestHost: "macbook.tailnet.ts.net:8081"
         )
 
-        XCTAssertTrue(html.contains("url('/assets/juuret-kalvialla-cover.png')"))
         XCTAssertTrue(html.contains(#"<main class="landing-page">"#))
+        XCTAssertTrue(html.contains(#"<img class="landing-cover""#))
+        XCTAssertTrue(html.contains(#"src="/assets/juuret-kalvialla-cover.jpg""#))
+        XCTAssertTrue(html.contains(#"<form class="landing-form" method="GET" action="/family""#))
         XCTAssertTrue(html.contains(#"<label for="family">Enter Family ID</label>"#))
         XCTAssertTrue(html.contains(#"<input type="text" id="family" name="id""#))
         XCTAssertFalse(html.contains("Kalvian Roots Browser</h1>"))
         XCTAssertFalse(html.contains("Open Workup"))
         XCTAssertFalse(html.contains("Server / Remote Access"))
+        XCTAssertFalse(html.contains("background-size: cover"))
     }
 
     func testLandingPageKeepsInvalidFamilyError() {
@@ -50,9 +53,10 @@ final class LandingPageRendererTests: XCTestCase {
             encoding: .utf8
         )
 
-        XCTAssertTrue(server.contains(#"case (.GET, "/assets/juuret-kalvialla-cover.png"):"#))
+        XCTAssertTrue(server.contains(#"case (.GET, "/assets/juuret-kalvialla-cover.jpg"):"#))
         XCTAssertTrue(server.contains("landingCoverAssetResponse()"))
-        XCTAssertTrue(server.contains(#"contentType: "image/png""#))
+        XCTAssertTrue(server.contains(#"contentType: "image/jpeg""#))
+        XCTAssertTrue(server.contains("landingCoverJPEGData()"))
     }
 
     #if os(macOS)

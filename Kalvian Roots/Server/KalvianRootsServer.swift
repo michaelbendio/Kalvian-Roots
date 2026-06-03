@@ -263,7 +263,7 @@ final class HTTPHandler: ChannelInboundHandler {
             )
             return .html(html)
 
-        case (.GET, "/assets/juuret-kalvialla-cover.png"):
+        case (.GET, "/assets/juuret-kalvialla-cover.jpg"):
             logger.info("[\(requestID!)] 🖼️ Handling landing cover asset")
             return landingCoverAssetResponse()
 
@@ -341,24 +341,24 @@ final class HTTPHandler: ChannelInboundHandler {
 
     @MainActor
     private func landingCoverAssetResponse() -> HTTPResponse {
-        guard let data = landingCoverPNGData() else {
+        guard let data = landingCoverJPEGData() else {
             logger.error("[\(requestID!)] ❌ Landing cover asset not found")
             return .error(.notFound, "Not Found")
         }
 
         var headers = HTTPHeaders()
         headers.add(name: "Cache-Control", value: "public, max-age=86400")
-        return .data(data, contentType: "image/png", headers: headers)
+        return .data(data, contentType: "image/jpeg", headers: headers)
     }
 
-    private func landingCoverPNGData() -> Data? {
+    private func landingCoverJPEGData() -> Data? {
         guard let image = NSImage(named: "JuuretCover"),
               let tiffData = image.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiffData) else {
             return nil
         }
 
-        return bitmap.representation(using: .png, properties: [:])
+        return bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.88])
     }
 
     @MainActor

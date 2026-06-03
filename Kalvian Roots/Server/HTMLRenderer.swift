@@ -30,19 +30,24 @@ struct HTMLRenderer {
                 }
                 .landing-page {
                     min-height: 100vh;
-                    display: grid;
-                    grid-template-columns: minmax(0, 1fr);
-                    place-items: center;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 22px;
                     padding: 32px;
-                    background:
-                        linear-gradient(rgba(8, 24, 48, 0.18), rgba(8, 24, 48, 0.5)),
-                        url('/assets/juuret-kalvialla-cover.png') center / contain no-repeat,
-                        #102f5f;
+                    background: #102f5f;
                 }
-                .landing-container {
-                    width: min(560px, 100%);
-                    align-self: end;
-                    margin-bottom: 8vh;
+                .landing-cover {
+                    display: block;
+                    width: min(480px, 78vw);
+                    max-height: 76vh;
+                    object-fit: contain;
+                    border-radius: 6px;
+                    box-shadow: 0 18px 46px rgba(0,0,0,0.38);
+                }
+                .landing-form {
+                    width: min(520px, 100%);
                 }
                 .form-group {
                     display: grid;
@@ -80,18 +85,21 @@ struct HTMLRenderer {
                 @media (max-width: 700px) {
                     .landing-page {
                         padding: 22px;
-                        background-size: cover;
+                        justify-content: flex-start;
                     }
-                    .landing-container {
-                        margin-bottom: 6vh;
+                    .landing-cover {
+                        width: min(420px, 100%);
+                        max-height: 70vh;
                     }
                 }
             </style>
         </head>
         <body>
             <main class="landing-page">
-            <div class="landing-container" aria-label="Kalvian Roots Browser">
-                <form method="GET" action="/family" id="familyForm" onsubmit="return openFamily(event)">
+                <img class="landing-cover"
+                     src="/assets/juuret-kalvialla-cover.jpg"
+                     alt="Juuret Kälviällä book cover">
+                <form class="landing-form" method="GET" action="/family" id="familyForm" onsubmit="return openFamily(event)">
                     <div class="form-group">
                         <label for="family">Enter Family ID</label>
                         <input type="text" id="family" name="id"
@@ -105,7 +113,6 @@ struct HTMLRenderer {
                         """ : "")
                     </div>
                 </form>
-            </div>
             </main>
             <script>
                 function canonicalFamilyId() {
