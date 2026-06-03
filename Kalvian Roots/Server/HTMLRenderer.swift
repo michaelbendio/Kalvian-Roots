@@ -200,9 +200,6 @@ struct HTMLRenderer {
         workup: FamilyWorkup? = nil,
         hiskiChildSearchRequestsByCouple: [Int: HiskiService.FamilyBirthSearchRequest] = [:]
     ) -> String {
-        let tokenizer = FamilyTokenizer()
-        let tokens = tokenizer.tokenizeFamily(family: family, network: network)
-
         // Determine home and displayed IDs
         let displayedId = family.familyId
         let actualHomeId = homeId ?? displayedId
@@ -211,35 +208,15 @@ struct HTMLRenderer {
         let navBar = renderNavigationBar(homeId: actualHomeId, displayedId: displayedId)
         
         // Generate family content with home parameter for links
-        let familyHTML = renderTokens(
-            tokens,
+        let familyHTML = renderStructuredFamilyContent(
+            family: family,
             familyId: displayedId,
             homeId: actualHomeId,
+            comparisonResult: comparisonResult,
             hiskiChildSearchRequestsByCouple: hiskiChildSearchRequestsByCouple
         )
         let citationPanel = renderCitationPanel(citationText: citationText, errorMessage: errorMessage)
         let sourcePanel = renderSourcePanel(sourceText: sourceText)
-        let comparisonPanel = renderComparisonPanel(
-            family: family,
-            comparisonResult: comparisonResult,
-            familySearchExtraction: familySearchExtraction,
-            familySearchPersonId: familySearchPersonId
-        )
-        let workspaceHeader = renderFamilyWorkspaceHeader(
-            family: family,
-            displayedId: displayedId,
-            homeId: actualHomeId,
-            sourceText: sourceText,
-            comparisonResult: comparisonResult,
-            familySearchExtraction: familySearchExtraction,
-            familySearchPersonId: familySearchPersonId,
-            workup: workup
-        )
-        let reviewQueuePanel = renderFamilyReviewQueuePanel(
-            workup: workup,
-            displayedId: displayedId,
-            homeId: actualHomeId
-        )
 
         return """
         <!DOCTYPE html>
@@ -255,14 +232,11 @@ struct HTMLRenderer {
         <body>
             <div class="container">
                 \(navBar)
-                \(workspaceHeader)
                 \(citationPanel)
                 \(sourcePanel)
                 <div class="family-content">
                     \(familyHTML)
                 </div>
-                \(reviewQueuePanel)
-                \(comparisonPanel)
             </div>
             \(copyButtonScript)
             \(workupCopyScript)
@@ -400,6 +374,386 @@ struct HTMLRenderer {
             \(moreActions)
         </section>
         """
+    }
+
+    private static func renderStructuredFamilyContent(
+        family: Family,
+        familyId: String,
+        homeId: String,
+        comparisonResult: FamilyComparisonResult?,
+        hiskiChildSearchRequestsByCouple: [Int: HiskiService.FamilyBirthSearchRequest]
+    ) -> String {
+        var html: [String] = []
+        html.append("""
+        <div class="family-header">
+            <a class="family-title" href="/family/\(urlEncode(familyId))">\(escapeHTML(family.familyId))</a>
+            <div class="family-pages">Pages: \(escapeHTML(family.pageReferences.joined(separator: ", ")))</div>
+        </div>
+        """)
+
+        let comparisonGroup = comparisonResult.flatMap {
+            FamilyChildrenComparisonGroup.primaryCoupleFallback(for: family, result: $0)
+        }
+
+        for (index, couple) in family.couples.enumerated() {
+            if index > 0 {
+                html.append("<div class=\"section-header\">\(romanNumeral(index + 1)) puoliso</div>")
+            }
+
+            html.append(renderCoupleLines(
+                couple: couple,
+                previousCouple: index > 0 ? family.couples[index - 1] : nil,
+                familyId: familyId,
+                homeId: homeId,
+                isAdditional: index > 0
+            ))
+
+            if index == 0, let comparisonGroup, !comparisonGroup.displayRows.isEmpty {
+                if let request = hiskiChildSearchRequestsByCouple[index] {
+                    html.append(renderLapsetHeader(url: request.url.absoluteString))
+                } else {
+                    html.append("<div class=\"section-header lapset-header\">Lapset</div>")
+                }
+                html.append(renderComparisonChildren(
+                    comparisonGroup.displayRows,
+                    couple: couple,
+                    familyId: familyId,
+                    homeId: homeId
+                ))
+            } else if !couple.children.isEmpty {
+                if let request = hiskiChildSearchRequestsByCouple[index] {
+                    html.append(renderLapsetHeader(url: request.url.absoluteString))
+                } else {
+                    html.append("<div class=\"section-header lapset-header\">Lapset</div>")
+                }
+                html.append(couple.children.map {
+                    renderChildLine($0, couple: couple, familyId: familyId, homeId: homeId)
+                }.joined(separator: "\n"))
+            }
+
+            if let childrenDied = couple.childrenDiedInfancy, childrenDied > 0 {
+                html.append("<div class=\"family-note\">Lapsena kuollut \(childrenDied).</div>")
+            }
+        }
+
+        if !family.notes.isEmpty {
+            html.append(family.notes.map { "<div class=\"family-note\">\(escapeHTML($0))</div>" }.joined(separator: "\n"))
+        }
+
+        return html.joined(separator: "\n")
+    }
+
+    private static func renderCoupleLines(
+        couple: Couple,
+        previousCouple: Couple?,
+        familyId: String,
+        homeId: String,
+        isAdditional: Bool
+    ) -> String {
+        var lines: [String] = []
+        if !isAdditional {
+            lines.append(renderPersonLine(couple.husband, familyId: familyId, homeId: homeId, symbol: "★"))
+        }
+        let spouse = isAdditional ? additionalSpouse(for: couple, previousCouple: previousCouple) : couple.wife
+        lines.append(renderPersonLine(spouse, familyId: familyId, homeId: homeId, symbol: "★"))
+        if let marriageDate = couple.fullMarriageDate ?? couple.marriageDate {
+            lines.append(renderMarriageLine(marriageDate, couple: couple, familyId: familyId, homeId: homeId))
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func additionalSpouse(for couple: Couple, previousCouple: Couple?) -> Person {
+        guard let previousCouple else {
+            return couple.wife
+        }
+
+        let husbandContinues = samePerson(couple.husband, previousCouple.husband)
+        return husbandContinues ? couple.wife : couple.husband
+    }
+
+    private static func renderPersonLine(
+        _ person: Person,
+        familyId: String,
+        homeId: String,
+        symbol: String
+    ) -> String {
+        var parts = ["<span class=\"symbol\">\(escapeHTML(symbol))</span>"]
+        if let birthDate = person.birthDate {
+            parts.append(renderDateLink(birthDate, eventType: .birth, person: person, familyId: familyId, homeId: homeId))
+        }
+        parts.append(renderPersonLink(name: person.displayName, birthDate: person.birthDate, familyId: familyId, homeId: homeId))
+        if let fsId = person.familySearchId {
+            parts.append("<span class=\"familysearch-id\">&lt;\(escapeHTML(fsId))&gt;</span>")
+        }
+        if let deathDate = person.deathDate {
+            parts.append("<span class=\"symbol\">†</span>")
+            parts.append(renderDateLink(deathDate, eventType: .death, person: person, familyId: familyId, homeId: homeId))
+        }
+        if let asChild = person.asChild {
+            parts.append(renderFamilyReference(asChild, label: "as_child", homeId: homeId))
+        }
+        return "<div class=\"family-line\">\(parts.joined(separator: " "))</div>"
+    }
+
+    private static func renderMarriageLine(
+        _ date: String,
+        couple: Couple,
+        familyId: String,
+        homeId: String
+    ) -> String {
+        let homeParam = (familyId == homeId) ? "" : "&home=\(urlEncode(homeId))"
+        let params = buildQueryParams([
+            "spouse1": couple.husband.name,
+            "birth1": couple.husband.birthDate,
+            "spouse2": couple.wife.name,
+            "birth2": couple.wife.birthDate,
+            "event": "marriage",
+            "date": date
+        ])
+        return """
+        <div class="family-line"><span class="symbol">∞</span> <a href="/family/\(urlEncode(familyId))/hiski?\(params)\(homeParam)" class="date-link">\(escapeHTML(date))</a></div>
+        """
+    }
+
+    private static func renderLapsetHeader(url: String) -> String {
+        """
+        <a href="\(escapeHTML(url))"
+           class="section-header hiski-child-results-link lapset-header"
+           target="hiskiChildResults"
+           title="Open complete HisKi child query results"
+           onclick="return openHiskiChildResults(this.href)">Lapset</a>
+        """
+    }
+
+    private static func renderChildLine(
+        _ child: Person,
+        couple: Couple,
+        familyId: String,
+        homeId: String
+    ) -> String {
+        let childWithParents = child.withHiskiParentNames(
+            father: couple.husband.displayName,
+            mother: couple.wife.displayName
+        )
+        var parts = ["<span class=\"symbol\">★</span>"]
+        if let birthDate = childWithParents.birthDate {
+            parts.append(renderDateLink(birthDate, eventType: .birth, person: childWithParents, familyId: familyId, homeId: homeId))
+        }
+        parts.append(renderPersonLink(name: childWithParents.displayName, birthDate: childWithParents.birthDate, familyId: familyId, homeId: homeId))
+        if let fsId = childWithParents.familySearchId {
+            parts.append("<span class=\"familysearch-id\">&lt;\(escapeHTML(fsId))&gt;</span>")
+        }
+        if let marriageDate = childWithParents.fullMarriageDate ?? childWithParents.marriageDate {
+            parts.append("<span class=\"symbol\">∞</span>")
+            parts.append(escapeHTML(marriageDate))
+        }
+        if let spouse = childWithParents.spouse {
+            parts.append(renderPersonLink(name: spouse, birthDate: nil, familyId: familyId, homeId: homeId))
+        }
+        if let asParent = childWithParents.asParent {
+            parts.append(renderFamilyReference(asParent, label: "as_parent", homeId: homeId))
+        }
+        if !childWithParents.noteMarkers.isEmpty {
+            parts.append(escapeHTML(childWithParents.noteMarkers.map(displayFootnoteMarker).joined(separator: " ")))
+        }
+        return "<div class=\"family-line child-line\">\(parts.joined(separator: " "))</div>"
+    }
+
+    private static func renderComparisonChildren(
+        _ rows: [FamilyComparisonDisplayRow],
+        couple: Couple,
+        familyId: String,
+        homeId: String
+    ) -> String {
+        rows.map { displayRow in
+            if let child = juuretChild(for: displayRow.match, in: couple) {
+                return renderJuuretComparisonChild(
+                    child,
+                    displayRow: displayRow,
+                    couple: couple,
+                    familyId: familyId,
+                    homeId: homeId
+                )
+            }
+            return renderComparisonOnlyChild(displayRow, familyId: familyId, homeId: homeId)
+        }.joined(separator: "\n")
+    }
+
+    private static func renderJuuretComparisonChild(
+        _ child: Person,
+        displayRow: FamilyComparisonDisplayRow,
+        couple: Couple,
+        familyId: String,
+        homeId: String
+    ) -> String {
+        let row = displayRow.match
+        var line = renderChildLine(child, couple: couple, familyId: familyId, homeId: homeId)
+        var supplements: [String] = []
+        if displayRow.reviewNote != nil {
+            supplements.append("<span class=\"review-marker\">*</span>")
+        }
+        if let familySearchId = row.familySearch?.familySearchId,
+           child.familySearchId != familySearchId {
+            supplements.append("<span class=\"familysearch-id\">&lt;\(escapeHTML(familySearchId))&gt;</span>")
+        }
+        if row.familySearch != nil || row.hiski != nil {
+            supplements.append("<span class=\"source-markers\">\(escapeHTML(sourceMarkers(for: row)))</span>")
+        }
+        if !supplements.isEmpty {
+            line = line.replacingOccurrences(of: "</div>", with: " \(supplements.joined(separator: " "))</div>")
+        }
+        return line
+    }
+
+    private static func renderComparisonOnlyChild(
+        _ displayRow: FamilyComparisonDisplayRow,
+        familyId: String,
+        homeId: String
+    ) -> String {
+        let row = displayRow.match
+        let date = displayDate(for: row)
+        let name = displayName(for: row)
+        var parts = [
+            "<span class=\"symbol\">★</span>",
+            escapeHTML(date),
+            escapeHTML(name)
+        ]
+        if displayRow.reviewNote != nil {
+            parts.append("<span class=\"review-marker\">*</span>")
+        }
+        if let familySearchId = row.familySearch?.familySearchId {
+            parts.append("<span class=\"familysearch-id\">&lt;\(escapeHTML(familySearchId))&gt;</span>")
+        }
+        parts.append("<span class=\"source-markers\">\(escapeHTML(sourceMarkers(for: row)))</span>")
+        return "<div class=\"family-line child-line comparison-only-child\">\(parts.joined(separator: " "))</div>"
+    }
+
+    private static func renderPersonLink(
+        name: String,
+        birthDate: String?,
+        familyId: String,
+        homeId: String
+    ) -> String {
+        let homeParam = (familyId == homeId) ? "" : "&home=\(urlEncode(homeId))"
+        let params = buildQueryParams([
+            "name": name,
+            "birth": birthDate
+        ])
+        return "<a href=\"/family/\(urlEncode(familyId))/cite?\(params)\(homeParam)\" class=\"person-link\">\(escapeHTML(name))</a>"
+    }
+
+    private static func renderDateLink(
+        _ date: String,
+        eventType: EventType,
+        person: Person,
+        familyId: String,
+        homeId: String
+    ) -> String {
+        let homeParam = (familyId == homeId) ? "" : "&home=\(urlEncode(homeId))"
+        let params = buildQueryParams([
+            "name": person.name,
+            "birth": person.birthDate,
+            "event": eventType.rawValue,
+            "date": date,
+            "father": person.fatherName,
+            "mother": person.motherName
+        ])
+        return "<a href=\"/family/\(urlEncode(familyId))/hiski?\(params)\(homeParam)\" class=\"date-link\">\(escapeHTML(date))</a>"
+    }
+
+    private static func renderFamilyReference(
+        _ id: String,
+        label: String,
+        homeId: String
+    ) -> String {
+        let display = "\(label) \(id)"
+        guard FamilyIDs.isValid(familyId: id) else {
+            return escapeHTML(display)
+        }
+        let homeParam = (id == homeId) ? "" : "?home=\(urlEncode(homeId))"
+        return "\(escapeHTML(label)) <a href=\"/family/\(urlEncode(id))\(homeParam)\" class=\"family-link\">\(escapeHTML(id))</a>"
+    }
+
+    private static func juuretChild(for row: FamilyComparisonResult.Match, in couple: Couple) -> Person? {
+        guard let juuret = row.juuretKalvialla else {
+            return nil
+        }
+        return couple.children.first { child in
+            child.name == juuret.rawName && sameGenealogyDate(child.birthDate, juuret.birthDate)
+        }
+    }
+
+    private static func displayDate(for row: FamilyComparisonResult.Match) -> String {
+        formatUnionDate(row.juuretKalvialla?.birthDate ?? row.hiski?.birthDate ?? row.familySearch?.birthDate)
+    }
+
+    private static func displayName(for row: FamilyComparisonResult.Match) -> String {
+        row.juuretKalvialla?.rawName
+            ?? row.hiski?.rawName
+            ?? row.familySearch?.rawName
+            ?? row.identity.canonicalName
+    }
+
+    private static func sourceMarkers(for row: FamilyComparisonResult.Match) -> String {
+        var markers: [String] = []
+        if row.familySearch != nil {
+            markers.append("FS")
+        }
+        if row.juuretKalvialla != nil {
+            markers.append("J")
+        }
+        if row.hiski != nil {
+            markers.append("H")
+        }
+        return markers.joined(separator: ", ")
+    }
+
+    private static func formatUnionDate(_ date: Date?) -> String {
+        guard let date else {
+            return "unknown"
+        }
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let components = calendar.dateComponents([.day, .month, .year], from: date)
+
+        if components.day == 1, components.month == 1, let year = components.year {
+            return String(year)
+        }
+
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "dd.MM.yyyy"
+        return formatter.string(from: date)
+    }
+
+    private static func samePerson(_ left: Person, _ right: Person) -> Bool {
+        left.name == right.name && left.birthDate == right.birthDate
+    }
+
+    private static func sameGenealogyDate(_ genealogyDate: String?, _ date: Date?) -> Bool {
+        guard let genealogyDate, let date else {
+            return genealogyDate == nil && date == nil
+        }
+        return genealogyDate == formatUnionDate(date)
+    }
+
+    private static func romanNumeral(_ number: Int) -> String {
+        switch number {
+        case 1: return "I"
+        case 2: return "II"
+        case 3: return "III"
+        case 4: return "IV"
+        case 5: return "V"
+        case 6: return "VI"
+        case 7: return "VII"
+        case 8: return "VIII"
+        case 9: return "IX"
+        case 10: return "X"
+        default: return String(number)
+        }
     }
 
     private static func familyReviewPacketText(_ workup: FamilyWorkup) -> String {
@@ -1145,11 +1499,57 @@ struct HTMLRenderer {
         }
         .family-content {
             background: #fefdf8;
-            padding: 30px;
+            padding: 24px;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             font-size: 16px;
-            white-space: pre-wrap;
+            line-height: 1.3;
+        }
+        .family-header {
+            margin-bottom: 12px;
+        }
+        .family-title {
+            color: #0066cc;
+            font-size: 18px;
+            font-weight: 700;
+            text-decoration: none;
+        }
+        .family-pages {
+            color: #666;
+            font-size: 14px;
+            margin-top: 4px;
+        }
+        .family-line {
+            min-height: 21px;
+            white-space: normal;
+        }
+        .child-line {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .lapset-header {
+            margin-top: 8px;
+            margin-bottom: 4px;
+        }
+        .familysearch-id,
+        .source-markers {
+            color: #666;
+            font-size: 13px;
+        }
+        .source-markers {
+            font-weight: 700;
+        }
+        .review-marker {
+            color: #b45f06;
+            font-weight: 700;
+        }
+        .family-note {
+            color: #666;
+            font-size: 14px;
+            font-style: italic;
+            margin-top: 4px;
         }
         .family-review-panel {
             background: white;

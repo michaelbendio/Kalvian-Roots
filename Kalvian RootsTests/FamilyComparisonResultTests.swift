@@ -1831,7 +1831,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b"))
     }
 
-    func testServerRenderedFamilyOmitsBookmarkletControls() {
+    func testServerRenderedFamilyShowsFamilyFirstWithoutBookmarkletControls() {
         let family = Family(
             familyId: "AHOKANGAS 2",
             pageReferences: ["1"],
@@ -1849,33 +1849,79 @@ final class FamilySearchDOMServiceTests: XCTestCase {
             familySearchPersonId: "KJJH-2QK"
         )
 
-        XCTAssertTrue(html.contains("class=\"family-workspace\""))
-        XCTAssertTrue(html.contains("aria-label=\"Family review status\""))
-        XCTAssertTrue(html.contains("<span class=\"family-workspace-title\">AHOKANGAS 2</span>"))
+        XCTAssertTrue(html.contains("class=\"family-content\""))
+        XCTAssertTrue(html.contains("class=\"family-title\""))
+        XCTAssertTrue(html.contains(">AHOKANGAS 2</a>"))
         XCTAssertTrue(html.contains("Pages: 1"))
-        XCTAssertTrue(html.contains("1 couple"))
-        XCTAssertTrue(html.contains("0 children"))
-        XCTAssertTrue(html.contains("Source hidden"))
-        XCTAssertTrue(html.contains("Comparison not loaded"))
-        XCTAssertTrue(html.contains("FamilySearch ready"))
+        XCTAssertTrue(html.contains("Thomas"))
+        XCTAssertTrue(html.contains("&lt;KJJH-2QK&gt;"))
+        XCTAssertTrue(html.contains("Magdalena"))
+        XCTAssertTrue(html.contains("15.05.1760"))
         XCTAssertTrue(html.contains("href=\"/family/AHOKANGAS%202/source\""))
         XCTAssertTrue(html.contains("href=\"/family/AHOKANGAS%202/workup\""))
-        XCTAssertTrue(html.contains("href=\"#children-comparison\""))
-        XCTAssertTrue(html.contains("id=\"children-comparison\""))
-        XCTAssertTrue(html.contains("Copy comparison text"))
-        XCTAssertTrue(html.contains("id=\"comparisonText\""))
-        XCTAssertTrue(html.contains("Comparison has not run"))
-        XCTAssertTrue(html.contains("FamilySearch children have not been imported for this family."))
-        XCTAssertTrue(html.contains("Open FamilySearch Details page"))
-        XCTAssertTrue(html.contains("href=\"https://www.familysearch.org/en/tree/person/details/KJJH-2QK\""))
-        XCTAssertLessThan(
-            html.range(of: "class=\"family-content\"")!.lowerBound,
-            html.range(of: "id=\"children-comparison\"")!.lowerBound
-        )
+        XCTAssertFalse(html.contains("class=\"family-workspace\""))
+        XCTAssertFalse(html.contains("aria-label=\"Family review status\""))
+        XCTAssertFalse(html.contains("id=\"children-comparison\""))
+        XCTAssertFalse(html.contains("Copy comparison text"))
+        XCTAssertFalse(html.contains("Open FamilySearch Details page"))
         XCTAssertFalse(html.localizedCaseInsensitiveContains("bookmarklet"))
         XCTAssertFalse(html.contains("Copy bookmarklet"))
         XCTAssertFalse(html.localizedCaseInsensitiveContains("Atlas"))
         XCTAssertFalse(html.contains("fs-script"))
+    }
+
+    func testServerRenderedFamilyLabelsChildrenBySource() {
+        let nameManager = NameEquivalenceManager()
+        nameManager.clearAllEquivalences()
+        let family = Family(
+            familyId: "SAKERI 1",
+            pageReferences: ["264", "265"],
+            husband: Person(name: "Matti", patronymic: "Juhonp.", familySearchId: "K8JR-2W8"),
+            wife: Person(name: "Kaarin", patronymic: "Kustaant.", familySearchId: "M8ZF-GMC"),
+            children: [
+                Person(name: "Maria", birthDate: "12.02.1696")
+            ]
+        )
+        let result = FamilyComparisonResult(
+            familySearch: [
+                PersonCandidate(
+                    name: "Maria Mattsson",
+                    identityName: "Maria",
+                    birthDate: date(1696, 2, 12),
+                    source: .familySearch,
+                    nameManager: nameManager,
+                    familySearchId: "M8ZK-DQP"
+                )
+            ],
+            juuretKalvialla: [
+                PersonCandidate(
+                    name: "Maria",
+                    birthDate: date(1696, 2, 12),
+                    source: .juuretKalvialla,
+                    nameManager: nameManager
+                )
+            ],
+            hiski: [
+                PersonCandidate(
+                    name: "Maria",
+                    birthDate: date(1696, 2, 12),
+                    source: .hiski,
+                    nameManager: nameManager
+                )
+            ]
+        )
+
+        let html = HTMLRenderer.renderFamily(
+            family: family,
+            network: nil,
+            comparisonResult: result
+        )
+
+        XCTAssertTrue(html.contains("Lapset"))
+        XCTAssertTrue(html.contains(">Maria</a>"))
+        XCTAssertTrue(html.contains("&lt;M8ZK-DQP&gt;"))
+        XCTAssertTrue(html.contains("<span class=\"source-markers\">FS, J, H</span>"))
+        XCTAssertFalse(html.contains("id=\"children-comparison\""))
     }
 
     func testServerRenderedLapsetOpensHiskiChildResultsPopup() throws {
@@ -1902,7 +1948,8 @@ final class FamilySearchDOMServiceTests: XCTestCase {
             ]
         )
 
-        XCTAssertTrue(html.contains("class=\"section-header hiski-child-results-link\""))
+        XCTAssertTrue(html.contains("hiski-child-results-link"))
+        XCTAssertTrue(html.contains("lapset-header"))
         XCTAssertTrue(html.contains("target=\"hiskiChildResults\""))
         XCTAssertTrue(html.contains("onclick=\"return openHiskiChildResults(this.href)\""))
         XCTAssertTrue(html.contains("https://hiski.genealogia.fi/hiski?en&amp;alkuvuosi=1778&amp;loppuvuosi=1814"))
@@ -1945,7 +1992,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
 
         XCTAssertTrue(html.contains("https://hiski.genealogia.fi/hiski?en&amp;alkuvuosi=1778&amp;loppuvuosi=1785"))
         XCTAssertTrue(html.contains("https://hiski.genealogia.fi/hiski?en&amp;alkuvuosi=1785&amp;loppuvuosi=1821"))
-        XCTAssertEqual(html.components(separatedBy: "class=\"section-header hiski-child-results-link\"").count - 1, 2)
+        XCTAssertEqual(html.components(separatedBy: "target=\"hiskiChildResults\"").count - 1, 2)
     }
 
     func testHiskiSearchRequestUsesFirstChildWhenMarriageIsMissing() throws {
