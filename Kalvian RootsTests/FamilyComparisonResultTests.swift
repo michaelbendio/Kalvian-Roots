@@ -2096,7 +2096,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertFalse(html.contains("as_parent"))
     }
 
-    func testServerRenderedLapsetOpensHiskiChildResultsPopup() throws {
+    func testServerRenderedLapsetOpensHiskiChildResultsTab() throws {
         let family = Family(
             familyId: "KYKYRI II 7",
             pageReferences: ["263", "264"],
@@ -2122,13 +2122,13 @@ final class FamilySearchDOMServiceTests: XCTestCase {
 
         XCTAssertTrue(html.contains("hiski-child-results-link"))
         XCTAssertTrue(html.contains("lapset-header"))
-        XCTAssertTrue(html.contains("target=\"hiskiChildResults\""))
-        XCTAssertTrue(html.contains("onclick=\"return openHiskiResults(this.href)\""))
+        XCTAssertTrue(html.contains("target=\"_blank\""))
+        XCTAssertTrue(html.contains("rel=\"noopener noreferrer\""))
         XCTAssertTrue(html.contains("https://hiski.genealogia.fi/hiski?en&amp;alkuvuosi=1778&amp;loppuvuosi=1814"))
-        XCTAssertTrue(html.contains("function openHiskiResults(url)"))
+        XCTAssertFalse(html.contains("function openHiskiResults(url)"))
     }
 
-    func testServerRenderedDateLinksOpenHiskiResultsPopup() {
+    func testServerRenderedDateLinksOpenHiskiResultsTab() {
         let family = Family(
             familyId: "SAKERI 1",
             pageReferences: ["264", "265"],
@@ -2145,8 +2145,8 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(html.contains("kirja=kastetut"))
         XCTAssertTrue(html.contains("etunimi=Maria"))
         XCTAssertTrue(html.contains("alkuvuosi=12.2.1696"))
-        XCTAssertTrue(html.contains("target=\"hiskiChildResults\""))
-        XCTAssertTrue(html.contains("onclick=\"return openHiskiResults(this.href)\""))
+        XCTAssertTrue(html.contains("target=\"_blank\""))
+        XCTAssertTrue(html.contains("rel=\"noopener noreferrer\""))
         XCTAssertFalse(html.contains("/family/SAKERI%201/hiski?name=Maria"))
     }
 
@@ -2167,7 +2167,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         )
     }
 
-    func testServerRenderedLapsetLinksArePerCoupleForAdditionalSpouses() throws {
+    func testServerRenderedLapsetTabLinksArePerCoupleForAdditionalSpouses() throws {
         let firstCouple = Couple(
             husband: Person(name: "Matti", patronymic: "Erikinp."),
             wife: Person(name: "Kaarin", patronymic: "Matint.", deathDate: "28.08.1785"),
@@ -2203,7 +2203,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
 
         XCTAssertTrue(html.contains("https://hiski.genealogia.fi/hiski?en&amp;alkuvuosi=1778&amp;loppuvuosi=1785"))
         XCTAssertTrue(html.contains("https://hiski.genealogia.fi/hiski?en&amp;alkuvuosi=1785&amp;loppuvuosi=1821"))
-        XCTAssertEqual(html.components(separatedBy: "target=\"hiskiChildResults\"").count - 1, 2)
+        XCTAssertEqual(html.components(separatedBy: #"class="section-header hiski-child-results-link lapset-header""#).count - 1, 2)
     }
 
     func testHiskiSearchRequestUsesFirstChildWhenMarriageIsMissing() throws {

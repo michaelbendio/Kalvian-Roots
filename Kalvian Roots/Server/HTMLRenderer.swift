@@ -554,9 +554,9 @@ struct HTMLRenderer {
         """
         <a href="\(escapeHTML(url))"
            class="section-header hiski-child-results-link lapset-header"
-           target="hiskiChildResults"
-           title="Open complete HisKi child query results"
-           onclick="return openHiskiResults(this.href)">Lapset</a>
+           target="_blank"
+           rel="noopener noreferrer"
+           title="Open complete HisKi child query results">Lapset</a>
         """
     }
 
@@ -744,7 +744,7 @@ struct HTMLRenderer {
 
     private static func renderHiskiSearchAnchor(href: String, text: String, cssClass: String) -> String {
         """
-        <a href="\(escapeHTML(href))" class="\(cssClass)" target="hiskiChildResults" onclick="return openHiskiResults(this.href)">\(escapeHTML(text))</a>
+        <a href="\(escapeHTML(href))" class="\(cssClass)" target="_blank" rel="noopener noreferrer">\(escapeHTML(text))</a>
         """
     }
 
@@ -1320,9 +1320,9 @@ struct HTMLRenderer {
                         html += """
                                 <a href="\(escapeHTML(request.url.absoluteString))"
                                    class="section-header hiski-child-results-link"
-                                   target="hiskiChildResults"
-                                   title="Open complete HisKi child query results"
-                                   onclick="return openHiskiResults(this.href)">\(escapeHTML(title))</a>
+                                   target="_blank"
+                                   rel="noopener noreferrer"
+                                   title="Open complete HisKi child query results">\(escapeHTML(title))</a>
                                 """
                     } else {
                         html += """
@@ -3130,15 +3130,6 @@ struct HTMLRenderer {
             }
         }
 
-        function openHiskiResults(url) {
-            const popup = window.open(url, 'hiskiChildResults', 'width=1200,height=900,scrollbars=yes,resizable=yes');
-            if (popup) {
-                popup.focus();
-                return false;
-            }
-            return true;
-        }
-        
         // Show loading when clicking navigation buttons
         document.querySelectorAll('.nav-btn:not(.disabled)').forEach(btn => {
             btn.addEventListener('click', function(e) {
