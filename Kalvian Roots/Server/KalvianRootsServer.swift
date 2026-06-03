@@ -414,6 +414,7 @@ final class HTTPHandler: ChannelInboundHandler {
         // Extract query parameters
         let homeParam = queryItems.first(where: { $0.name == "home" })?.value
         let reloadFlag = queryItems.first(where: { $0.name == "reload" })?.value != nil
+        let compositeFlag = queryItems.first(where: { $0.name == "composite" })?.value != nil
         
         // Determine home ID: use query param if present, otherwise displayed family is home
         let homeId: String?
@@ -433,7 +434,8 @@ final class HTTPHandler: ChannelInboundHandler {
             metadata: [
                 "homeParamRaw": "\(homeParam ?? "nil")",
                 "homeIdDecoded": "\(homeId ?? "nil (displayed is home)")",
-                "reloadFlag": "\(reloadFlag)"
+                "reloadFlag": "\(reloadFlag)",
+                "compositeFlag": "\(compositeFlag)"
             ]
         )
 
@@ -463,8 +465,9 @@ final class HTTPHandler: ChannelInboundHandler {
             ]
         )
         
-        // Handle reload flag - regenerate home family
-        if reloadFlag, let actualHome = homeId ?? canonicalID as String? {
+        // Handle reload flag during the background composite request so the
+        // browser can render cached family text immediately first.
+        if reloadFlag, compositeFlag, let actualHome = homeId ?? canonicalID as String? {
             logger.info("[\(requestID!)] ↺ Reload requested for: \(actualHome)")
             if let app = juuretApp {
                 do {
@@ -592,20 +595,26 @@ final class HTTPHandler: ChannelInboundHandler {
             logger.info("[\(requestID!)] 🏠 Rendering family display (no sub-route)")
             let familySearchExtraction = sessionResult.session.familySearchExtraction(for: canonicalID)
                 ?? juuretApp?.familySearchExtraction(for: canonicalID)
-            let comparisonGroups = await makeChildrenComparisonGroups(
-                family: network.mainFamily,
-                familySearchExtraction: familySearchExtraction,
-                session: sessionResult.session
-            )
+            let comparisonGroups: [FamilyChildrenComparisonGroup]
             let comparisonResult: FamilyComparisonResult?
-            if let firstGroupResult = comparisonGroups.first?.result {
-                comparisonResult = firstGroupResult
-            } else {
-                comparisonResult = await makeChildrenComparisonResult(
+            if compositeFlag {
+                comparisonGroups = await makeChildrenComparisonGroups(
                     family: network.mainFamily,
                     familySearchExtraction: familySearchExtraction,
                     session: sessionResult.session
                 )
+                if let firstGroupResult = comparisonGroups.first?.result {
+                    comparisonResult = firstGroupResult
+                } else {
+                    comparisonResult = await makeChildrenComparisonResult(
+                        family: network.mainFamily,
+                        familySearchExtraction: familySearchExtraction,
+                        session: sessionResult.session
+                    )
+                }
+            } else {
+                comparisonGroups = []
+                comparisonResult = nil
             }
             let hiskiChildSearchRequestsByCouple = makeHiskiChildSearchRequestsByCouple(
                 family: network.mainFamily,
@@ -624,6 +633,9 @@ final class HTTPHandler: ChannelInboundHandler {
                     familySearchPersonId: familySearchPersonId,
                     comparisonResult: comparisonResult
                 )
+            let compositeURL = compositeFlag
+                ? nil
+                : familyCompositeURL(familyId: canonicalID, homeId: homeId, reload: reloadFlag)
             let html = HTMLRenderer.renderFamily(
                 family: network.mainFamily,
                 network: network,
@@ -633,7 +645,8 @@ final class HTTPHandler: ChannelInboundHandler {
                 familySearchExtraction: familySearchExtraction,
                 familySearchPersonId: familySearchPersonId,
                 workup: workup,
-                hiskiChildSearchRequestsByCouple: hiskiChildSearchRequestsByCouple
+                hiskiChildSearchRequestsByCouple: hiskiChildSearchRequestsByCouple,
+                compositeURL: compositeURL
             )
 
             var responseHeaders = HTTPHeaders()
@@ -1683,6 +1696,27 @@ final class HTTPHandler: ChannelInboundHandler {
     }
 
     // MARK: - Utilities
+
+    private func familyCompositeURL(familyId: String, homeId: String?, reload: Bool) -> String {
+        let encodedFamilyId = pathEncode(familyId)
+        var queryItems = ["composite=1"]
+        if let homeId {
+            queryItems.append("home=\(queryEncode(homeId))")
+        }
+        if reload {
+            queryItems.append("reload=1")
+        }
+
+        return "/family/\(encodedFamilyId)?\(queryItems.joined(separator: "&"))"
+    }
+
+    private func pathEncode(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? value
+    }
+
+    private func queryEncode(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
+    }
 
     private func parseFormData(_ body: String) -> [String: String] {
         var result: [String: String] = [:]

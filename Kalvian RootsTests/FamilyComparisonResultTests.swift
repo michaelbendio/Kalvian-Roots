@@ -1870,6 +1870,32 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertFalse(html.contains("fs-script"))
     }
 
+    func testServerRenderedFamilyCanLoadCompositeAfterInitialCachedDisplay() {
+        let family = Family(
+            familyId: "AHOKANGAS 2",
+            pageReferences: ["1"],
+            husband: Person(name: "Thomas", familySearchId: "KJJH-2QK"),
+            wife: Person(name: "Magdalena"),
+            marriageDate: "15.05.1760",
+            children: [
+                Person(name: "Maria", birthDate: "01.01.1761")
+            ]
+        )
+
+        let html = HTMLRenderer.renderFamily(
+            family: family,
+            network: nil,
+            compositeURL: "/family/AHOKANGAS%202?composite=1&reload=1"
+        )
+
+        XCTAssertTrue(html.contains("class=\"family-content\""))
+        XCTAssertTrue(html.contains("Maria"))
+        XCTAssertTrue(html.contains("function loadFamilyComposite()"))
+        XCTAssertTrue(html.contains(#"const compositeURL = "/family/AHOKANGAS%202?composite=1&reload=1";"#))
+        XCTAssertTrue(html.contains("familyContent.setAttribute('data-composite-status', 'loading');"))
+        XCTAssertTrue(html.contains("familyContent.innerHTML = compositeContent.innerHTML;"))
+    }
+
     func testServerRenderedFamilyLabelsChildrenBySource() {
         let nameManager = NameEquivalenceManager()
         nameManager.clearAllEquivalences()
@@ -2163,8 +2189,11 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(server.contains("case (.GET, \"/family\"):"))
         XCTAssertTrue(
             server.contains(#"return .redirect("/family/\(encoded)?reload=1")"#),
-            "Typed browser navigation should refresh the family network before rendering the composite child display."
+            "Typed browser navigation should request a refreshed composite after the cached family display renders."
         )
+        XCTAssertTrue(server.contains("if reloadFlag, compositeFlag"))
+        XCTAssertTrue(server.contains("if compositeFlag {\n                comparisonGroups = await makeChildrenComparisonGroups"))
+        XCTAssertTrue(server.contains("compositeURL: compositeURL"))
     }
 
     func testServerRenderedLapsetTabLinksArePerCoupleForAdditionalSpouses() throws {

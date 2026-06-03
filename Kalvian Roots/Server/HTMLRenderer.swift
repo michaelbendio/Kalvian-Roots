@@ -214,7 +214,8 @@ struct HTMLRenderer {
         familySearchExtraction: FamilySearchFamilyExtraction? = nil,
         familySearchPersonId: String? = nil,
         workup: FamilyWorkup? = nil,
-        hiskiChildSearchRequestsByCouple: [Int: HiskiService.FamilyBirthSearchRequest] = [:]
+        hiskiChildSearchRequestsByCouple: [Int: HiskiService.FamilyBirthSearchRequest] = [:],
+        compositeURL: String? = nil
     ) -> String {
         // Determine home and displayed IDs
         let displayedId = family.familyId
@@ -265,6 +266,7 @@ struct HTMLRenderer {
             \(copyButtonScript)
             \(workupCopyScript)
             \(navigationScript)
+            \(compositeLoaderScript(url: compositeURL))
         </body>
         </html>
         """
@@ -3158,6 +3160,51 @@ struct HTMLRenderer {
         """
     }
 
+    private static func compositeLoaderScript(url: String?) -> String {
+        guard let url else {
+            return ""
+        }
+
+        return """
+        <script>
+        (function loadFamilyComposite() {
+            const compositeURL = "\(escapeJavaScriptString(url))";
+            const familyContent = document.querySelector('.family-content');
+            if (!familyContent) {
+                return;
+            }
+
+            familyContent.setAttribute('data-composite-status', 'loading');
+
+            fetch(compositeURL, {
+                credentials: 'same-origin',
+                headers: { 'X-Kalvian-Composite-Request': '1' }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Composite request failed: ' + response.status);
+                }
+                return response.text();
+            })
+            .then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const compositeContent = doc.querySelector('.family-content');
+                if (!compositeContent) {
+                    throw new Error('Composite content missing');
+                }
+                familyContent.innerHTML = compositeContent.innerHTML;
+                familyContent.setAttribute('data-composite-status', 'ready');
+            })
+            .catch(error => {
+                familyContent.setAttribute('data-composite-status', 'error');
+                console.warn(error);
+            });
+        })();
+        </script>
+        """
+    }
+
     // MARK: - Helper Functions
 
     private static func escapeHTML(_ string: String) -> String {
@@ -3167,6 +3214,16 @@ struct HTMLRenderer {
             .replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\"", with: "&quot;")
             .replacingOccurrences(of: "'", with: "&#39;")
+    }
+
+    private static func escapeJavaScriptString(_ string: String) -> String {
+        string
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
+            .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
     }
 
     private static func escapeJavaScript(_ string: String) -> String {
