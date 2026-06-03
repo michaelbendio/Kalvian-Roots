@@ -567,6 +567,7 @@ final class FamilyContentViewTests: XCTestCase {
             spouse: SpouseEnhancedData(
                 birthDate: "03.03.1759",
                 deathDate: "03.05.1809",
+                familySearchId: "M88Q-WYP",
                 fullName: "Antti Korvela"
             )
         )
@@ -582,11 +583,13 @@ final class FamilyContentViewTests: XCTestCase {
         let spouse = SpouseEnhancedData(
             birthDate: "03.03.1759",
             deathDate: "03.05.1809",
+            familySearchId: "M88Q-WYP",
             fullName: "Antti Korvela"
         )
         
         XCTAssertEqual(spouse.birthDate, "03.03.1759", "Birth date set")
         XCTAssertEqual(spouse.deathDate, "03.05.1809", "Death date set")
+        XCTAssertEqual(spouse.familySearchId, "M88Q-WYP", "FamilySearch ID set")
         XCTAssertEqual(spouse.fullName, "Antti Korvela", "Full name set")
     }
     

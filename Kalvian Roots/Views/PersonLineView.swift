@@ -188,6 +188,7 @@ struct PersonLineView: View {
             return SpouseEnhancedData(
                 birthDate: spouseInFamily.birthDate,
                 deathDate: spouseInFamily.deathDate,
+                familySearchId: spouseInFamily.familySearchId,
                 fullName: spouseName
             )
         }
@@ -200,6 +201,7 @@ struct PersonLineView: View {
             return SpouseEnhancedData(
                 birthDate: spouseAsChild.birthDate,
                 deathDate: spouseAsChild.deathDate,
+                familySearchId: spouseAsChild.familySearchId ?? spouseInFamily.familySearchId,
                 fullName: spouseName
             )
         }
@@ -207,6 +209,7 @@ struct PersonLineView: View {
         return SpouseEnhancedData(
             birthDate: spouseInFamily.birthDate,
             deathDate: spouseInFamily.deathDate,
+            familySearchId: spouseInFamily.familySearchId,
             fullName: spouseName
         )
     }
@@ -307,6 +310,12 @@ struct PersonLineView: View {
                 if rendersNoteMarkersWithSpouse && !person.noteMarkers.isEmpty {
                     Text(verbatim: person.noteMarkers.map(displayFootnoteMarker).joined(separator: " "))
                         .font(.system(size: 16, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+
+                if let familySearchId = enhancedData?.spouse?.familySearchId {
+                    Text("<\(familySearchId)>")
+                        .font(.system(size: 13, design: .monospaced))
                         .foregroundColor(.secondary)
                 }
             }
@@ -444,6 +453,7 @@ struct EnhancedPersonData {
 struct SpouseEnhancedData {
     let birthDate: String?
     let deathDate: String?
+    let familySearchId: String?
     let fullName: String
 }
 

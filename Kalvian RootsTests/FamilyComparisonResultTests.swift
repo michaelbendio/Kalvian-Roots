@@ -2085,7 +2085,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
             pageReferences: ["120"],
             couples: [
                 Couple(
-                    husband: Person(name: "Antti", patronymic: "Korvelan", birthDate: "03.03.1759", deathDate: "03.05.1809"),
+                    husband: Person(name: "Antti", patronymic: "Korvelan", birthDate: "03.03.1759", deathDate: "03.05.1809", familySearchId: "M88Q-WYP"),
                     wife: Person(name: "Magdalena", birthDate: "27.01.1759", deathDate: "19.10.1846", fullMarriageDate: "23.11.1778"),
                     marriageDate: nil,
                     fullMarriageDate: "23.11.1778",
@@ -2099,7 +2099,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
             husband: Person(name: "Erik", patronymic: "Korvelan"),
             wife: Person(name: "Maria"),
             children: [
-                Person(name: "Antti", birthDate: "03.03.1759", deathDate: "03.05.1809")
+                Person(name: "Antti", birthDate: "03.03.1759", deathDate: "03.05.1809", familySearchId: "M88Q-WYP")
             ]
         )
         var network = FamilyNetwork(mainFamily: family)
@@ -2115,6 +2115,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(html.contains("[<a href=\"/family/KORVELA%201/hiski?name=Magdalena"))
         XCTAssertTrue(html.contains(">23.11.1778</a>]"))
         XCTAssertTrue(html.contains(">Antti Korvela</a>"))
+        XCTAssertTrue(html.contains("&lt;M88Q-WYP&gt;"))
         XCTAssertTrue(html.contains(">03.03.1759</a>-"))
         XCTAssertTrue(html.contains(">03.05.1809</a>"))
         XCTAssertTrue(html.contains("class=\"family-link\">KORVELA 3</a>"))

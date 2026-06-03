@@ -559,6 +559,9 @@ struct HTMLRenderer {
                 if !childWithParents.noteMarkers.isEmpty {
                     parts.append(escapeHTML(childWithParents.noteMarkers.map(displayFootnoteMarker).joined(separator: " ")))
                 }
+                if let familySearchId = enhancedData?.spouse?.familySearchId {
+                    parts.append("<span class=\"familysearch-id\">&lt;\(escapeHTML(familySearchId))&gt;</span>")
+                }
             }
 
             if let spouseData = enhancedData?.spouse {
@@ -917,6 +920,7 @@ struct HTMLRenderer {
             return HTMLSpouseEnhancedData(
                 birthDate: spouseInFamily.birthDate,
                 deathDate: spouseInFamily.deathDate,
+                familySearchId: spouseInFamily.familySearchId,
                 fullName: spouseName
             )
         }
@@ -927,6 +931,7 @@ struct HTMLRenderer {
             return HTMLSpouseEnhancedData(
                 birthDate: spouseAsChild.birthDate,
                 deathDate: spouseAsChild.deathDate,
+                familySearchId: spouseAsChild.familySearchId ?? spouseInFamily.familySearchId,
                 fullName: spouseName
             )
         }
@@ -934,6 +939,7 @@ struct HTMLRenderer {
         return HTMLSpouseEnhancedData(
             birthDate: spouseInFamily.birthDate,
             deathDate: spouseInFamily.deathDate,
+            familySearchId: spouseInFamily.familySearchId,
             fullName: spouseName
         )
     }
@@ -3251,6 +3257,7 @@ private struct HTMLEnhancedPersonData {
 private struct HTMLSpouseEnhancedData {
     let birthDate: String?
     let deathDate: String?
+    let familySearchId: String?
     let fullName: String
 
     func person(birthDate: String?, deathDate: String?) -> Person {
