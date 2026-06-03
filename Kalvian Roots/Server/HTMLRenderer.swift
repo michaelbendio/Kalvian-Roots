@@ -539,7 +539,19 @@ struct HTMLRenderer {
             parts.append("<span class=\"symbol\">∞</span>")
             if let marriageDate = enhancedData?.fullMarriageDate ?? childWithParents.fullMarriageDate ?? childWithParents.marriageDate {
                 let displayDate = displayMarriageDate(marriageDate, parentBirthYear: CitationGenerator.extractBirthYear(from: childWithParents))
-                parts.append(renderDateLink(displayDate, eventType: .marriage, person: childWithParents, familyId: familyId, homeId: homeId, isEnhanced: enhancedData?.fullMarriageDate != nil))
+                let dateLink = renderDateLink(
+                    displayDate,
+                    eventType: .marriage,
+                    person: childWithParents,
+                    familyId: familyId,
+                    homeId: homeId,
+                    isEnhanced: enhancedData?.fullMarriageDate != nil
+                )
+                if enhancedData?.fullMarriageDate != nil {
+                    parts.append("<span class=\"enhanced-date\">[\(dateLink)]</span>")
+                } else {
+                    parts.append(dateLink)
+                }
             }
 
             if let spouse = childWithParents.spouse {
