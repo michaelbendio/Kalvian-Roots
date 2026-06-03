@@ -226,6 +226,41 @@ final class FamilyContentViewTests: XCTestCase {
         XCTAssertTrue(html.contains("father=Matts%20Anderss.%20Hassinen"))
         XCTAssertTrue(html.contains("mother=Carin%20Thomadr."))
     }
+
+    func testBrowserNavigationOmitsHomeButtonAndSourceIconTogglesSourcePanel() {
+        let family = testFamily!
+
+        let familyHTML = HTMLRenderer.renderFamily(family: family, network: nil)
+        let sourceHTML = HTMLRenderer.renderFamily(
+            family: family,
+            network: nil,
+            sourceText: "TEST 1\nLapset"
+        )
+
+        XCTAssertFalse(familyHTML.contains(">⌂</a>"))
+        XCTAssertTrue(familyHTML.contains(#"href="/family/TEST%201/source" class="nav-btn" title="View source text">📄</a>"#))
+        XCTAssertFalse(sourceHTML.contains(">⌂</a>"))
+        XCTAssertTrue(sourceHTML.contains(#"href="/family/TEST%201" class="nav-btn" title="Hide source text">📄</a>"#))
+    }
+
+    func testBrowserWorkupGearTogglesBackToFamilyDisplay() {
+        let family = testFamily!
+        let service = FamilyWorkupService(nameEquivalenceManager: NameEquivalenceManager())
+        let workup = service.makeWorkup(
+            family: family,
+            network: nil,
+            sourceText: "TEST 1\nLapset",
+            familySearchExtraction: nil,
+            familySearchPersonId: nil,
+            comparisonResult: nil
+        )
+
+        let familyHTML = HTMLRenderer.renderFamily(family: family, network: nil)
+        let workupHTML = HTMLRenderer.renderWorkup(workup, family: family, homeId: family.familyId)
+
+        XCTAssertTrue(familyHTML.contains(#"href="/family/TEST%201/workup" class="nav-btn" title="View family workup">⚙</a>"#))
+        XCTAssertTrue(workupHTML.contains(#"href="/family/TEST%201" class="nav-btn" title="View family display">⚙</a>"#))
+    }
     #endif
     
     func testChildrenSectionHasData() {

@@ -221,7 +221,11 @@ struct HTMLRenderer {
         let actualHomeId = homeId ?? displayedId
         
         // Generate navigation bar
-        let navBar = renderNavigationBar(homeId: actualHomeId, displayedId: displayedId)
+        let navBar = renderNavigationBar(
+            homeId: actualHomeId,
+            displayedId: displayedId,
+            isSourceVisible: sourceText != nil
+        )
         
         // Generate family content with home parameter for links
         let familyHTML = renderStructuredFamilyContent(
@@ -1164,31 +1168,40 @@ struct HTMLRenderer {
     
     // MARK: - Navigation Bar
     
-    private static func renderNavigationBar(homeId: String, displayedId: String) -> String {
+    private static func renderNavigationBar(
+        homeId: String,
+        displayedId: String,
+        isSourceVisible: Bool = false,
+        isWorkupVisible: Bool = false
+    ) -> String {
         // Calculate navigation targets based on homeId
         let previousId = FamilyIDs.previousFamilyBefore(homeId)
         let nextId = FamilyIDs.nextFamilyAfter(homeId)
         let canGoPrevious = previousId != nil
         let canGoNext = nextId != nil
-        let isViewingHome = (homeId == displayedId)
         
         // Generate button URLs
         let previousURL = previousId.map { "/family/\(urlEncode($0))" } ?? ""
-        let homeURL = "/family/\(urlEncode(homeId))"
+        let familyURL = "/family/\(urlEncode(displayedId))" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
         let nextURL = nextId.map { "/family/\(urlEncode($0))" } ?? ""
         let reloadURL = "/family/\(urlEncode(homeId))?reload=1"
-        let sourceURL = "/family/\(urlEncode(displayedId))/source" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
-        let workupURL = "/family/\(urlEncode(displayedId))/workup" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
+        let sourceURL = isSourceVisible
+            ? familyURL
+            : "/family/\(urlEncode(displayedId))/source" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
+        let sourceTitle = isSourceVisible ? "Hide source text" : "View source text"
+        let workupURL = isWorkupVisible
+            ? familyURL
+            : "/family/\(urlEncode(displayedId))/workup" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
+        let workupTitle = isWorkupVisible ? "View family display" : "View family workup"
         
         return """
         <div class="nav-bar">
             <div class="nav-buttons">
                 <a href="\(previousURL)" class="nav-btn\(canGoPrevious ? "" : " disabled")" \(canGoPrevious ? "" : "onclick='return false;'")>←</a>
-                <a href="\(homeURL)" class="nav-btn\(isViewingHome ? " disabled" : "")" \(isViewingHome ? "onclick='return false;'" : "")>⌂</a>
                 <a href="\(nextURL)" class="nav-btn\(canGoNext ? "" : " disabled")" \(canGoNext ? "" : "onclick='return false;'")>→</a>
                 <a href="\(reloadURL)" class="nav-btn">↺</a>
-                <a href="\(sourceURL)" class="nav-btn" title="View source text">📄</a>
-                <a href="\(workupURL)" class="nav-btn" title="View family workup">⚙</a>
+                <a href="\(sourceURL)" class="nav-btn" title="\(sourceTitle)">📄</a>
+                <a href="\(workupURL)" class="nav-btn" title="\(workupTitle)">⚙</a>
             </div>
             <form method="GET" action="/family" class="nav-form" onsubmit="showLoading(event)">
                 <div class="input-wrapper">
@@ -2319,7 +2332,11 @@ struct HTMLRenderer {
         family: Family,
         homeId: String
     ) -> String {
-        let navBar = renderNavigationBar(homeId: homeId, displayedId: family.familyId)
+        let navBar = renderNavigationBar(
+            homeId: homeId,
+            displayedId: family.familyId,
+            isWorkupVisible: true
+        )
         let jsonURL = "/family/\(urlEncode(family.familyId))/workup.json"
         let extractionURL = "/family/\(urlEncode(family.familyId))/familysearch-extract" + (family.familyId == homeId ? "" : "?home=\(urlEncode(homeId))")
         let familySearchActionHTML: String
