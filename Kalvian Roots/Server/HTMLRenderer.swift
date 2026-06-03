@@ -508,17 +508,19 @@ struct HTMLRenderer {
         familyId: String,
         homeId: String
     ) -> String {
-        let homeParam = (familyId == homeId) ? "" : "&home=\(urlEncode(homeId))"
-        let params = buildQueryParams([
-            "spouse1": couple.husband.name,
-            "birth1": couple.husband.birthDate,
-            "spouse2": couple.wife.name,
-            "birth2": couple.wife.birthDate,
-            "event": "marriage",
-            "date": date
-        ])
+        let href = hiskiMarriageSearchURL(
+            husbandName: couple.husband.name,
+            wifeName: couple.wife.name,
+            date: date,
+            parentBirthYear: CitationGenerator.extractBirthYear(from: couple.husband)
+        )?.absoluteString ?? serverHiskiMarriageURL(
+            date: date,
+            couple: couple,
+            familyId: familyId,
+            homeId: homeId
+        )
         return """
-        <div class="family-line"><span class="symbol">∞</span> <a href="/family/\(urlEncode(familyId))/hiski?\(params)\(homeParam)" class="date-link">\(escapeHTML(date))</a></div>
+        <div class="family-line"><span class="symbol">∞</span> \(renderHiskiSearchAnchor(href: href, text: date, cssClass: "date-link"))</div>
         """
     }
 
@@ -528,7 +530,7 @@ struct HTMLRenderer {
            class="section-header hiski-child-results-link lapset-header"
            target="hiskiChildResults"
            title="Open complete HisKi child query results"
-           onclick="return openHiskiChildResults(this.href)">Lapset</a>
+           onclick="return openHiskiResults(this.href)">Lapset</a>
         """
     }
 
@@ -699,6 +701,81 @@ struct HTMLRenderer {
         homeId: String,
         isEnhanced: Bool = false
     ) -> String {
+        let linkClass = isEnhanced ? "date-link enhanced-date" : "date-link"
+        let href = hiskiSearchURL(
+            date: date,
+            eventType: eventType,
+            person: person
+        )?.absoluteString ?? serverHiskiDateURL(
+            date: date,
+            eventType: eventType,
+            person: person,
+            familyId: familyId,
+            homeId: homeId
+        )
+        return renderHiskiSearchAnchor(href: href, text: date, cssClass: linkClass)
+    }
+
+    private static func renderHiskiSearchAnchor(href: String, text: String, cssClass: String) -> String {
+        """
+        <a href="\(escapeHTML(href))" class="\(cssClass)" target="hiskiChildResults" onclick="return openHiskiResults(this.href)">\(escapeHTML(text))</a>
+        """
+    }
+
+    private static func hiskiSearchURL(date: String, eventType: EventType, person: Person) -> URL? {
+        let hiskiService = HiskiService(nameEquivalenceManager: NameEquivalenceManager())
+        do {
+            switch eventType {
+            case .birth:
+                return try hiskiService.birthSearchResultsURL(
+                    name: person.name,
+                    date: date,
+                    fatherName: person.fatherName,
+                    motherName: person.motherName,
+                    parentBirthYear: CitationGenerator.extractBirthYear(from: person)
+                )
+            case .death:
+                return try hiskiService.deathSearchResultsURL(name: person.name, date: date)
+            case .marriage:
+                guard let spouse = person.spouse else {
+                    return nil
+                }
+                return try hiskiService.marriageSearchResultsURL(
+                    husbandName: person.name,
+                    wifeName: spouse,
+                    date: date,
+                    parentBirthYear: CitationGenerator.extractBirthYear(from: person)
+                )
+            case .baptism, .burial:
+                return nil
+            }
+        } catch {
+            return nil
+        }
+    }
+
+    private static func hiskiMarriageSearchURL(
+        husbandName: String,
+        wifeName: String,
+        date: String,
+        parentBirthYear: Int?
+    ) -> URL? {
+        let hiskiService = HiskiService(nameEquivalenceManager: NameEquivalenceManager())
+        return try? hiskiService.marriageSearchResultsURL(
+            husbandName: husbandName,
+            wifeName: wifeName,
+            date: date,
+            parentBirthYear: parentBirthYear
+        )
+    }
+
+    private static func serverHiskiDateURL(
+        date: String,
+        eventType: EventType,
+        person: Person,
+        familyId: String,
+        homeId: String
+    ) -> String {
         let homeParam = (familyId == homeId) ? "" : "&home=\(urlEncode(homeId))"
         let params = buildQueryParams([
             "name": person.name,
@@ -708,8 +785,25 @@ struct HTMLRenderer {
             "father": person.fatherName,
             "mother": person.motherName
         ])
-        let linkClass = isEnhanced ? "date-link enhanced-date" : "date-link"
-        return "<a href=\"/family/\(urlEncode(familyId))/hiski?\(params)\(homeParam)\" class=\"\(linkClass)\">\(escapeHTML(date))</a>"
+        return "/family/\(urlEncode(familyId))/hiski?\(params)\(homeParam)"
+    }
+
+    private static func serverHiskiMarriageURL(
+        date: String,
+        couple: Couple,
+        familyId: String,
+        homeId: String
+    ) -> String {
+        let homeParam = (familyId == homeId) ? "" : "&home=\(urlEncode(homeId))"
+        let params = buildQueryParams([
+            "spouse1": couple.husband.name,
+            "birth1": couple.husband.birthDate,
+            "spouse2": couple.wife.name,
+            "birth2": couple.wife.birthDate,
+            "event": "marriage",
+            "date": date
+        ])
+        return "/family/\(urlEncode(familyId))/hiski?\(params)\(homeParam)"
     }
 
     private static func renderAsChildReference(_ id: String, homeId: String) -> String {
@@ -1193,7 +1287,7 @@ struct HTMLRenderer {
                                    class="section-header hiski-child-results-link"
                                    target="hiskiChildResults"
                                    title="Open complete HisKi child query results"
-                                   onclick="return openHiskiChildResults(this.href)">\(escapeHTML(title))</a>
+                                   onclick="return openHiskiResults(this.href)">\(escapeHTML(title))</a>
                                 """
                     } else {
                         html += """
@@ -2997,7 +3091,7 @@ struct HTMLRenderer {
             }
         }
 
-        function openHiskiChildResults(url) {
+        function openHiskiResults(url) {
             const popup = window.open(url, 'hiskiChildResults', 'width=1200,height=900,scrollbars=yes,resizable=yes');
             if (popup) {
                 popup.focus();

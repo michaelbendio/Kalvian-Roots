@@ -308,10 +308,10 @@ final class HTTPHandler: ChannelInboundHandler {
                     withAllowedCharacters: .urlPathAllowed
                 ) ?? canonical
                 
-                logger.info("[\(requestID!)] ✅ Valid family ID, redirecting to: /family/\(encoded)")
+                logger.info("[\(requestID!)] ✅ Valid family ID, redirecting to: /family/\(encoded)?reload=1")
                 
-                // Redirect to family page (becomes new home)
-                return .redirect("/family/\(encoded)")
+                // Redirect to a refreshed family page so typed navigation immediately shows the composite.
+                return .redirect("/family/\(encoded)?reload=1")
             } else {
                 logger.warning("[\(requestID!)] ⚠️ No 'id' parameter in form submission")
                 return .redirect("/?error=invalid")

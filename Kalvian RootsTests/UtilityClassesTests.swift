@@ -336,6 +336,23 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertEqual(values["aetunimi"], "Carin")
     }
 
+    func testBirthSearchResultsURLNormalizesDateAndUsesParentGivenNames() throws {
+        let url = try service.birthSearchResultsURL(
+            name: "Maria Mattsdotter",
+            date: "12.02.1696",
+            fatherName: "Matti Juhonp.",
+            motherName: "Kaarin Kustaant."
+        )
+
+        let values = try queryValues(in: url)
+
+        XCTAssertEqual(values["etunimi"], "Maria")
+        XCTAssertEqual(values["alkuvuosi"], "12.2.1696")
+        XCTAssertEqual(values["loppuvuosi"], "12.2.1696")
+        XCTAssertEqual(values["ietunimi"], "Matti")
+        XCTAssertEqual(values["aetunimi"], "Kaarin")
+    }
+
     func testBuildFamilyBirthSearchUrlUsesBoundedFamilyQueryParameters() throws {
         let url = try service.buildFamilyBirthSearchUrl(
             fatherName: "Elias",

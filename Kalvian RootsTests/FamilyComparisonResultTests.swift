@@ -2065,9 +2065,48 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(html.contains("hiski-child-results-link"))
         XCTAssertTrue(html.contains("lapset-header"))
         XCTAssertTrue(html.contains("target=\"hiskiChildResults\""))
-        XCTAssertTrue(html.contains("onclick=\"return openHiskiChildResults(this.href)\""))
+        XCTAssertTrue(html.contains("onclick=\"return openHiskiResults(this.href)\""))
         XCTAssertTrue(html.contains("https://hiski.genealogia.fi/hiski?en&amp;alkuvuosi=1778&amp;loppuvuosi=1814"))
-        XCTAssertTrue(html.contains("function openHiskiChildResults(url)"))
+        XCTAssertTrue(html.contains("function openHiskiResults(url)"))
+    }
+
+    func testServerRenderedDateLinksOpenHiskiResultsPopup() {
+        let family = Family(
+            familyId: "SAKERI 1",
+            pageReferences: ["264", "265"],
+            husband: Person(name: "Matti", patronymic: "Juhonp."),
+            wife: Person(name: "Kaarin", patronymic: "Kustaant."),
+            children: [
+                Person(name: "Maria", birthDate: "12.02.1696")
+            ]
+        )
+
+        let html = HTMLRenderer.renderFamily(family: family, network: nil)
+
+        XCTAssertTrue(html.contains("href=\"https://hiski.genealogia.fi/hiski?"))
+        XCTAssertTrue(html.contains("kirja=kastetut"))
+        XCTAssertTrue(html.contains("etunimi=Maria"))
+        XCTAssertTrue(html.contains("alkuvuosi=12.2.1696"))
+        XCTAssertTrue(html.contains("target=\"hiskiChildResults\""))
+        XCTAssertTrue(html.contains("onclick=\"return openHiskiResults(this.href)\""))
+        XCTAssertFalse(html.contains("/family/SAKERI%201/hiski?name=Maria"))
+    }
+
+    func testFamilyFormSubmissionRequestsReloadedFamilyPage() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        let server = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/Server/KalvianRootsServer.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(server.contains("case (.GET, \"/family\"):"))
+        XCTAssertTrue(
+            server.contains(#"return .redirect("/family/\(encoded)?reload=1")"#),
+            "Typed browser navigation should refresh the family network before rendering the composite child display."
+        )
     }
 
     func testServerRenderedLapsetLinksArePerCoupleForAdditionalSpouses() throws {

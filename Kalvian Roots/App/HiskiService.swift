@@ -470,6 +470,41 @@ class HiskiService {
     func setCurrentFamily(_ familyId: String) {
         self.currentFamilyId = familyId
     }
+
+    func deathSearchResultsURL(name: String, date: String) throws -> URL {
+        try buildDeathSearchUrl(
+            name: queryFirstName(for: name),
+            date: formatDateForHiski(date)
+        )
+    }
+
+    func birthSearchResultsURL(
+        name: String,
+        date: String,
+        fatherName: String? = nil,
+        motherName: String? = nil,
+        parentBirthYear: Int? = nil
+    ) throws -> URL {
+        try buildBirthSearchUrl(
+            name: queryFirstName(for: name),
+            date: formatDateForHiski(date, parentBirthYear: parentBirthYear),
+            fatherName: fatherName.map(queryFirstName(for:)),
+            motherName: motherName.map(queryFirstName(for:))
+        )
+    }
+
+    func marriageSearchResultsURL(
+        husbandName: String,
+        wifeName: String,
+        date: String,
+        parentBirthYear: Int? = nil
+    ) throws -> URL {
+        try buildMarriageSearchUrl(
+            husbandName: queryFirstName(for: husbandName),
+            wifeName: queryFirstName(for: wifeName),
+            date: formatDateForHiski(date, parentBirthYear: parentBirthYear)
+        )
+    }
     
     // MARK: - Query Methods with Result Type (Supporting both extraction modes)
 
@@ -478,16 +513,13 @@ class HiskiService {
      */
     func queryDeathWithResult(name: String, date: String, mode: HiskiExtractionMode = .webView) async -> HiskiQueryResult {
         do {
-            let swedishName = normalizeForHiskiQuery(name)
-            let firstName = swedishName.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishName
+            let searchUrl = try deathSearchResultsURL(name: name, date: date)
+            let firstName = queryFirstName(for: name)
             let formattedDate = formatDateForHiski(date)
 
             logInfo(.app, "🔍 Hiski Death Query (mode: \(mode)):")
             logInfo(.app, "  Name: \(firstName)")
             logInfo(.app, "  Date: \(formattedDate)")
-
-            // Build search URL
-            let searchUrl = try buildDeathSearchUrl(name: firstName, date: formattedDate)
 
             // Fetch search results HTML
             let (searchData, _) = try await URLSession.shared.data(from: searchUrl)
@@ -540,21 +572,15 @@ class HiskiService {
         mode: HiskiExtractionMode = .webView
     ) async -> HiskiQueryResult {
         do {
-            let swedishName = normalizeForHiskiQuery(name)
-            let firstName = swedishName.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishName
-
-            var fatherFirstName: String? = nil
-            if let father = fatherName {
-                let swedishFather = normalizeForHiskiQuery(father)
-                fatherFirstName = swedishFather.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-
-            var motherFirstName: String? = nil
-            if let mother = motherName {
-                let swedishMother = normalizeForHiskiQuery(mother)
-                motherFirstName = swedishMother.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-
+            let searchUrl = try birthSearchResultsURL(
+                name: name,
+                date: date,
+                fatherName: fatherName,
+                motherName: motherName
+            )
+            let firstName = queryFirstName(for: name)
+            let fatherFirstName = fatherName.map(queryFirstName(for:))
+            let motherFirstName = motherName.map(queryFirstName(for:))
             let formattedDate = formatDateForHiski(date)
 
             logInfo(.app, "🔍 Hiski Birth Query (mode: \(mode)):")
@@ -562,14 +588,6 @@ class HiskiService {
             logInfo(.app, "  Father: \(fatherFirstName ?? "unknown")")
             logInfo(.app, "  Mother: \(motherFirstName ?? "unknown")")
             logInfo(.app, "  Date: \(formattedDate)")
-
-            // Build search URL
-            let searchUrl = try buildBirthSearchUrl(
-                name: firstName,
-                date: formattedDate,
-                fatherName: fatherFirstName,
-                motherName: motherFirstName
-            )
 
             // Fetch search results HTML
             let (searchData, _) = try await URLSession.shared.data(from: searchUrl)
@@ -616,21 +634,19 @@ class HiskiService {
      */
     func queryMarriageWithResult(husbandName: String, wifeName: String, date: String, mode: HiskiExtractionMode = .webView) async -> HiskiQueryResult {
         do {
-            let swedishHusband = normalizeForHiskiQuery(husbandName)
-            let swedishWife = normalizeForHiskiQuery(wifeName)
-
-            let husbandFirst = swedishHusband.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishHusband
-            let wifeFirst = swedishWife.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishWife
-
+            let searchUrl = try marriageSearchResultsURL(
+                husbandName: husbandName,
+                wifeName: wifeName,
+                date: date
+            )
+            let husbandFirst = queryFirstName(for: husbandName)
+            let wifeFirst = queryFirstName(for: wifeName)
             let formattedDate = formatDateForHiski(date)
 
             logInfo(.app, "🔍 Hiski Marriage Query (mode: \(mode)):")
             logInfo(.app, "  Husband: \(husbandFirst)")
             logInfo(.app, "  Wife: \(wifeFirst)")
             logInfo(.app, "  Date: \(formattedDate)")
-
-            // Build search URL
-            let searchUrl = try buildMarriageSearchUrl(husbandName: husbandFirst, wifeName: wifeFirst, date: formattedDate)
 
             // Fetch search results
             let (searchData, _) = try await URLSession.shared.data(from: searchUrl)
@@ -1681,6 +1697,15 @@ class HiskiService {
         let normalized = parts.joined(separator: " ")
         logInfo(.app, "✅ HisKi query override '\(trimmed)' → '\(normalized)'")
         return normalized
+    }
+
+    private func queryFirstName(for name: String) -> String {
+        let normalizedName = normalizeForHiskiQuery(name)
+        return normalizedName
+            .split(separator: " ")
+            .first?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? normalizedName
     }
 
     private func hiskiGivenNameOverride(for name: String) -> String? {
