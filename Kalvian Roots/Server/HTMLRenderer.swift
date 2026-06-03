@@ -121,7 +121,7 @@ struct HTMLRenderer {
         <body>
             <div class="landing-container">
                 <h1>Kalvian Roots Browser</h1>
-                <form method="GET" action="/family" id="familyForm">
+                <form method="GET" action="/family" id="familyForm" onsubmit="return openFamily(event)">
                     <div class="form-group">
                         <label for="family">Enter Family ID:</label>
                         <input type="text" id="family" name="id"
@@ -166,9 +166,24 @@ struct HTMLRenderer {
                     const familyId = value || 'SAKERI 1';
                     return '/family/' + encodeURIComponent(familyId).replace(/%20/g, '%20') + '/workup';
                 }
+                function familyURLFor(value) {
+                    return '/family/' + encodeURIComponent(value).replace(/%20/g, '%20') + '?reload=1';
+                }
                 function updateWorkupPreview() {
                     const preview = document.getElementById('workupPreview');
                     preview.textContent = window.location.origin + workupURLFor(canonicalFamilyId());
+                }
+                function openFamily(event) {
+                    if (event) {
+                        event.preventDefault();
+                    }
+                    const familyId = canonicalFamilyId();
+                    if (!familyId) {
+                        document.getElementById('family').focus();
+                        return false;
+                    }
+                    window.location.href = familyURLFor(familyId);
+                    return false;
                 }
                 function openWorkup() {
                     const familyId = canonicalFamilyId();

@@ -23,4 +23,16 @@ final class LandingPageRendererTests: XCTestCase {
         XCTAssertTrue(html.contains("local Mac browser"))
         XCTAssertTrue(html.contains("http://127.0.0.1:8081"))
     }
+
+    func testLandingPageReturnKeyOpensReloadedFamilyPage() {
+        let html = HTMLRenderer.renderLandingPage(
+            requestHost: "127.0.0.1:8081"
+        )
+
+        XCTAssertTrue(html.contains(#"onsubmit="return openFamily(event)""#))
+        XCTAssertTrue(html.contains("function familyURLFor(value)"))
+        XCTAssertTrue(html.contains("'?reload=1'"))
+        XCTAssertTrue(html.contains("window.location.href = familyURLFor(familyId);"))
+        XCTAssertTrue(html.contains(#"<button type="submit">Open Family</button>"#))
+    }
 }
