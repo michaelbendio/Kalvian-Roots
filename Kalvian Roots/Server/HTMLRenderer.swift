@@ -210,6 +210,7 @@ struct HTMLRenderer {
         // Generate family content with home parameter for links
         let familyHTML = renderStructuredFamilyContent(
             family: family,
+            network: network,
             familyId: displayedId,
             homeId: actualHomeId,
             comparisonResult: comparisonResult,
@@ -378,6 +379,7 @@ struct HTMLRenderer {
 
     private static func renderStructuredFamilyContent(
         family: Family,
+        network: FamilyNetwork?,
         familyId: String,
         homeId: String,
         comparisonResult: FamilyComparisonResult?,
@@ -417,6 +419,7 @@ struct HTMLRenderer {
                 html.append(renderComparisonChildren(
                     comparisonGroup.displayRows,
                     couple: couple,
+                    network: network,
                     familyId: familyId,
                     homeId: homeId
                 ))
@@ -427,7 +430,7 @@ struct HTMLRenderer {
                     html.append("<div class=\"section-header lapset-header\">Lapset</div>")
                 }
                 html.append(couple.children.map {
-                    renderChildLine($0, couple: couple, familyId: familyId, homeId: homeId)
+                    renderChildLine($0, couple: couple, network: network, familyId: familyId, homeId: homeId)
                 }.joined(separator: "\n"))
             }
 
@@ -437,7 +440,7 @@ struct HTMLRenderer {
         }
 
         if !family.notes.isEmpty {
-            html.append(family.notes.map { "<div class=\"family-note\">\(escapeHTML($0))</div>" }.joined(separator: "\n"))
+            html.append(family.notes.map { "<div class=\"family-note\">\(escapeHTML(displayFootnoteText($0)))</div>" }.joined(separator: "\n"))
         }
 
         return html.joined(separator: "\n")
@@ -490,7 +493,7 @@ struct HTMLRenderer {
             parts.append(renderDateLink(deathDate, eventType: .death, person: person, familyId: familyId, homeId: homeId))
         }
         if let asChild = person.asChild {
-            parts.append(renderFamilyReference(asChild, label: "as_child", homeId: homeId))
+            parts.append(renderAsChildReference(asChild, homeId: homeId))
         }
         return "<div class=\"family-line\">\(parts.joined(separator: " "))</div>"
     }
@@ -528,6 +531,7 @@ struct HTMLRenderer {
     private static func renderChildLine(
         _ child: Person,
         couple: Couple,
+        network: FamilyNetwork?,
         familyId: String,
         homeId: String
     ) -> String {
@@ -543,17 +547,38 @@ struct HTMLRenderer {
         if let fsId = childWithParents.familySearchId {
             parts.append("<span class=\"familysearch-id\">&lt;\(escapeHTML(fsId))&gt;</span>")
         }
-        if let marriageDate = childWithParents.fullMarriageDate ?? childWithParents.marriageDate {
-            parts.append("<span class=\"symbol\">∞</span>")
-            parts.append(escapeHTML(marriageDate))
+
+        let enhancedData = enhancedPersonData(for: childWithParents, network: network)
+
+        if let deathDate = enhancedData?.deathDate {
+            parts.append(renderEnhancedDeathDate(deathDate, person: childWithParents, familyId: familyId, homeId: homeId))
+        } else if let deathDate = childWithParents.deathDate, !childWithParents.isMarried {
+            parts.append("<span class=\"symbol\">†</span>")
+            parts.append(renderDateLink(deathDate, eventType: .death, person: childWithParents, familyId: familyId, homeId: homeId))
         }
-        if let spouse = childWithParents.spouse {
-            parts.append(renderPersonLink(name: spouse, birthDate: nil, familyId: familyId, homeId: homeId))
+
+        if childWithParents.isMarried {
+            parts.append("<span class=\"symbol\">∞</span>")
+            if let marriageDate = enhancedData?.fullMarriageDate ?? childWithParents.fullMarriageDate ?? childWithParents.marriageDate {
+                let displayDate = displayMarriageDate(marriageDate, parentBirthYear: CitationGenerator.extractBirthYear(from: childWithParents))
+                parts.append(renderDateLink(displayDate, eventType: .marriage, person: childWithParents, familyId: familyId, homeId: homeId, isEnhanced: enhancedData?.fullMarriageDate != nil))
+            }
+
+            if let spouse = childWithParents.spouse {
+                parts.append(renderPersonLink(name: spouse, birthDate: nil, familyId: familyId, homeId: homeId))
+                if !childWithParents.noteMarkers.isEmpty {
+                    parts.append(escapeHTML(childWithParents.noteMarkers.map(displayFootnoteMarker).joined(separator: " ")))
+                }
+            }
+
+            if let spouseData = enhancedData?.spouse {
+                parts.append(renderSpouseEnhancedDates(spouseData, familyId: familyId, homeId: homeId))
+            }
         }
         if let asParent = childWithParents.asParent {
-            parts.append(renderFamilyReference(asParent, label: "as_parent", homeId: homeId))
+            parts.append(renderFamilyIdLink(asParent, homeId: homeId))
         }
-        if !childWithParents.noteMarkers.isEmpty {
+        if !childWithParents.noteMarkers.isEmpty && !(childWithParents.spouse != nil && childWithParents.isMarried) {
             parts.append(escapeHTML(childWithParents.noteMarkers.map(displayFootnoteMarker).joined(separator: " ")))
         }
         return "<div class=\"family-line child-line\">\(parts.joined(separator: " "))</div>"
@@ -562,6 +587,7 @@ struct HTMLRenderer {
     private static func renderComparisonChildren(
         _ rows: [FamilyComparisonDisplayRow],
         couple: Couple,
+        network: FamilyNetwork?,
         familyId: String,
         homeId: String
     ) -> String {
@@ -571,6 +597,7 @@ struct HTMLRenderer {
                     child,
                     displayRow: displayRow,
                     couple: couple,
+                    network: network,
                     familyId: familyId,
                     homeId: homeId
                 )
@@ -583,11 +610,12 @@ struct HTMLRenderer {
         _ child: Person,
         displayRow: FamilyComparisonDisplayRow,
         couple: Couple,
+        network: FamilyNetwork?,
         familyId: String,
         homeId: String
     ) -> String {
         let row = displayRow.match
-        var line = renderChildLine(child, couple: couple, familyId: familyId, homeId: homeId)
+        var line = renderChildLine(child, couple: couple, network: network, familyId: familyId, homeId: homeId)
         var supplements: [String] = []
         if displayRow.reviewNote != nil {
             supplements.append("<span class=\"review-marker\">*</span>")
@@ -647,7 +675,8 @@ struct HTMLRenderer {
         eventType: EventType,
         person: Person,
         familyId: String,
-        homeId: String
+        homeId: String,
+        isEnhanced: Bool = false
     ) -> String {
         let homeParam = (familyId == homeId) ? "" : "&home=\(urlEncode(homeId))"
         let params = buildQueryParams([
@@ -658,20 +687,144 @@ struct HTMLRenderer {
             "father": person.fatherName,
             "mother": person.motherName
         ])
-        return "<a href=\"/family/\(urlEncode(familyId))/hiski?\(params)\(homeParam)\" class=\"date-link\">\(escapeHTML(date))</a>"
+        let linkClass = isEnhanced ? "date-link enhanced-date" : "date-link"
+        return "<a href=\"/family/\(urlEncode(familyId))/hiski?\(params)\(homeParam)\" class=\"\(linkClass)\">\(escapeHTML(date))</a>"
     }
 
-    private static func renderFamilyReference(
+    private static func renderAsChildReference(_ id: String, homeId: String) -> String {
+        "{ \(renderFamilyIdLink(id, homeId: homeId)) }"
+    }
+
+    private static func renderFamilyIdLink(
         _ id: String,
-        label: String,
         homeId: String
     ) -> String {
-        let display = "\(label) \(id)"
         guard FamilyIDs.isValid(familyId: id) else {
-            return escapeHTML(display)
+            return "<span class=\"pseudo-family-id\">\(escapeHTML(id))</span>"
         }
         let homeParam = (id == homeId) ? "" : "?home=\(urlEncode(homeId))"
-        return "\(escapeHTML(label)) <a href=\"/family/\(urlEncode(id))\(homeParam)\" class=\"family-link\">\(escapeHTML(id))</a>"
+        return "<a href=\"/family/\(urlEncode(id))\(homeParam)\" class=\"family-link\">\(escapeHTML(id))</a>"
+    }
+
+    private static func renderEnhancedDeathDate(
+        _ date: String,
+        person: Person,
+        familyId: String,
+        homeId: String
+    ) -> String {
+        """
+        <span class="enhanced-date">[d. \(renderDateLink(date, eventType: .death, person: person, familyId: familyId, homeId: homeId, isEnhanced: true))]</span>
+        """
+    }
+
+    private static func renderSpouseEnhancedDates(
+        _ spouse: HTMLSpouseEnhancedData,
+        familyId: String,
+        homeId: String
+    ) -> String {
+        if let birthDate = spouse.birthDate, let deathDate = spouse.deathDate {
+            let birth = renderDateLink(
+                birthDate,
+                eventType: .birth,
+                person: spouse.person(birthDate: birthDate, deathDate: deathDate),
+                familyId: familyId,
+                homeId: homeId,
+                isEnhanced: true
+            )
+            let death = renderDateLink(
+                deathDate,
+                eventType: .death,
+                person: spouse.person(birthDate: birthDate, deathDate: deathDate),
+                familyId: familyId,
+                homeId: homeId,
+                isEnhanced: true
+            )
+            return "<span class=\"enhanced-date\">[\(birth)-\(death)]</span>"
+        }
+
+        if let birthDate = spouse.birthDate {
+            let birth = renderDateLink(
+                birthDate,
+                eventType: .birth,
+                person: spouse.person(birthDate: birthDate, deathDate: nil),
+                familyId: familyId,
+                homeId: homeId,
+                isEnhanced: true
+            )
+            return "<span class=\"enhanced-date\">[\(birth)]</span>"
+        }
+
+        return ""
+    }
+
+    private static func enhancedPersonData(for person: Person, network: FamilyNetwork?) -> HTMLEnhancedPersonData? {
+        guard let network, person.isMarried else {
+            return nil
+        }
+        guard let asParentFamily = network.getAsParentFamily(for: person) else {
+            return nil
+        }
+        guard let asParentPerson = matchingParent(for: person, in: asParentFamily) else {
+            return nil
+        }
+
+        let spouseData = person.spouse.flatMap {
+            enhancedSpouseData(spouseName: $0, from: asParentFamily, network: network)
+        }
+
+        return HTMLEnhancedPersonData(
+            deathDate: asParentPerson.deathDate,
+            fullMarriageDate: asParentPerson.fullMarriageDate ?? asParentFamily.primaryCouple?.fullMarriageDate,
+            spouse: spouseData
+        )
+    }
+
+    private static func matchingParent(for person: Person, in family: Family) -> Person? {
+        if let birthDate = person.birthDate,
+           let match = family.allParents.first(where: { $0.birthDate == birthDate }) {
+            return match
+        }
+
+        let personName = person.name.lowercased()
+        return family.allParents.first { $0.name.lowercased() == personName }
+    }
+
+    private static func enhancedSpouseData(
+        spouseName: String,
+        from asParentFamily: Family,
+        network: FamilyNetwork
+    ) -> HTMLSpouseEnhancedData? {
+        let spouseNameLower = spouseName.lowercased()
+        guard let spouseInFamily = asParentFamily.allParents.first(where: {
+            $0.name.lowercased().contains(spouseNameLower) || spouseNameLower.contains($0.name.lowercased())
+        }) else {
+            return nil
+        }
+
+        let spouseForLookup = Person(name: spouseInFamily.name, birthDate: spouseInFamily.birthDate, noteMarkers: [])
+        guard let spouseAsChildFamily = network.getSpouseAsChildFamily(for: spouseForLookup) else {
+            return HTMLSpouseEnhancedData(
+                birthDate: spouseInFamily.birthDate,
+                deathDate: spouseInFamily.deathDate,
+                fullName: spouseName
+            )
+        }
+
+        if let spouseAsChild = spouseAsChildFamily.allChildren.first(where: {
+            $0.name.lowercased() == spouseInFamily.name.lowercased() || $0.birthDate == spouseInFamily.birthDate
+        }) {
+            return HTMLSpouseEnhancedData(
+                birthDate: spouseAsChild.birthDate,
+                deathDate: spouseAsChild.deathDate,
+                fullName: spouseName
+            )
+        }
+
+        return HTMLSpouseEnhancedData(
+            birthDate: spouseInFamily.birthDate,
+            deathDate: spouseInFamily.deathDate,
+            fullName: spouseName
+        )
     }
 
     private static func juuretChild(for row: FamilyComparisonResult.Match, in couple: Couple) -> Person? {
@@ -727,6 +880,32 @@ struct HTMLRenderer {
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "dd.MM.yyyy"
         return formatter.string(from: date)
+    }
+
+    private static func displayMarriageDate(_ date: String, parentBirthYear: Int?) -> String {
+        let trimmed = date.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if trimmed.contains(".") {
+            let components = trimmed.components(separatedBy: ".")
+            if components.count == 3,
+               components[2].count == 2,
+               let twoDigitYear = Int(components[2]) {
+                let fullYear = CitationGenerator.inferCentury(
+                    for: twoDigitYear,
+                    parentBirthYear: parentBirthYear
+                )
+                return "\(components[0]).\(components[1]).\(fullYear)"
+            }
+        }
+
+        if trimmed.count == 2, let twoDigitYear = Int(trimmed) {
+            return String(CitationGenerator.inferCentury(
+                for: twoDigitYear,
+                parentBirthYear: parentBirthYear
+            ))
+        }
+
+        return trimmed
     }
 
     private static func samePerson(_ left: Person, _ right: Person) -> Bool {
@@ -1541,9 +1720,17 @@ struct HTMLRenderer {
         .source-markers {
             font-weight: 700;
         }
+        .enhanced-date,
+        .enhanced-date a {
+            color: #8b4513;
+        }
         .review-marker {
             color: #b45f06;
             font-weight: 700;
+        }
+        .pseudo-family-id {
+            color: #666;
+            font-style: italic;
         }
         .family-note {
             color: #666;
@@ -2847,6 +3034,22 @@ struct HTMLRenderer {
             }
         }
         return components.joined(separator: "&")
+    }
+}
+
+private struct HTMLEnhancedPersonData {
+    let deathDate: String?
+    let fullMarriageDate: String?
+    let spouse: HTMLSpouseEnhancedData?
+}
+
+private struct HTMLSpouseEnhancedData {
+    let birthDate: String?
+    let deathDate: String?
+    let fullName: String
+
+    func person(birthDate: String?, deathDate: String?) -> Person {
+        Person(name: fullName, birthDate: birthDate, deathDate: deathDate, noteMarkers: [])
     }
 }
 

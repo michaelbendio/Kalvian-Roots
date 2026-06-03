@@ -1924,6 +1924,66 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertFalse(html.contains("id=\"children-comparison\""))
     }
 
+    func testServerRenderedFamilyShowsEnhancedMarriedChildDetails() {
+        let magdalena = Person(
+            name: "Magdalena",
+            birthDate: "27.01.1759",
+            marriageDate: "78",
+            spouse: "Antti Korvela",
+            asParent: "KORVELA 3",
+            familySearchId: "L4ZM-CRT",
+            noteMarkers: ["★"]
+        )
+        let family = Family(
+            familyId: "KORPI 6",
+            pageReferences: ["105", "106"],
+            husband: Person(name: "Matti", patronymic: "Erikinp."),
+            wife: Person(name: "Brita", patronymic: "Matint."),
+            children: [magdalena],
+            notes: ["★ Poika Abraham"]
+        )
+        let asParentFamily = Family(
+            familyId: "KORVELA 3",
+            pageReferences: ["120"],
+            couples: [
+                Couple(
+                    husband: Person(name: "Antti", patronymic: "Korvelan", birthDate: "03.03.1759", deathDate: "03.05.1809"),
+                    wife: Person(name: "Magdalena", birthDate: "27.01.1759", deathDate: "19.10.1846", fullMarriageDate: "23.11.1778"),
+                    marriageDate: nil,
+                    fullMarriageDate: "23.11.1778",
+                    children: []
+                )
+            ]
+        )
+        let spouseAsChildFamily = Family(
+            familyId: "KORVELA 2",
+            pageReferences: ["119"],
+            husband: Person(name: "Erik", patronymic: "Korvelan"),
+            wife: Person(name: "Maria"),
+            children: [
+                Person(name: "Antti", birthDate: "03.03.1759", deathDate: "03.05.1809")
+            ]
+        )
+        var network = FamilyNetwork(mainFamily: family)
+        network.asParentFamilies["Magdalena|27.01.1759"] = asParentFamily
+        network.spouseAsChildFamilies["Antti|03.03.1759"] = spouseAsChildFamily
+
+        let html = HTMLRenderer.renderFamily(family: family, network: network)
+
+        XCTAssertTrue(html.contains(">Magdalena</a>"))
+        XCTAssertTrue(html.contains("&lt;L4ZM-CRT&gt;"))
+        XCTAssertTrue(html.contains("[d. "))
+        XCTAssertTrue(html.contains(">19.10.1846</a>"))
+        XCTAssertTrue(html.contains(">23.11.1778</a>"))
+        XCTAssertTrue(html.contains(">Antti Korvela</a>"))
+        XCTAssertTrue(html.contains(">03.03.1759</a>-"))
+        XCTAssertTrue(html.contains(">03.05.1809</a>"))
+        XCTAssertTrue(html.contains("class=\"family-link\">KORVELA 3</a>"))
+        XCTAssertTrue(html.contains("*"))
+        XCTAssertTrue(html.contains("* Poika Abraham"))
+        XCTAssertFalse(html.contains("as_parent"))
+    }
+
     func testServerRenderedLapsetOpensHiskiChildResultsPopup() throws {
         let family = Family(
             familyId: "KYKYRI II 7",
