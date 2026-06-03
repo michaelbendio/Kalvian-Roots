@@ -2154,7 +2154,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertFalse(html.contains("function openHiskiResults(url)"))
     }
 
-    func testServerRenderedDateLinksOpenHiskiResultsTab() {
+    func testServerRenderedDateLinksOpenHiskiResultsTabAndReturnCitationPanel() {
         let family = Family(
             familyId: "SAKERI 1",
             pageReferences: ["264", "265"],
@@ -2173,7 +2173,11 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(html.contains("alkuvuosi=12.2.1696"))
         XCTAssertTrue(html.contains("target=\"_blank\""))
         XCTAssertTrue(html.contains("rel=\"noopener noreferrer\""))
-        XCTAssertFalse(html.contains("/family/SAKERI%201/hiski?name=Maria"))
+        XCTAssertTrue(html.contains("data-citation-url=\"/family/SAKERI%201/hiski?name=Maria"))
+        XCTAssertTrue(html.contains("event=birth"))
+        XCTAssertTrue(html.contains("date=12.02.1696"))
+        XCTAssertTrue(html.contains("onclick=\"return openHiskiResultAndCitation(event, this)\""))
+        XCTAssertTrue(html.contains("function openHiskiResultAndCitation(event, link)"))
     }
 
     func testFamilyFormSubmissionRequestsReloadedFamilyPage() throws {

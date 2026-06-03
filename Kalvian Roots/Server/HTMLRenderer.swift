@@ -670,23 +670,39 @@ struct HTMLRenderer {
         isEnhanced: Bool = false
     ) -> String {
         let linkClass = isEnhanced ? "date-link enhanced-date" : "date-link"
-        let href = hiskiSearchURL(
-            date: date,
-            eventType: eventType,
-            person: person
-        )?.absoluteString ?? serverHiskiDateURL(
+        let citationURL = serverHiskiDateURL(
             date: date,
             eventType: eventType,
             person: person,
             familyId: familyId,
             homeId: homeId
         )
-        return renderHiskiSearchAnchor(href: href, text: date, cssClass: linkClass)
+        if let href = hiskiSearchURL(
+            date: date,
+            eventType: eventType,
+            person: person
+        )?.absoluteString {
+            return renderHiskiSearchAnchor(
+                href: href,
+                text: date,
+                cssClass: linkClass,
+                citationURL: citationURL
+            )
+        }
+        return renderHiskiSearchAnchor(href: citationURL, text: date, cssClass: linkClass)
     }
 
-    private static func renderHiskiSearchAnchor(href: String, text: String, cssClass: String) -> String {
-        """
-        <a href="\(escapeHTML(href))" class="\(cssClass)" target="_blank" rel="noopener noreferrer">\(escapeHTML(text))</a>
+    private static func renderHiskiSearchAnchor(
+        href: String,
+        text: String,
+        cssClass: String,
+        citationURL: String? = nil
+    ) -> String {
+        let citationAttributes = citationURL.map {
+            #" data-citation-url="\#(escapeHTML($0))" onclick="return openHiskiResultAndCitation(event, this)""#
+        } ?? ""
+        return """
+        <a href="\(escapeHTML(href))" class="\(cssClass)" target="_blank" rel="noopener noreferrer"\(citationAttributes)>\(escapeHTML(text))</a>
         """
     }
 
@@ -2962,6 +2978,21 @@ struct HTMLRenderer {
                     button.textContent = originalText;
                 }, 1500);
             }
+        }
+
+        function openHiskiResultAndCitation(event, link) {
+            const citationURL = link.getAttribute('data-citation-url');
+            if (!citationURL) {
+                return true;
+            }
+
+            if (event) {
+                event.preventDefault();
+            }
+
+            window.open(link.href, '_blank', 'noopener,noreferrer');
+            window.location.href = citationURL;
+            return false;
         }
         </script>
         """
