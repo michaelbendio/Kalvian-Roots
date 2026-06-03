@@ -41,6 +41,7 @@ struct FamilyContentView: View {
     @State private var selectedFamilySearchReviewNote: FamilyComparisonReviewNote?
     @State private var selectedParentBirthDateMismatch: ParentBirthDateMismatch?
     let family: Family
+    let showsComparisonSourceMarkers: Bool
     
     // Citation and Hiski handlers
     let onShowCitation: (String) -> Void
@@ -664,7 +665,7 @@ struct FamilyContentView: View {
         let familySearchId = row.familySearch?.familySearchId
         let markers = sourceMarkers(for: row)
         let shouldShowFamilySearchId = familySearchId != nil && child.familySearchId != familySearchId
-        let shouldShowMarkers = row.familySearch != nil || row.hiski != nil
+        let shouldShowMarkers = showsComparisonSourceMarkers && (row.familySearch != nil || row.hiski != nil)
 
         guard displayRow.reviewNote != nil || shouldShowFamilySearchId || shouldShowMarkers else {
             return nil
@@ -672,6 +673,12 @@ struct FamilyContentView: View {
 
         return AnyView(
             HStack(alignment: .firstTextBaseline, spacing: 6) {
+                if shouldShowMarkers {
+                    Text(markers)
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+
                 if let reviewNote = displayRow.reviewNote {
                     reviewAsterisk(reviewNote, size: 16)
                 }
@@ -682,11 +689,6 @@ struct FamilyContentView: View {
                         .foregroundColor(.secondary)
                 }
 
-                if shouldShowMarkers {
-                    Text(markers)
-                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                        .foregroundColor(.secondary)
-                }
             }
         )
     }
@@ -757,6 +759,12 @@ struct FamilyContentView: View {
                     .foregroundColor(.primary)
             }
 
+            if showsComparisonSourceMarkers {
+                Text(sourceMarkers(for: row))
+                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+
             if let reviewNote {
                 reviewAsterisk(reviewNote, size: 16)
             }
@@ -766,10 +774,6 @@ struct FamilyContentView: View {
                     .font(.system(size: 13, design: .monospaced))
                     .foregroundColor(.secondary)
             }
-
-            Text(sourceMarkers(for: row))
-                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                .foregroundColor(.secondary)
 
             Spacer()
         }
@@ -946,14 +950,14 @@ struct FamilyContentView: View {
 
     private func sourceMarkers(for row: FamilyComparisonResult.Match) -> String {
         var markers: [String] = []
-        if row.familySearch != nil {
-            markers.append("FS")
-        }
         if row.juuretKalvialla != nil {
             markers.append("J")
         }
         if row.hiski != nil {
             markers.append("H")
+        }
+        if row.familySearch != nil {
+            markers.append("FS")
         }
         return markers.joined(separator: ", ")
     }
@@ -1174,6 +1178,7 @@ extension View {
     
     return FamilyContentView(
         family: sampleFamily,
+        showsComparisonSourceMarkers: true,
         onShowCitation: { citation in
             print("Citation: \(citation)")
         },

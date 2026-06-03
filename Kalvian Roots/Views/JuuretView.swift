@@ -42,6 +42,7 @@ struct JuuretView: View {
                     // FAMILY LOADED - Show content
                     FamilyContentView(
                         family: family,
+                        showsComparisonSourceMarkers: !showingCitation,
                         onShowCitation: { citation in
                             citationText = citation
                             showingCitation = true

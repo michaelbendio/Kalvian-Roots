@@ -214,9 +214,11 @@ struct HTMLRenderer {
             familyId: displayedId,
             homeId: actualHomeId,
             comparisonResult: comparisonResult,
-            hiskiChildSearchRequestsByCouple: hiskiChildSearchRequestsByCouple
+            hiskiChildSearchRequestsByCouple: hiskiChildSearchRequestsByCouple,
+            showsSourceMarkers: citationText == nil
         )
-        let citationPanel = renderCitationPanel(citationText: citationText, errorMessage: errorMessage)
+        let closeURL = "/family/\(urlEncode(displayedId))" + (displayedId == actualHomeId ? "" : "?home=\(urlEncode(actualHomeId))")
+        let citationPanel = renderCitationPanel(citationText: citationText, errorMessage: errorMessage, closeURL: closeURL)
         let sourcePanel = renderSourcePanel(sourceText: sourceText)
 
         return """
@@ -383,7 +385,8 @@ struct HTMLRenderer {
         familyId: String,
         homeId: String,
         comparisonResult: FamilyComparisonResult?,
-        hiskiChildSearchRequestsByCouple: [Int: HiskiService.FamilyBirthSearchRequest]
+        hiskiChildSearchRequestsByCouple: [Int: HiskiService.FamilyBirthSearchRequest],
+        showsSourceMarkers: Bool
     ) -> String {
         var html: [String] = []
         html.append("""
@@ -421,7 +424,8 @@ struct HTMLRenderer {
                     couple: couple,
                     network: network,
                     familyId: familyId,
-                    homeId: homeId
+                    homeId: homeId,
+                    showsSourceMarkers: showsSourceMarkers
                 ))
             } else if !couple.children.isEmpty {
                 if let request = hiskiChildSearchRequestsByCouple[index] {
@@ -533,7 +537,8 @@ struct HTMLRenderer {
         couple: Couple,
         network: FamilyNetwork?,
         familyId: String,
-        homeId: String
+        homeId: String,
+        sourceMarkerHTML: String? = nil
     ) -> String {
         let childWithParents = child.withHiskiParentNames(
             father: couple.husband.displayName,
@@ -544,6 +549,9 @@ struct HTMLRenderer {
             parts.append(renderDateLink(birthDate, eventType: .birth, person: childWithParents, familyId: familyId, homeId: homeId))
         }
         parts.append(renderPersonLink(name: childWithParents.displayName, birthDate: childWithParents.birthDate, familyId: familyId, homeId: homeId))
+        if let sourceMarkerHTML {
+            parts.append(sourceMarkerHTML)
+        }
         if let fsId = childWithParents.familySearchId {
             parts.append("<span class=\"familysearch-id\">&lt;\(escapeHTML(fsId))&gt;</span>")
         }
@@ -589,7 +597,8 @@ struct HTMLRenderer {
         couple: Couple,
         network: FamilyNetwork?,
         familyId: String,
-        homeId: String
+        homeId: String,
+        showsSourceMarkers: Bool
     ) -> String {
         rows.map { displayRow in
             if let child = juuretChild(for: displayRow.match, in: couple) {
@@ -599,10 +608,11 @@ struct HTMLRenderer {
                     couple: couple,
                     network: network,
                     familyId: familyId,
-                    homeId: homeId
+                    homeId: homeId,
+                    showsSourceMarkers: showsSourceMarkers
                 )
             }
-            return renderComparisonOnlyChild(displayRow, familyId: familyId, homeId: homeId)
+            return renderComparisonOnlyChild(displayRow, familyId: familyId, homeId: homeId, showsSourceMarkers: showsSourceMarkers)
         }.joined(separator: "\n")
     }
 
@@ -612,10 +622,21 @@ struct HTMLRenderer {
         couple: Couple,
         network: FamilyNetwork?,
         familyId: String,
-        homeId: String
+        homeId: String,
+        showsSourceMarkers: Bool
     ) -> String {
         let row = displayRow.match
-        var line = renderChildLine(child, couple: couple, network: network, familyId: familyId, homeId: homeId)
+        let sourceMarkerHTML = showsSourceMarkers && (row.familySearch != nil || row.hiski != nil)
+            ? "<span class=\"source-markers\">\(escapeHTML(sourceMarkers(for: row)))</span>"
+            : nil
+        var line = renderChildLine(
+            child,
+            couple: couple,
+            network: network,
+            familyId: familyId,
+            homeId: homeId,
+            sourceMarkerHTML: sourceMarkerHTML
+        )
         var supplements: [String] = []
         if displayRow.reviewNote != nil {
             supplements.append("<span class=\"review-marker\">*</span>")
@@ -623,9 +644,6 @@ struct HTMLRenderer {
         if let familySearchId = row.familySearch?.familySearchId,
            child.familySearchId != familySearchId {
             supplements.append("<span class=\"familysearch-id\">&lt;\(escapeHTML(familySearchId))&gt;</span>")
-        }
-        if row.familySearch != nil || row.hiski != nil {
-            supplements.append("<span class=\"source-markers\">\(escapeHTML(sourceMarkers(for: row)))</span>")
         }
         if !supplements.isEmpty {
             line = line.replacingOccurrences(of: "</div>", with: " \(supplements.joined(separator: " "))</div>")
@@ -636,7 +654,8 @@ struct HTMLRenderer {
     private static func renderComparisonOnlyChild(
         _ displayRow: FamilyComparisonDisplayRow,
         familyId: String,
-        homeId: String
+        homeId: String,
+        showsSourceMarkers: Bool
     ) -> String {
         let row = displayRow.match
         let date = displayDate(for: row)
@@ -646,13 +665,15 @@ struct HTMLRenderer {
             escapeHTML(date),
             escapeHTML(name)
         ]
+        if showsSourceMarkers {
+            parts.append("<span class=\"source-markers\">\(escapeHTML(sourceMarkers(for: row)))</span>")
+        }
         if displayRow.reviewNote != nil {
             parts.append("<span class=\"review-marker\">*</span>")
         }
         if let familySearchId = row.familySearch?.familySearchId {
             parts.append("<span class=\"familysearch-id\">&lt;\(escapeHTML(familySearchId))&gt;</span>")
         }
-        parts.append("<span class=\"source-markers\">\(escapeHTML(sourceMarkers(for: row)))</span>")
         return "<div class=\"family-line child-line comparison-only-child\">\(parts.joined(separator: " "))</div>"
     }
 
@@ -849,14 +870,14 @@ struct HTMLRenderer {
 
     private static func sourceMarkers(for row: FamilyComparisonResult.Match) -> String {
         var markers: [String] = []
-        if row.familySearch != nil {
-            markers.append("FS")
-        }
         if row.juuretKalvialla != nil {
             markers.append("J")
         }
         if row.hiski != nil {
             markers.append("H")
+        }
+        if row.familySearch != nil {
+            markers.append("FS")
         }
         return markers.joined(separator: ", ")
     }
@@ -1192,7 +1213,7 @@ struct HTMLRenderer {
 
     // MARK: - Citation Panel
 
-    private static func renderCitationPanel(citationText: String? = nil, errorMessage: String? = nil) -> String {
+    private static func renderCitationPanel(citationText: String? = nil, errorMessage: String? = nil, closeURL: String) -> String {
         guard citationText != nil || errorMessage != nil else {
             return ""
         }
@@ -1200,7 +1221,10 @@ struct HTMLRenderer {
         if let error = errorMessage {
             return """
             <div class="error-panel">
-                <div class="error-title">Error</div>
+                <div class="citation-header">
+                    <div class="error-title">Error</div>
+                    <a class="citation-close-button" href="\(escapeHTML(closeURL))" aria-label="Close citation panel">&times;</a>
+                </div>
                 <div class="error-message">\(escapeHTML(error))</div>
             </div>
             """
@@ -1211,7 +1235,10 @@ struct HTMLRenderer {
             <div class="citation-panel">
                 <div class="citation-header">
                     <span class="citation-title">Citation</span>
-                    <button id="copyBtn" class="copy-button" onclick="copyCitation()">Copy</button>
+                    <div class="citation-actions">
+                        <button id="copyBtn" class="copy-button" onclick="copyCitation()">Copy</button>
+                        <a class="citation-close-button" href="\(escapeHTML(closeURL))" aria-label="Close citation panel">&times;</a>
+                    </div>
                 </div>
                 <textarea id="citationText" class="citation-textarea" spellcheck="false">\(escapeHTML(citation))</textarea>
                 <div id="copyHint" class="copy-hint" style="display: none;">Press Cmd+C / Ctrl+C to copy</div>
@@ -1832,6 +1859,11 @@ struct HTMLRenderer {
             align-items: center;
             margin-bottom: 10px;
         }
+        .citation-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
         .citation-title {
             font-size: 18px;
             font-weight: bold;
@@ -1865,6 +1897,23 @@ struct HTMLRenderer {
         }
         .copy-button:hover {
             background: #0052a3;
+        }
+        .citation-close-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            border: 1px solid #d6d6d6;
+            border-radius: 4px;
+            color: #333;
+            background: #f7f7f7;
+            font-size: 22px;
+            line-height: 1;
+            text-decoration: none;
+        }
+        .citation-close-button:hover {
+            background: #ececec;
         }
         .copy-hint {
             margin-top: 10px;

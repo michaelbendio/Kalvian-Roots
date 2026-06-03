@@ -336,6 +336,36 @@ final class FamilyContentViewTests: XCTestCase {
         )
     }
 
+    func testComparisonSourceMarkersFollowCitationPanelState() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        let familyContentView = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/Views/FamilyContentView.swift"),
+            encoding: .utf8
+        )
+        let juuretView = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/Views/JuuretView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(familyContentView.contains("let showsComparisonSourceMarkers: Bool"))
+        XCTAssertTrue(juuretView.contains("showsComparisonSourceMarkers: !showingCitation"))
+        XCTAssertTrue(
+            familyContentView.contains("let shouldShowMarkers = showsComparisonSourceMarkers && (row.familySearch != nil || row.hiski != nil)"),
+            "Matched Juuret child source markers should disappear while the citation panel is open."
+        )
+        XCTAssertTrue(
+            familyContentView.contains("if showsComparisonSourceMarkers {\n                Text(sourceMarkers(for: row))"),
+            "Comparison-only child source markers should disappear while the citation panel is open."
+        )
+        XCTAssertTrue(
+            familyContentView.contains("markers.append(\"J\")\n        }\n        if row.hiski != nil {\n            markers.append(\"H\")\n        }\n        if row.familySearch != nil {\n            markers.append(\"FS\")"),
+            "Source markers should render in Juuret, HisKi, FamilySearch order."
+        )
+    }
+
     func testFatherBirthDateMismatchWarningRequiresMatchingFamilySearchFocusPerson() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

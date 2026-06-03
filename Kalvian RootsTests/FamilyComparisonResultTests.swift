@@ -1920,8 +1920,62 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(html.contains("Lapset"))
         XCTAssertTrue(html.contains(">Maria</a>"))
         XCTAssertTrue(html.contains("&lt;M8ZK-DQP&gt;"))
-        XCTAssertTrue(html.contains("<span class=\"source-markers\">FS, J, H</span>"))
+        XCTAssertTrue(html.contains(">Maria</a> <span class=\"source-markers\">J, H, FS</span>"))
         XCTAssertFalse(html.contains("id=\"children-comparison\""))
+    }
+
+    func testServerRenderedFamilyHidesSourceMarkersWhenCitationPanelIsOpen() {
+        let nameManager = NameEquivalenceManager()
+        nameManager.clearAllEquivalences()
+        let family = Family(
+            familyId: "SAKERI 1",
+            pageReferences: ["264", "265"],
+            husband: Person(name: "Matti", patronymic: "Juhonp.", familySearchId: "K8JR-2W8"),
+            wife: Person(name: "Kaarin", patronymic: "Kustaant.", familySearchId: "M8ZF-GMC"),
+            children: [
+                Person(name: "Maria", birthDate: "12.02.1696")
+            ]
+        )
+        let result = FamilyComparisonResult(
+            familySearch: [
+                PersonCandidate(
+                    name: "Maria Mattsson",
+                    identityName: "Maria",
+                    birthDate: date(1696, 2, 12),
+                    source: .familySearch,
+                    nameManager: nameManager,
+                    familySearchId: "M8ZK-DQP"
+                )
+            ],
+            juuretKalvialla: [
+                PersonCandidate(
+                    name: "Maria",
+                    birthDate: date(1696, 2, 12),
+                    source: .juuretKalvialla,
+                    nameManager: nameManager
+                )
+            ],
+            hiski: [
+                PersonCandidate(
+                    name: "Maria",
+                    birthDate: date(1696, 2, 12),
+                    source: .hiski,
+                    nameManager: nameManager
+                )
+            ]
+        )
+
+        let html = HTMLRenderer.renderFamily(
+            family: family,
+            network: nil,
+            citationText: "Generated citation",
+            comparisonResult: result
+        )
+
+        XCTAssertTrue(html.contains("class=\"citation-panel\""))
+        XCTAssertTrue(html.contains("aria-label=\"Close citation panel\""))
+        XCTAssertTrue(html.contains("href=\"/family/SAKERI%201\""))
+        XCTAssertFalse(html.contains("class=\"source-markers\""))
     }
 
     func testServerRenderedFamilyShowsEnhancedMarriedChildDetails() {
