@@ -81,6 +81,12 @@ struct FamilySearchFamilyExtraction: Codable, Equatable, Hashable {
     var isSuccessful: Bool {
         status == nil || status == "success"
     }
+
+    var hasExtractedChildrenForComparison: Bool {
+        (childCount ?? children.count) > 0 ||
+            !children.isEmpty ||
+            (spouseGroups ?? []).contains { !$0.children.isEmpty }
+    }
 }
 
 enum FamilySearchDOMService {

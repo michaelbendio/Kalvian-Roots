@@ -1894,6 +1894,8 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(html.contains(#"const compositeURL = "/family/AHOKANGAS%202?composite=1";"#))
         XCTAssertTrue(html.contains("Synchronizing FamilySearch and hiski.genealogia.fi..."))
         XCTAssertTrue(html.contains("familyContent.setAttribute('data-composite-status', 'loading');"))
+        XCTAssertTrue(html.contains("const workspace = document.querySelector('.family-workspace');"))
+        XCTAssertTrue(html.contains("workspace.outerHTML = compositeWorkspace.outerHTML;"))
         XCTAssertTrue(html.contains("familyContent.innerHTML = compositeContent.innerHTML;"))
     }
 
@@ -2322,9 +2324,11 @@ final class FamilySearchDOMServiceTests: XCTestCase {
             "Typed browser navigation should render cached Juuret family data before background synchronization."
         )
         XCTAssertTrue(
-            server.contains("if compositeFlag, familySearchExtraction?.isSuccessful != true"),
-            "Background synchronization should retry FamilySearch extraction unless a successful extraction is cached."
+            server.contains("if compositeFlag, familySearchExtraction?.hasExtractedChildrenForComparison != true"),
+            "Background synchronization should retry FamilySearch extraction unless extracted children are available for comparison."
         )
+        XCTAssertTrue(server.contains("juuretApp?.showFamilyFromCache(network, startSynchronization: false)"))
+        XCTAssertTrue(server.contains("juuretApp?.storeFamilySearchExtraction(extraction, for: canonicalID, rerunComparison: true)"))
         XCTAssertFalse(server.contains("await app.regenerateCachedFamily(familyId: actualHome)"))
         XCTAssertTrue(server.contains("FamilySearchWebViewExtractionManager.shared.openDetailsPageAndExtract"))
         XCTAssertTrue(server.contains("if compositeFlag {\n                comparisonGroups = await makeChildrenComparisonGroups"))
@@ -3182,7 +3186,6 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
             debugMessage: "FamilySearch comparison ready",
             debugLines: [
                 "Family selected: AHOKANGAS 2",
-                "FamilySearch extraction context URL: https://www.familysearch.org/en/tree/person/details/KJJH-2QK",
                 "FamilySearch extraction status: success",
                 "FamilySearch children handed to comparison: 1"
             ],
@@ -3191,7 +3194,6 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
         )
 
         XCTAssertTrue(text.contains("Family selected: AHOKANGAS 2"))
-        XCTAssertTrue(text.contains("FamilySearch extraction context URL: https://www.familysearch.org/en/tree/person/details/KJJH-2QK"))
         XCTAssertTrue(text.contains("FamilySearch children handed to comparison: 1"))
         XCTAssertTrue(text.contains("Child name\tJuuret\tHisKi\tFamilySearch\tStatus"))
         XCTAssertTrue(text.contains("Matti\tYes, 14 Mar 1761\tNo\tYes, <LK4Q-YSX>, 14 Mar 1761\tMissing in HisKi"))

@@ -519,6 +519,10 @@ final class HTTPHandler: ChannelInboundHandler {
             return .error(.notFound, "Family not found: \(error.localizedDescription)", headers: responseHeaders)
         }
 
+        if !compositeFlag, subRoute == nil {
+            juuretApp?.showFamilyFromCache(network, startSynchronization: false)
+        }
+
         // Handle sub-routes
         switch subRoute {
         case "cite":
@@ -628,7 +632,7 @@ final class HTTPHandler: ChannelInboundHandler {
                 ?? juuretApp?.primaryFamilySearchParentIdInSourceText(for: canonicalID)
             var familySearchExtraction = sessionResult.session.familySearchExtraction(for: canonicalID)
                 ?? juuretApp?.familySearchExtraction(for: canonicalID)
-            if compositeFlag, familySearchExtraction?.isSuccessful != true, let familySearchPersonId {
+            if compositeFlag, familySearchExtraction?.hasExtractedChildrenForComparison != true, let familySearchPersonId {
                 do {
                     let extraction = try await FamilySearchWebViewExtractionManager.shared.openDetailsPageAndExtract(
                         personId: familySearchPersonId,
@@ -637,7 +641,7 @@ final class HTTPHandler: ChannelInboundHandler {
                         }
                     )
                     sessionResult.session.storeFamilySearchExtraction(extraction, for: canonicalID)
-                    juuretApp?.storeFamilySearchExtraction(extraction, for: canonicalID, rerunComparison: false)
+                    juuretApp?.storeFamilySearchExtraction(extraction, for: canonicalID, rerunComparison: true)
                     familySearchExtraction = extraction
                 } catch {
                     logger.warning(

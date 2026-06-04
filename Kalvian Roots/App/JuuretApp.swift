@@ -123,7 +123,7 @@ class JuuretApp {
     // MARK: - Detail Routing Helpers
 
     /// Activate a cached network and drive the detail route
-    func showFamilyFromCache(_ network: FamilyNetwork) {
+    func showFamilyFromCache(_ network: FamilyNetwork, startSynchronization: Bool = true) {
         let familyId = network.mainFamily.familyId
         let before = self.currentFamily?.familyId ?? "nil"
 
@@ -146,6 +146,10 @@ class JuuretApp {
         let after = self.currentFamily?.familyId ?? "nil"
         logInfo(.ui, "🔄 currentFamily changed: \(before) -> \(after)")
         logInfo(.ui, "📦 Loaded cached family \(familyId) (workflow activated via helper)")
+
+        guard startSynchronization else {
+            return
+        }
 
         Task {
             await self.runJuuretHiskiComparisonPipeline(for: network.mainFamily)
@@ -537,8 +541,24 @@ class JuuretApp {
     }
 
     private func appendFamilySearchComparisonDebug(_ message: String) {
-        familySearchComparisonDebugLines.append(message)
+        if shouldShowFamilySearchDebugLine(message) {
+            familySearchComparisonDebugLines.append(message)
+        }
         logInfo(.ui, "🧪 \(message)")
+    }
+
+    private func shouldShowFamilySearchDebugLine(_ message: String) -> Bool {
+        let hiddenPrefixes = [
+            "FamilySearch WebKit progress:",
+            "FamilySearch WebKit URL at extraction start:",
+            "FamilySearch WebKit URL at extraction completion:",
+            "FamilySearch WebKit already at target URL:",
+            "FamilySearch WebKit initial navigation finished:",
+            "FamilySearch WebKit waiting for details page:",
+            "FamilySearch WebKit details page ready:"
+        ]
+
+        return !hiddenPrefixes.contains { message.hasPrefix($0) }
     }
 
     private func nextFamilySearchComparisonRunId() -> Int {
@@ -579,18 +599,6 @@ class JuuretApp {
         value.map(String.init) ?? "unknown"
     }
 
-    private func familySearchSpouseGroupSummary(_ extraction: FamilySearchFamilyExtraction) -> String {
-        guard let spouseGroups = extraction.spouseGroups, !spouseGroups.isEmpty else {
-            return "none"
-        }
-
-        return spouseGroups.enumerated().map { index, group in
-            let label = group.isPreferred ? "preferred" : "group"
-            let declared = group.declaredChildCount.map(String.init) ?? "unknown"
-            return "\(label) \(index + 1): declared children \(declared), extracted children \(group.children.count)"
-        }.joined(separator: "; ")
-    }
-
     private func appendFamilySearchExtractionDiagnostics(
         expectedPersonId: String,
         extraction: FamilySearchFamilyExtraction?
@@ -609,24 +617,19 @@ class JuuretApp {
         if let failureReason = extraction.failureReason, !failureReason.isEmpty {
             appendFamilySearchComparisonDebug("FamilySearch extraction failure reason: \(failureReason)")
         }
-        appendFamilySearchComparisonDebug("FamilySearch extraction context URL: \(debugValue(extraction.url))")
-        appendFamilySearchComparisonDebug("FamilySearch extraction context title: \(debugValue(extraction.pageTitle))")
-        appendFamilySearchComparisonDebug("FamilySearch extraction context host: \(debugValue(extraction.detectedHost))")
-        appendFamilySearchComparisonDebug("FamilySearch page appears FamilySearch: \(debugYesNo(extraction.isFamilySearchPage))")
-        appendFamilySearchComparisonDebug("FamilySearch page type valid: \(debugYesNo(extraction.isPersonDetailsPage))")
-        appendFamilySearchComparisonDebug("FamilySearch detected person ID: \(debugValue(extraction.detectedPersonId))")
-        appendFamilySearchComparisonDebug("FamilySearch expected/detected ID match: \(debugYesNo(extraction.detectedPersonId?.uppercased() == expectedPersonId.uppercased()))")
-        appendFamilySearchComparisonDebug("FamilySearch focus person ID: \(debugValue(extraction.focusPerson?.id))")
-        appendFamilySearchComparisonDebug("FamilySearch focus person name: \(debugValue(extraction.focusPerson?.name))")
-        appendFamilySearchComparisonDebug("FamilySearch focus person birth date: \(debugValue(extraction.focusPerson?.birthDate))")
-        appendFamilySearchComparisonDebug("FamilySearch focus person death date: \(debugValue(extraction.focusPerson?.deathDate))")
-        appendFamilySearchComparisonDebug("FamilySearch section found: Family Members = \(debugYesNo(extraction.familyMembersSectionFound))")
-        appendFamilySearchComparisonDebug("FamilySearch section found: Spouses and Children = \(debugYesNo(extraction.spousesAndChildrenSectionFound))")
         appendFamilySearchComparisonDebug("FamilySearch children marker count: \(debugCount(extraction.childrenMarkerCount))")
         appendFamilySearchComparisonDebug("FamilySearch spouse groups detected: \(debugCount(extraction.spouseGroupCount ?? extraction.spouseGroups?.count))")
-        appendFamilySearchComparisonDebug("FamilySearch spouse group summary: \(familySearchSpouseGroupSummary(extraction))")
-        appendFamilySearchComparisonDebug("FamilySearch raw candidate children: \(debugCount(extraction.rawCandidateChildCount))")
         appendFamilySearchComparisonDebug("FamilySearch normalized/extracted children: \(debugCount(extraction.childCount ?? extraction.children.count))")
+
+        guard !extraction.isSuccessful else {
+            return
+        }
+
+        appendFamilySearchComparisonDebug("FamilySearch extraction context URL: \(debugValue(extraction.url))")
+        appendFamilySearchComparisonDebug("FamilySearch detected person ID: \(debugValue(extraction.detectedPersonId))")
+        appendFamilySearchComparisonDebug("FamilySearch expected/detected ID match: \(debugYesNo(extraction.detectedPersonId?.uppercased() == expectedPersonId.uppercased()))")
+        appendFamilySearchComparisonDebug("FamilySearch section found: Family Members = \(debugYesNo(extraction.familyMembersSectionFound))")
+        appendFamilySearchComparisonDebug("FamilySearch section found: Spouses and Children = \(debugYesNo(extraction.spousesAndChildrenSectionFound))")
         extraction.debugNotes?.forEach { note in
             appendFamilySearchComparisonDebug("FamilySearch extractor note: \(note)")
         }

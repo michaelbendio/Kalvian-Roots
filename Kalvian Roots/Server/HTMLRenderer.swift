@@ -3646,6 +3646,15 @@ struct HTMLRenderer {
                 if (!compositeContent) {
                     throw new Error('Composite content missing');
                 }
+                const workspace = document.querySelector('.family-workspace');
+                const compositeWorkspace = doc.querySelector('.family-workspace');
+                if (workspace && compositeWorkspace) {
+                    workspace.outerHTML = compositeWorkspace.outerHTML;
+                }
+                document.querySelectorAll('.status-toast:not(.sync-toast)').forEach(toast => toast.remove());
+                doc.querySelectorAll('.status-toast:not(.sync-toast)').forEach(toast => {
+                    syncToast.parentNode.insertBefore(toast, syncToast);
+                });
                 syncToast.remove();
                 familyContent.innerHTML = compositeContent.innerHTML;
                 familyContent.setAttribute('data-composite-status', 'ready');
