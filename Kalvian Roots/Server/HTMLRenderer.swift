@@ -1581,8 +1581,8 @@ struct HTMLRenderer {
                         <a class="citation-close-button" href="\(escapeHTML(closeURL))" aria-label="Close citation panel">&times;</a>
                     </div>
                 </div>
-                <textarea id="citationText" class="citation-textarea" spellcheck="false">\(escapeHTML(citation))</textarea>
-                <div id="copyHint" class="copy-hint" style="display: none;">Press Cmd+C / Ctrl+C to copy</div>
+                <textarea id="citationText" class="citation-textarea" rows="14" spellcheck="false">\(escapeHTML(citation))</textarea>
+                <div id="copyHint" class="copy-hint" style="display: none;">Copied</div>
             </div>
             """
         }
@@ -2331,13 +2331,12 @@ struct HTMLRenderer {
         }
         .citation-textarea {
             width: 100%;
-            min-height: 42px;
-            height: 42px;
             padding: 10px 12px;
             border: 1px solid #ddd;
             border-radius: 4px;
             font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
             font-size: 14px;
+            line-height: 1.35;
             resize: vertical;
             background: #f9f9f9;
         }
@@ -3322,16 +3321,42 @@ struct HTMLRenderer {
         function copyCitation() {
             const textarea = document.getElementById('citationText');
             const hint = document.getElementById('copyHint');
+            const button = document.getElementById('copyBtn');
 
-            if (textarea) {
+            if (!textarea) {
+                return;
+            }
+
+            const markCopied = () => {
+                if (hint) {
+                    hint.style.display = 'block';
+                    setTimeout(() => {
+                        hint.style.display = 'none';
+                    }, 1500);
+                }
+
+                if (button) {
+                    const originalText = button.textContent;
+                    button.textContent = 'Copied';
+                    setTimeout(() => {
+                        button.textContent = originalText;
+                    }, 1500);
+                }
+            };
+
+            const fallbackCopy = () => {
                 textarea.focus();
                 textarea.select();
-                hint.style.display = 'block';
+                document.execCommand('copy');
+                markCopied();
+            };
 
-                setTimeout(() => {
-                    hint.style.display = 'none';
-                }, 3000);
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(textarea.value).then(markCopied).catch(fallbackCopy);
+                return;
             }
+
+            fallbackCopy();
         }
 
         function copyComparisonText() {

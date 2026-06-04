@@ -2202,9 +2202,31 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         )
 
         XCTAssertTrue(html.contains("class=\"citation-panel\""))
+        XCTAssertTrue(html.contains("id=\"citationText\" class=\"citation-textarea\" rows=\"14\""))
         XCTAssertTrue(html.contains("aria-label=\"Close citation panel\""))
         XCTAssertTrue(html.contains("href=\"/family/SAKERI%201\""))
         XCTAssertFalse(html.contains("class=\"source-markers\""))
+    }
+
+    func testServerRenderedCitationCopyButtonWritesCitationToClipboard() {
+        let family = Family(
+            familyId: "SAKERI 1",
+            pageReferences: ["1"],
+            husband: Person(name: "Matti"),
+            wife: Person(name: "Maria"),
+            children: []
+        )
+
+        let html = HTMLRenderer.renderFamily(
+            family: family,
+            network: nil,
+            citationText: "Generated citation"
+        )
+
+        XCTAssertTrue(html.contains("onclick=\"copyCitation()\""))
+        XCTAssertTrue(html.contains("navigator.clipboard.writeText(textarea.value)"))
+        XCTAssertTrue(html.contains("document.execCommand('copy')"))
+        XCTAssertTrue(html.contains("<div id=\"copyHint\" class=\"copy-hint\" style=\"display: none;\">Copied</div>"))
     }
 
     func testServerRenderedFamilyShowsEnhancedMarriedChildDetails() {
