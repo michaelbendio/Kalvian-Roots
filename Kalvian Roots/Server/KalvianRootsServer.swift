@@ -314,10 +314,10 @@ final class HTTPHandler: ChannelInboundHandler {
                     withAllowedCharacters: .urlPathAllowed
                 ) ?? canonical
                 
-                logger.info("[\(requestID!)] ✅ Valid family ID, redirecting to: /family/\(encoded)?reload=1")
+                logger.info("[\(requestID!)] ✅ Valid family ID, redirecting to: /family/\(encoded)?reload=1&composite=1")
                 
-                // Redirect to a refreshed family page so typed navigation immediately shows the composite.
-                return .redirect("/family/\(encoded)?reload=1")
+                // Redirect to a refreshed composite page so typed navigation immediately shows labelled child rows.
+                return .redirect("/family/\(encoded)?reload=1&composite=1")
             } else {
                 logger.warning("[\(requestID!)] ⚠️ No 'id' parameter in form submission")
                 return .redirect("/?error=invalid")
@@ -394,7 +394,7 @@ final class HTTPHandler: ChannelInboundHandler {
                 withAllowedCharacters: .urlPathAllowed
             ) ?? canonical
 
-        return .redirect("/family/\(encoded)")
+        return .redirect("/family/\(encoded)?reload=1&composite=1")
     }
 
     @MainActor
@@ -1359,6 +1359,7 @@ final class HTTPHandler: ChannelInboundHandler {
         fields.fatherPatronymic = couple.husband.patronymic ?? ""
         fields.motherFirstName = couple.wife.name
         fields.motherPatronymic = couple.wife.patronymic ?? ""
+        fields.villageFarm = defaultHiskiFarmName(for: family.familyId)
 
         if let window = HiskiService.familyBirthSearchWindow(for: couple) {
             fields.startYear = String(window.startYear)
@@ -1366,6 +1367,30 @@ final class HTTPHandler: ChannelInboundHandler {
         }
 
         return fields
+    }
+
+    private func defaultHiskiFarmName(for familyId: String) -> String {
+        var tokens = familyId
+            .split(separator: " ")
+            .map(String.init)
+        while let last = tokens.last, last.allSatisfy(\.isNumber) || isRomanNumeralToken(last) {
+            tokens.removeLast()
+        }
+
+        return tokens
+            .joined(separator: " ")
+            .lowercased()
+            .split(separator: " ")
+            .map { token in
+                token.prefix(1).uppercased() + token.dropFirst()
+            }
+            .joined(separator: " ")
+    }
+
+    private func isRomanNumeralToken(_ token: String) -> Bool {
+        let romanCharacters = CharacterSet(charactersIn: "IVXLCDM")
+        return !token.isEmpty
+            && token.uppercased().unicodeScalars.allSatisfy { romanCharacters.contains($0) }
     }
 
     private func manualBirthSearchFields(from form: [String: String]) -> HiskiService.ManualBirthSearchFields {

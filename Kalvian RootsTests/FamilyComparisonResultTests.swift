@@ -2230,8 +2230,8 @@ final class FamilySearchDOMServiceTests: XCTestCase {
 
         XCTAssertTrue(server.contains("case (.GET, \"/family\"):"))
         XCTAssertTrue(
-            server.contains(#"return .redirect("/family/\(encoded)?reload=1")"#),
-            "Typed browser navigation should request a refreshed composite after the cached family display renders."
+            server.contains(#"return .redirect("/family/\(encoded)?reload=1&composite=1")"#),
+            "Typed browser navigation should request a refreshed composite page immediately."
         )
         XCTAssertTrue(server.contains("if reloadFlag, compositeFlag"))
         XCTAssertTrue(
@@ -2257,6 +2257,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
             childFirstName: "Sigfrid",
             startYear: "1680",
             endYear: "1780",
+            villageFarm: "Rimboja",
             maxEvents: "15",
             fatherFirstName: "Antti",
             fatherPatronymic: "Matinp.",
@@ -2283,12 +2284,19 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         )
 
         XCTAssertTrue(html.contains("name=\"motherPatronymic\" value=\"Sigfridsdr\""))
-        XCTAssertTrue(html.contains("name=\"resultsURL\""))
-        XCTAssertTrue(html.contains("data-record-url=\"https://hiski.genealogia.fi/hiski?en+0265+kastetut+4085978\""))
-        XCTAssertTrue(html.contains("onsubmit=\"return openHiskiRecordAndSubmit(this)\""))
+        XCTAssertTrue(html.contains("Farm name"))
+        XCTAssertTrue(html.contains("name=\"villageFarm\" value=\"Rimboja\""))
+        XCTAssertTrue(html.contains("onsubmit=\"return openHiskiSearch(event, this)\""))
+        XCTAssertTrue(html.contains("data-base-url=\"https://hiski.genealogia.fi/hiski?en\""))
+        XCTAssertTrue(html.contains("hiskiBirthFieldMap"))
+        XCTAssertTrue(html.contains("motherPatronymic: 'apatronyymi'"))
+        XCTAssertFalse(html.contains("Build query"))
+        XCTAssertFalse(html.contains("Load results"))
+        XCTAssertFalse(html.contains("<h2>Results</h2>"))
+        XCTAssertFalse(html.contains("name=\"resultsURL\""))
+        XCTAssertFalse(html.contains("<legend>Godparent</legend>"))
+        XCTAssertFalse(html.contains("Occupation"))
         XCTAssertFalse(html.contains("name=\"selectedRecordURL\""))
-        XCTAssertTrue(html.contains("name=\"recordPath\" value=\"/hiski?en+0265+kastetut+4085978\""))
-        XCTAssertTrue(html.contains("hiski-record-button"))
         XCTAssertFalse(html.contains("Use citation"))
     }
 

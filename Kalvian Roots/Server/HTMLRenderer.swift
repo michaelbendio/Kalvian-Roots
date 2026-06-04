@@ -120,7 +120,7 @@ struct HTMLRenderer {
                     return input.value.trim().toUpperCase();
                 }
                 function familyURLFor(value) {
-                    return '/family/' + encodeURIComponent(value).replace(/%20/g, '%20') + '?reload=1';
+                    return '/family/' + encodeURIComponent(value).replace(/%20/g, '%20') + '?reload=1&composite=1';
                 }
                 function openFamily(event) {
                     if (event) {
@@ -237,14 +237,12 @@ struct HTMLRenderer {
         let displayedId = family.familyId
         let navBar = renderNavigationBar(homeId: homeId, displayedId: displayedId)
         let familyURL = "/family/\(urlEncode(displayedId))" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
-        let actionURL = "/family/\(urlEncode(displayedId))/hiski-birth-search" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
-        let citationURL = "/family/\(urlEncode(displayedId))/hiski-birth-citation" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
+        let searchURLString = searchURL?.absoluteString ?? "https://hiski.genealogia.fi/hiski"
         let searchLink = searchURL.map { url in
             """
-            <a class="family-workspace-action hiski-workbench-open-link"
-               href="\(escapeHTML(url.absoluteString))"
-               target="_blank"
-               rel="noopener noreferrer">HisKi</a>
+            <button class="copy-button hiski-workbench-open-link"
+                    type="submit"
+                    data-base-url="\(escapeHTML(url.absoluteString))">HisKi</button>
             """
         } ?? ""
         let statusHTML = [
@@ -253,29 +251,6 @@ struct HTMLRenderer {
         ]
             .compactMap { $0 }
             .joined(separator: "\n")
-        let resultRows = rows.map { row in
-            renderHiskiBirthCitationResultRow(row, citationURL: citationURL)
-        }.joined(separator: "\n")
-        let resultsTable = rows.isEmpty ? "" : """
-        <section class="hiski-workbench-section">
-            <h2>Results</h2>
-            <table class="hiski-results-table">
-                <thead>
-                    <tr>
-                        <th>Record</th>
-                        <th>Born</th>
-                        <th>Child</th>
-                        <th>Father</th>
-                        <th>Mother</th>
-                        <th>Place</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    \(resultRows)
-                </tbody>
-            </table>
-        </section>
-        """
 
         return """
         <!DOCTYPE html>
@@ -302,12 +277,12 @@ struct HTMLRenderer {
                     \(statusHTML)
                     <section class="hiski-workbench-section">
                         <h2>Search</h2>
-                        <form method="POST" action="\(escapeHTML(actionURL))" class="hiski-birth-form">
+                        <form class="hiski-birth-form" onsubmit="return openHiskiSearch(event, this)">
                             <div class="hiski-form-grid">
                                 \(renderHiskiWorkbenchInput("Child first name", name: "childFirstName", value: fields.childFirstName))
                                 \(renderHiskiWorkbenchInput("Start year", name: "startYear", value: fields.startYear))
                                 \(renderHiskiWorkbenchInput("End year", name: "endYear", value: fields.endYear))
-                                \(renderHiskiWorkbenchInput("Village/farm", name: "villageFarm", value: fields.villageFarm))
+                                \(renderHiskiWorkbenchInput("Farm name", name: "villageFarm", value: fields.villageFarm))
                                 \(renderHiskiWorkbenchInput("Max events", name: "maxEvents", value: fields.maxEvents))
                             </div>
                             <div class="hiski-parent-grid">
@@ -316,41 +291,62 @@ struct HTMLRenderer {
                                     \(renderHiskiWorkbenchInput("First name", name: "fatherFirstName", value: fields.fatherFirstName))
                                     \(renderHiskiWorkbenchInput("Patronymic", name: "fatherPatronymic", value: fields.fatherPatronymic))
                                     \(renderHiskiWorkbenchInput("Last name", name: "fatherLastName", value: fields.fatherLastName))
-                                    \(renderHiskiWorkbenchInput("Occupation", name: "fatherOccupation", value: fields.fatherOccupation))
                                 </fieldset>
                                 <fieldset>
                                     <legend>Mother</legend>
                                     \(renderHiskiWorkbenchInput("First name", name: "motherFirstName", value: fields.motherFirstName))
                                     \(renderHiskiWorkbenchInput("Patronymic", name: "motherPatronymic", value: fields.motherPatronymic))
                                     \(renderHiskiWorkbenchInput("Last name", name: "motherLastName", value: fields.motherLastName))
-                                    \(renderHiskiWorkbenchInput("Occupation", name: "motherOccupation", value: fields.motherOccupation))
-                                </fieldset>
-                                <fieldset>
-                                    <legend>Godparent</legend>
-                                    \(renderHiskiWorkbenchInput("First name", name: "godparentFirstName", value: fields.godparentFirstName))
-                                    \(renderHiskiWorkbenchInput("Patronymic", name: "godparentPatronymic", value: fields.godparentPatronymic))
-                                    \(renderHiskiWorkbenchInput("Last name", name: "godparentLastName", value: fields.godparentLastName))
-                                    \(renderHiskiWorkbenchInput("Occupation", name: "godparentOccupation", value: fields.godparentOccupation))
                                 </fieldset>
                             </div>
                             <div class="hiski-workbench-actions">
-                                <button class="copy-button" type="submit">Build query</button>
                                 \(searchLink)
-                            </div>
-                            <label class="hiski-wide-field">
-                                Search results URL
-                                <input type="url" name="resultsURL" value="\(escapeHTML(resultsURL))">
-                            </label>
-                            <div class="hiski-workbench-actions">
-                                <button class="copy-button" type="submit">Load results</button>
                             </div>
                         </form>
                     </section>
-                    \(resultsTable)
                 </main>
             </div>
             \(navigationScript)
             <script>
+                const hiskiBirthBaseURL = "\(escapeJavaScriptString(searchURLString))";
+                const hiskiBirthFieldMap = {
+                    childFirstName: 'etunimi',
+                    startYear: 'alkuvuosi',
+                    endYear: 'loppuvuosi',
+                    villageFarm: 'ikyla',
+                    maxEvents: 'maxkpl',
+                    fatherFirstName: 'ietunimi',
+                    fatherPatronymic: 'ipatronyymi',
+                    fatherLastName: 'isukunimi',
+                    motherFirstName: 'aetunimi',
+                    motherPatronymic: 'apatronyymi',
+                    motherLastName: 'asukunimi'
+                };
+
+                function openHiskiSearch(event, form) {
+                    if (event) {
+                        event.preventDefault();
+                    }
+
+                    const clickedButton = event && event.submitter;
+                    const baseURL = clickedButton && clickedButton.dataset.baseUrl
+                        ? clickedButton.dataset.baseUrl
+                        : hiskiBirthBaseURL;
+                    const url = new URL(baseURL);
+
+                    Object.values(hiskiBirthFieldMap).forEach(name => url.searchParams.delete(name));
+                    Object.entries(hiskiBirthFieldMap).forEach(([fieldName, queryName]) => {
+                        const field = form.elements[fieldName];
+                        const value = field ? field.value.trim() : '';
+                        if (value) {
+                            url.searchParams.set(queryName, value);
+                        }
+                    });
+
+                    window.open(url.toString(), '_blank', 'noopener,noreferrer');
+                    return false;
+                }
+
                 function openHiskiRecordAndSubmit(form) {
                     const recordUrl = form.getAttribute('data-record-url');
                     if (recordUrl) {
