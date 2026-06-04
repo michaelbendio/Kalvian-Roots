@@ -2008,6 +2008,50 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(html.contains(">Maria</a> <span class=\"source-markers\">J, H</span>"))
     }
 
+    func testServerRenderedFamilyShowsJuuretOnlySourceMarkersInComparisonRows() {
+        let nameManager = NameEquivalenceManager()
+        nameManager.clearAllEquivalences()
+        let family = Family(
+            familyId: "SAKERI 7",
+            pageReferences: ["266"],
+            husband: Person(name: "Antti", patronymic: "Simonp.", familySearchId: "GXR1-MH2"),
+            wife: Person(name: "Liisa", patronymic: "Sigfridint.", familySearchId: "GXRY-DDM"),
+            children: [
+                Person(name: "Kaarin", birthDate: "13.10.1773", familySearchId: "L6DG-14W"),
+                Person(name: "Maria", birthDate: "05.12.1774", familySearchId: "P67Z-XB5")
+            ]
+        )
+        let result = FamilyComparisonResult(
+            familySearch: [],
+            juuretKalvialla: [
+                PersonCandidate(
+                    name: "Kaarin",
+                    birthDate: date(1773, 10, 13),
+                    source: .juuretKalvialla,
+                    nameManager: nameManager,
+                    familySearchId: "L6DG-14W"
+                ),
+                PersonCandidate(
+                    name: "Maria",
+                    birthDate: date(1774, 12, 5),
+                    source: .juuretKalvialla,
+                    nameManager: nameManager,
+                    familySearchId: "P67Z-XB5"
+                )
+            ],
+            hiski: []
+        )
+
+        let html = HTMLRenderer.renderFamily(
+            family: family,
+            network: nil,
+            comparisonResult: result
+        )
+
+        XCTAssertTrue(html.contains(">Kaarin</a> <span class=\"source-markers\">J</span>"))
+        XCTAssertTrue(html.contains(">Maria</a> <span class=\"source-markers\">J</span>"))
+    }
+
     func testServerRenderedFamilyHidesSourceMarkersWhenCitationPanelIsOpen() {
         let nameManager = NameEquivalenceManager()
         nameManager.clearAllEquivalences()
@@ -2233,11 +2277,12 @@ final class FamilySearchDOMServiceTests: XCTestCase {
             server.contains(#"return .redirect("/family/\(encoded)?reload=1&composite=1")"#),
             "Typed browser navigation should request a refreshed composite page immediately."
         )
-        XCTAssertTrue(server.contains("if reloadFlag, compositeFlag"))
-        XCTAssertTrue(
+        XCTAssertFalse(
             server.contains("if compositeFlag, reloadFlag, familySearchExtraction == nil"),
-            "Typed browser navigation should let the background composite request run FamilySearch extraction before building labelled child rows."
+            "Typed browser navigation should not surprise-run WebKit FamilySearch extraction."
         )
+        XCTAssertTrue(server.contains("case \"familysearch-extract\":"))
+        XCTAssertTrue(server.contains("FamilySearch extraction requires POST"))
         XCTAssertTrue(server.contains("FamilySearchWebViewExtractionManager.shared.openDetailsPageAndExtract"))
         XCTAssertTrue(server.contains("if compositeFlag {\n                comparisonGroups = await makeChildrenComparisonGroups"))
         XCTAssertTrue(server.contains("compositeURL: compositeURL"))

@@ -915,7 +915,7 @@ struct HTMLRenderer {
         showsSourceMarkers: Bool
     ) -> String {
         let row = displayRow.match
-        let sourceMarkerHTML = showsSourceMarkers && (row.familySearch != nil || row.hiski != nil)
+        let sourceMarkerHTML = showsSourceMarkers
             ? "<span class=\"source-markers\">\(escapeHTML(sourceMarkers(for: row)))</span>"
             : nil
         var line = renderChildLine(
