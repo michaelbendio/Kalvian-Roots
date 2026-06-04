@@ -1413,7 +1413,7 @@ struct HTMLRenderer {
                 <a href="\(reloadURL)" class="nav-btn">↺</a>
                 <a href="\(sourceURL)" class="nav-btn" title="\(sourceTitle)">📄</a>
                 <a href="\(workupURL)" class="nav-btn" title="\(workupTitle)">⚙</a>
-                <a href="\(hiskiBirthURL)" class="nav-btn" title="HisKi birth search">📖</a>
+                <a href="\(hiskiBirthURL)" class="nav-btn" title="HisKi birth search">▣</a>
             </div>
             <form method="GET" action="/family" class="nav-form" onsubmit="showLoading(event)">
                 <div class="input-wrapper">
