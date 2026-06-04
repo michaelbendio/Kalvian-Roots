@@ -38,7 +38,9 @@ final class LandingPageRendererTests: XCTestCase {
 
         XCTAssertTrue(html.contains(#"onsubmit="return openFamily(event)""#))
         XCTAssertTrue(html.contains("function familyURLFor(value)"))
-        XCTAssertTrue(html.contains("'?reload=1&composite=1'"))
+        XCTAssertTrue(html.contains("return '/family/' + encodeURIComponent(value)"))
+        XCTAssertFalse(html.contains("composite=1"))
+        XCTAssertFalse(html.contains("reload=1"))
         XCTAssertTrue(html.contains("window.location.href = familyURLFor(familyId);"))
         XCTAssertFalse(html.contains(#"<button type="submit">Open Family</button>"#))
     }

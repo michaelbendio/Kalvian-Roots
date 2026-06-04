@@ -120,7 +120,7 @@ struct HTMLRenderer {
                     return input.value.trim().toUpperCase();
                 }
                 function familyURLFor(value) {
-                    return '/family/' + encodeURIComponent(value).replace(/%20/g, '%20') + '?reload=1&composite=1';
+                    return '/family/' + encodeURIComponent(value).replace(/%20/g, '%20');
                 }
                 function openFamily(event) {
                     if (event) {
@@ -3571,7 +3571,7 @@ struct HTMLRenderer {
             
             if (input && loadingIndicator && loadingText) {
                 const familyId = input.value.trim().toUpperCase();
-                loadingText.textContent = 'Loading ' + familyId + '...';
+                loadingText.textContent = 'Opening ' + familyId + '...';
                 form.style.display = 'none';
                 loadingIndicator.style.display = 'flex';
             }
@@ -3591,7 +3591,7 @@ struct HTMLRenderer {
                         const match = href.match(/\\/family\\/([^?]+)/);
                         if (match) {
                             const familyId = decodeURIComponent(match[1]);
-                            loadingText.textContent = 'Loading ' + familyId + '...';
+                            loadingText.textContent = 'Opening ' + familyId + '...';
                         } else {
                             loadingText.textContent = 'Loading...';
                         }
@@ -3618,6 +3618,14 @@ struct HTMLRenderer {
             if (!familyContent) {
                 return;
             }
+            const container = document.querySelector('.container');
+            const syncToast = document.createElement('div');
+            syncToast.className = 'status-toast sync-toast';
+            syncToast.setAttribute('role', 'status');
+            syncToast.textContent = 'Synchronizing FamilySearch and hiski.genealogia.fi...';
+            if (container) {
+                container.insertBefore(syncToast, familyContent);
+            }
 
             familyContent.setAttribute('data-composite-status', 'loading');
 
@@ -3638,11 +3646,13 @@ struct HTMLRenderer {
                 if (!compositeContent) {
                     throw new Error('Composite content missing');
                 }
+                syncToast.remove();
                 familyContent.innerHTML = compositeContent.innerHTML;
                 familyContent.setAttribute('data-composite-status', 'ready');
             })
             .catch(error => {
                 familyContent.setAttribute('data-composite-status', 'error');
+                syncToast.textContent = 'FamilySearch and hiski.genealogia.fi synchronization failed';
                 console.warn(error);
             });
         })();

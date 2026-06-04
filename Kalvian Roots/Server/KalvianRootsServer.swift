@@ -314,10 +314,10 @@ final class HTTPHandler: ChannelInboundHandler {
                     withAllowedCharacters: .urlPathAllowed
                 ) ?? canonical
                 
-                logger.info("[\(requestID!)] ✅ Valid family ID, redirecting to: /family/\(encoded)?reload=1&composite=1")
+                logger.info("[\(requestID!)] ✅ Valid family ID, redirecting to: /family/\(encoded)")
                 
-                // Redirect to a refreshed composite page so typed navigation immediately shows labelled child rows.
-                return .redirect("/family/\(encoded)?reload=1&composite=1")
+                // Render the cached Juuret family first; the page will synchronize FamilySearch and HisKi in the background.
+                return .redirect("/family/\(encoded)")
             } else {
                 logger.warning("[\(requestID!)] ⚠️ No 'id' parameter in form submission")
                 return .redirect("/?error=invalid")
@@ -394,7 +394,7 @@ final class HTTPHandler: ChannelInboundHandler {
                 withAllowedCharacters: .urlPathAllowed
             ) ?? canonical
 
-        return .redirect("/family/\(encoded)?reload=1&composite=1")
+        return .redirect("/family/\(encoded)")
     }
 
     @MainActor
@@ -493,23 +493,6 @@ final class HTTPHandler: ChannelInboundHandler {
             ]
         )
         
-        // Handle reload flag during the background composite request so the
-        // browser can render cached family text immediately first.
-        if reloadFlag, compositeFlag, let actualHome = homeId ?? canonicalID as String? {
-            logger.info("[\(requestID!)] ↺ Reload requested for: \(actualHome)")
-            if let app = juuretApp {
-                do {
-                    await app.regenerateCachedFamily(familyId: actualHome)
-                    logger.info("[\(requestID!)] ✅ Family regenerated: \(actualHome)")
-                } catch {
-                    logger.error(
-                        "[\(requestID!)] ❌ Failed to regenerate family",
-                        metadata: ["error": "\(error)"]
-                    )
-                }
-            }
-        }
-
         // Load family network for displayed family
         let network: FamilyNetwork
         do {
@@ -645,7 +628,7 @@ final class HTTPHandler: ChannelInboundHandler {
                 ?? juuretApp?.primaryFamilySearchParentIdInSourceText(for: canonicalID)
             var familySearchExtraction = sessionResult.session.familySearchExtraction(for: canonicalID)
                 ?? juuretApp?.familySearchExtraction(for: canonicalID)
-            if compositeFlag, reloadFlag, familySearchExtraction == nil, let familySearchPersonId {
+            if compositeFlag, familySearchExtraction?.isSuccessful != true, let familySearchPersonId {
                 do {
                     let extraction = try await FamilySearchWebViewExtractionManager.shared.openDetailsPageAndExtract(
                         personId: familySearchPersonId,

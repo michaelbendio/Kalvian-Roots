@@ -1885,13 +1885,14 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         let html = HTMLRenderer.renderFamily(
             family: family,
             network: nil,
-            compositeURL: "/family/AHOKANGAS%202?composite=1&reload=1"
+            compositeURL: "/family/AHOKANGAS%202?composite=1"
         )
 
         XCTAssertTrue(html.contains("class=\"family-content\""))
         XCTAssertTrue(html.contains("Maria"))
         XCTAssertTrue(html.contains("function loadFamilyComposite()"))
-        XCTAssertTrue(html.contains(#"const compositeURL = "/family/AHOKANGAS%202?composite=1&reload=1";"#))
+        XCTAssertTrue(html.contains(#"const compositeURL = "/family/AHOKANGAS%202?composite=1";"#))
+        XCTAssertTrue(html.contains("Synchronizing FamilySearch and hiski.genealogia.fi..."))
         XCTAssertTrue(html.contains("familyContent.setAttribute('data-composite-status', 'loading');"))
         XCTAssertTrue(html.contains("familyContent.innerHTML = compositeContent.innerHTML;"))
     }
@@ -2317,13 +2318,14 @@ final class FamilySearchDOMServiceTests: XCTestCase {
 
         XCTAssertTrue(server.contains("case (.GET, \"/family\"):"))
         XCTAssertTrue(
-            server.contains(#"return .redirect("/family/\(encoded)?reload=1&composite=1")"#),
-            "Typed browser navigation should request a refreshed composite page immediately."
+            server.contains(#"return .redirect("/family/\(encoded)")"#),
+            "Typed browser navigation should render cached Juuret family data before background synchronization."
         )
         XCTAssertTrue(
-            server.contains("if compositeFlag, reloadFlag, familySearchExtraction == nil"),
-            "Typed browser navigation should run automatic WebKit FamilySearch extraction before building labelled child rows."
+            server.contains("if compositeFlag, familySearchExtraction?.isSuccessful != true"),
+            "Background synchronization should retry FamilySearch extraction unless a successful extraction is cached."
         )
+        XCTAssertFalse(server.contains("await app.regenerateCachedFamily(familyId: actualHome)"))
         XCTAssertTrue(server.contains("FamilySearchWebViewExtractionManager.shared.openDetailsPageAndExtract"))
         XCTAssertTrue(server.contains("if compositeFlag {\n                comparisonGroups = await makeChildrenComparisonGroups"))
         XCTAssertTrue(server.contains("compositeURL: compositeURL"))
