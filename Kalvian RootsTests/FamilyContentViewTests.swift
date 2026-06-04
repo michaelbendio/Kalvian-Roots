@@ -239,10 +239,10 @@ final class FamilyContentViewTests: XCTestCase {
 
         XCTAssertFalse(familyHTML.contains(">⌂</a>"))
         XCTAssertTrue(familyHTML.contains(#"href="/family/TEST%201/source" class="nav-btn" title="View source text">📄</a>"#))
-        XCTAssertTrue(familyHTML.contains(#"href="/family/TEST%201/hiski-birth-search" class="nav-btn" title="HisKi birth search">H</a>"#))
+        XCTAssertTrue(familyHTML.contains(#"href="/family/TEST%201/hiski-birth-search" class="nav-btn" title="HisKi birth search">📖</a>"#))
         XCTAssertFalse(sourceHTML.contains(">⌂</a>"))
         XCTAssertTrue(sourceHTML.contains(#"href="/family/TEST%201" class="nav-btn" title="Hide source text">📄</a>"#))
-        XCTAssertTrue(sourceHTML.contains(#"href="/family/TEST%201/hiski-birth-search" class="nav-btn" title="HisKi birth search">H</a>"#))
+        XCTAssertTrue(sourceHTML.contains(#"href="/family/TEST%201/hiski-birth-search" class="nav-btn" title="HisKi birth search">📖</a>"#))
     }
 
     func testBrowserWorkupGearTogglesBackToFamilyDisplay() {

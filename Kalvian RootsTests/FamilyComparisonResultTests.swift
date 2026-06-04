@@ -2380,6 +2380,8 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(html.contains("name=\"villageFarm\" value=\"Rimboja\""))
         XCTAssertTrue(html.contains("onsubmit=\"return openHiskiSearch(event, this)\""))
         XCTAssertTrue(html.contains("data-base-url=\"https://hiski.genealogia.fi/hiski?en\""))
+        XCTAssertTrue(html.contains(#"data-base-url="https://hiski.genealogia.fi/hiski?en">Submit</button>"#))
+        XCTAssertFalse(html.contains(#">HisKi</button>"#))
         XCTAssertTrue(html.contains("hiskiBirthFieldMap"))
         XCTAssertTrue(html.contains("motherPatronymic: 'apatronyymi'"))
         XCTAssertFalse(html.contains("Build query"))
@@ -2437,7 +2439,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
 
         let html = HTMLRenderer.renderFamily(family: family, network: nil)
 
-        XCTAssertTrue(html.contains(">HisKi</a>"))
+        XCTAssertTrue(html.contains(#"title="HisKi birth search">📖</a>"#))
         XCTAssertTrue(html.contains("/family/SAKERI%207/hiski-birth-search"))
     }
 
