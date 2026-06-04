@@ -482,12 +482,103 @@ enum FamilySearchDOMService {
                 return parsed ? parsed.person : null;
             }
 
+            function personIdFromHref(href) {
+                const match = clean(href).match(/\\/tree\\/person\\/(?:details\\/)?([A-Z0-9]{4}-[A-Z0-9]{3,})/i);
+                return match ? match[1].toUpperCase() : null;
+            }
+
+            function personSummaryFromElement(element) {
+                const id = personIdFromHref(element.getAttribute('href') || '')
+                    || personIdFromHref(element.getAttribute('data-href') || '')
+                    || personIdFromHref(element.getAttribute('aria-label') || '')
+                    || personIdFromHref(element.getAttribute('title') || '')
+                    || (visibleText(element).match(/\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/i) || [null])[0];
+                if (!id) return null;
+
+                let current = element;
+                let text = visibleText(element);
+                for (let depth = 0; depth < 4 && current && current !== localDocument.body; depth += 1) {
+                    const currentText = visibleText(current);
+                    if (currentText && currentText.includes(id)) {
+                        text = currentText;
+                    }
+                    current = current.parentElement;
+                }
+
+                const name = cleanPersonName(text) || cleanPersonName(element.getAttribute('aria-label') || element.getAttribute('title') || '');
+                return {
+                    id: id.toUpperCase(),
+                    name: name || id.toUpperCase(),
+                    sex: null,
+                    summaryYears: summaryYearsFromDetail(text),
+                    birthDate: null,
+                    birthPlace: null,
+                    deathDate: null,
+                    deathPlace: null,
+                    lifeSpan: summaryYearsFromDetail(text)
+                };
+            }
+
             function isSpouseGroupBoundary(line) {
                 return /^(Preferred|Add Spouse|Parents and Siblings)$/i.test(clean(line));
             }
 
             function isChildCollectionBoundary(line) {
                 return /^(Add Child|Add Spouse|Add Child with an Unknown Mother|Parents and Siblings|Preferred)$/i.test(clean(line));
+            }
+
+            function familyMembersDOMRoot() {
+                const section = familyMembersSection();
+                if (section && textLines(section).some(line => /^Spouses and Children$/i.test(line))) {
+                    return section;
+                }
+
+                return extractionDocument().body || extractionDocument();
+            }
+
+            function extractSpouseGroupsFromPersonLinks(expectedPersonId) {
+                const root = familyMembersDOMRoot();
+                const candidates = Array.from(root.querySelectorAll('a[href],button,[role="button"],[data-href],[aria-label],[title]'))
+                    .map(personSummaryFromElement)
+                    .filter(Boolean);
+                const people = [];
+                const seen = new Set();
+                for (const person of candidates) {
+                    if (seen.has(person.id)) continue;
+                    seen.add(person.id);
+                    people.push(person);
+                }
+
+                const expectedId = clean(expectedPersonId).toUpperCase();
+                const expectedIndex = people.findIndex(person => person.id === expectedId);
+                if (expectedIndex < 0 || people.length < 3) {
+                    return [];
+                }
+
+                const afterExpected = people.slice(expectedIndex + 1);
+                const spouse = afterExpected.find(person => person.id !== expectedId);
+                if (!spouse) {
+                    return [];
+                }
+
+                const childStart = people.findIndex((person, index) => index > expectedIndex && person.id === spouse.id) + 1;
+                const children = people
+                    .slice(Math.max(childStart, expectedIndex + 2))
+                    .filter(person => person.id !== expectedId && person.id !== spouse.id);
+                if (children.length === 0) {
+                    return [];
+                }
+
+                return [{
+                    spouses: [
+                        people[expectedIndex],
+                        spouse
+                    ],
+                    marriage: null,
+                    declaredChildCount: children.length,
+                    children,
+                    isPreferred: true
+                }];
             }
 
             function sectionLinesFromSpousesAndChildren() {
@@ -622,6 +713,10 @@ enum FamilySearchDOMService {
                 }
 
                 if (groups.length === 0) {
+                    const linkGroups = extractSpouseGroupsFromPersonLinks(personIdFromURL());
+                    if (linkGroups.length > 0) {
+                        return linkGroups;
+                    }
                     throw new Error('spouse groups not found in Spouses and Children section');
                 }
 
@@ -641,11 +736,22 @@ enum FamilySearchDOMService {
             }
 
             function childCardFor(element, id) {
+                function elementContainsPersonId(candidate) {
+                    const text = [
+                        visibleText(candidate),
+                        candidate.getAttribute('href') || '',
+                        candidate.getAttribute('data-href') || '',
+                        candidate.getAttribute('aria-label') || '',
+                        candidate.getAttribute('title') || ''
+                    ].join(' ');
+                    return text.includes(id);
+                }
+
                 let current = element;
                 let best = null;
                 while (current && current !== localDocument.body) {
                     const text = visibleText(current);
-                    if (!text.includes(id)) {
+                    if (!elementContainsPersonId(current)) {
                         break;
                     }
                     const ids = text.match(/\\b[A-Z0-9]{4}-[A-Z0-9]{3}\\b/g) || [];
@@ -663,7 +769,16 @@ enum FamilySearchDOMService {
             function childCardById(id) {
                 const scopedRoot = familyMembersSection() || localDocument;
                 const cards = Array.from(scopedRoot.querySelectorAll('a,button,[role="button"],[tabindex],span,div,li,article,section'))
-                    .filter(element => visibleText(element).includes(id) && !isEditControl(element))
+                    .filter(element => {
+                        const elementText = [
+                            visibleText(element),
+                            element.getAttribute('href') || '',
+                            element.getAttribute('data-href') || '',
+                            element.getAttribute('aria-label') || '',
+                            element.getAttribute('title') || ''
+                        ].join(' ');
+                        return elementText.includes(id) && !isEditControl(element);
+                    })
                     .map(element => childCardFor(element, id))
                     .filter(Boolean)
                     .sort((a, b) => visibleText(a).length - visibleText(b).length);
@@ -675,7 +790,13 @@ enum FamilySearchDOMService {
                 const scopedRoot = idCard || familyMembersSection() || localDocument;
                 const candidates = Array.from(scopedRoot.querySelectorAll('a,button,[role="button"],[tabindex],span,div'))
                     .filter(element => {
-                        const text = visibleText(element);
+                        const text = [
+                            visibleText(element),
+                            element.getAttribute('href') || '',
+                            element.getAttribute('data-href') || '',
+                            element.getAttribute('aria-label') || '',
+                            element.getAttribute('title') || ''
+                        ].join(' ');
                         if (isEditControl(element)) return false;
                         if (idCard) {
                             return text.includes(summary.name) || text.includes(summary.id);
@@ -696,8 +817,14 @@ enum FamilySearchDOMService {
                     '[data-testid*="' + id + '"]'
                 ];
                 const direct = selectors.flatMap(selector => Array.from(scopedRoot.querySelectorAll(selector)));
-                const byText = Array.from(scopedRoot.querySelectorAll('button,[role="button"],[tabindex]')).filter(element => {
-                    const text = clean(element.getAttribute('aria-label') || element.textContent || '');
+                const byText = Array.from(scopedRoot.querySelectorAll('a,button,[role="button"],[tabindex],[data-href]')).filter(element => {
+                    const text = clean([
+                        element.getAttribute('href') || '',
+                        element.getAttribute('data-href') || '',
+                        element.getAttribute('aria-label') || '',
+                        element.getAttribute('title') || '',
+                        element.textContent || ''
+                    ].join(' '));
                     return text.includes(id) && !isEditControl(element);
                 });
                 return Array.from(new Set(direct.concat(byText))).filter(element => visibleText(element) && !isEditControl(element));
@@ -715,9 +842,15 @@ enum FamilySearchDOMService {
                 }
 
                 const scopedRoot = familyMembersSection() || localDocument;
-                return Array.from(scopedRoot.querySelectorAll('button,[role="button"],[tabindex],span,div'))
+                return Array.from(scopedRoot.querySelectorAll('a,button,[role="button"],[tabindex],span,div,[data-href]'))
                     .find(element => {
-                        const text = visibleText(element);
+                        const text = [
+                            visibleText(element),
+                            element.getAttribute('href') || '',
+                            element.getAttribute('data-href') || '',
+                            element.getAttribute('aria-label') || '',
+                            element.getAttribute('title') || ''
+                        ].join(' ');
                         return text.includes(summary.name) && text.includes(summary.id) && !isEditControl(element);
                     }) || null;
             }
