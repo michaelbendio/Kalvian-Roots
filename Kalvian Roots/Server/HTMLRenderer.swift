@@ -734,7 +734,8 @@ struct HTMLRenderer {
         network: FamilyNetwork?,
         familyId: String,
         homeId: String,
-        sourceMarkerHTML: String? = nil
+        sourceMarkerHTML: String? = nil,
+        reviewMarkerHTML: String? = nil
     ) -> String {
         let childWithParents = child.withHiskiParentNames(
             father: couple.husband.displayName,
@@ -744,7 +745,12 @@ struct HTMLRenderer {
         if let birthDate = childWithParents.birthDate {
             parts.append(renderDateLink(birthDate, eventType: .birth, person: childWithParents, familyId: familyId, homeId: homeId))
         }
-        parts.append(renderPersonLink(name: childWithParents.displayName, birthDate: childWithParents.birthDate, familyId: familyId, homeId: homeId))
+        let personLink = renderPersonLink(name: childWithParents.displayName, birthDate: childWithParents.birthDate, familyId: familyId, homeId: homeId)
+        if let reviewMarkerHTML {
+            parts.append("<span class=\"child-name-review\">\(personLink)\(reviewMarkerHTML)</span>")
+        } else {
+            parts.append(personLink)
+        }
         if let sourceMarkerHTML {
             parts.append(sourceMarkerHTML)
         }
@@ -846,12 +852,10 @@ struct HTMLRenderer {
             network: network,
             familyId: familyId,
             homeId: homeId,
-            sourceMarkerHTML: sourceMarkerHTML
+            sourceMarkerHTML: sourceMarkerHTML,
+            reviewMarkerHTML: displayRow.reviewNote.map(renderChildReviewMarker)
         )
         var supplements: [String] = []
-        if displayRow.reviewNote != nil {
-            supplements.append("<span class=\"review-marker\">*</span>")
-        }
         if let familySearchId = row.familySearch?.familySearchId,
            child.familySearchId != familySearchId {
             supplements.append("<span class=\"familysearch-id\">&lt;\(escapeHTML(familySearchId))&gt;</span>")
@@ -871,21 +875,25 @@ struct HTMLRenderer {
         let row = displayRow.match
         let date = displayDate(for: row)
         let name = displayName(for: row)
+        let nameHTML = displayRow.reviewNote.map {
+            "<span class=\"child-name-review\">\(escapeHTML(name))\(renderChildReviewMarker($0))</span>"
+        } ?? escapeHTML(name)
         var parts = [
             "<span class=\"symbol\">★</span>",
             escapeHTML(date),
-            escapeHTML(name)
+            nameHTML
         ]
         if showsSourceMarkers {
             parts.append("<span class=\"source-markers\">\(escapeHTML(sourceMarkers(for: row)))</span>")
-        }
-        if displayRow.reviewNote != nil {
-            parts.append("<span class=\"review-marker\">*</span>")
         }
         if let familySearchId = row.familySearch?.familySearchId {
             parts.append("<span class=\"familysearch-id\">&lt;\(escapeHTML(familySearchId))&gt;</span>")
         }
         return "<div class=\"family-line child-line comparison-only-child\">\(parts.joined(separator: " "))</div>"
+    }
+
+    private static func renderChildReviewMarker(_ reviewNote: FamilyComparisonReviewNote) -> String {
+        "<button type=\"button\" class=\"review-marker\" title=\"\(escapeHTML(reviewNote.message))\" aria-label=\"Show child comparison problem\" aria-expanded=\"false\" onclick=\"return toggleChildReviewProblem(this)\">*</button><span class=\"child-review-problem\" hidden>\(escapeHTML(reviewNote.message))</span>"
     }
 
     private static func renderPersonLink(
@@ -2163,13 +2171,35 @@ struct HTMLRenderer {
         .source-markers {
             font-weight: 700;
         }
+        .child-name-review {
+            display: inline-flex;
+            align-items: baseline;
+            gap: 2px;
+        }
         .enhanced-date,
         .enhanced-date a {
             color: #8b4513;
         }
         .review-marker {
-            color: #b45f06;
+            appearance: none;
+            background: transparent;
+            border: 0;
+            color: #b00020;
+            cursor: pointer;
+            font: inherit;
             font-weight: 700;
+            line-height: 1;
+            padding: 0 1px;
+        }
+        .review-marker:hover,
+        .review-marker:focus {
+            text-decoration: underline;
+        }
+        .child-review-problem {
+            color: #b00020;
+            font-size: 13px;
+            font-weight: 600;
+            margin-left: 4px;
         }
         .pseudo-family-id {
             color: #666;
@@ -3322,6 +3352,17 @@ struct HTMLRenderer {
 
             window.open(link.href, '_blank', 'noopener,noreferrer');
             window.location.href = citationURL;
+            return false;
+        }
+
+        function toggleChildReviewProblem(button) {
+            const problem = button.nextElementSibling;
+            if (!problem || !problem.classList.contains('child-review-problem')) {
+                return false;
+            }
+
+            problem.hidden = !problem.hidden;
+            button.setAttribute('aria-expanded', problem.hidden ? 'false' : 'true');
             return false;
         }
         </script>

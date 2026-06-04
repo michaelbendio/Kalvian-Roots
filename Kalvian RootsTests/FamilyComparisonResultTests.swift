@@ -1953,6 +1953,61 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertFalse(html.contains("id=\"children-comparison\""))
     }
 
+    func testServerRenderedChildProblemsUseClickableRedAsteriskAfterName() {
+        let nameManager = NameEquivalenceManager()
+        nameManager.clearAllEquivalences()
+        let family = Family(
+            familyId: "PROBLEM 1",
+            pageReferences: ["1"],
+            husband: Person(name: "Henrik"),
+            wife: Person(name: "Maria"),
+            children: [
+                Person(name: "Malin", birthDate: "26.07.1707")
+            ]
+        )
+        let result = FamilyComparisonResult(
+            familySearch: [
+                PersonCandidate(
+                    name: "Malin",
+                    birthDate: date(1707, 5, 26),
+                    source: .familySearch,
+                    nameManager: nameManager,
+                    familySearchId: "K8JR-2W8"
+                )
+            ],
+            juuretKalvialla: [
+                PersonCandidate(
+                    name: "Malin",
+                    birthDate: date(1707, 7, 26),
+                    source: .juuretKalvialla,
+                    nameManager: nameManager
+                )
+            ],
+            hiski: [
+                PersonCandidate(
+                    name: "Malin",
+                    birthDate: date(1707, 5, 26),
+                    source: .hiski,
+                    nameManager: nameManager
+                )
+            ]
+        )
+
+        let html = HTMLRenderer.renderFamily(
+            family: family,
+            network: nil,
+            comparisonResult: result
+        )
+
+        XCTAssertTrue(html.contains(#"<span class="child-name-review"><a href="/family/PROBLEM%201/cite?name=Malin&amp;birth=26.07.1707">Malin</a><button type="button""#))
+        XCTAssertTrue(html.contains(#"class="review-marker""#))
+        XCTAssertTrue(html.contains(#"aria-expanded="false""#))
+        XCTAssertTrue(html.contains(#"onclick="return toggleChildReviewProblem(this)">*"#))
+        XCTAssertTrue(html.contains(#"<span class="child-review-problem" hidden>Possible same child with date discrepancy: Juuret has Malin (26 Jul 1707); FamilySearch has Malin (26 May 1707); HisKi has Malin (26 May 1707).</span>"#))
+        XCTAssertTrue(html.contains(#"</span> <span class="source-markers">J, H, FS</span>"#))
+        XCTAssertTrue(html.contains("function toggleChildReviewProblem(button)"))
+    }
+
     func testServerRenderedFamilyUsesComparisonGroupsForAdditionalCouples() {
         let nameManager = NameEquivalenceManager()
         nameManager.clearAllEquivalences()
