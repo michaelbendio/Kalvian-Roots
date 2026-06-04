@@ -1581,7 +1581,7 @@ struct HTMLRenderer {
                         <a class="citation-close-button" href="\(escapeHTML(closeURL))" aria-label="Close citation panel">&times;</a>
                     </div>
                 </div>
-                <textarea id="citationText" class="citation-textarea" rows="14" spellcheck="false">\(escapeHTML(citation))</textarea>
+                <textarea id="citationText" class="citation-textarea" rows="1" spellcheck="false">\(escapeHTML(citation))</textarea>
                 <div id="copyHint" class="copy-hint" style="display: none;">Copied</div>
             </div>
             """
@@ -2331,12 +2331,15 @@ struct HTMLRenderer {
         }
         .citation-textarea {
             width: 100%;
+            box-sizing: border-box;
+            min-height: 42px;
             padding: 10px 12px;
             border: 1px solid #ddd;
             border-radius: 4px;
             font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
             font-size: 14px;
             line-height: 1.35;
+            overflow: hidden;
             resize: vertical;
             background: #f9f9f9;
         }
@@ -3318,6 +3321,22 @@ struct HTMLRenderer {
     private static var copyButtonScript: String {
         return """
         <script>
+        function resizeCitationTextarea(textarea) {
+            if (!textarea) {
+                return;
+            }
+
+            textarea.style.height = 'auto';
+            textarea.style.height = textarea.scrollHeight + 'px';
+        }
+
+        const citationTextarea = document.getElementById('citationText');
+        if (citationTextarea) {
+            resizeCitationTextarea(citationTextarea);
+            citationTextarea.addEventListener('input', () => resizeCitationTextarea(citationTextarea));
+            window.addEventListener('load', () => resizeCitationTextarea(citationTextarea));
+        }
+
         function copyCitation() {
             const textarea = document.getElementById('citationText');
             const hint = document.getElementById('copyHint');
