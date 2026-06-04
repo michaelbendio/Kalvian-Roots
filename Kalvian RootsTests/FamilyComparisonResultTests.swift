@@ -2580,7 +2580,11 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("nudgeFamilyMembersRendering(attempt);"))
         XCTAssertTrue(script.contains("familyMembersSectionFound: !!section || familyIndex >= 0 || spousesIndex >= 0"))
         XCTAssertTrue(script.contains("waiting for Family Members section attempt "))
-        XCTAssertTrue(script.contains("lastDiagnostics.familyMembersSectionFound && lastDiagnostics.spousesAndChildrenSectionFound"))
+        XCTAssertTrue(script.contains("lastDiagnostics.familyMembersSectionFound"))
+        XCTAssertTrue(script.contains("lastDiagnostics.spousesAndChildrenSectionFound"))
+        XCTAssertTrue(script.contains("lastDiagnostics.expectedPersonFound"))
+        XCTAssertTrue(script.contains("lastDiagnostics.familyMemberPersonCount >= 2"))
+        XCTAssertTrue(script.contains("personRows=' + lastDiagnostics.familyMemberPersonCount"))
         XCTAssertTrue(script.contains("await waitForFamilyMembersSection(normalizedPersonId);"))
         XCTAssertLessThan(
             try XCTUnwrap(script.range(of: "await waitForFamilyMembersSection(normalizedPersonId);")?.lowerBound),
@@ -2753,9 +2757,11 @@ final class FamilySearchDOMServiceTests: XCTestCase {
                 attempt: 30,
                 familyMembersSectionFound: true,
                 spousesAndChildrenSectionFound: false,
-                childrenMarkerCount: 3
+                childrenMarkerCount: 3,
+                familyMemberPersonCount: 4,
+                expectedPersonFound: true
             ),
-            "FamilySearch WebKit waiting for Family Members section attempt 30: familyMembers=yes, spousesAndChildren=no, childMarkers=3"
+            "FamilySearch WebKit waiting for Family Members section attempt 30: familyMembers=yes, spousesAndChildren=no, childMarkers=3, personRows=4, expectedPerson=yes"
         )
     }
 
@@ -2773,9 +2779,12 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(source.contains("target.scrollIntoView({ block: 'center', inline: 'nearest' });"))
         let waitStart = try XCTUnwrap(source.range(of: "@MainActor private func waitForFamilyMembersSections")?.lowerBound)
         let waitSource = source[waitStart...]
+        XCTAssertTrue(source.contains("collectTimeoutDiagnostics(expectedPersonId: expectedPersonId)"))
+        XCTAssertTrue(source.contains("(diagnostics.familyMemberPersonCount ?? 0) >= 2"))
+        XCTAssertTrue(source.contains("diagnostics.expectedPersonFound == true"))
         XCTAssertLessThan(
             try XCTUnwrap(waitSource.range(of: "await nudgeFamilyMembersRendering(attempt: attempt)")?.lowerBound),
-            try XCTUnwrap(waitSource.range(of: "let diagnostics = await collectTimeoutDiagnostics()")?.lowerBound)
+            try XCTUnwrap(waitSource.range(of: "let diagnostics = await collectTimeoutDiagnostics(expectedPersonId: expectedPersonId)")?.lowerBound)
         )
     }
 

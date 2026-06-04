@@ -622,17 +622,21 @@ enum FamilySearchDOMService {
                 const sectionLines = spousesIndex >= 0
                     ? allLines.slice(spousesIndex + 1, parentsIndex >= 0 ? parentsIndex : allLines.length)
                     : [];
+                const expectedPersonId = personIdFromDocumentURL(diagnosticDocument());
+                const linkDiagnostics = linkFallbackDiagnostics(expectedPersonId);
 
                 return {
                     url: pageURL(),
                     pageTitle: pageTitle(),
                     detectedHost: pageHost(),
-                    detectedPersonId: personIdFromDocumentURL(diagnosticDocument()),
+                    detectedPersonId: expectedPersonId,
                     isFamilySearchPage: isFamilySearchPage(),
                     isPersonDetailsPage: isPersonDetailsPage(),
                     familyMembersSectionFound: !!section || familyIndex >= 0 || spousesIndex >= 0,
                     spousesAndChildrenSectionFound: spousesIndex >= 0,
-                    childrenMarkerCount: sectionLines.filter(line => /^Children\\s*\\(\\d+\\)$/i.test(line)).length
+                    childrenMarkerCount: sectionLines.filter(line => /^Children\\s*\\(\\d+\\)$/i.test(line)).length,
+                    familyMemberPersonCount: linkDiagnostics.personCount,
+                    expectedPersonFound: linkDiagnostics.expectedIndex >= 0
                 };
             }
 
@@ -1413,7 +1417,10 @@ enum FamilySearchDOMService {
                     assertCurrentFamilySearchDetailsPage(expectedId);
                     nudgeFamilyMembersRendering(attempt);
                     lastDiagnostics = diagnosticContext();
-                    if (lastDiagnostics.familyMembersSectionFound && lastDiagnostics.spousesAndChildrenSectionFound) {
+                    if (lastDiagnostics.familyMembersSectionFound
+                        && lastDiagnostics.spousesAndChildrenSectionFound
+                        && lastDiagnostics.expectedPersonFound
+                        && lastDiagnostics.familyMemberPersonCount >= 2) {
                         return;
                     }
 
@@ -1423,6 +1430,8 @@ enum FamilySearchDOMService {
                             + ': familyMembers=' + (lastDiagnostics.familyMembersSectionFound ? 'yes' : 'no')
                             + ', spousesAndChildren=' + (lastDiagnostics.spousesAndChildrenSectionFound ? 'yes' : 'no')
                             + ', childMarkers=' + lastDiagnostics.childrenMarkerCount
+                            + ', personRows=' + lastDiagnostics.familyMemberPersonCount
+                            + ', expectedPerson=' + (lastDiagnostics.expectedPersonFound ? 'yes' : 'no')
                         );
                     }
 

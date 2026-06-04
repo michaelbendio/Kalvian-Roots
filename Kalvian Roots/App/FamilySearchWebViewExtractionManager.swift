@@ -64,6 +64,8 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         var familyMembersSectionFound: Bool?
         var spousesAndChildrenSectionFound: Bool?
         var childrenMarkerCount: Int?
+        var familyMemberPersonCount: Int?
+        var expectedPersonFound: Bool?
     }
 
     private struct DocumentReadiness: Decodable {
@@ -281,9 +283,11 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         attempt: Int,
         familyMembersSectionFound: Bool?,
         spousesAndChildrenSectionFound: Bool?,
-        childrenMarkerCount: Int?
+        childrenMarkerCount: Int?,
+        familyMemberPersonCount: Int? = nil,
+        expectedPersonFound: Bool? = nil
     ) -> String {
-        "FamilySearch WebKit waiting for Family Members section attempt \(attempt): familyMembers=\(familyMembersSectionFound == true ? "yes" : "no"), spousesAndChildren=\(spousesAndChildrenSectionFound == true ? "yes" : "no"), childMarkers=\(childrenMarkerCount ?? 0)"
+        "FamilySearch WebKit waiting for Family Members section attempt \(attempt): familyMembers=\(familyMembersSectionFound == true ? "yes" : "no"), spousesAndChildren=\(spousesAndChildrenSectionFound == true ? "yes" : "no"), childMarkers=\(childrenMarkerCount ?? 0), personRows=\(familyMemberPersonCount ?? 0), expectedPerson=\(expectedPersonFound == true ? "yes" : "no")"
     }
 
     static func shouldAllowNavigationDuringExtraction(
@@ -491,7 +495,7 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
                 try await loadDetailsPage(personId: expectedPersonId)
             }
             try await waitForDetailsPage(personId: expectedPersonId)
-            try await waitForFamilyMembersSections(log: log)
+            try await waitForFamilyMembersSections(expectedPersonId: expectedPersonId, log: log)
         }
 
         log?("FamilySearch WebKit DOM extraction started")
@@ -972,7 +976,7 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
                 return
             }
 
-            let diagnostics = await self.collectTimeoutDiagnostics()
+            let diagnostics = await self.collectTimeoutDiagnostics(expectedPersonId: self.activeExtractionExpectedPersonId)
             let currentURL = diagnostics.url ?? self.webView?.url?.absoluteString
             let diagnosticsExtractionStage = diagnostics.extractionStage?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -998,15 +1002,17 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         }
     }
 
-    @MainActor private func waitForFamilyMembersSections(log: ((String) -> Void)?) async throws {
+    @MainActor private func waitForFamilyMembersSections(expectedPersonId: String?, log: ((String) -> Void)?) async throws {
         let progressAttempts = Set([1, 10, 30, 60, 90, 120, 180, 240])
 
         for attempt in 1...240 {
             await nudgeFamilyMembersRendering(attempt: attempt)
-            let diagnostics = await collectTimeoutDiagnostics()
+            let diagnostics = await collectTimeoutDiagnostics(expectedPersonId: expectedPersonId)
             if diagnostics.familyMembersSectionFound == true,
-               diagnostics.spousesAndChildrenSectionFound == true {
-                log?("FamilySearch WebKit Family Members section ready: childMarkers=\(diagnostics.childrenMarkerCount ?? 0)")
+               diagnostics.spousesAndChildrenSectionFound == true,
+               diagnostics.expectedPersonFound == true,
+               (diagnostics.familyMemberPersonCount ?? 0) >= 2 {
+                log?("FamilySearch WebKit Family Members section ready: childMarkers=\(diagnostics.childrenMarkerCount ?? 0), personRows=\(diagnostics.familyMemberPersonCount ?? 0)")
                 return
             }
 
@@ -1016,7 +1022,9 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
                         attempt: attempt,
                         familyMembersSectionFound: diagnostics.familyMembersSectionFound,
                         spousesAndChildrenSectionFound: diagnostics.spousesAndChildrenSectionFound,
-                        childrenMarkerCount: diagnostics.childrenMarkerCount
+                        childrenMarkerCount: diagnostics.childrenMarkerCount,
+                        familyMemberPersonCount: diagnostics.familyMemberPersonCount,
+                        expectedPersonFound: diagnostics.expectedPersonFound
                     )
                 )
             }
@@ -1024,13 +1032,15 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
             try await Task.sleep(nanoseconds: 500_000_000)
         }
 
-        let diagnostics = await collectTimeoutDiagnostics()
+        let diagnostics = await collectTimeoutDiagnostics(expectedPersonId: expectedPersonId)
         throw FamilySearchWebViewExtractionError.javascriptFailed(
             Self.familyMembersSectionWaitProgressMessage(
                 attempt: 240,
                 familyMembersSectionFound: diagnostics.familyMembersSectionFound,
                 spousesAndChildrenSectionFound: diagnostics.spousesAndChildrenSectionFound,
-                childrenMarkerCount: diagnostics.childrenMarkerCount
+                childrenMarkerCount: diagnostics.childrenMarkerCount,
+                familyMemberPersonCount: diagnostics.familyMemberPersonCount,
+                expectedPersonFound: diagnostics.expectedPersonFound
             )
         )
     }
@@ -1078,15 +1088,37 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         }
     }
 
-    @MainActor private func collectTimeoutDiagnostics() async -> TimeoutDiagnostics {
+    @MainActor private func collectTimeoutDiagnostics(expectedPersonId: String? = nil) async -> TimeoutDiagnostics {
         guard let webView else {
             return TimeoutDiagnostics()
+        }
+
+        let normalizedExpectedPersonId = expectedPersonId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+        let expectedPersonIdJSON: String
+        if let data = try? JSONEncoder().encode(normalizedExpectedPersonId),
+           let json = String(data: data, encoding: .utf8) {
+            expectedPersonIdJSON = json
+        } else {
+            expectedPersonIdJSON = "null"
         }
 
         let script = """
         (() => {
             function clean(text) {
                 return (text || '').replace(/\\s+/g, ' ').trim();
+            }
+
+            const expectedPersonId = \(expectedPersonIdJSON);
+            function personIdFromText(text) {
+                const match = clean(text).match(/\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/i);
+                return match ? match[0].toUpperCase() : null;
+            }
+
+            function personIdFromHref(href) {
+                const match = clean(href).match(/\\/tree\\/person\\/(?:details\\/)?([A-Z0-9]{4}-[A-Z0-9]{3,})/i);
+                return match ? match[1].toUpperCase() : null;
             }
 
             const bodyText = document.body ? (document.body.innerText || '') : '';
@@ -1097,6 +1129,19 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
             const sectionLines = spousesIndex >= 0
                 ? lines.slice(spousesIndex + 1, parentsIndex >= 0 ? parentsIndex : lines.length)
                 : [];
+            const personIds = new Set();
+            for (const line of sectionLines) {
+                const id = personIdFromText(line);
+                if (id) personIds.add(id);
+            }
+            for (const element of Array.from(document.querySelectorAll('a[href],button,[aria-label],[title],[data-href]'))) {
+                const id = personIdFromHref(element.getAttribute('href') || '')
+                    || personIdFromHref(element.getAttribute('data-href') || '')
+                    || personIdFromText(element.getAttribute('aria-label') || '')
+                    || personIdFromText(element.getAttribute('title') || '')
+                    || personIdFromText(element.textContent || '');
+                if (id) personIds.add(id);
+            }
 
             return JSON.stringify({
                 url: window.location.href,
@@ -1104,7 +1149,9 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
                 extractionStage: clean(window.__kalvianRootsFamilySearchStage),
                 familyMembersSectionFound: familyIndex >= 0 || spousesIndex >= 0,
                 spousesAndChildrenSectionFound: spousesIndex >= 0,
-                childrenMarkerCount: sectionLines.filter(line => /^Children\\s*\\(\\d+\\)$/i.test(line)).length
+                childrenMarkerCount: sectionLines.filter(line => /^Children\\s*\\(\\d+\\)$/i.test(line)).length,
+                familyMemberPersonCount: personIds.size,
+                expectedPersonFound: expectedPersonId ? personIds.has(expectedPersonId) : personIds.size > 0
             });
         })();
         """
