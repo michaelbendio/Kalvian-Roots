@@ -412,6 +412,35 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertEqual(values["apatronyymi"], "Matint")
     }
 
+    func testBuildManualBirthSearchUrlPreservesEditedPatronymicFields() throws {
+        let url = try service.buildManualBirthSearchUrl(
+            fields: HiskiService.ManualBirthSearchFields(
+                childFirstName: "Sigfrid",
+                startYear: "1680",
+                endYear: "1780",
+                villageFarm: "Rimboja",
+                maxEvents: "15",
+                fatherFirstName: "Anders",
+                fatherPatronymic: "Sigfredss.",
+                motherFirstName: "Liisa",
+                motherPatronymic: "Sigfridsdr"
+            )
+        )
+
+        let values = try queryValues(in: url)
+
+        XCTAssertEqual(values["kirja"], "kastetut")
+        XCTAssertEqual(values["etunimi"], "Sigfrid")
+        XCTAssertEqual(values["alkuvuosi"], "1680")
+        XCTAssertEqual(values["loppuvuosi"], "1780")
+        XCTAssertEqual(values["ikyla"], "Rimboja")
+        XCTAssertEqual(values["maxkpl"], "15")
+        XCTAssertEqual(values["ietunimi"], "Anders")
+        XCTAssertEqual(values["ipatronyymi"], "Sigfredss.")
+        XCTAssertEqual(values["aetunimi"], "Liisa")
+        XCTAssertEqual(values["apatronyymi"], "Sigfridsdr")
+    }
+
     func testFamilyBirthSearchWindowFallsBackToFirstChildBirthYearWhenMarriageIsMissing() throws {
         let couple = Couple(
             husband: Person(name: "Matti", patronymic: "Juhonp."),

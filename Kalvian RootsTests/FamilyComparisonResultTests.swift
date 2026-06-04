@@ -2169,17 +2169,22 @@ final class FamilySearchDOMServiceTests: XCTestCase {
 
         let html = HTMLRenderer.renderFamily(family: family, network: nil)
 
-        XCTAssertTrue(html.contains("href=\"https://hiski.genealogia.fi/hiski?"))
-        XCTAssertTrue(html.contains("kirja=kastetut"))
-        XCTAssertTrue(html.contains("etunimi=Maria"))
-        XCTAssertTrue(html.contains("alkuvuosi=12.2.1696"))
-        XCTAssertTrue(html.contains("target=\"_blank\""))
-        XCTAssertTrue(html.contains("rel=\"noopener noreferrer\""))
-        XCTAssertTrue(html.contains("data-citation-url=\"/family/SAKERI%201/hiski?name=Maria"))
-        XCTAssertTrue(html.contains("event=birth"))
-        XCTAssertTrue(html.contains("date=12.02.1696"))
-        XCTAssertTrue(html.contains("onclick=\"return openHiskiResultAndCitation(event, this)\""))
-        XCTAssertTrue(html.contains("function openHiskiResultAndCitation(event, link)"))
+        [
+            "href=\"https://hiski.genealogia.fi/hiski?",
+            "kirja=kastetut",
+            "etunimi=Maria",
+            "alkuvuosi=12.2.1696",
+            "target=\"_blank\"",
+            "rel=\"noopener noreferrer\"",
+            "data-citation-url=\"/family/SAKERI%201/hiski?",
+            "name=Maria",
+            "event=birth",
+            "date=12.02.1696",
+            "onclick=\"return openHiskiResultAndCitation(event, this)\"",
+            "function openHiskiResultAndCitation(event, link)"
+        ].forEach { expected in
+            XCTAssertTrue(html.contains(expected), "Missing expected HTML fragment: \(expected)")
+        }
     }
 
     func testFamilyFormSubmissionRequestsReloadedFamilyPage() throws {
@@ -2200,6 +2205,104 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(server.contains("if reloadFlag, compositeFlag"))
         XCTAssertTrue(server.contains("if compositeFlag {\n                comparisonGroups = await makeChildrenComparisonGroups"))
         XCTAssertTrue(server.contains("compositeURL: compositeURL"))
+    }
+
+    func testHiskiBirthWorkbenchRendersEditableQueryAndMagnifierCitationRows() throws {
+        let family = Family(
+            familyId: "RITA II 4",
+            pageReferences: ["267"],
+            husband: Person(name: "Antti", patronymic: "Matinp."),
+            wife: Person(name: "Liisa", patronymic: "Sigfridintr"),
+            children: [
+                Person(name: "Sigfrid", birthDate: "27.10.1741")
+            ]
+        )
+        let fields = HiskiService.ManualBirthSearchFields(
+            childFirstName: "Sigfrid",
+            startYear: "1680",
+            endYear: "1780",
+            maxEvents: "15",
+            fatherFirstName: "Antti",
+            fatherPatronymic: "Matinp.",
+            motherFirstName: "Liisa",
+            motherPatronymic: "Sigfridsdr"
+        )
+        let row = HiskiService.HiskiFamilyBirthRow(
+            birthDate: "27.10.1741",
+            childName: "Sigfrid",
+            fatherName: "Sigfrid Rimbilä",
+            motherName: "Elsa Henrichsdr.",
+            recordPath: "/hiski?en+0265+kastetut+4085978",
+            parish: "Kälviä - Kelviå",
+            villageFarm: "Rimboja"
+        )
+        let html = HTMLRenderer.renderHiskiBirthWorkbench(
+            family: family,
+            homeId: family.familyId,
+            fields: fields,
+            searchURL: try XCTUnwrap(URL(string: "https://hiski.genealogia.fi/hiski?en")),
+            resultsURL: "https://hiski.genealogia.fi/hiski?en",
+            selectedRecordURL: "",
+            rows: [row]
+        )
+
+        XCTAssertTrue(html.contains("name=\"motherPatronymic\" value=\"Sigfridsdr\""))
+        XCTAssertTrue(html.contains("name=\"resultsURL\""))
+        XCTAssertTrue(html.contains("data-record-url=\"https://hiski.genealogia.fi/hiski?en+0265+kastetut+4085978\""))
+        XCTAssertTrue(html.contains("onsubmit=\"return openHiskiRecordAndSubmit(this)\""))
+        XCTAssertFalse(html.contains("name=\"selectedRecordURL\""))
+        XCTAssertTrue(html.contains("name=\"recordPath\" value=\"/hiski?en+0265+kastetut+4085978\""))
+        XCTAssertTrue(html.contains("hiski-record-button"))
+        XCTAssertFalse(html.contains("Use citation"))
+    }
+
+    func testHiskiBirthCandidatePickerUsesMagnifierForCitationAction() throws {
+        let family = Family(
+            familyId: "RITA II 4",
+            pageReferences: ["267"],
+            husband: Person(name: "Antti", patronymic: "Matinp."),
+            wife: Person(name: "Liisa", patronymic: "Sigfridintr"),
+            children: [
+                Person(name: "Sigfrid", birthDate: "27.10.1741")
+            ]
+        )
+        let row = HiskiService.HiskiFamilyBirthRow(
+            birthDate: "27.10.1741",
+            childName: "Sigfrid",
+            fatherName: "Sigfrid Rimbilä",
+            motherName: "Elsa Henrichsdr.",
+            recordPath: "/hiski?en+0265+kastetut+4085978",
+            parish: "Kälviä - Kelviå",
+            villageFarm: "Rimboja"
+        )
+        let html = HTMLRenderer.renderHiskiBirthCandidatePicker(
+            family: family,
+            homeId: family.familyId,
+            searchURL: "https://hiski.genealogia.fi/hiski?en",
+            rows: [row]
+        )
+
+        XCTAssertTrue(html.contains("HisKi Birth Candidates"))
+        XCTAssertTrue(html.contains("data-record-url=\"https://hiski.genealogia.fi/hiski?en+0265+kastetut+4085978\""))
+        XCTAssertTrue(html.contains("onsubmit=\"return openHiskiRecordAndSubmit(this)\""))
+        XCTAssertTrue(html.contains("name=\"recordPath\" value=\"/hiski?en+0265+kastetut+4085978\""))
+        XCTAssertTrue(html.contains("hiski-record-button"))
+        XCTAssertFalse(html.contains("Use citation"))
+    }
+
+    func testFamilyPageShowsHiskiBirthWorkbenchLink() {
+        let family = Family(
+            familyId: "SAKERI 7",
+            pageReferences: ["266"],
+            husband: Person(name: "Antti", patronymic: "Simonp."),
+            wife: Person(name: "Liisa", patronymic: "Sigfridint."),
+            children: []
+        )
+
+        let html = HTMLRenderer.renderFamily(family: family, network: nil)
+
+        XCTAssertTrue(html.contains(">HisKi</a>"))
+        XCTAssertTrue(html.contains("/family/SAKERI%207/hiski-birth-search"))
     }
 
     func testServerRenderedLapsetTabLinksArePerCoupleForAdditionalSpouses() throws {

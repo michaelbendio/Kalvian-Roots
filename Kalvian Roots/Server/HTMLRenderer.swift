@@ -182,6 +182,16 @@ struct HTMLRenderer {
         let closeURL = "/family/\(urlEncode(displayedId))" + (displayedId == actualHomeId ? "" : "?home=\(urlEncode(actualHomeId))")
         let citationPanel = renderCitationPanel(citationText: citationText, errorMessage: errorMessage, closeURL: closeURL)
         let sourcePanel = renderSourcePanel(sourceText: sourceText)
+        let workspaceHeader = renderFamilyWorkspaceHeader(
+            family: family,
+            displayedId: displayedId,
+            homeId: actualHomeId,
+            sourceText: sourceText,
+            comparisonResult: comparisonResult,
+            familySearchExtraction: familySearchExtraction,
+            familySearchPersonId: familySearchPersonId,
+            workup: workup
+        )
 
         return """
         <!DOCTYPE html>
@@ -199,6 +209,7 @@ struct HTMLRenderer {
                 \(navBar)
                 \(citationPanel)
                 \(sourcePanel)
+                \(workspaceHeader)
                 <div class="family-content">
                     \(familyHTML)
                 </div>
@@ -207,6 +218,233 @@ struct HTMLRenderer {
             \(workupCopyScript)
             \(navigationScript)
             \(compositeLoaderScript(url: compositeURL))
+        </body>
+        </html>
+        """
+    }
+
+    static func renderHiskiBirthWorkbench(
+        family: Family,
+        homeId: String,
+        fields: HiskiService.ManualBirthSearchFields,
+        searchURL: URL?,
+        resultsURL: String,
+        selectedRecordURL: String,
+        rows: [HiskiService.HiskiFamilyBirthRow],
+        message: String? = nil,
+        errorMessage: String? = nil
+    ) -> String {
+        let displayedId = family.familyId
+        let navBar = renderNavigationBar(homeId: homeId, displayedId: displayedId)
+        let familyURL = "/family/\(urlEncode(displayedId))" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
+        let actionURL = "/family/\(urlEncode(displayedId))/hiski-birth-search" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
+        let citationURL = "/family/\(urlEncode(displayedId))/hiski-birth-citation" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
+        let searchLink = searchURL.map { url in
+            """
+            <a class="family-workspace-action hiski-workbench-open-link"
+               href="\(escapeHTML(url.absoluteString))"
+               target="_blank"
+               rel="noopener noreferrer">HisKi</a>
+            """
+        } ?? ""
+        let statusHTML = [
+            message.map { "<div class=\"hiski-workbench-message\">\(escapeHTML($0))</div>" },
+            errorMessage.map { "<div class=\"hiski-workbench-error\">\(escapeHTML($0))</div>" }
+        ]
+            .compactMap { $0 }
+            .joined(separator: "\n")
+        let resultRows = rows.map { row in
+            renderHiskiBirthCitationResultRow(row, citationURL: citationURL)
+        }.joined(separator: "\n")
+        let resultsTable = rows.isEmpty ? "" : """
+        <section class="hiski-workbench-section">
+            <h2>Results</h2>
+            <table class="hiski-results-table">
+                <thead>
+                    <tr>
+                        <th>Record</th>
+                        <th>Born</th>
+                        <th>Child</th>
+                        <th>Father</th>
+                        <th>Mother</th>
+                        <th>Place</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    \(resultRows)
+                </tbody>
+            </table>
+        </section>
+        """
+
+        return """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>\(escapeHTML(displayedId)) HisKi Births - Kalvian Roots</title>
+            <style>
+                \(cssStyles)
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                \(navBar)
+                <main class="hiski-workbench">
+                    <div class="hiski-workbench-header">
+                        <div>
+                            <h1>HisKi Births</h1>
+                            <p>\(escapeHTML(displayedId))</p>
+                        </div>
+                        <a class="family-workspace-action" href="\(escapeHTML(familyURL))">Family</a>
+                    </div>
+                    \(statusHTML)
+                    <section class="hiski-workbench-section">
+                        <h2>Search</h2>
+                        <form method="POST" action="\(escapeHTML(actionURL))" class="hiski-birth-form">
+                            <div class="hiski-form-grid">
+                                \(renderHiskiWorkbenchInput("Child first name", name: "childFirstName", value: fields.childFirstName))
+                                \(renderHiskiWorkbenchInput("Start year", name: "startYear", value: fields.startYear))
+                                \(renderHiskiWorkbenchInput("End year", name: "endYear", value: fields.endYear))
+                                \(renderHiskiWorkbenchInput("Village/farm", name: "villageFarm", value: fields.villageFarm))
+                                \(renderHiskiWorkbenchInput("Max events", name: "maxEvents", value: fields.maxEvents))
+                            </div>
+                            <div class="hiski-parent-grid">
+                                <fieldset>
+                                    <legend>Father</legend>
+                                    \(renderHiskiWorkbenchInput("First name", name: "fatherFirstName", value: fields.fatherFirstName))
+                                    \(renderHiskiWorkbenchInput("Patronymic", name: "fatherPatronymic", value: fields.fatherPatronymic))
+                                    \(renderHiskiWorkbenchInput("Last name", name: "fatherLastName", value: fields.fatherLastName))
+                                    \(renderHiskiWorkbenchInput("Occupation", name: "fatherOccupation", value: fields.fatherOccupation))
+                                </fieldset>
+                                <fieldset>
+                                    <legend>Mother</legend>
+                                    \(renderHiskiWorkbenchInput("First name", name: "motherFirstName", value: fields.motherFirstName))
+                                    \(renderHiskiWorkbenchInput("Patronymic", name: "motherPatronymic", value: fields.motherPatronymic))
+                                    \(renderHiskiWorkbenchInput("Last name", name: "motherLastName", value: fields.motherLastName))
+                                    \(renderHiskiWorkbenchInput("Occupation", name: "motherOccupation", value: fields.motherOccupation))
+                                </fieldset>
+                                <fieldset>
+                                    <legend>Godparent</legend>
+                                    \(renderHiskiWorkbenchInput("First name", name: "godparentFirstName", value: fields.godparentFirstName))
+                                    \(renderHiskiWorkbenchInput("Patronymic", name: "godparentPatronymic", value: fields.godparentPatronymic))
+                                    \(renderHiskiWorkbenchInput("Last name", name: "godparentLastName", value: fields.godparentLastName))
+                                    \(renderHiskiWorkbenchInput("Occupation", name: "godparentOccupation", value: fields.godparentOccupation))
+                                </fieldset>
+                            </div>
+                            <div class="hiski-workbench-actions">
+                                <button class="copy-button" type="submit">Build query</button>
+                                \(searchLink)
+                            </div>
+                            <label class="hiski-wide-field">
+                                Search results URL
+                                <input type="url" name="resultsURL" value="\(escapeHTML(resultsURL))">
+                            </label>
+                            <div class="hiski-workbench-actions">
+                                <button class="copy-button" type="submit">Load results</button>
+                            </div>
+                        </form>
+                    </section>
+                    \(resultsTable)
+                </main>
+            </div>
+            \(navigationScript)
+            <script>
+                function openHiskiRecordAndSubmit(form) {
+                    const recordUrl = form.getAttribute('data-record-url');
+                    if (recordUrl) {
+                        window.open(recordUrl, '_blank', 'noopener');
+                    }
+                    return true;
+                }
+            </script>
+        </body>
+        </html>
+        """
+    }
+
+    static func renderHiskiBirthCandidatePicker(
+        family: Family,
+        homeId: String,
+        searchURL: String,
+        rows: [HiskiService.HiskiFamilyBirthRow],
+        message: String? = nil,
+        errorMessage: String? = nil
+    ) -> String {
+        let displayedId = family.familyId
+        let navBar = renderNavigationBar(homeId: homeId, displayedId: displayedId)
+        let familyURL = "/family/\(urlEncode(displayedId))" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
+        let citationURL = "/family/\(urlEncode(displayedId))/hiski-birth-citation" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
+        let statusHTML = [
+            message.map { "<div class=\"hiski-workbench-message\">\(escapeHTML($0))</div>" },
+            errorMessage.map { "<div class=\"hiski-workbench-error\">\(escapeHTML($0))</div>" }
+        ]
+            .compactMap { $0 }
+            .joined(separator: "\n")
+        let resultRows = rows.map { row in
+            renderHiskiBirthCitationResultRow(row, citationURL: citationURL)
+        }.joined(separator: "\n")
+        let resultsTable = rows.isEmpty ? "" : """
+        <section class="hiski-workbench-section">
+            <h2>Candidate Results</h2>
+            <table class="hiski-results-table">
+                <thead>
+                    <tr>
+                        <th>Record</th>
+                        <th>Born</th>
+                        <th>Child</th>
+                        <th>Father</th>
+                        <th>Mother</th>
+                        <th>Place</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    \(resultRows)
+                </tbody>
+            </table>
+        </section>
+        """
+
+        return """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>\(escapeHTML(displayedId)) HisKi Candidates - Kalvian Roots</title>
+            <style>
+                \(cssStyles)
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                \(navBar)
+                <main class="hiski-workbench">
+                    <div class="hiski-workbench-header">
+                        <div>
+                            <h1>HisKi Birth Candidates</h1>
+                            <p>\(escapeHTML(displayedId))</p>
+                        </div>
+                        <div class="hiski-workbench-actions">
+                            <a class="family-workspace-action" href="\(escapeHTML(searchURL))" target="_blank" rel="noopener noreferrer">HisKi</a>
+                            <a class="family-workspace-action" href="\(escapeHTML(familyURL))">Family</a>
+                        </div>
+                    </div>
+                    \(statusHTML)
+                    \(resultsTable)
+                </main>
+            </div>
+            \(navigationScript)
+            <script>
+                function openHiskiRecordAndSubmit(form) {
+                    const recordUrl = form.getAttribute('data-record-url');
+                    if (recordUrl) {
+                        window.open(recordUrl, '_blank', 'noopener');
+                    }
+                    return true;
+                }
+            </script>
         </body>
         </html>
         """
@@ -224,6 +462,7 @@ struct HTMLRenderer {
     ) -> String {
         let sourceURL = "/family/\(urlEncode(displayedId))/source" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
         let workupURL = "/family/\(urlEncode(displayedId))/workup" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
+        let hiskiBirthURL = "/family/\(urlEncode(displayedId))/hiski-birth-search" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
         let comparisonURL = "#children-comparison"
         let familySearchURL = familySearchPersonId.map { FamilySearchDOMService.detailsURL(for: $0) }
         let sourceStatus = sourceText == nil ? "Source hidden" : "Source visible"
@@ -281,11 +520,68 @@ struct HTMLRenderer {
             <div class="family-workspace-actions">
                 <a class="family-workspace-action" href="\(escapeHTML(sourceURL))">Source</a>
                 <a class="family-workspace-action" href="\(escapeHTML(workupURL))">Workup</a>
+                <a class="family-workspace-action" href="\(escapeHTML(hiskiBirthURL))">HisKi</a>
                 \(reviewAction)
                 \(comparisonAction)
                 \(familySearchAction)
             </div>
         </section>
+        """
+    }
+
+    private static func renderHiskiWorkbenchInput(_ label: String, name: String, value: String) -> String {
+        """
+        <label>
+            \(escapeHTML(label))
+            <input type="text" name="\(escapeHTML(name))" value="\(escapeHTML(value))" autocomplete="off">
+        </label>
+        """
+    }
+
+    private static func renderHiskiBirthResultRow(_ row: HiskiService.HiskiFamilyBirthRow) -> String {
+        let recordURL = "https://hiski.genealogia.fi\(row.recordPath)"
+        return """
+        <tr>
+            <td>
+                <a href="\(escapeHTML(recordURL))" target="_blank" rel="noopener noreferrer" title="Open HisKi record">🔍</a>
+            </td>
+            <td>\(escapeHTML(row.birthDate))</td>
+            <td>\(escapeHTML(row.childName))</td>
+            <td>\(escapeHTML(row.fatherName))</td>
+            <td>\(escapeHTML(row.motherName))</td>
+            <td>\(escapeHTML([row.parish, row.villageFarm].compactMap { $0 }.joined(separator: " / ")))</td>
+        </tr>
+        """
+    }
+
+    private static func renderHiskiBirthCitationResultRow(
+        _ row: HiskiService.HiskiFamilyBirthRow,
+        citationURL: String
+    ) -> String {
+        let recordURL = "https://hiski.genealogia.fi\(row.recordPath)"
+        return """
+        <tr>
+            <td>
+                <form method="POST"
+                      action="\(escapeHTML(citationURL))"
+                      data-record-url="\(escapeHTML(recordURL))"
+                      onsubmit="return openHiskiRecordAndSubmit(this)">
+                    <input type="hidden" name="birthDate" value="\(escapeHTML(row.birthDate))">
+                    <input type="hidden" name="childName" value="\(escapeHTML(row.childName))">
+                    <input type="hidden" name="fatherName" value="\(escapeHTML(row.fatherName))">
+                    <input type="hidden" name="motherName" value="\(escapeHTML(row.motherName))">
+                    <input type="hidden" name="recordPath" value="\(escapeHTML(row.recordPath))">
+                    <input type="hidden" name="parish" value="\(escapeHTML(row.parish ?? ""))">
+                    <input type="hidden" name="villageFarm" value="\(escapeHTML(row.villageFarm ?? ""))">
+                    <button class="hiski-record-button" type="submit" title="Open HisKi record and show citation">🔍</button>
+                </form>
+            </td>
+            <td>\(escapeHTML(row.birthDate))</td>
+            <td>\(escapeHTML(row.childName))</td>
+            <td>\(escapeHTML(row.fatherName))</td>
+            <td>\(escapeHTML(row.motherName))</td>
+            <td>\(escapeHTML([row.parish, row.villageFarm].compactMap { $0 }.joined(separator: " / ")))</td>
+        </tr>
         """
     }
 
@@ -1799,6 +2095,130 @@ struct HTMLRenderer {
         .family-workspace-action:hover {
             background: #eef6ff;
         }
+        .hiski-workbench {
+            background: #fefdf8;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        .hiski-workbench-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        .hiski-workbench-header h1 {
+            margin: 0;
+            color: #222;
+        }
+        .hiski-workbench-header p {
+            margin: 4px 0 0;
+            color: #666;
+        }
+        .hiski-workbench-section {
+            border-top: 1px solid #ddd;
+            padding-top: 14px;
+            margin-top: 14px;
+        }
+        .hiski-workbench-section h2 {
+            margin: 0 0 10px;
+            font-size: 18px;
+        }
+        .hiski-birth-form,
+        .hiski-selected-record-form {
+            display: grid;
+            gap: 14px;
+        }
+        .hiski-form-grid,
+        .hiski-parent-grid {
+            display: grid;
+            gap: 12px;
+        }
+        .hiski-form-grid {
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        }
+        .hiski-parent-grid {
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        }
+        .hiski-birth-form fieldset {
+            border: 1px solid #d3d3d3;
+            border-radius: 6px;
+            padding: 10px;
+            display: grid;
+            gap: 8px;
+        }
+        .hiski-birth-form legend {
+            font-weight: 700;
+            color: #333;
+        }
+        .hiski-birth-form label,
+        .hiski-selected-record-form label {
+            color: #444;
+            display: grid;
+            font-size: 13px;
+            gap: 4px;
+        }
+        .hiski-birth-form input,
+        .hiski-selected-record-form input {
+            border: 1px solid #bbb;
+            border-radius: 4px;
+            font: 14px 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+            padding: 7px 8px;
+        }
+        .hiski-wide-field {
+            width: 100%;
+        }
+        .hiski-workbench-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+        .hiski-workbench-open-link {
+            padding: 6px 10px;
+        }
+        .hiski-workbench-message,
+        .hiski-workbench-error {
+            border-radius: 6px;
+            margin: 10px 0;
+            padding: 10px 12px;
+        }
+        .hiski-workbench-message {
+            background: #edf7ed;
+            border: 1px solid #8cc78c;
+            color: #245724;
+        }
+        .hiski-workbench-error {
+            background: #fff2f2;
+            border: 1px solid #d38b8b;
+            color: #7b1e1e;
+        }
+        .hiski-results-table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        .hiski-results-table th,
+        .hiski-results-table td {
+            border: 1px solid #bbb;
+            padding: 6px 8px;
+            text-align: left;
+            vertical-align: top;
+        }
+        .hiski-results-table th {
+            background: #f0f0f0;
+        }
+        .hiski-record-button {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 22px;
+            line-height: 1;
+            padding: 0;
+        }
+        .hiski-record-button:hover {
+            transform: scale(1.05);
+        }
         @media (max-width: 760px) {
             .family-workspace {
                 align-items: flex-start;
@@ -1976,8 +2396,9 @@ struct HTMLRenderer {
         }
         .citation-textarea {
             width: 100%;
-            min-height: 200px;
-            padding: 15px;
+            min-height: 42px;
+            height: 42px;
+            padding: 10px 12px;
             border: 1px solid #ddd;
             border-radius: 4px;
             font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;

@@ -393,6 +393,26 @@ class HiskiService {
         let sourceDescription: String
     }
 
+    struct ManualBirthSearchFields: Equatable {
+        var childFirstName: String = ""
+        var startYear: String = ""
+        var endYear: String = ""
+        var villageFarm: String = ""
+        var maxEvents: String = String(HiskiService.maxHiskiResults)
+        var fatherFirstName: String = ""
+        var fatherPatronymic: String = ""
+        var fatherLastName: String = ""
+        var fatherOccupation: String = ""
+        var motherFirstName: String = ""
+        var motherPatronymic: String = ""
+        var motherLastName: String = ""
+        var motherOccupation: String = ""
+        var godparentFirstName: String = ""
+        var godparentPatronymic: String = ""
+        var godparentLastName: String = ""
+        var godparentOccupation: String = ""
+    }
+
     struct HiskiFamilyBirthEvent: Equatable {
         let birthDate: String
         let childName: String
@@ -1424,6 +1444,34 @@ class HiskiService {
             startYear: startYear,
             endYear: endYear ?? startYear + Self.childbearingWindowYears
         )
+    }
+
+    func buildManualBirthSearchUrl(fields: ManualBirthSearchFields) throws -> URL {
+        let params = [
+            "komento": "haku",
+            "srk": parishes,
+            "kirja": "kastetut",
+            "kieli": "en",
+            "etunimi": fields.childFirstName,
+            "alkuvuosi": fields.startYear,
+            "loppuvuosi": fields.endYear,
+            "ikyla": fields.villageFarm,
+            "maxkpl": fields.maxEvents,
+            "ietunimi": fields.fatherFirstName,
+            "aetunimi": fields.motherFirstName,
+            "ipatronyymi": fields.fatherPatronymic,
+            "apatronyymi": fields.motherPatronymic,
+            "isukunimi": fields.fatherLastName,
+            "asukunimi": fields.motherLastName,
+            "iammatti": fields.fatherOccupation,
+            "aammatti": fields.motherOccupation,
+            "ketunimi": fields.godparentFirstName,
+            "kpatronyymi": fields.godparentPatronymic,
+            "ksukunimi": fields.godparentLastName,
+            "kammatti": fields.godparentOccupation
+        ]
+
+        return try buildSearchUrl(params: params)
     }
 
     func buildFamilyBirthSearchRequests(

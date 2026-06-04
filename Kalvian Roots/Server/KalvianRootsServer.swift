@@ -558,6 +558,25 @@ final class HTTPHandler: ChannelInboundHandler {
                 setCookieHeader: setCookieHeader,
                 session: sessionResult.session
             )
+
+        case "hiski-birth-search":
+            logger.info("[\(requestID!)] 🔎 Handling manual HisKi birth search request")
+            return await handleHiskiBirthSearchRequest(
+                familyId: canonicalID,
+                network: network,
+                homeId: homeId,
+                setCookieHeader: setCookieHeader,
+                session: sessionResult.session
+            )
+
+        case "hiski-birth-citation":
+            logger.info("[\(requestID!)] 🔗 Handling manual HisKi birth citation request")
+            return await handleHiskiBirthCitationRequest(
+                network: network,
+                homeId: homeId,
+                setCookieHeader: setCookieHeader,
+                session: sessionResult.session
+            )
             
         case "source":
             logger.info("[\(requestID!)] 📄 Handling SOURCE request")
@@ -1034,7 +1053,14 @@ final class HTTPHandler: ChannelInboundHandler {
                 errorMessage = "No birth record found for \(personName) on \(searchDate)"
             case .multipleResults(let searchURL):
                 logger.info("[\(requestID!)] 📋 Multiple birth results, search URL: \(searchURL)")
-                citationResult = "Multiple results found. Search URL:\n\(searchURL)"
+                return await renderHiskiBirthCandidatePicker(
+                    familyId: familyId,
+                    network: network,
+                    homeId: homeId,
+                    setCookieHeader: setCookieHeader,
+                    session: session,
+                    searchURL: searchURL
+                )
             case .error(let message):
                 logger.error("[\(requestID!)] ❌ Birth query error: \(message)")
                 errorMessage = "HisKi query failed: \(message)"
@@ -1125,6 +1151,254 @@ final class HTTPHandler: ChannelInboundHandler {
         }
         
         return .html(html, headers: responseHeaders)
+    }
+
+    @MainActor
+    private func handleHiskiBirthSearchRequest(
+        familyId: String,
+        network: FamilyNetwork,
+        homeId: String?,
+        setCookieHeader: String?,
+        session: BrowserSession
+    ) async -> HTTPResponse {
+        let form = requestMethod == .POST
+            ? requestBody.map(parseFormData) ?? [:]
+            : [:]
+        let hiskiService = HiskiService(nameEquivalenceManager: session.nameEquivalenceManager)
+        hiskiService.setCurrentFamily(familyId)
+        let fields = form.isEmpty
+            ? defaultManualBirthSearchFields(for: network.mainFamily)
+            : manualBirthSearchFields(from: form)
+        var searchURL: URL?
+        var rows: [HiskiService.HiskiFamilyBirthRow] = []
+        var message: String?
+        var errorMessage: String?
+        let resultsURLText = trimmedFormValue(form["resultsURL"])
+        let selectedRecordURLText = trimmedFormValue(form["selectedRecordURL"])
+
+        do {
+            searchURL = try hiskiService.buildManualBirthSearchUrl(fields: fields)
+        } catch {
+            errorMessage = "Could not build HisKi search URL: \(error.localizedDescription)"
+        }
+
+        if requestMethod == .POST {
+            let resultsURL: URL?
+            if let resultsURLText, !resultsURLText.isEmpty {
+                resultsURL = validatedHiskiURL(from: resultsURLText)
+                if resultsURL == nil {
+                    errorMessage = "Paste a HisKi search results URL from hiski.genealogia.fi."
+                }
+            } else {
+                resultsURL = searchURL
+            }
+
+            if let resultsURL {
+                do {
+                    let html = try await loadHiskiSearchHtml(from: resultsURL)
+                    rows = hiskiService.parseFamilyBirthResultsTable(html)
+                    message = rows.isEmpty
+                        ? "HisKi returned no parseable birth result rows."
+                        : "\(rows.count) HisKi birth result \(rows.count == 1 ? "row" : "rows") ready."
+                } catch {
+                    errorMessage = "Could not load HisKi results: \(error.localizedDescription)"
+                }
+            } else if errorMessage == nil {
+                errorMessage = "Paste a HisKi search results URL from hiski.genealogia.fi."
+            }
+        }
+
+        let actualHomeId = homeId ?? familyId
+        let html = HTMLRenderer.renderHiskiBirthWorkbench(
+            family: network.mainFamily,
+            homeId: actualHomeId,
+            fields: fields,
+            searchURL: searchURL,
+            resultsURL: resultsURLText ?? "",
+            selectedRecordURL: selectedRecordURLText ?? "",
+            rows: rows,
+            message: message,
+            errorMessage: errorMessage
+        )
+
+        return .html(html, headers: responseHeaders(setCookieHeader: setCookieHeader))
+    }
+
+    @MainActor
+    private func handleHiskiBirthCitationRequest(
+        network: FamilyNetwork,
+        homeId: String?,
+        setCookieHeader: String?,
+        session: BrowserSession
+    ) async -> HTTPResponse {
+        guard requestMethod == .POST else {
+            return .error(.methodNotAllowed, "HisKi birth citation requires POST")
+        }
+
+        let form = requestBody.map(parseFormData) ?? [:]
+        let recordPath: String?
+        if let selectedRecordURL = trimmedFormValue(form["selectedRecordURL"]), !selectedRecordURL.isEmpty {
+            recordPath = hiskiRecordPath(from: selectedRecordURL)
+        } else {
+            recordPath = trimmedFormValue(form["recordPath"])
+        }
+
+        guard let recordPath, !recordPath.isEmpty else {
+            return renderFamilyWithError(
+                network: network,
+                homeId: homeId,
+                error: "Choose a HisKi row or paste a HisKi record URL first.",
+                setCookieHeader: setCookieHeader
+            )
+        }
+
+        let row = HiskiService.HiskiFamilyBirthRow(
+            birthDate: trimmedFormValue(form["birthDate"]) ?? "",
+            childName: trimmedFormValue(form["childName"]) ?? "",
+            fatherName: trimmedFormValue(form["fatherName"]) ?? "",
+            motherName: trimmedFormValue(form["motherName"]) ?? "",
+            recordPath: recordPath,
+            parish: trimmedFormValue(form["parish"]),
+            villageFarm: trimmedFormValue(form["villageFarm"])
+        )
+        let hiskiService = HiskiService(nameEquivalenceManager: session.nameEquivalenceManager)
+        let result = await hiskiService.fetchCitationEventsForFamilyBirthRows([row])
+
+        if let event = result.events.first {
+            let html = HTMLRenderer.renderFamily(
+                family: network.mainFamily,
+                network: network,
+                homeId: homeId,
+                citationText: event.citationURL
+            )
+            return .html(html, headers: responseHeaders(setCookieHeader: setCookieHeader))
+        }
+
+        let message = result.failures.first?.message ?? "HisKi citation link not found in record page."
+        return renderFamilyWithError(
+            network: network,
+            homeId: homeId,
+            error: message,
+            setCookieHeader: setCookieHeader
+        )
+    }
+
+    @MainActor
+    private func renderHiskiBirthCandidatePicker(
+        familyId: String,
+        network: FamilyNetwork,
+        homeId: String?,
+        setCookieHeader: String?,
+        session: BrowserSession,
+        searchURL: String
+    ) async -> HTTPResponse {
+        guard let url = validatedHiskiURL(from: searchURL) else {
+            return renderFamilyWithError(
+                network: network,
+                homeId: homeId,
+                error: "HisKi returned an invalid birth search URL.",
+                setCookieHeader: setCookieHeader
+            )
+        }
+
+        let hiskiService = HiskiService(nameEquivalenceManager: session.nameEquivalenceManager)
+        hiskiService.setCurrentFamily(familyId)
+        let rows: [HiskiService.HiskiFamilyBirthRow]
+        let message: String?
+        let errorMessage: String?
+
+        do {
+            let html = try await loadHiskiSearchHtml(from: url)
+            rows = hiskiService.parseFamilyBirthResultsTable(html)
+            message = rows.isEmpty
+                ? "HisKi returned no parseable birth result rows."
+                : "\(rows.count) HisKi birth candidate \(rows.count == 1 ? "row" : "rows") ready."
+            errorMessage = nil
+        } catch {
+            rows = []
+            message = nil
+            errorMessage = "Could not load HisKi results: \(error.localizedDescription)"
+        }
+
+        let html = HTMLRenderer.renderHiskiBirthCandidatePicker(
+            family: network.mainFamily,
+            homeId: homeId ?? familyId,
+            searchURL: searchURL,
+            rows: rows,
+            message: message,
+            errorMessage: errorMessage
+        )
+        return .html(html, headers: responseHeaders(setCookieHeader: setCookieHeader))
+    }
+
+    private func defaultManualBirthSearchFields(for family: Family) -> HiskiService.ManualBirthSearchFields {
+        var fields = HiskiService.ManualBirthSearchFields()
+        guard let couple = family.primaryCouple else {
+            return fields
+        }
+
+        fields.fatherFirstName = couple.husband.name
+        fields.fatherPatronymic = couple.husband.patronymic ?? ""
+        fields.motherFirstName = couple.wife.name
+        fields.motherPatronymic = couple.wife.patronymic ?? ""
+
+        if let window = HiskiService.familyBirthSearchWindow(for: couple) {
+            fields.startYear = String(window.startYear)
+            fields.endYear = String(window.endYear)
+        }
+
+        return fields
+    }
+
+    private func manualBirthSearchFields(from form: [String: String]) -> HiskiService.ManualBirthSearchFields {
+        HiskiService.ManualBirthSearchFields(
+            childFirstName: trimmedFormValue(form["childFirstName"]) ?? "",
+            startYear: trimmedFormValue(form["startYear"]) ?? "",
+            endYear: trimmedFormValue(form["endYear"]) ?? "",
+            villageFarm: trimmedFormValue(form["villageFarm"]) ?? "",
+            maxEvents: trimmedFormValue(form["maxEvents"]) ?? String(HiskiService.maxHiskiResults),
+            fatherFirstName: trimmedFormValue(form["fatherFirstName"]) ?? "",
+            fatherPatronymic: trimmedFormValue(form["fatherPatronymic"]) ?? "",
+            fatherLastName: trimmedFormValue(form["fatherLastName"]) ?? "",
+            fatherOccupation: trimmedFormValue(form["fatherOccupation"]) ?? "",
+            motherFirstName: trimmedFormValue(form["motherFirstName"]) ?? "",
+            motherPatronymic: trimmedFormValue(form["motherPatronymic"]) ?? "",
+            motherLastName: trimmedFormValue(form["motherLastName"]) ?? "",
+            motherOccupation: trimmedFormValue(form["motherOccupation"]) ?? "",
+            godparentFirstName: trimmedFormValue(form["godparentFirstName"]) ?? "",
+            godparentPatronymic: trimmedFormValue(form["godparentPatronymic"]) ?? "",
+            godparentLastName: trimmedFormValue(form["godparentLastName"]) ?? "",
+            godparentOccupation: trimmedFormValue(form["godparentOccupation"]) ?? ""
+        )
+    }
+
+    private func trimmedFormValue(_ value: String?) -> String? {
+        value?.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func validatedHiskiURL(from rawValue: String) -> URL? {
+        guard let url = URL(string: rawValue),
+              url.scheme == "https",
+              url.host == "hiski.genealogia.fi",
+              url.path == "/hiski" else {
+            return nil
+        }
+
+        return url
+    }
+
+    private func hiskiRecordPath(from rawValue: String) -> String? {
+        if rawValue.hasPrefix("/hiski?") {
+            return rawValue
+        }
+
+        guard let url = validatedHiskiURL(from: rawValue),
+              let query = url.query,
+              !query.isEmpty else {
+            return nil
+        }
+
+        return "/hiski?\(query)"
     }
     
     
