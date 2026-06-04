@@ -736,6 +736,64 @@ enum FamilySearchDOMService {
                 return groups;
             }
 
+            function linkFallbackDiagnostics(expectedPersonId) {
+                const root = familyMembersDOMRoot();
+                const elements = Array.from(root.querySelectorAll('a[href],button,[role="button"],[data-href],[aria-label],[title]'));
+                const people = [];
+                const seen = new Set();
+                for (const element of elements) {
+                    const person = personSummaryFromElement(element);
+                    if (!person || seen.has(person.id)) continue;
+                    seen.add(person.id);
+                    people.push(person);
+                }
+
+                const expectedId = clean(expectedPersonId).toUpperCase();
+                return {
+                    rootTag: root && root.tagName ? root.tagName.toLowerCase() : 'unknown',
+                    elementCount: elements.length,
+                    personCount: people.length,
+                    expectedIndex: people.findIndex(person => person.id === expectedId),
+                    ids: people.slice(0, 12).map(person => person.id + ' ' + clean(person.name).slice(0, 40))
+                };
+            }
+
+            function familyMembersLineDiagnostics() {
+                const lines = familyMembersLines();
+                const spousesIndex = spousesAndChildrenIndex(lines);
+                const parentsIndex = parentsAndSiblingsIndex(lines, spousesIndex);
+                const sectionLines = spousesIndex >= 0
+                    ? lines.slice(spousesIndex + 1, parentsIndex >= 0 ? parentsIndex : lines.length)
+                    : lines;
+                return {
+                    totalLineCount: lines.length,
+                    spousesIndex,
+                    familyLines: sectionLines.slice(0, 24)
+                };
+            }
+
+            function familySearchFailureDebugNotes(expectedPersonId, error) {
+                const notes = ['FamilySearch extraction stage at failure: ' + currentExtractionStage()];
+                const message = clean(error && error.message);
+                if (/spouse groups not found/i.test(message)) {
+                    const lineDiagnostics = familyMembersLineDiagnostics();
+                    const linkDiagnostics = linkFallbackDiagnostics(expectedPersonId);
+                    notes.push(
+                        'FamilySearch spouse section diagnostics: lines=' + lineDiagnostics.totalLineCount
+                        + ', spousesIndex=' + lineDiagnostics.spousesIndex
+                        + ', sample=' + lineDiagnostics.familyLines.join(' | ').slice(0, 900)
+                    );
+                    notes.push(
+                        'FamilySearch person-link diagnostics: root=' + linkDiagnostics.rootTag
+                        + ', elements=' + linkDiagnostics.elementCount
+                        + ', people=' + linkDiagnostics.personCount
+                        + ', expectedIndex=' + linkDiagnostics.expectedIndex
+                        + ', ids=' + linkDiagnostics.ids.join(' | ').slice(0, 900)
+                    );
+                }
+                return notes;
+            }
+
             function visibleText(element) {
                 if (!element) return '';
                 const style = localDocument.defaultView.getComputedStyle(element);
@@ -1519,7 +1577,7 @@ enum FamilySearchDOMService {
                     spouseGroupCount: 0,
                     childCount: 0,
                     preferredChildCount: 0,
-                    debugNotes: ['FamilySearch extraction stage at failure: ' + currentExtractionStage()]
+                    debugNotes: familySearchFailureDebugNotes(expectedPersonId, error)
                 };
             }
 
