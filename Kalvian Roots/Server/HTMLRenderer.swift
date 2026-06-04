@@ -711,6 +711,18 @@ struct HTMLRenderer {
             html.append(family.notes.map { "<div class=\"family-note\">\(escapeHTML(displayFootnoteText($0)))</div>" }.joined(separator: "\n"))
         }
 
+        if !family.noteDefinitions.isEmpty {
+            let noteDefinitionHTML = family.noteDefinitions.keys.sorted().compactMap { key -> String? in
+                guard let text = family.noteDefinitions[key] else {
+                    return nil
+                }
+                return "<div class=\"family-note\">\(escapeHTML(displayFootnoteMarker(key))) \(escapeHTML(text))</div>"
+            }.joined(separator: "\n")
+            if !noteDefinitionHTML.isEmpty {
+                html.append(noteDefinitionHTML)
+            }
+        }
+
         return html.joined(separator: "\n")
     }
 

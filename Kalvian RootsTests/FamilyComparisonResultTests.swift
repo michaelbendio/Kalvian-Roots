@@ -2124,6 +2124,37 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertFalse(html.contains("as_parent"))
     }
 
+    func testServerRenderedFamilyShowsNoteDefinitionsAndInfantDeathNotes() {
+        let family = Family(
+            familyId: "SAKERI 7",
+            pageReferences: ["266"],
+            couples: [
+                Couple(
+                    husband: Person(name: "Antti", patronymic: "Simonp."),
+                    wife: Person(name: "Liisa", patronymic: "Sigfridint."),
+                    children: [
+                        Person(
+                            name: "Maria",
+                            birthDate: "05.12.1774",
+                            spouse: "Antti Rita",
+                            noteMarkers: ["★"]
+                        )
+                    ],
+                    childrenDiedInfancy: 2
+                )
+            ],
+            notes: [],
+            noteDefinitions: ["★": "Muutti 1801 Sakeri 9."]
+        )
+
+        let html = HTMLRenderer.renderFamily(family: family, network: nil)
+
+        XCTAssertTrue(html.contains("Antti Rita"))
+        XCTAssertTrue(html.contains("*"))
+        XCTAssertTrue(html.contains("<div class=\"family-note\">Lapsena kuollut 2.</div>"))
+        XCTAssertTrue(html.contains("<div class=\"family-note\">* Muutti 1801 Sakeri 9.</div>"))
+    }
+
     func testServerRenderedLapsetOpensHiskiChildResultsTab() throws {
         let family = Family(
             familyId: "KYKYRI II 7",
@@ -2203,6 +2234,11 @@ final class FamilySearchDOMServiceTests: XCTestCase {
             "Typed browser navigation should request a refreshed composite after the cached family display renders."
         )
         XCTAssertTrue(server.contains("if reloadFlag, compositeFlag"))
+        XCTAssertTrue(
+            server.contains("if compositeFlag, reloadFlag, familySearchExtraction == nil"),
+            "Typed browser navigation should let the background composite request run FamilySearch extraction before building labelled child rows."
+        )
+        XCTAssertTrue(server.contains("FamilySearchWebViewExtractionManager.shared.openDetailsPageAndExtract"))
         XCTAssertTrue(server.contains("if compositeFlag {\n                comparisonGroups = await makeChildrenComparisonGroups"))
         XCTAssertTrue(server.contains("compositeURL: compositeURL"))
     }
