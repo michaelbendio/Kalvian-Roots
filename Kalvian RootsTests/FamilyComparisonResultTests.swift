@@ -2559,6 +2559,9 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("function visibleDocumentLines()"))
         XCTAssertTrue(script.contains(".split('\\n')"))
         XCTAssertTrue(script.contains(": visibleDocumentLines();"))
+        XCTAssertTrue(script.contains("function nudgeFamilyMembersRendering(attempt)"))
+        XCTAssertTrue(script.contains("heading.scrollIntoView({ block: 'center', inline: 'nearest' });"))
+        XCTAssertTrue(script.contains("nudgeFamilyMembersRendering(attempt);"))
         XCTAssertTrue(script.contains("familyMembersSectionFound: !!section || familyIndex >= 0 || spousesIndex >= 0"))
         XCTAssertTrue(script.contains("waiting for Family Members section attempt "))
         XCTAssertTrue(script.contains("lastDiagnostics.familyMembersSectionFound && lastDiagnostics.spousesAndChildrenSectionFound"))
@@ -2737,6 +2740,26 @@ final class FamilySearchDOMServiceTests: XCTestCase {
                 childrenMarkerCount: 3
             ),
             "FamilySearch WebKit waiting for Family Members section attempt 30: familyMembers=yes, spousesAndChildren=no, childMarkers=3"
+        )
+    }
+
+    func testWebKitManagerNudgesLazyFamilyMembersRenderingBeforeDiagnostics() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kalvian Roots/App/FamilySearchWebViewExtractionManager.swift")
+        let source = try String(
+            contentsOf: sourceURL,
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(source.contains("await nudgeFamilyMembersRendering(attempt: attempt)"))
+        XCTAssertTrue(source.contains("target.scrollIntoView({ block: 'center', inline: 'nearest' });"))
+        let waitStart = try XCTUnwrap(source.range(of: "@MainActor private func waitForFamilyMembersSections")?.lowerBound)
+        let waitSource = source[waitStart...]
+        XCTAssertLessThan(
+            try XCTUnwrap(waitSource.range(of: "await nudgeFamilyMembersRendering(attempt: attempt)")?.lowerBound),
+            try XCTUnwrap(waitSource.range(of: "let diagnostics = await collectTimeoutDiagnostics()")?.lowerBound)
         )
     }
 

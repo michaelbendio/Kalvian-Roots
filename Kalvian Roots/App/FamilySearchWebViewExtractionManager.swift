@@ -1002,6 +1002,7 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
         let progressAttempts = Set([1, 10, 30, 60, 90, 120, 180, 240])
 
         for attempt in 1...240 {
+            await nudgeFamilyMembersRendering(attempt: attempt)
             let diagnostics = await collectTimeoutDiagnostics()
             if diagnostics.familyMembersSectionFound == true,
                diagnostics.spousesAndChildrenSectionFound == true {
@@ -1032,6 +1033,49 @@ final class FamilySearchWebViewExtractionManager: NSObject, WKNavigationDelegate
                 childrenMarkerCount: diagnostics.childrenMarkerCount
             )
         )
+    }
+
+    @MainActor private func nudgeFamilyMembersRendering(attempt: Int) async {
+        guard let webView else {
+            return
+        }
+
+        let script = """
+        (() => {
+            function clean(text) {
+                return (text || '').replace(/\\s+/g, ' ').trim();
+            }
+
+            function findHeading(label) {
+                return Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6,a,button,span,div'))
+                    .find(element => clean(element.textContent || element.getAttribute('aria-label') || element.getAttribute('title')) === label);
+            }
+
+            const target = findHeading('Family Members') || findHeading('Spouses and Children');
+            if (target && target.scrollIntoView) {
+                target.scrollIntoView({ block: 'center', inline: 'nearest' });
+            } else {
+                const maxScroll = Math.max(
+                    0,
+                    (document.documentElement?.scrollHeight || document.body?.scrollHeight || 0) - window.innerHeight
+                );
+                const position = maxScroll === 0
+                    ? 0
+                    : Math.min(maxScroll, Math.round(maxScroll * (\(attempt % 8) / 7)));
+                window.scrollTo(0, position);
+            }
+
+            window.dispatchEvent(new Event('scroll', { bubbles: true }));
+            document.dispatchEvent(new Event('scroll', { bubbles: true }));
+            return true;
+        })();
+        """
+
+        await withCheckedContinuation { continuation in
+            webView.evaluateJavaScript(script) { _, _ in
+                continuation.resume()
+            }
+        }
     }
 
     @MainActor private func collectTimeoutDiagnostics() async -> TimeoutDiagnostics {

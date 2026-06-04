@@ -314,6 +314,25 @@ enum FamilySearchDOMService {
                 return null;
             }
 
+            function nudgeFamilyMembersRendering(attempt) {
+                const heading = findHeading('Family Members') || findHeading('Spouses and Children');
+                if (heading && heading.scrollIntoView) {
+                    heading.scrollIntoView({ block: 'center', inline: 'nearest' });
+                } else {
+                    const maxScroll = Math.max(
+                        0,
+                        ((extractionDocument().documentElement || {}).scrollHeight || (extractionDocument().body || {}).scrollHeight || 0) - extractionDocument().defaultView.innerHeight
+                    );
+                    const position = maxScroll === 0
+                        ? 0
+                        : Math.min(maxScroll, Math.round(maxScroll * ((attempt % 8) / 7)));
+                    extractionDocument().defaultView.scrollTo(0, position);
+                }
+
+                extractionDocument().defaultView.dispatchEvent(new Event('scroll', { bubbles: true }));
+                extractionDocument().dispatchEvent(new Event('scroll', { bubbles: true }));
+            }
+
             function visibleDocumentLines() {
                 return ((extractionDocument().body || {}).innerText || '')
                     .split('\\n')
@@ -1132,6 +1151,7 @@ enum FamilySearchDOMService {
                 let lastDiagnostics = null;
                 for (let attempt = 0; attempt < 120; attempt += 1) {
                     assertCurrentFamilySearchDetailsPage(expectedId);
+                    nudgeFamilyMembersRendering(attempt);
                     lastDiagnostics = diagnosticContext();
                     if (lastDiagnostics.familyMembersSectionFound && lastDiagnostics.spousesAndChildrenSectionFound) {
                         return;
