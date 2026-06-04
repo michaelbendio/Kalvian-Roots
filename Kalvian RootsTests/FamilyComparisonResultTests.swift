@@ -2565,6 +2565,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("function extractSpouseGroupsFromPersonLinks(expectedPersonId)"))
         XCTAssertTrue(script.contains("const linkGroups = extractSpouseGroupsFromPersonLinks(personIdFromURL());"))
         XCTAssertTrue(script.contains("element.getAttribute('data-href') || ''"))
+        XCTAssertTrue(script.contains("if (sectionPersonLinks.length >= 3)"))
         XCTAssertTrue(script.contains("return visibleDocumentLines();"))
         XCTAssertTrue(script.contains("const start = spousesAndChildrenIndex(lines);"))
         XCTAssertTrue(script.contains("function nudgeFamilyMembersRendering(attempt)"))

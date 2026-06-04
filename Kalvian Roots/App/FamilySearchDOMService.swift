@@ -530,10 +530,23 @@ enum FamilySearchDOMService {
             function familyMembersDOMRoot() {
                 const section = familyMembersSection();
                 if (section && textLines(section).some(line => /^Spouses and Children$/i.test(line))) {
+                    const sectionPersonLinks = Array.from(section.querySelectorAll('a[href],button,[role="button"],[data-href],[aria-label],[title]'))
+                        .filter(element => personSummaryFromElement(element));
+                    if (sectionPersonLinks.length >= 3) {
+                        return section;
+                    }
+                }
+
+                const body = extractionDocument().body;
+                if (body) {
+                    return body;
+                }
+
+                if (section) {
                     return section;
                 }
 
-                return extractionDocument().body || extractionDocument();
+                return extractionDocument();
             }
 
             function extractSpouseGroupsFromPersonLinks(expectedPersonId) {
