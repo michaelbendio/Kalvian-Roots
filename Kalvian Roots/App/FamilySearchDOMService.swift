@@ -748,13 +748,27 @@ enum FamilySearchDOMService {
                     people.push(person);
                 }
 
+                const elementSamples = elements.slice(0, 18).map(element => {
+                    const attributes = Array.from(element.attributes || [])
+                        .filter(attribute => /href|label|title|test|role|id|data/i.test(attribute.name))
+                        .slice(0, 8)
+                        .map(attribute => attribute.name + '=' + clean(attribute.value).slice(0, 80))
+                        .join(',');
+                    return clean([
+                        element.tagName ? element.tagName.toLowerCase() : 'unknown',
+                        attributes,
+                        visibleText(element).slice(0, 120)
+                    ].join(' '));
+                });
+
                 const expectedId = clean(expectedPersonId).toUpperCase();
                 return {
                     rootTag: root && root.tagName ? root.tagName.toLowerCase() : 'unknown',
                     elementCount: elements.length,
                     personCount: people.length,
                     expectedIndex: people.findIndex(person => person.id === expectedId),
-                    ids: people.slice(0, 12).map(person => person.id + ' ' + clean(person.name).slice(0, 40))
+                    ids: people.slice(0, 12).map(person => person.id + ' ' + clean(person.name).slice(0, 40)),
+                    elementSamples
                 };
             }
 
@@ -784,11 +798,19 @@ enum FamilySearchDOMService {
                         + ', sample=' + lineDiagnostics.familyLines.join(' | ').slice(0, 900)
                     );
                     notes.push(
+                        'FamilySearch visible line diagnostics: sample='
+                        + familyMembersLines().slice(0, 55).join(' | ').slice(0, 1200)
+                    );
+                    notes.push(
                         'FamilySearch person-link diagnostics: root=' + linkDiagnostics.rootTag
                         + ', elements=' + linkDiagnostics.elementCount
                         + ', people=' + linkDiagnostics.personCount
                         + ', expectedIndex=' + linkDiagnostics.expectedIndex
                         + ', ids=' + linkDiagnostics.ids.join(' | ').slice(0, 900)
+                    );
+                    notes.push(
+                        'FamilySearch element diagnostics: sample='
+                        + linkDiagnostics.elementSamples.join(' || ').slice(0, 1400)
                     );
                 }
                 return notes;
