@@ -340,6 +340,45 @@ enum FamilySearchDOMService {
                     .filter(Boolean);
             }
 
+            function textLines(element) {
+                return ((element || {}).innerText || '')
+                    .split('\\n')
+                    .map(clean)
+                    .filter(Boolean);
+            }
+
+            function linesContainFamilyRows(lines) {
+                return lines.some(line => /^Children\\s*\\(\\d+\\)$/i.test(line))
+                    || lines.some(line => /\\b[A-Z0-9]{4}-[A-Z0-9]{3,}\\b/i.test(line));
+            }
+
+            function familyMembersLines() {
+                const section = familyMembersSection();
+                const sectionLines = section ? textLines(section) : [];
+                if (sectionLines.some(line => /^Spouses and Children$/i.test(line)) && linesContainFamilyRows(sectionLines)) {
+                    return sectionLines;
+                }
+
+                return visibleDocumentLines();
+            }
+
+            function parentsAndSiblingsIndex(lines, start) {
+                return lines.findIndex((line, index) => index > start && /^Parents and Siblings$/i.test(line));
+            }
+
+            function spousesAndChildrenIndex(lines) {
+                const starts = lines
+                    .map((line, index) => /^Spouses and Children$/i.test(line) ? index : -1)
+                    .filter(index => index >= 0);
+                const rowStart = starts.find(start => {
+                    const end = parentsAndSiblingsIndex(lines, start);
+                    const sectionLines = lines.slice(start + 1, end >= 0 ? end : lines.length);
+                    return linesContainFamilyRows(sectionLines);
+                });
+
+                return rowStart ?? starts[0] ?? -1;
+            }
+
             function pageURL() {
                 return documentURL(diagnosticDocument());
             }
@@ -452,11 +491,8 @@ enum FamilySearchDOMService {
             }
 
             function sectionLinesFromSpousesAndChildren() {
-                const section = familyMembersSection();
-                const lines = section
-                    ? (section.innerText || '').split('\\n').map(clean).filter(Boolean)
-                    : visibleDocumentLines();
-                const start = lines.findIndex(line => /^Spouses and Children$/i.test(line));
+                const lines = familyMembersLines();
+                const start = spousesAndChildrenIndex(lines);
                 if (start < 0) {
                     const familyMembersMessage = lines.some(line => /^Family Members$/i.test(line))
                         ? ''
@@ -464,7 +500,7 @@ enum FamilySearchDOMService {
                     throw new Error('Spouses and Children section not found' + familyMembersMessage);
                 }
 
-                const end = lines.findIndex((line, index) => index > start && /^Parents and Siblings$/i.test(line));
+                const end = parentsAndSiblingsIndex(lines, start);
                 return lines.slice(start + 1, end >= 0 ? end : lines.length);
             }
 
@@ -475,12 +511,10 @@ enum FamilySearchDOMService {
                 } catch (_) {
                     section = null;
                 }
-                const allLines = section
-                    ? (section.innerText || '').split('\\n').map(clean).filter(Boolean)
-                    : visibleDocumentLines();
+                const allLines = familyMembersLines();
                 const familyIndex = allLines.findIndex(line => /^Family Members$/i.test(line));
-                const spousesIndex = allLines.findIndex(line => /^Spouses and Children$/i.test(line));
-                const parentsIndex = allLines.findIndex((line, index) => index > spousesIndex && /^Parents and Siblings$/i.test(line));
+                const spousesIndex = spousesAndChildrenIndex(allLines);
+                const parentsIndex = parentsAndSiblingsIndex(allLines, spousesIndex);
                 const sectionLines = spousesIndex >= 0
                     ? allLines.slice(spousesIndex + 1, parentsIndex >= 0 ? parentsIndex : allLines.length)
                     : [];
