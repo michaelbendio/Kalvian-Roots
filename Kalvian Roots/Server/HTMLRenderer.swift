@@ -1413,7 +1413,7 @@ struct HTMLRenderer {
                 <a href="\(reloadURL)" class="nav-btn">↺</a>
                 <a href="\(sourceURL)" class="nav-btn" title="\(sourceTitle)">📄</a>
                 <a href="\(workupURL)" class="nav-btn" title="\(workupTitle)">⚙</a>
-                <a href="\(hiskiBirthURL)" class="nav-btn" title="HisKi birth search">▣</a>
+                <a href="\(hiskiBirthURL)" class="nav-btn" title="HisKi birth search" aria-label="HisKi birth search"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="7" ry="3"></ellipse><path d="M5 5v5c0 1.7 3.1 3 7 3s7-1.3 7-3V5"></path><path d="M5 10v5c0 1.7 3.1 3 7 3s7-1.3 7-3v-5"></path><path d="M5 15v4c0 1.7 3.1 3 7 3s7-1.3 7-3v-4"></path></svg></a>
             </div>
             <form method="GET" action="/family" class="nav-form" onsubmit="showLoading(event)">
                 <div class="input-wrapper">
@@ -1884,8 +1884,22 @@ struct HTMLRenderer {
             cursor: pointer;
             font-size: 18px;
             text-decoration: none;
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 42px;
+            min-height: 38px;
             transition: background 0.2s;
+        }
+        .nav-icon {
+            display: block;
+            width: 22px;
+            height: 22px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
         }
         .nav-btn:hover:not(.disabled) {
             background: #0052a3;

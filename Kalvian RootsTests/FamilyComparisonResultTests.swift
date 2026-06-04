@@ -2494,7 +2494,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
 
         let html = HTMLRenderer.renderFamily(family: family, network: nil)
 
-        XCTAssertTrue(html.contains(#"title="HisKi birth search">▣</a>"#))
+        XCTAssertTrue(html.contains(#"title="HisKi birth search" aria-label="HisKi birth search"><svg class="nav-icon""#))
         XCTAssertTrue(html.contains("/family/SAKERI%207/hiski-birth-search"))
     }
 
