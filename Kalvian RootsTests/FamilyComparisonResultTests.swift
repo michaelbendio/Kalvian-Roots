@@ -1892,11 +1892,11 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(html.contains("Maria"))
         XCTAssertTrue(html.contains("function loadFamilyComposite()"))
         XCTAssertTrue(html.contains(#"const compositeURL = "/family/AHOKANGAS%202?composite=1";"#))
-        XCTAssertTrue(html.contains("Synchronizing FamilySearch and hiski.genealogia.fi..."))
+        XCTAssertTrue(html.contains("Checking children in FamilySearch and hiski.genealogia.fi..."))
         XCTAssertTrue(html.contains("familyContent.setAttribute('data-composite-status', 'loading');"))
-        XCTAssertTrue(html.contains("const workspace = document.querySelector('.family-workspace');"))
-        XCTAssertTrue(html.contains("workspace.outerHTML = compositeWorkspace.outerHTML;"))
         XCTAssertTrue(html.contains("familyContent.innerHTML = compositeContent.innerHTML;"))
+        XCTAssertFalse(html.contains("const workspace = document.querySelector('.family-workspace');"))
+        XCTAssertFalse(html.contains("workspace.outerHTML = compositeWorkspace.outerHTML;"))
     }
 
     func testServerRenderedFamilyLabelsChildrenBySource() {

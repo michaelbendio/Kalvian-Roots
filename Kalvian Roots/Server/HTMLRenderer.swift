@@ -182,16 +182,6 @@ struct HTMLRenderer {
         let closeURL = "/family/\(urlEncode(displayedId))" + (displayedId == actualHomeId ? "" : "?home=\(urlEncode(actualHomeId))")
         let citationPanel = renderCitationPanel(citationText: citationText, errorMessage: errorMessage, closeURL: closeURL)
         let sourcePanel = renderSourcePanel(sourceText: sourceText)
-        let workspaceHeader = renderFamilyWorkspaceHeader(
-            family: family,
-            displayedId: displayedId,
-            homeId: actualHomeId,
-            sourceText: sourceText,
-            comparisonResult: comparisonResult,
-            familySearchExtraction: familySearchExtraction,
-            familySearchPersonId: familySearchPersonId,
-            workup: workup
-        )
         let hiskiNoticeToast = renderHiskiNoticeToast(comparisonGroups: comparisonGroups)
 
         return """
@@ -211,7 +201,6 @@ struct HTMLRenderer {
                 \(hiskiNoticeToast)
                 \(citationPanel)
                 \(sourcePanel)
-                \(workspaceHeader)
                 <div class="family-content">
                     \(familyHTML)
                 </div>
@@ -445,85 +434,6 @@ struct HTMLRenderer {
             </script>
         </body>
         </html>
-        """
-    }
-
-    private static func renderFamilyWorkspaceHeader(
-        family: Family,
-        displayedId: String,
-        homeId: String,
-        sourceText: String?,
-        comparisonResult: FamilyComparisonResult?,
-        familySearchExtraction: FamilySearchFamilyExtraction?,
-        familySearchPersonId: String?,
-        workup: FamilyWorkup?
-    ) -> String {
-        let sourceURL = "/family/\(urlEncode(displayedId))/source" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
-        let workupURL = "/family/\(urlEncode(displayedId))/workup" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
-        let hiskiBirthURL = "/family/\(urlEncode(displayedId))/hiski-birth-search" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
-        let comparisonURL = "#children-comparison"
-        let familySearchURL = familySearchPersonId.map { FamilySearchDOMService.detailsURL(for: $0) }
-        let sourceStatus = sourceText == nil ? "Source hidden" : "Source visible"
-        let comparisonStatus: String
-        if let comparisonResult {
-            comparisonStatus = "\(FamilyComparisonReviewDetector.displayRows(for: comparisonResult.rows).count) comparison rows"
-        } else {
-            comparisonStatus = "Comparison not loaded"
-        }
-        let familySearchStatus: String
-        if let extraction = familySearchExtraction {
-            familySearchStatus = extraction.isSuccessful
-                ? "\(extraction.children.count) FamilySearch children"
-                : "FamilySearch extraction failed"
-        } else if familySearchPersonId != nil {
-            familySearchStatus = "FamilySearch ready"
-        } else {
-            familySearchStatus = "No FamilySearch anchor"
-        }
-        let reviewStatus: String
-        if let workup {
-            reviewStatus = workup.actions.isEmpty
-                ? "No queued actions"
-                : "\(workup.actions.count) queued \(workup.actions.count == 1 ? "action" : "actions")"
-        } else {
-            reviewStatus = "Review queue not loaded"
-        }
-
-        let familySearchAction = familySearchURL.map {
-            "<a class=\"family-workspace-action\" href=\"\(escapeHTML($0))\">FamilySearch</a>"
-        } ?? ""
-        let comparisonAction = comparisonResult == nil && familySearchPersonId == nil
-            ? ""
-            : "<a class=\"family-workspace-action\" href=\"\(escapeHTML(comparisonURL))\">Comparison</a>"
-        let reviewAction = (workup?.actions.isEmpty == false)
-            ? "<a class=\"family-workspace-action\" href=\"#family-review-queue\">Review</a>"
-            : ""
-
-        return """
-        <section class="family-workspace" aria-label="Family review status">
-            <div class="family-workspace-main">
-                <div class="family-workspace-family">
-                    <span class="family-workspace-title">\(escapeHTML(family.familyId))</span>
-                    <span class="family-workspace-pages">Pages: \(escapeHTML(family.pageReferences.joined(separator: ", ")))</span>
-                    <span>\(family.couples.count) \(family.couples.count == 1 ? "couple" : "couples")</span>
-                    <span>\(family.allChildren.count) \(family.allChildren.count == 1 ? "child" : "children")</span>
-                </div>
-                <div class="family-workspace-status">
-                    <span>\(escapeHTML(sourceStatus))</span>
-                    <span>\(escapeHTML(comparisonStatus))</span>
-                    <span>\(escapeHTML(familySearchStatus))</span>
-                    <span>\(escapeHTML(reviewStatus))</span>
-                </div>
-            </div>
-            <div class="family-workspace-actions">
-                <a class="family-workspace-action" href="\(escapeHTML(sourceURL))">Source</a>
-                <a class="family-workspace-action" href="\(escapeHTML(workupURL))">Workup</a>
-                <a class="family-workspace-action" href="\(escapeHTML(hiskiBirthURL))">HisKi</a>
-                \(reviewAction)
-                \(comparisonAction)
-                \(familySearchAction)
-            </div>
-        </section>
         """
     }
 
@@ -1485,6 +1395,7 @@ struct HTMLRenderer {
             ? familyURL
             : "/family/\(urlEncode(displayedId))/workup" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
         let workupTitle = isWorkupVisible ? "View family display" : "View family workup"
+        let hiskiBirthURL = "/family/\(urlEncode(displayedId))/hiski-birth-search" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
         
         return """
         <div class="nav-bar">
@@ -1494,6 +1405,7 @@ struct HTMLRenderer {
                 <a href="\(reloadURL)" class="nav-btn">↺</a>
                 <a href="\(sourceURL)" class="nav-btn" title="\(sourceTitle)">📄</a>
                 <a href="\(workupURL)" class="nav-btn" title="\(workupTitle)">⚙</a>
+                <a href="\(hiskiBirthURL)" class="nav-btn" title="HisKi birth search">H</a>
             </div>
             <form method="GET" action="/family" class="nav-form" onsubmit="showLoading(event)">
                 <div class="input-wrapper">
@@ -2050,58 +1962,6 @@ struct HTMLRenderer {
             font-weight: bold;
             color: #333;
         }
-        .family-workspace {
-            background: white;
-            padding: 10px 12px;
-            border-radius: 8px;
-            margin-bottom: 12px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            display: flex;
-            justify-content: space-between;
-            gap: 12px;
-            align-items: center;
-        }
-        .family-workspace-main {
-            display: flex;
-            gap: 12px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        .family-workspace-family,
-        .family-workspace-status,
-        .family-workspace-actions {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        .family-workspace-title {
-            font-weight: 700;
-            color: #0066cc;
-            font-size: 15px;
-        }
-        .family-workspace-pages {
-            color: #666;
-        }
-        .family-workspace-family span,
-        .family-workspace-status span {
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            padding: 2px 7px;
-            background: #fff;
-            color: #555;
-            font-size: 13px;
-        }
-        .family-workspace-family .family-workspace-title {
-            border: none;
-            padding-left: 0;
-            color: #0066cc;
-        }
-        .family-workspace-family .family-workspace-pages {
-            border: none;
-            padding-left: 0;
-            color: #666;
-        }
         .family-workspace-action {
             display: inline-block;
             border: 1px solid #0066cc;
@@ -2255,10 +2115,6 @@ struct HTMLRenderer {
             transform: scale(1.05);
         }
         @media (max-width: 760px) {
-            .family-workspace {
-                align-items: flex-start;
-                flex-direction: column;
-            }
             .family-review-header {
                 flex-direction: column;
             }
@@ -3622,7 +3478,7 @@ struct HTMLRenderer {
             const syncToast = document.createElement('div');
             syncToast.className = 'status-toast sync-toast';
             syncToast.setAttribute('role', 'status');
-            syncToast.textContent = 'Synchronizing FamilySearch and hiski.genealogia.fi...';
+            syncToast.textContent = 'Checking children in FamilySearch and hiski.genealogia.fi...';
             if (container) {
                 container.insertBefore(syncToast, familyContent);
             }
@@ -3645,11 +3501,6 @@ struct HTMLRenderer {
                 const compositeContent = doc.querySelector('.family-content');
                 if (!compositeContent) {
                     throw new Error('Composite content missing');
-                }
-                const workspace = document.querySelector('.family-workspace');
-                const compositeWorkspace = doc.querySelector('.family-workspace');
-                if (workspace && compositeWorkspace) {
-                    workspace.outerHTML = compositeWorkspace.outerHTML;
                 }
                 document.querySelectorAll('.status-toast:not(.sync-toast)').forEach(toast => toast.remove());
                 doc.querySelectorAll('.status-toast:not(.sync-toast)').forEach(toast => {
