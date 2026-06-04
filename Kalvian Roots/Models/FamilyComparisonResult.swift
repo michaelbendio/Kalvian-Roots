@@ -535,6 +535,10 @@ struct FamilyChildrenComparisonGroup {
         FamilyComparisonReviewDetector.displayRows(for: result.rows)
     }
 
+    var hasNoHiskiResultsNotice: Bool {
+        !hiskiSearchRequests.isEmpty && !result.rows.contains { $0.hiski != nil }
+    }
+
     static func primaryCoupleFallback(
         for family: Family,
         result: FamilyComparisonResult

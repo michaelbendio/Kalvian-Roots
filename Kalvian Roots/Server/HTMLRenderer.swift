@@ -192,6 +192,7 @@ struct HTMLRenderer {
             familySearchPersonId: familySearchPersonId,
             workup: workup
         )
+        let hiskiNoticeToast = renderHiskiNoticeToast(comparisonGroups: comparisonGroups)
 
         return """
         <!DOCTYPE html>
@@ -207,6 +208,7 @@ struct HTMLRenderer {
         <body>
             <div class="container">
                 \(navBar)
+                \(hiskiNoticeToast)
                 \(citationPanel)
                 \(sourcePanel)
                 \(workspaceHeader)
@@ -531,6 +533,16 @@ struct HTMLRenderer {
             \(escapeHTML(label))
             <input type="text" name="\(escapeHTML(name))" value="\(escapeHTML(value))" autocomplete="off">
         </label>
+        """
+    }
+
+    private static func renderHiskiNoticeToast(comparisonGroups: [FamilyChildrenComparisonGroup]) -> String {
+        guard comparisonGroups.contains(where: \.hasNoHiskiResultsNotice) else {
+            return ""
+        }
+
+        return """
+        <div class="status-toast" role="status">No HisKi results</div>
         """
     }
 
@@ -2102,6 +2114,21 @@ struct HTMLRenderer {
         }
         .family-workspace-action:hover {
             background: #eef6ff;
+        }
+        .status-toast {
+            position: sticky;
+            top: 8px;
+            z-index: 10;
+            display: inline-block;
+            margin: 0 0 12px auto;
+            border: 1px solid #d7b46a;
+            border-radius: 6px;
+            padding: 6px 10px;
+            background: #fff7dc;
+            color: #5d4300;
+            font-size: 13px;
+            font-weight: 600;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.12);
         }
         .hiski-workbench {
             background: #fefdf8;

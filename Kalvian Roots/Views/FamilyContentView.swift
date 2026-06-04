@@ -61,6 +61,11 @@ struct FamilyContentView: View {
                     Color.clear
                         .frame(height: 4)
                 }
+
+                if hasNoHiskiResultsNotice {
+                    hiskiStatusToast
+                        .padding(.bottom, 8)
+                }
                 
                 // 2. Parent lines (primary couple)
                 if let couple = family.primaryCouple {
@@ -665,7 +670,7 @@ struct FamilyContentView: View {
         let familySearchId = row.familySearch?.familySearchId
         let markers = sourceMarkers(for: row)
         let shouldShowFamilySearchId = familySearchId != nil && child.familySearchId != familySearchId
-        let shouldShowMarkers = showsComparisonSourceMarkers && (row.familySearch != nil || row.hiski != nil)
+        let shouldShowMarkers = showsComparisonSourceMarkers
 
         guard displayRow.reviewNote != nil || shouldShowFamilySearchId || shouldShowMarkers else {
             return nil
@@ -926,6 +931,24 @@ struct FamilyContentView: View {
         }
 
         return FamilyChildrenComparisonGroup.primaryCoupleFallback(for: family, result: result)
+    }
+
+    private var hasNoHiskiResultsNotice: Bool {
+        juuretApp.familyChildrenComparisonGroups.contains(where: \.hasNoHiskiResultsNotice)
+    }
+
+    private var hiskiStatusToast: some View {
+        Text("No HisKi results")
+            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+            .foregroundColor(Color(hex: "5d4300"))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color(hex: "fff7dc"))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color(hex: "d7b46a"), lineWidth: 1)
+            )
+            .cornerRadius(6)
     }
 
     private func displayDate(for row: FamilyComparisonResult.Match) -> String {

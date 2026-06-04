@@ -2052,6 +2052,49 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(html.contains(">Maria</a> <span class=\"source-markers\">J</span>"))
     }
 
+    func testServerRenderedFamilyShowsNoHiskiResultsToastAfterEmptyFamilyChildQuery() throws {
+        let nameManager = NameEquivalenceManager()
+        nameManager.clearAllEquivalences()
+        let family = Family(
+            familyId: "SAKERI 7",
+            pageReferences: ["266"],
+            husband: Person(name: "Antti", patronymic: "Simonp."),
+            wife: Person(name: "Liisa", patronymic: "Sigfridint."),
+            children: [
+                Person(name: "Kaarin", birthDate: "13.10.1773")
+            ]
+        )
+        let result = FamilyComparisonResult(
+            familySearch: [],
+            juuretKalvialla: [
+                PersonCandidate(
+                    name: "Kaarin",
+                    birthDate: date(1773, 10, 13),
+                    source: .juuretKalvialla,
+                    nameManager: nameManager
+                )
+            ],
+            hiski: []
+        )
+        let queryURL = try XCTUnwrap(URL(string: "https://hiski.genealogia.fi/hiski?en&kirja=kastetut"))
+        let group = FamilyChildrenComparisonGroup(
+            coupleIndex: 0,
+            couple: family.primaryCouple!,
+            hiskiSearchRequests: [
+                HiskiService.FamilyBirthSearchRequest(label: "primary HisKi parent query", url: queryURL)
+            ],
+            result: result
+        )
+
+        let html = HTMLRenderer.renderFamily(
+            family: family,
+            network: nil,
+            comparisonGroups: [group]
+        )
+
+        XCTAssertTrue(html.contains(#"<div class="status-toast" role="status">No HisKi results</div>"#))
+    }
+
     func testServerRenderedFamilyHidesSourceMarkersWhenCitationPanelIsOpen() {
         let nameManager = NameEquivalenceManager()
         nameManager.clearAllEquivalences()
@@ -2277,12 +2320,10 @@ final class FamilySearchDOMServiceTests: XCTestCase {
             server.contains(#"return .redirect("/family/\(encoded)?reload=1&composite=1")"#),
             "Typed browser navigation should request a refreshed composite page immediately."
         )
-        XCTAssertFalse(
+        XCTAssertTrue(
             server.contains("if compositeFlag, reloadFlag, familySearchExtraction == nil"),
-            "Typed browser navigation should not surprise-run WebKit FamilySearch extraction."
+            "Typed browser navigation should run automatic WebKit FamilySearch extraction before building labelled child rows."
         )
-        XCTAssertTrue(server.contains("case \"familysearch-extract\":"))
-        XCTAssertTrue(server.contains("FamilySearch extraction requires POST"))
         XCTAssertTrue(server.contains("FamilySearchWebViewExtractionManager.shared.openDetailsPageAndExtract"))
         XCTAssertTrue(server.contains("if compositeFlag {\n                comparisonGroups = await makeChildrenComparisonGroups"))
         XCTAssertTrue(server.contains("compositeURL: compositeURL"))

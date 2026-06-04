@@ -388,7 +388,7 @@ final class FamilyContentViewTests: XCTestCase {
         XCTAssertTrue(familyContentView.contains("let showsComparisonSourceMarkers: Bool"))
         XCTAssertTrue(juuretView.contains("showsComparisonSourceMarkers: !showingCitation"))
         XCTAssertTrue(
-            familyContentView.contains("let shouldShowMarkers = showsComparisonSourceMarkers && (row.familySearch != nil || row.hiski != nil)"),
+            familyContentView.contains("let shouldShowMarkers = showsComparisonSourceMarkers"),
             "Matched Juuret child source markers should disappear while the citation panel is open."
         )
         XCTAssertTrue(
@@ -399,6 +399,21 @@ final class FamilyContentViewTests: XCTestCase {
             familyContentView.contains("markers.append(\"J\")\n        }\n        if row.hiski != nil {\n            markers.append(\"H\")\n        }\n        if row.familySearch != nil {\n            markers.append(\"FS\")"),
             "Source markers should render in Juuret, HisKi, FamilySearch order."
         )
+    }
+
+    func testFamilyContentViewHasNoHiskiResultsNoticeForEmptyFamilyChildQuery() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        let familyContentView = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/Views/FamilyContentView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(familyContentView.contains("private var hasNoHiskiResultsNotice: Bool"))
+        XCTAssertTrue(familyContentView.contains("juuretApp.familyChildrenComparisonGroups.contains(where: \\.hasNoHiskiResultsNotice)"))
+        XCTAssertTrue(familyContentView.contains(#"Text("No HisKi results")"#))
     }
 
     func testFatherBirthDateMismatchWarningRequiresMatchingFamilySearchFocusPerson() throws {

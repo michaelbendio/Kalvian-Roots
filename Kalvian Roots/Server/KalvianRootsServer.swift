@@ -643,8 +643,26 @@ final class HTTPHandler: ChannelInboundHandler {
             let familySearchPersonId = network.mainFamily.primaryCouple?.husband.familySearchId
                 ?? network.mainFamily.primaryCouple?.wife.familySearchId
                 ?? juuretApp?.primaryFamilySearchParentIdInSourceText(for: canonicalID)
-            let familySearchExtraction = sessionResult.session.familySearchExtraction(for: canonicalID)
+            var familySearchExtraction = sessionResult.session.familySearchExtraction(for: canonicalID)
                 ?? juuretApp?.familySearchExtraction(for: canonicalID)
+            if compositeFlag, reloadFlag, familySearchExtraction == nil, let familySearchPersonId {
+                do {
+                    let extraction = try await FamilySearchWebViewExtractionManager.shared.openDetailsPageAndExtract(
+                        personId: familySearchPersonId,
+                        log: { [weak self] message in
+                            self?.logger.info("[\(self?.requestID?.uuidString ?? "unknown")] \(message)")
+                        }
+                    )
+                    sessionResult.session.storeFamilySearchExtraction(extraction, for: canonicalID)
+                    juuretApp?.storeFamilySearchExtraction(extraction, for: canonicalID, rerunComparison: false)
+                    familySearchExtraction = extraction
+                } catch {
+                    logger.warning(
+                        "[\(requestID!)] FamilySearch extraction skipped during composite reload",
+                        metadata: ["error": "\(error.localizedDescription)"]
+                    )
+                }
+            }
             let comparisonGroups: [FamilyChildrenComparisonGroup]
             let comparisonResult: FamilyComparisonResult?
             if compositeFlag {
