@@ -23,6 +23,7 @@ struct Person: Hashable, Sendable, Codable, Identifiable {
     var asChild: String?
     var asParent: String?
     var familySearchId: String?
+    var spouseFamilySearchId: String?
     var noteMarkers: [String] // Note markers like '*' or '**'
     var fatherName: String?    // for Hiski disambiguation
     var motherName: String?
@@ -78,6 +79,7 @@ struct Person: Hashable, Sendable, Codable, Identifiable {
         asChild: String? = nil,
         asParent: String? = nil,
         familySearchId: String? = nil,
+        spouseFamilySearchId: String? = nil,
         noteMarkers: [String] = [],
         fatherName: String? = nil,
         motherName: String? = nil,
@@ -94,6 +96,7 @@ struct Person: Hashable, Sendable, Codable, Identifiable {
         self.asChild = asChild
         self.asParent = asParent
         self.familySearchId = familySearchId
+        self.spouseFamilySearchId = spouseFamilySearchId
         self.noteMarkers = noteMarkers
         self.fatherName = fatherName
         self.motherName = motherName

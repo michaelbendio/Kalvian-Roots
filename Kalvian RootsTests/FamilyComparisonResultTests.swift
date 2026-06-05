@@ -2362,6 +2362,41 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertLessThan(spouseIdRange.upperBound, familyRange.lowerBound)
     }
 
+    func testServerRenderedSourceSpouseFamilySearchIdDoesNotRequireNetworkLookup() throws {
+        let child = Person(
+            name: "Brita Kaisa",
+            birthDate: "26.11.1803",
+            fullMarriageDate: "07.11.1829",
+            spouse: "Matti Hilli",
+            asParent: "Hilli",
+            familySearchId: "LVP3-Y97",
+            spouseFamilySearchId: "LVP3-YS5"
+        )
+        let family = Family(
+            familyId: "SAKERI 9",
+            pageReferences: ["266"],
+            couples: [
+                Couple(
+                    husband: Person(name: "Antti", patronymic: "Simonp."),
+                    wife: Person(name: "Liisa", patronymic: "Sigfridint."),
+                    children: [child]
+                )
+            ]
+        )
+
+        let html = HTMLRenderer.renderFamily(family: family, network: nil)
+        let childLine = try XCTUnwrap(html.components(separatedBy: #"class="family-line child-line">"#).dropFirst().first)
+
+        let childIdRange = try XCTUnwrap(childLine.range(of: "&lt;LVP3-Y97&gt;"))
+        let spouseRange = try XCTUnwrap(childLine.range(of: ">Matti Hilli</a>"))
+        let spouseIdRange = try XCTUnwrap(childLine.range(of: "&lt;LVP3-YS5&gt;"))
+        let familyRange = try XCTUnwrap(childLine.range(of: #"class="family-link">Hilli</a>"#))
+
+        XCTAssertLessThan(childIdRange.upperBound, spouseRange.lowerBound)
+        XCTAssertLessThan(spouseRange.upperBound, spouseIdRange.lowerBound)
+        XCTAssertLessThan(spouseIdRange.upperBound, familyRange.lowerBound)
+    }
+
     func testServerRenderedFamilyShowsNoteDefinitionsAndInfantDeathNotes() {
         let family = Family(
             familyId: "SAKERI 7",

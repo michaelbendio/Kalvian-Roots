@@ -263,6 +263,53 @@ final class FamilyContentViewTests: XCTestCase {
         XCTAssertFalse(rendered.contains("Antti Rita <M88Q-WYP> *"))
     }
 
+    func testTokenizerPlacesSourceSpouseFamilySearchIdAfterSpouseName() {
+        let child = Person(
+            name: "Brita Kaisa",
+            birthDate: "26.11.1803",
+            fullMarriageDate: "07.11.1829",
+            spouse: "Matti Hilli",
+            asParent: "Hilli",
+            familySearchId: "LVP3-Y97",
+            spouseFamilySearchId: "LVP3-YS5"
+        )
+        let family = Family(
+            familyId: "SAKERI 9",
+            pageReferences: ["266"],
+            couples: [
+                Couple(
+                    husband: Person(name: "Antti", patronymic: "Simonp."),
+                    wife: Person(name: "Liisa", patronymic: "Sigfridint."),
+                    children: [child]
+                )
+            ]
+        )
+
+        let tokens = FamilyTokenizer().tokenizeFamily(family: family, network: nil)
+        let rendered = tokens.map { token -> String in
+            switch token {
+            case .text(let text):
+                return text
+            case .person(let name, _):
+                return name
+            case .date(let date, _, _, _, _):
+                return date
+            case .familyId(let id):
+                return id
+            case .enhanced(let text):
+                return text
+            case .symbol(let symbol):
+                return symbol
+            case .lineBreak:
+                return "\n"
+            case .sectionHeader(let title):
+                return title
+            }
+        }.joined()
+
+        XCTAssertTrue(rendered.contains("Matti Hilli <LVP3-YS5> as_parent Hilli"))
+    }
+
     func testCorrectedSakeriSevenAsParentReferenceIsValidFamilyId() {
         XCTAssertTrue(FamilyIDs.isValid(familyId: "Rita II 4"))
         XCTAssertFalse(FamilyIDs.isValid(familyId: "Rita II 14"))
@@ -400,7 +447,7 @@ final class FamilyContentViewTests: XCTestCase {
             "Spouse FamilySearch IDs must not depend on finding the child as a parent row."
         )
         XCTAssertTrue(
-            personLineView.contains(#"if let familySearchId = enhancedData?.spouse?.familySearchId"#),
+            personLineView.contains(#"if let familySearchId = person.spouseFamilySearchId ?? enhancedData?.spouse?.familySearchId"#),
             "SwiftUI spouse FamilySearch IDs should render immediately after spouse note markers."
         )
     }

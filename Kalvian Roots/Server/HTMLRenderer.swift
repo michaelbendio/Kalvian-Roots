@@ -791,7 +791,7 @@ struct HTMLRenderer {
                 if !childWithParents.noteMarkers.isEmpty {
                     parts.append(escapeHTML(childWithParents.noteMarkers.map(displayFootnoteMarker).joined(separator: " ")))
                 }
-                if let familySearchId = enhancedData?.spouse?.familySearchId {
+                if let familySearchId = childWithParents.spouseFamilySearchId ?? enhancedData?.spouse?.familySearchId {
                     parts.append("<span class=\"familysearch-id\">&lt;\(escapeHTML(familySearchId))&gt;</span>")
                 }
             }

@@ -313,7 +313,7 @@ struct PersonLineView: View {
                         .foregroundColor(.secondary)
                 }
 
-                if let familySearchId = enhancedData?.spouse?.familySearchId {
+                if let familySearchId = person.spouseFamilySearchId ?? enhancedData?.spouse?.familySearchId {
                     Text("<\(familySearchId)>")
                         .font(.system(size: 13, design: .monospaced))
                         .foregroundColor(.secondary)

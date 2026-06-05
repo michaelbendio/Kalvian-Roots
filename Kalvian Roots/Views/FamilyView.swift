@@ -228,10 +228,11 @@ struct FamilyView: View {
                     }
                     
                     // Spouse FamilySearch ID (from spouse's asChild family)
-                    if let spouseFsId = getSpouseFamilySearchId(forChild: child) {
+                    if let spouseFsId = child.spouseFamilySearchId ?? getSpouseFamilySearchId(forChild: child) {
                         Text("<\(spouseFsId)>")
                             .foregroundColor(.secondary)
-                    }                }
+                    }
+                }
                 
                 // asParent family reference (clickable)
                 if let asParent = child.asParent {

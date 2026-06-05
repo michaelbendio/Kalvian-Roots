@@ -252,6 +252,7 @@ class AIParsingService {
             asChild: JuuretOriginPhraseFilter.sanitizedField(data["asChild"] as? String),
             asParent: JuuretOriginPhraseFilter.sanitizedField(data["asParent"] as? String),
             familySearchId: data["familySearchId"] as? String,
+            spouseFamilySearchId: data["spouseFamilySearchId"] as? String,
             noteMarkers: data["noteMarkers"] as? [String] ?? [],
             fatherName: data["fatherName"] as? String,
             motherName: data["motherName"] as? String,

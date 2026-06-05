@@ -152,6 +152,7 @@ final class AIParsingServiceTests: XCTestCase {
                   "spouse": "Kaarin Bjömheim synt. Veteli",
                   "asParent": "Tikkanen II 1 synt. Veteli",
                   "familySearchId": "LHH6-W2P",
+                  "spouseFamilySearchId": "K8JR-2W8",
                   "noteMarkers": []
                 }
               ],
@@ -173,7 +174,21 @@ final class AIParsingServiceTests: XCTestCase {
         XCTAssertEqual(family.primaryCouple?.husband.asChild, "Tikkanen 4")
         XCTAssertNil(family.primaryCouple?.wife.asChild)
         XCTAssertEqual(family.primaryCouple?.children.first?.spouse, "Kaarin Bjömheim")
+        XCTAssertEqual(family.primaryCouple?.children.first?.spouseFamilySearchId, "K8JR-2W8")
         XCTAssertEqual(family.primaryCouple?.children.first?.asParent, "Tikkanen II 1")
+    }
+
+    func testPromptRequestsChildSpouseFamilySearchIdSeparatelyFromChildId() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        let aiServicesSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/App/AIServices.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(aiServicesSource.contains(#""spouseFamilySearchId": "string or null (spouse's <ID> after spouse name)""#))
     }
     
     func testServiceNameAfterConfiguration() throws {

@@ -98,6 +98,7 @@ class DeepSeekService: AIService {
                           "spouse": "string or null",
                           "asParent": "string or null",
                           "familySearchId": "string or null",
+                          "spouseFamilySearchId": "string or null (spouse's <ID> after spouse name)",
                           "noteMarkers": ["array of asterisks: *, **, ***"]
                         }
                       ],
@@ -127,6 +128,11 @@ class DeepSeekService: AIService {
                    - "synt. Veteli" means the person was originally from Veteli
                    - Do NOT store "synt." text in notes, coupleNotes, deathDate, spouse, asChild, or asParent
                    - Preserve the person's name, patronymic, dates, FamilySearch ID, and family reference normally
+
+                5b. Keep child and child-spouse FamilySearch IDs separate:
+                   - The child's own <ID> belongs in familySearchId
+                   - A spouse <ID> immediately following the spouse name belongs in spouseFamilySearchId
+                   - Example: "Brita Kaisa <LVP3-Y97> ∞ 07.11.29 Matti Hilli <LVP3-YS5>" → familySearchId: "LVP3-Y97", spouse: "Matti Hilli", spouseFamilySearchId: "LVP3-YS5"
                 
                 6. **MISSING SPOUSE DATA - CREATE PLACEHOLDER OBJECTS**:
                    - If only husband data exists (widower family), create a placeholder wife object:

@@ -87,6 +87,7 @@ enum JuuretOriginPhraseFilter {
             asChild: sanitizedField(person.asChild),
             asParent: sanitizedField(person.asParent),
             familySearchId: person.familySearchId,
+            spouseFamilySearchId: person.spouseFamilySearchId,
             noteMarkers: person.noteMarkers,
             fatherName: person.fatherName,
             motherName: person.motherName,

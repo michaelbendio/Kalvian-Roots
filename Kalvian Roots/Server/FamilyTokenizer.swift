@@ -218,7 +218,7 @@ struct FamilyTokenizer {
                 tokens.append(.text(childWithParents.noteMarkers.map(displayFootnoteMarker).joined(separator: " ")))
             }
 
-            if let familySearchId = spouseFamilySearchId(for: childWithParents, network: network) {
+            if let familySearchId = childWithParents.spouseFamilySearchId ?? spouseFamilySearchId(for: childWithParents, network: network) {
                 tokens.append(.text(" <\(familySearchId)>"))
             }
         }
