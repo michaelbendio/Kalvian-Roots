@@ -2134,7 +2134,8 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         )
 
         XCTAssertTrue(html.contains(#"class="date-link""#))
-        XCTAssertTrue(html.contains(">26.07.1707</a>"))
+        XCTAssertTrue(html.contains(">26.05.1707</a>"))
+        XCTAssertTrue(html.contains("date=26.05.1707"))
         XCTAssertTrue(html.contains(#"<span class="child-name-review"><a href="/family/PROBLEM%201/cite?"#))
         XCTAssertTrue(html.contains(#">Malin</a><button type="button" class="review-marker""#))
         XCTAssertTrue(html.contains(#"class="review-marker""#))

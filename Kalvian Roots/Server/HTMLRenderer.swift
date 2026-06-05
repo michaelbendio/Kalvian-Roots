@@ -735,15 +735,18 @@ struct HTMLRenderer {
         familyId: String,
         homeId: String,
         sourceMarkerHTML: String? = nil,
-        reviewMarkerHTML: String? = nil
+        reviewMarkerHTML: String? = nil,
+        birthDateOverride: String? = nil
     ) -> String {
         let childWithParents = child.withHiskiParentNames(
             father: couple.husband.displayName,
             mother: couple.wife.displayName
         )
         var parts = ["<span class=\"symbol\">★</span>"]
-        if let birthDate = childWithParents.birthDate {
-            parts.append(renderDateLink(birthDate, eventType: .birth, person: childWithParents, familyId: familyId, homeId: homeId))
+        if let birthDate = birthDateOverride ?? childWithParents.birthDate {
+            var dateLookupPerson = childWithParents
+            dateLookupPerson.birthDate = birthDate
+            parts.append(renderDateLink(birthDate, eventType: .birth, person: dateLookupPerson, familyId: familyId, homeId: homeId))
         }
         let personLink = renderPersonLink(name: childWithParents.displayName, birthDate: childWithParents.birthDate, familyId: familyId, homeId: homeId)
         if let reviewMarkerHTML {
@@ -853,7 +856,8 @@ struct HTMLRenderer {
             familyId: familyId,
             homeId: homeId,
             sourceMarkerHTML: sourceMarkerHTML,
-            reviewMarkerHTML: displayRow.reviewNote.map(renderChildReviewMarker)
+            reviewMarkerHTML: displayRow.reviewNote.map(renderChildReviewMarker),
+            birthDateOverride: displayDateOverride(for: row)
         )
         var supplements: [String] = []
         if let familySearchId = row.familySearch?.familySearchId,
@@ -1195,7 +1199,27 @@ struct HTMLRenderer {
     }
 
     private static func displayDate(for row: FamilyComparisonResult.Match) -> String {
-        formatUnionDate(row.juuretKalvialla?.birthDate ?? row.hiski?.birthDate ?? row.familySearch?.birthDate)
+        formatUnionDate(displayBirthDate(for: row))
+    }
+
+    private static func displayDateOverride(for row: FamilyComparisonResult.Match) -> String? {
+        guard let juuretBirthDate = row.juuretKalvialla?.birthDate,
+              let displayBirthDate = displayBirthDate(for: row),
+              juuretBirthDate != displayBirthDate else {
+            return nil
+        }
+
+        return formatUnionDate(displayBirthDate)
+    }
+
+    private static func displayBirthDate(for row: FamilyComparisonResult.Match) -> Date? {
+        if let juuretBirthDate = row.juuretKalvialla?.birthDate,
+           let hiskiBirthDate = row.hiski?.birthDate,
+           juuretBirthDate != hiskiBirthDate {
+            return hiskiBirthDate
+        }
+
+        return row.juuretKalvialla?.birthDate ?? row.hiski?.birthDate ?? row.familySearch?.birthDate
     }
 
     private static func displayName(for row: FamilyComparisonResult.Match) -> String {

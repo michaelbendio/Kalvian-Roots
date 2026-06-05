@@ -952,11 +952,19 @@ struct FamilyContentView: View {
     }
 
     private func displayDate(for row: FamilyComparisonResult.Match) -> String {
-        let date = row.juuretKalvialla?.birthDate
+        formatUnionDate(displayBirthDate(for: row))
+    }
+
+    private func displayBirthDate(for row: FamilyComparisonResult.Match) -> Date? {
+        if let juuretBirthDate = row.juuretKalvialla?.birthDate,
+           let hiskiBirthDate = row.hiski?.birthDate,
+           juuretBirthDate != hiskiBirthDate {
+            return hiskiBirthDate
+        }
+
+        return row.juuretKalvialla?.birthDate
             ?? row.hiski?.birthDate
             ?? row.familySearch?.birthDate
-
-        return formatUnionDate(date)
     }
 
     private func dateColor(for row: FamilyComparisonResult.Match) -> Color {

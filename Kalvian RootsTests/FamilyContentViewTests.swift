@@ -519,6 +519,23 @@ final class FamilyContentViewTests: XCTestCase {
         )
     }
 
+    func testComparisonDisplayDatePrefersHiskiWhenJuuretDisagrees() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        let familyContentView = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/Views/FamilyContentView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(familyContentView.contains("private func displayBirthDate(for row: FamilyComparisonResult.Match) -> Date?"))
+        XCTAssertTrue(
+            familyContentView.contains("let juuretBirthDate = row.juuretKalvialla?.birthDate,\n           let hiskiBirthDate = row.hiski?.birthDate,\n           juuretBirthDate != hiskiBirthDate {\n            return hiskiBirthDate"),
+            "SwiftUI comparison rows should display and query the HisKi birth date when Juuret and HisKi disagree."
+        )
+    }
+
     func testFamilyContentViewHasNoHiskiResultsNoticeForEmptyFamilyChildQuery() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
