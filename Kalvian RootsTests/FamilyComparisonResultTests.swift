@@ -2301,7 +2301,8 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(html.contains("&lt;L4ZM-CRT&gt;"))
         XCTAssertTrue(html.contains("[d. "))
         XCTAssertTrue(html.contains(">19.10.1846</a>"))
-        XCTAssertTrue(html.contains("[<a href=\"/family/KORVELA%201/hiski?name=Magdalena"))
+        XCTAssertTrue(html.contains("name=Magdalena"))
+        XCTAssertTrue(html.contains("date=23.11.1778"))
         XCTAssertTrue(html.contains(">23.11.1778</a>]"))
         XCTAssertTrue(html.contains(">Antti Korvela</a>"))
         XCTAssertTrue(html.contains("&lt;M88Q-WYP&gt;"))
@@ -2311,6 +2312,54 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(html.contains("*"))
         XCTAssertTrue(html.contains("* Poika Abraham"))
         XCTAssertFalse(html.contains("as_parent"))
+    }
+
+    func testServerRenderedSpouseFamilySearchIdDoesNotRequireMatchingChildParentRow() throws {
+        let child = Person(
+            name: "Maria",
+            birthDate: "05.12.1774",
+            fullMarriageDate: "1794",
+            spouse: "Antti Rita",
+            asParent: "RITA II 4",
+            noteMarkers: ["★"]
+        )
+        let family = Family(
+            familyId: "SAKERI 7",
+            pageReferences: ["266"],
+            couples: [
+                Couple(
+                    husband: Person(name: "Antti", patronymic: "Simonp."),
+                    wife: Person(name: "Liisa", patronymic: "Sigfridint."),
+                    children: [child]
+                )
+            ]
+        )
+        let asParentFamily = Family(
+            familyId: "RITA II 4",
+            pageReferences: ["267"],
+            couples: [
+                Couple(
+                    husband: Person(name: "Antti", patronymic: "Rita", birthDate: "08.01.1772", familySearchId: "M88Q-WYP"),
+                    wife: Person(name: "Maria", birthDate: "06.12.1774"),
+                    fullMarriageDate: "1794",
+                    children: []
+                )
+            ]
+        )
+        var network = FamilyNetwork(mainFamily: family)
+        network.asParentFamilies["Maria|05.12.1774"] = asParentFamily
+
+        let html = HTMLRenderer.renderFamily(family: family, network: network)
+        let childLine = try XCTUnwrap(html.components(separatedBy: #"class="family-line child-line">"#).dropFirst().first)
+
+        let spouseRange = try XCTUnwrap(childLine.range(of: ">Antti Rita</a>"))
+        let markerRange = try XCTUnwrap(childLine.range(of: "*", range: spouseRange.upperBound..<childLine.endIndex))
+        let spouseIdRange = try XCTUnwrap(childLine.range(of: "&lt;M88Q-WYP&gt;"))
+        let familyRange = try XCTUnwrap(childLine.range(of: #"class="family-link">RITA II 4</a>"#))
+
+        XCTAssertLessThan(spouseRange.upperBound, markerRange.lowerBound)
+        XCTAssertLessThan(markerRange.upperBound, spouseIdRange.lowerBound)
+        XCTAssertLessThan(spouseIdRange.upperBound, familyRange.lowerBound)
     }
 
     func testServerRenderedFamilyShowsNoteDefinitionsAndInfantDeathNotes() {

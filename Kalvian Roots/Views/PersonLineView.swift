@@ -135,21 +135,21 @@ struct PersonLineView: View {
             return nil
         }
         
-        // Find the matching person in asParent family
-        guard let asParentPerson = findMatchingPerson(in: asParentFamily) else {
-            return nil
-        }
-        
         // Find spouse enhanced data
         var spouseEnhancedData: SpouseEnhancedData?
         if let spouse = person.spouse {
             spouseEnhancedData = extractSpouseData(spouseName: spouse, from: asParentFamily, network: network)
         }
-        
+
+        let asParentPerson = findMatchingPerson(in: asParentFamily)
+        let fullMarriageDate = asParentPerson == nil
+            ? nil
+            : asParentPerson?.fullMarriageDate ?? asParentFamily.primaryCouple?.fullMarriageDate
+
         // Extract enhanced dates
         return EnhancedPersonData(
-            deathDate: asParentPerson.deathDate,
-            fullMarriageDate: asParentPerson.fullMarriageDate ?? asParentFamily.primaryCouple?.fullMarriageDate,
+            deathDate: asParentPerson?.deathDate,
+            fullMarriageDate: fullMarriageDate,
             spouse: spouseEnhancedData
         )
     }

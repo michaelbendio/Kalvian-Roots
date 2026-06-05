@@ -1112,17 +1112,17 @@ struct HTMLRenderer {
         guard let asParentFamily = network.getAsParentFamily(for: person) else {
             return nil
         }
-        guard let asParentPerson = matchingParent(for: person, in: asParentFamily) else {
-            return nil
-        }
-
         let spouseData = person.spouse.flatMap {
             enhancedSpouseData(spouseName: $0, from: asParentFamily, network: network)
         }
+        let asParentPerson = matchingParent(for: person, in: asParentFamily)
+        let fullMarriageDate = asParentPerson == nil
+            ? nil
+            : asParentPerson?.fullMarriageDate ?? asParentFamily.primaryCouple?.fullMarriageDate
 
         return HTMLEnhancedPersonData(
-            deathDate: asParentPerson.deathDate,
-            fullMarriageDate: asParentPerson.fullMarriageDate ?? asParentFamily.primaryCouple?.fullMarriageDate,
+            deathDate: asParentPerson?.deathDate,
+            fullMarriageDate: fullMarriageDate,
             spouse: spouseData
         )
     }

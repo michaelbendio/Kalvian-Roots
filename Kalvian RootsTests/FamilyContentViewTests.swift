@@ -202,6 +202,67 @@ final class FamilyContentViewTests: XCTestCase {
         XCTAssertFalse(rendered.contains("Antti Rita as_parent Rita II 4 *"))
     }
 
+    func testTokenizerPlacesSpouseFamilySearchIdAfterSpouseFootnote() {
+        let child = Person(
+            name: "Maria",
+            birthDate: "05.12.1774",
+            fullMarriageDate: "1794",
+            spouse: "Antti Rita",
+            asParent: "Rita II 4",
+            noteMarkers: ["*"]
+        )
+        let family = Family(
+            familyId: "SAKERI 7",
+            pageReferences: ["266"],
+            couples: [
+                Couple(
+                    husband: Person(name: "Antti", patronymic: "Simonp."),
+                    wife: Person(name: "Liisa", patronymic: "Sigfridint."),
+                    children: [child]
+                )
+            ],
+            noteDefinitions: ["*": "Muutti 1801 Sakeri 9."]
+        )
+        let asParentFamily = Family(
+            familyId: "RITA II 4",
+            pageReferences: ["267"],
+            couples: [
+                Couple(
+                    husband: Person(name: "Antti", patronymic: "Rita", birthDate: "08.01.1772", familySearchId: "M88Q-WYP"),
+                    wife: Person(name: "Maria", birthDate: "06.12.1774"),
+                    children: []
+                )
+            ]
+        )
+        var network = FamilyNetwork(mainFamily: family)
+        network.asParentFamilies["Maria|05.12.1774"] = asParentFamily
+
+        let tokens = FamilyTokenizer().tokenizeFamily(family: family, network: network)
+        let rendered = tokens.map { token -> String in
+            switch token {
+            case .text(let text):
+                return text
+            case .person(let name, _):
+                return name
+            case .date(let date, _, _, _, _):
+                return date
+            case .familyId(let id):
+                return id
+            case .enhanced(let text):
+                return text
+            case .symbol(let symbol):
+                return symbol
+            case .lineBreak:
+                return "\n"
+            case .sectionHeader(let title):
+                return title
+            }
+        }.joined()
+
+        XCTAssertTrue(rendered.contains("Antti Rita * <M88Q-WYP> as_parent Rita II 4"))
+        XCTAssertFalse(rendered.contains("Antti Rita <M88Q-WYP> *"))
+    }
+
     func testCorrectedSakeriSevenAsParentReferenceIsValidFamilyId() {
         XCTAssertTrue(FamilyIDs.isValid(familyId: "Rita II 4"))
         XCTAssertFalse(FamilyIDs.isValid(familyId: "Rita II 14"))
@@ -333,6 +394,14 @@ final class FamilyContentViewTests: XCTestCase {
         XCTAssertTrue(
             personLineView.contains(#"Text(verbatim: person.noteMarkers.map(displayFootnoteMarker).joined(separator: " "))"#),
             "Person note markers must render stored star markers as literal asterisks."
+        )
+        XCTAssertTrue(
+            personLineView.contains("let asParentPerson = findMatchingPerson(in: asParentFamily)"),
+            "Spouse FamilySearch IDs must not depend on finding the child as a parent row."
+        )
+        XCTAssertTrue(
+            personLineView.contains(#"if let familySearchId = enhancedData?.spouse?.familySearchId"#),
+            "SwiftUI spouse FamilySearch IDs should render immediately after spouse note markers."
         )
     }
 

@@ -217,6 +217,10 @@ struct FamilyTokenizer {
                 tokens.append(.text(" "))
                 tokens.append(.text(childWithParents.noteMarkers.map(displayFootnoteMarker).joined(separator: " ")))
             }
+
+            if let familySearchId = spouseFamilySearchId(for: childWithParents, network: network) {
+                tokens.append(.text(" <\(familySearchId)>"))
+            }
         }
 
         // asParent family reference
@@ -243,6 +247,32 @@ struct FamilyTokenizer {
             }
         }
         return nil
+    }
+
+    private func spouseFamilySearchId(for person: Person, network: FamilyNetwork?) -> String? {
+        guard let network,
+              person.isMarried,
+              let spouseName = person.spouse,
+              let asParentFamily = network.getAsParentFamily(for: person) else {
+            return nil
+        }
+
+        let spouseNameLower = spouseName.lowercased()
+        guard let spouseInFamily = asParentFamily.allParents.first(where: {
+            $0.name.lowercased().contains(spouseNameLower) || spouseNameLower.contains($0.name.lowercased())
+        }) else {
+            return nil
+        }
+
+        let spouseForLookup = Person(name: spouseInFamily.name, birthDate: spouseInFamily.birthDate, noteMarkers: [])
+        guard let spouseAsChildFamily = network.getSpouseAsChildFamily(for: spouseForLookup),
+              let spouseAsChild = spouseAsChildFamily.allChildren.first(where: {
+                  $0.name.lowercased() == spouseInFamily.name.lowercased() || $0.birthDate == spouseInFamily.birthDate
+              }) else {
+            return spouseInFamily.familySearchId
+        }
+
+        return spouseAsChild.familySearchId ?? spouseInFamily.familySearchId
     }
 
     private func romanNumeral(_ number: Int) -> String {
