@@ -273,6 +273,7 @@ class NameEquivalenceManager {
             ("Liisa", "Elisabet"),
             ("Liisa", "Elis."),
             ("Liisa", "Lijsa"),
+            ("Liisa", "Lisa"),
             ("Maija", "Maria"),
             ("Malin", "Magdalena"),
             ("Helena", "Leena"),

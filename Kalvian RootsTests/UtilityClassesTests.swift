@@ -72,6 +72,7 @@ final class NameEquivalenceManagerTests: XCTestCase {
         XCTAssertTrue(manager.areNamesEquivalent("Kustaa", "Gustaf"))
         XCTAssertTrue(manager.areNamesEquivalent("Jaakko", "Jacob"))
         XCTAssertTrue(manager.areNamesEquivalent("Liisa", "Lijsa"))
+        XCTAssertTrue(manager.areNamesEquivalent("Liisa", "Lisa"))
         XCTAssertTrue(manager.areNamesEquivalent("Kaarin", "Carin"))
         XCTAssertTrue(manager.areNamesEquivalent("Kaarin", "Catharina"))
         XCTAssertTrue(manager.areNamesEquivalent("Katariina", "Catharina"))
