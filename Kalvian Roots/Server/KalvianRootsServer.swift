@@ -1176,7 +1176,7 @@ final class HTTPHandler: ChannelInboundHandler {
         let hiskiService = HiskiService(nameEquivalenceManager: session.nameEquivalenceManager)
         hiskiService.setCurrentFamily(familyId)
         let fields = form.isEmpty
-            ? defaultManualBirthSearchFields(for: network.mainFamily)
+            ? HiskiService.defaultManualBirthSearchFields(for: network.mainFamily)
             : manualBirthSearchFields(from: form)
         var searchURL: URL?
         var rows: [HiskiService.HiskiFamilyBirthRow] = []
@@ -1400,50 +1400,6 @@ final class HTTPHandler: ChannelInboundHandler {
             errorMessage: errorMessage
         )
         return .html(html, headers: responseHeaders(setCookieHeader: setCookieHeader))
-    }
-
-    private func defaultManualBirthSearchFields(for family: Family) -> HiskiService.ManualBirthSearchFields {
-        var fields = HiskiService.ManualBirthSearchFields()
-        guard let couple = family.primaryCouple else {
-            return fields
-        }
-
-        fields.fatherFirstName = couple.husband.name
-        fields.fatherPatronymic = couple.husband.patronymic ?? ""
-        fields.motherFirstName = couple.wife.name
-        fields.motherPatronymic = couple.wife.patronymic ?? ""
-        fields.villageFarm = defaultHiskiFarmName(for: family.familyId)
-
-        if let window = HiskiService.familyBirthSearchWindow(for: couple) {
-            fields.startYear = String(window.startYear)
-            fields.endYear = String(window.endYear)
-        }
-
-        return fields
-    }
-
-    private func defaultHiskiFarmName(for familyId: String) -> String {
-        var tokens = familyId
-            .split(separator: " ")
-            .map(String.init)
-        while let last = tokens.last, last.allSatisfy(\.isNumber) || isRomanNumeralToken(last) {
-            tokens.removeLast()
-        }
-
-        return tokens
-            .joined(separator: " ")
-            .lowercased()
-            .split(separator: " ")
-            .map { token in
-                token.prefix(1).uppercased() + token.dropFirst()
-            }
-            .joined(separator: " ")
-    }
-
-    private func isRomanNumeralToken(_ token: String) -> Bool {
-        let romanCharacters = CharacterSet(charactersIn: "IVXLCDM")
-        return !token.isEmpty
-            && token.uppercased().unicodeScalars.allSatisfy { romanCharacters.contains($0) }
     }
 
     private func manualBirthSearchFields(from form: [String: String]) -> HiskiService.ManualBirthSearchFields {

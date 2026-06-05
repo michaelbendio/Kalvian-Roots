@@ -18,6 +18,7 @@ struct JuuretView: View {
     @State private var hiskiResult = ""
     @State private var showingFatalError = false
     @State private var shouldCloseHiskiWindows = false
+    @State private var showingHiskiWorkbench = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -71,6 +72,13 @@ struct JuuretView: View {
                     .frame(width: 6, height: 6)
                     .opacity(isAIReady ? 1.0 : 0.0)
                     .animation(.easeInOut(duration: 0.3), value: isAIReady)
+
+                Button {
+                    showingHiskiWorkbench = true
+                } label: {
+                    Label("HisKi Workbench", systemImage: "magnifyingglass")
+                }
+                .disabled(juuretApp.currentFamily == nil)
                 
                 CachedFamiliesMenu()
             }
@@ -85,6 +93,13 @@ struct JuuretView: View {
                         .frame(width: 6, height: 6)
                         .opacity(isAIReady ? 1.0 : 0.0)
                         .animation(.easeInOut(duration: 0.3), value: isAIReady)
+
+                    Button {
+                        showingHiskiWorkbench = true
+                    } label: {
+                        Label("HisKi Workbench", systemImage: "magnifyingglass")
+                    }
+                    .disabled(juuretApp.currentFamily == nil)
                     
                     CachedFamiliesMenu()
                 }
@@ -133,6 +148,15 @@ struct JuuretView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(hiskiResult)
+        }
+        .sheet(isPresented: $showingHiskiWorkbench) {
+            if let family = juuretApp.currentFamily {
+                ManualHiskiWorkbenchView(
+                    family: family,
+                    initialFields: HiskiService.defaultManualBirthSearchFields(for: family)
+                )
+                .environment(juuretApp)
+            }
         }
     }
     
@@ -210,6 +234,137 @@ struct JuuretView: View {
         }
     }
     #endif
+}
+
+private struct ManualHiskiWorkbenchView: View {
+    @Environment(JuuretApp.self) private var juuretApp
+    @Environment(\.dismiss) private var dismiss
+
+    let family: Family
+    @State private var fields: HiskiService.ManualBirthSearchFields
+    @State private var statusMessage: String?
+    @State private var errorMessage: String?
+    @State private var isRefreshingFamily = false
+
+    init(family: Family, initialFields: HiskiService.ManualBirthSearchFields) {
+        self.family = family
+        _fields = State(initialValue: initialFields)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("HisKi Births")
+                        .font(.title2.weight(.semibold))
+                    Text(family.familyId)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Button("Cancel") {
+                    dismiss()
+                }
+
+                Button("Family") {
+                    refreshFamily()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(isRefreshingFamily)
+            }
+
+            if let statusMessage {
+                Text(statusMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
+            Form {
+                Section("Search") {
+                    TextField("Child first name", text: $fields.childFirstName)
+                    TextField("Start year", text: $fields.startYear)
+                    TextField("End year", text: $fields.endYear)
+                    TextField("Farm name", text: $fields.villageFarm)
+                    TextField("Max events", text: $fields.maxEvents)
+                }
+
+                Section("Father") {
+                    TextField("First name", text: $fields.fatherFirstName)
+                    TextField("Patronymic", text: $fields.fatherPatronymic)
+                    TextField("Last name", text: $fields.fatherLastName)
+                }
+
+                Section("Mother") {
+                    TextField("First name", text: $fields.motherFirstName)
+                    TextField("Patronymic", text: $fields.motherPatronymic)
+                    TextField("Last name", text: $fields.motherLastName)
+                }
+            }
+            .formStyle(.grouped)
+
+            HStack {
+                Spacer()
+
+                Button {
+                    submitHiskiSearch()
+                } label: {
+                    Label("Submit", systemImage: "safari")
+                }
+
+                Button("Family") {
+                    refreshFamily()
+                }
+                .disabled(isRefreshingFamily)
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 460, idealWidth: 560, minHeight: 560)
+    }
+
+    private func submitHiskiSearch() {
+        do {
+            let url = try juuretApp.manualHiskiBirthSearchURL(fields: fields)
+            openURL(url)
+            statusMessage = "HisKi search opened."
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func refreshFamily() {
+        isRefreshingFamily = true
+        statusMessage = "Loading HisKi results..."
+        errorMessage = nil
+
+        Task {
+            do {
+                let rowCount = try await juuretApp.refreshCurrentFamilyFromManualHiski(fields: fields)
+                statusMessage = "\(rowCount) HisKi birth result \(rowCount == 1 ? "row" : "rows") used."
+                isRefreshingFamily = false
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+                isRefreshingFamily = false
+            }
+        }
+    }
+
+    private func openURL(_ url: URL) {
+        #if os(macOS)
+        NSWorkspace.shared.open(url)
+        #elseif os(iOS)
+        UIApplication.shared.open(url)
+        #endif
+    }
 }
 
 // MARK: - Preview

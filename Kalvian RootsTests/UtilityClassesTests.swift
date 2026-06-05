@@ -443,6 +443,29 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertEqual(values["apatronyymi"], "Sigfridsdr")
     }
 
+    func testDefaultManualBirthSearchFieldsDoNotPrefillFarmName() {
+        let family = Family(
+            familyId: "PIENI-PORKOLA 2",
+            pageReferences: [],
+            husband: Person(name: "Lauri", patronymic: "Luukkaanp."),
+            wife: Person(name: "Vappu", patronymic: "Simont."),
+            marriageDate: "03.12.1705",
+            children: [
+                Person(name: "Matti", birthDate: "05.02.1706")
+            ]
+        )
+
+        let fields = HiskiService.defaultManualBirthSearchFields(for: family)
+
+        XCTAssertEqual(fields.fatherFirstName, "Lauri")
+        XCTAssertEqual(fields.fatherPatronymic, "Luukkaanp.")
+        XCTAssertEqual(fields.motherFirstName, "Vappu")
+        XCTAssertEqual(fields.motherPatronymic, "Simont.")
+        XCTAssertEqual(fields.startYear, "1704")
+        XCTAssertEqual(fields.endYear, "1740")
+        XCTAssertEqual(fields.villageFarm, "")
+    }
+
     func testManualHiskiRowsBuildFamilyComparisonGroupForMarkers() {
         let couple = Couple(
             husband: Person(name: "Lauri", patronymic: "Luukkaanp."),

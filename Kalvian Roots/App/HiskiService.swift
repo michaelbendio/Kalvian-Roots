@@ -413,6 +413,25 @@ class HiskiService {
         var godparentOccupation: String = ""
     }
 
+    static func defaultManualBirthSearchFields(for family: Family) -> ManualBirthSearchFields {
+        var fields = ManualBirthSearchFields()
+        guard let couple = family.primaryCouple else {
+            return fields
+        }
+
+        fields.fatherFirstName = couple.husband.name
+        fields.fatherPatronymic = couple.husband.patronymic ?? ""
+        fields.motherFirstName = couple.wife.name
+        fields.motherPatronymic = couple.wife.patronymic ?? ""
+
+        if let window = familyBirthSearchWindow(for: couple) {
+            fields.startYear = String(window.startYear)
+            fields.endYear = String(window.endYear)
+        }
+
+        return fields
+    }
+
     struct HiskiFamilyBirthEvent: Equatable {
         let birthDate: String
         let childName: String

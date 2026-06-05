@@ -1073,6 +1073,68 @@ class JuuretApp {
         }
     }
 
+    func manualHiskiBirthSearchURL(fields: HiskiService.ManualBirthSearchFields) throws -> URL {
+        let hiskiService = HiskiService(nameEquivalenceManager: nameEquivalenceManager)
+        if let currentFamily {
+            hiskiService.setCurrentFamily(currentFamily.familyId)
+        }
+        return try hiskiService.buildManualBirthSearchUrl(fields: fields)
+    }
+
+    func refreshCurrentFamilyFromManualHiski(fields: HiskiService.ManualBirthSearchFields) async throws -> Int {
+        guard let family = currentFamily else {
+            throw HiskiServiceError.urlCreationFailed
+        }
+        guard let couple = family.primaryCouple else {
+            throw HiskiServiceError.urlCreationFailed
+        }
+
+        let comparisonService = FamilyComparisonService(nameManager: nameEquivalenceManager)
+        let hiskiService = HiskiService(nameEquivalenceManager: nameEquivalenceManager)
+        hiskiService.setCurrentFamily(family.familyId)
+        let searchURL = try hiskiService.buildManualBirthSearchUrl(fields: fields)
+        let html = try await loadHiskiSearchHtml(from: searchURL)
+        let rows = hiskiService.parseFamilyBirthResultsTable(html)
+        let familySearchExtraction = familySearchExtraction(for: family.familyId)
+        let familySearchChildren = familySearchChildrenByCouple(
+            for: family,
+            extraction: familySearchExtraction
+        )[0] ?? []
+        let builder = FamilyChildrenComparisonBuilder(
+            hiskiService: hiskiService,
+            comparisonService: comparisonService,
+            loadHiskiSearchHtml: loadHiskiSearchHtml,
+            log: { [weak self] message in
+                self?.appendFamilySearchComparisonDebug(message)
+            }
+        )
+        let group = builder.buildGroupFromHiskiRows(
+            couple: couple,
+            coupleIndex: 0,
+            familySearchChildren: familySearchChildren,
+            rawRows: rows,
+            searchRequests: [
+                HiskiService.FamilyBirthSearchRequest(label: "manual HisKi parent query", url: searchURL)
+            ]
+        )
+
+        guard currentFamily?.familyId == family.familyId else {
+            return rows.count
+        }
+
+        familySearchComparisonResult = group.result
+        familyChildrenComparisonGroups = [group]
+        hiskiCitationProposals = []
+        familySearchComparisonDebugMessage = rows.isEmpty
+            ? "Manual HisKi search returned no parseable birth result rows."
+            : "Manual HisKi search refreshed family markers"
+        appendFamilySearchComparisonDebug("Manual HisKi search URL: \(searchURL.absoluteString)")
+        appendFamilySearchComparisonDebug("Manual HisKi rows parsed: \(rows.count)")
+        appendFamilySearchComparisonDebug("comparison groups assigned to UI state: 1")
+
+        return rows.count
+    }
+
     private func familySearchChildrenByCouple(
         for family: Family,
         extraction: FamilySearchFamilyExtraction?
