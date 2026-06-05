@@ -58,6 +58,7 @@ final class NameEquivalenceManagerTests: XCTestCase {
         // Test common Finnish-Swedish name pairs
         XCTAssertTrue(manager.areNamesEquivalent("Johan", "Juho"))
         XCTAssertTrue(manager.areNamesEquivalent("Matti", "Matias"))
+        XCTAssertTrue(manager.areNamesEquivalent("Matti", "Mats"))
         XCTAssertTrue(manager.areNamesEquivalent("Matti", "Matthias"))
         XCTAssertTrue(manager.areNamesEquivalent("Tuomas", "Thomas"))
         XCTAssertTrue(manager.areNamesEquivalent("Elisabet", "Elisabeth"))

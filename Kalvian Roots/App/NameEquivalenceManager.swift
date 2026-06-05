@@ -281,6 +281,7 @@ class NameEquivalenceManager {
             ("Johan", "Juho"),
             ("Juho", "Johannes"),
             ("Matti", "Matias"),
+            ("Matti", "Mats"),
             ("Matti", "Matts"),
             ("Matti", "Matthias"),
             ("Mikko", "Michel"),

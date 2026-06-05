@@ -165,6 +165,40 @@ final class FamilyComparisonResultTests: XCTestCase {
         )
     }
 
+    func testFamilySearchMatsMatchesJuuretMattiOnSameBirthDate() throws {
+        nameManager.addEquivalence(between: "Matti", and: "Mats")
+
+        let result = FamilyComparisonResult(
+            familySearch: [
+                candidate(
+                    name: "Mats",
+                    birth: date(1806, 9, 17),
+                    source: .familySearch
+                )
+            ],
+            juuretKalvialla: [
+                candidate(
+                    name: "Matti",
+                    birth: date(1806, 9, 17),
+                    source: .juuretKalvialla
+                )
+            ],
+            hiski: []
+        )
+
+        XCTAssertEqual(result.matches.count, 1)
+        XCTAssertEqual(result.familySearchOnly.count, 0)
+        XCTAssertEqual(result.juuretOnly.count, 0)
+
+        let match = try XCTUnwrap(result.matches.first)
+        XCTAssertEqual(match.familySearch?.rawName, "Mats")
+        XCTAssertEqual(match.juuretKalvialla?.rawName, "Matti")
+        XCTAssertEqual(
+            FamilyComparisonService(nameManager: nameManager).status(for: match),
+            "Missing in HisKi"
+        )
+    }
+
     func testFamilySearchUppercaseMonthDatesBecomeCandidateBirthDates() throws {
         let service = FamilyComparisonService(nameManager: nameManager)
         let candidates = service.makeFamilySearchCandidates(from: [
