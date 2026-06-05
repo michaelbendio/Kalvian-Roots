@@ -875,12 +875,19 @@ struct HTMLRenderer {
         let row = displayRow.match
         let date = displayDate(for: row)
         let name = displayName(for: row)
+        let dateHTML: String
+        if let hiski = row.hiski, date != "unknown" {
+            let hiskiPerson = Person(name: hiski.rawName, birthDate: date, noteMarkers: [])
+            dateHTML = renderDateLink(date, eventType: .birth, person: hiskiPerson, familyId: familyId, homeId: homeId)
+        } else {
+            dateHTML = escapeHTML(date)
+        }
         let nameHTML = displayRow.reviewNote.map {
             "<span class=\"child-name-review\">\(escapeHTML(name))\(renderChildReviewMarker($0))</span>"
         } ?? escapeHTML(name)
         var parts = [
             "<span class=\"symbol\">★</span>",
-            escapeHTML(date),
+            dateHTML,
             nameHTML
         ]
         if showsSourceMarkers {

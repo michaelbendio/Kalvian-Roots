@@ -2068,7 +2068,10 @@ final class FamilySearchDOMServiceTests: XCTestCase {
             comparisonResult: result
         )
 
-        XCTAssertTrue(html.contains(#"<span class="child-name-review"><a href="/family/PROBLEM%201/cite?name=Malin&amp;birth=26.07.1707">Malin</a><button type="button""#))
+        XCTAssertTrue(html.contains(#"class="date-link""#))
+        XCTAssertTrue(html.contains(">26.07.1707</a>"))
+        XCTAssertTrue(html.contains(#"<span class="child-name-review"><a href="/family/PROBLEM%201/cite?"#))
+        XCTAssertTrue(html.contains(#">Malin</a><button type="button" class="review-marker""#))
         XCTAssertTrue(html.contains(#"class="review-marker""#))
         XCTAssertTrue(html.contains(#"aria-expanded="false""#))
         XCTAssertTrue(html.contains(#"onclick="return toggleChildReviewProblem(this)">*"#))
@@ -2133,6 +2136,46 @@ final class FamilySearchDOMServiceTests: XCTestCase {
 
         XCTAssertTrue(html.contains("II puoliso"))
         XCTAssertTrue(html.contains(">Maria</a> <span class=\"source-markers\">J, H</span>"))
+    }
+
+    func testServerRenderedHiskiOnlyChildDateLinksBirthQuery() {
+        let nameManager = NameEquivalenceManager()
+        nameManager.clearAllEquivalences()
+        let family = Family(
+            familyId: "HISKI ONLY 1",
+            pageReferences: ["1"],
+            husband: Person(name: "Antti", patronymic: "Simonp."),
+            wife: Person(name: "Liisa", patronymic: "Sigfridint."),
+            children: []
+        )
+        let result = FamilyComparisonResult(
+            familySearch: [],
+            juuretKalvialla: [],
+            hiski: [
+                PersonCandidate(
+                    name: "Sophia",
+                    birthDate: date(1821, 11, 21),
+                    source: .hiski,
+                    nameManager: nameManager
+                )
+            ]
+        )
+
+        let html = HTMLRenderer.renderFamily(
+            family: family,
+            network: nil,
+            comparisonResult: result
+        )
+
+        XCTAssertTrue(html.contains(#"class="family-line child-line comparison-only-child""#))
+        XCTAssertTrue(html.contains(#"<a href="https://hiski.genealogia.fi/hiski?"#))
+        XCTAssertTrue(html.contains(#"class="date-link""#))
+        XCTAssertTrue(html.contains(">21.11.1821</a>"))
+        XCTAssertTrue(html.contains(#"<span class="source-markers">H</span>"#))
+        XCTAssertTrue(html.contains("data-citation-url=\"/family/HISKI%20ONLY%201/hiski?"))
+        XCTAssertTrue(html.contains("name=Sophia"))
+        XCTAssertTrue(html.contains("event=birth"))
+        XCTAssertTrue(html.contains("date=21.11.1821"))
     }
 
     func testServerRenderedFamilyShowsJuuretOnlySourceMarkersInComparisonRows() {
