@@ -2416,6 +2416,10 @@ final class FamilySearchDOMServiceTests: XCTestCase {
             contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/Server/KalvianRootsServer.swift"),
             encoding: .utf8
         )
+        let browserSession = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/Server/BrowserSession.swift"),
+            encoding: .utf8
+        )
 
         XCTAssertTrue(server.contains("case (.GET, \"/family\"):"))
         XCTAssertTrue(
@@ -2428,10 +2432,15 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         )
         XCTAssertTrue(server.contains("juuretApp?.showFamilyFromCache(network, startSynchronization: false)"))
         XCTAssertTrue(server.contains("juuretApp?.storeFamilySearchExtraction(extraction, for: canonicalID, rerunComparison: true)"))
-        XCTAssertFalse(server.contains("await app.regenerateCachedFamily(familyId: actualHome)"))
+        XCTAssertTrue(server.contains("if reloadFlag {\n                network = try await sessionResult.session.reloadFamily(familyId: canonicalID)"))
+        XCTAssertFalse(server.contains("familyCompositeURL(familyId: canonicalID, homeId: homeId, reload: reloadFlag)"))
         XCTAssertTrue(server.contains("FamilySearchWebViewExtractionManager.shared.openDetailsPageAndExtract"))
         XCTAssertTrue(server.contains("if compositeFlag {\n                comparisonGroups = await makeChildrenComparisonGroups"))
         XCTAssertTrue(server.contains("compositeURL: compositeURL"))
+        XCTAssertTrue(browserSession.contains("func reloadFamily(familyId: String) async throws -> FamilyNetwork"))
+        XCTAssertTrue(browserSession.contains("cache.invalidate(familyId: normalizedId)"))
+        XCTAssertTrue(browserSession.contains("await fileManager.autoLoadDefaultFile()"))
+        XCTAssertTrue(browserSession.contains("return try await loadFamily(familyId: normalizedId)"))
     }
 
     func testHiskiBirthWorkbenchRendersEditableQueryAndMagnifierCitationRows() throws {

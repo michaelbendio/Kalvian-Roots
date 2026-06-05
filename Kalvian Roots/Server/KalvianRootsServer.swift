@@ -497,7 +497,11 @@ final class HTTPHandler: ChannelInboundHandler {
         let network: FamilyNetwork
         do {
             logger.info("[\(requestID!)] 📥 Loading family network for: \(canonicalID)")
-            network = try await sessionResult.session.loadFamily(familyId: canonicalID)
+            if reloadFlag {
+                network = try await sessionResult.session.reloadFamily(familyId: canonicalID)
+            } else {
+                network = try await sessionResult.session.loadFamily(familyId: canonicalID)
+            }
             logger.info(
                 "[\(requestID!)] ✅ Family network loaded",
                 metadata: [
@@ -687,7 +691,7 @@ final class HTTPHandler: ChannelInboundHandler {
                 )
             let compositeURL = compositeFlag
                 ? nil
-                : familyCompositeURL(familyId: canonicalID, homeId: homeId, reload: reloadFlag)
+                : familyCompositeURL(familyId: canonicalID, homeId: homeId)
             let html = HTMLRenderer.renderFamily(
                 family: network.mainFamily,
                 network: network,
@@ -2087,14 +2091,11 @@ final class HTTPHandler: ChannelInboundHandler {
 
     // MARK: - Utilities
 
-    private func familyCompositeURL(familyId: String, homeId: String?, reload: Bool) -> String {
+    private func familyCompositeURL(familyId: String, homeId: String?) -> String {
         let encodedFamilyId = pathEncode(familyId)
         var queryItems = ["composite=1"]
         if let homeId {
             queryItems.append("home=\(queryEncode(homeId))")
-        }
-        if reload {
-            queryItems.append("reload=1")
         }
 
         return "/family/\(encodedFamilyId)?\(queryItems.joined(separator: "&"))"

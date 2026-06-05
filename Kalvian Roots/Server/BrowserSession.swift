@@ -129,6 +129,20 @@ final class BrowserSession {
         return network
     }
 
+    func reloadFamily(familyId: String) async throws -> FamilyNetwork {
+        let normalizedId = familyId.uppercased().trimmingCharacters(in: .whitespaces)
+        logInfo(.network, "♻️ BrowserSession.reloadFamily called for: \(normalizedId)")
+
+        cache.invalidate(familyId: normalizedId)
+        if currentFamilyId == normalizedId {
+            currentFamilyId = nil
+            loadedNetwork = nil
+        }
+
+        await fileManager.autoLoadDefaultFile()
+        return try await loadFamily(familyId: normalizedId)
+    }
+
     func storeFamilySearchExtraction(
         _ extraction: FamilySearchFamilyExtraction,
         for familyId: String
