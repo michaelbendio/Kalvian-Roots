@@ -185,6 +185,119 @@ final class CitationGeneratorTests: XCTestCase {
         XCTAssertFalse(citation.contains("1745"))
     }
 
+    func testMainFamilyChildCitationDoesNotBorrowAdultAsParentEnhancement() {
+        let childMaria = Person(
+            name: "Maria",
+            birthDate: "05.12.1774",
+            marriageDate: "1794",
+            spouse: "Antti Rita",
+            asParent: "RITA II 4",
+            noteMarkers: []
+        )
+        let family = Family(
+            familyId: "SAKERI 9",
+            pageReferences: ["318"],
+            couples: [
+                Couple(
+                    husband: Person(name: "Antti", patronymic: "Simonp.", birthDate: "14.04.1749", noteMarkers: []),
+                    wife: Person(name: "Liisa", patronymic: "Sigfridint.", birthDate: "18.06.1743", noteMarkers: []),
+                    fullMarriageDate: "29.10.1772",
+                    children: [
+                        Person(name: "Kaarin", birthDate: "13.10.1773", marriageDate: "1792", spouse: "Erik Nissi", noteMarkers: []),
+                        childMaria
+                    ]
+                )
+            ],
+            notes: [],
+            noteDefinitions: [:]
+        )
+        var network = FamilyNetwork(mainFamily: family)
+        network.asParentFamilies["Maria|05.12.1774"] = Family(
+            familyId: "RITA II 4",
+            pageReferences: ["267"],
+            couples: [
+                Couple(
+                    husband: Person(name: "Antti", patronymic: "Rita", noteMarkers: []),
+                    wife: Person(name: "Maria", birthDate: "05.12.1774", deathDate: "10.07.1833", noteMarkers: []),
+                    fullMarriageDate: "10.12.1794",
+                    children: []
+                )
+            ],
+            notes: [],
+            noteDefinitions: [:]
+        )
+
+        let citation = CitationGenerator.generateMainFamilyCitation(
+            family: family,
+            targetPerson: childMaria,
+            network: network
+        )
+
+        XCTAssertTrue(citation.contains("Information on page 318 includes:"), citation)
+        XCTAssertTrue(citation.contains("Antti Simonp., b. 14 April 1749"), citation)
+        XCTAssertTrue(citation.contains("Liisa Sigfridint., b. 18 June 1743"), citation)
+        XCTAssertTrue(citation.contains("m. 29 October 1772"), citation)
+        XCTAssertTrue(citation.contains("Kaarin, b. 13 October 1773, m. Erik Nissi 1792"), citation)
+        XCTAssertTrue(citation.contains("→ Maria, b. 5 December 1774, m. Antti Rita 1794"), citation)
+        XCTAssertFalse(citation.contains("10 July 1833"), citation)
+        XCTAssertFalse(citation.contains("10 December 1794"), citation)
+        XCTAssertFalse(citation.contains("Additional information"), citation)
+        XCTAssertFalse(citation.contains("page 267"), citation)
+    }
+
+    func testAsChildParentCitationKeepsAdultAsParentEnhancement() {
+        let childMaria = Person(
+            name: "Maria",
+            birthDate: "05.12.1774",
+            marriageDate: "1794",
+            spouse: "Antti Rita",
+            asParent: "RITA II 4",
+            noteMarkers: []
+        )
+        let asChildFamily = Family(
+            familyId: "SAKERI 9",
+            pageReferences: ["318"],
+            couples: [
+                Couple(
+                    husband: Person(name: "Antti", patronymic: "Simonp.", birthDate: "14.04.1749", noteMarkers: []),
+                    wife: Person(name: "Liisa", patronymic: "Sigfridint.", birthDate: "18.06.1743", noteMarkers: []),
+                    fullMarriageDate: "29.10.1772",
+                    children: [
+                        Person(name: "Kaarin", birthDate: "13.10.1773", marriageDate: "1792", spouse: "Erik Nissi", noteMarkers: []),
+                        childMaria
+                    ]
+                )
+            ],
+            notes: [],
+            noteDefinitions: [:]
+        )
+        var network = FamilyNetwork(mainFamily: asChildFamily)
+        network.asParentFamilies["Maria|05.12.1774"] = Family(
+            familyId: "RITA II 4",
+            pageReferences: ["267"],
+            couples: [
+                Couple(
+                    husband: Person(name: "Antti", patronymic: "Rita", noteMarkers: []),
+                    wife: Person(name: "Maria", birthDate: "05.12.1774", deathDate: "10.07.1833", noteMarkers: []),
+                    fullMarriageDate: "10.12.1794",
+                    children: []
+                )
+            ],
+            notes: [],
+            noteDefinitions: [:]
+        )
+
+        let citation = CitationGenerator.generateAsChildCitation(
+            for: childMaria,
+            in: asChildFamily,
+            network: network
+        )
+
+        XCTAssertTrue(citation.contains("→ Maria, 5 December 1774 - 10 July 1833, m. Antti Rita 10 December 1794"), citation)
+        XCTAssertTrue(citation.contains("Additional information:"), citation)
+        XCTAssertTrue(citation.contains("Maria's marriage and death dates are on page 267"), citation)
+    }
+
     func testChildTargetDoesNotMarkSameNamedParentWithoutBirthDate() {
         let father = Person(
             name: "Matti",

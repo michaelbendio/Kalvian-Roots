@@ -122,7 +122,8 @@ struct CitationGenerator {
                         isTarget: isTarget,
                         targetPerson: targetPerson,
                         network: network,
-                        enhancementSources: &enhancementSources
+                        enhancementSources: &enhancementSources,
+                        citationType: citationType
                     )
                     citation += childLine
                 }
@@ -211,10 +212,17 @@ struct CitationGenerator {
         isTarget: Bool,
         targetPerson: Person?,
         network: FamilyNetwork?,
-        enhancementSources: inout [EnhancementSource]
+        enhancementSources: inout [EnhancementSource],
+        citationType: CitationType
     ) -> String {
         let person = targetPerson ?? child
-        let shouldEnhance = shouldEnhanceChild(child, isTarget: isTarget, person: person, network: network)
+        let shouldEnhance = shouldEnhanceChild(
+            child,
+            isTarget: isTarget,
+            person: person,
+            network: network,
+            citationType: citationType
+        )
         let prefix = isTarget ? "→ " : ""
         
         if shouldEnhance, let network = network {
@@ -635,9 +643,11 @@ struct CitationGenerator {
         _ child: Person,
         isTarget: Bool,
         person: Person,
-        network: FamilyNetwork?
+        network: FamilyNetwork?,
+        citationType: CitationType
     ) -> Bool {
         guard isTarget,
+              citationType == .asChild,
               let network = network,
               let spouse = child.spouse,
               !spouse.isEmpty,
