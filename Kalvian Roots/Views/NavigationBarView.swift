@@ -10,6 +10,7 @@ import SwiftUI
 struct NavigationBarView: View {
     @Environment(JuuretApp.self) private var juuretApp
     @ObservedObject var prefetchManager: PrefetchManager
+    var onShowHiskiWorkbench: () -> Void = {}
     @State private var familyIdInput: String = ""
     @State private var showingClanBrowser: Bool = false
 
@@ -48,6 +49,14 @@ struct NavigationBarView: View {
             }
             .buttonStyle(NavigationButtonStyle())
             .disabled(juuretApp.currentFamily == nil)
+
+            Button(action: onShowHiskiWorkbench) {
+                Text("HisKi")
+                    .font(.system(size: 14, weight: .medium))
+            }
+            .buttonStyle(NavigationButtonStyle())
+            .disabled(juuretApp.currentFamily == nil)
+            .help("HisKi Workbench")
 
             // Family ID input with clear button and dropdown
             HStack(spacing: 4) {

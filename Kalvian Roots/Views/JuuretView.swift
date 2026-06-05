@@ -24,7 +24,12 @@ struct JuuretView: View {
         VStack(spacing: 0) {
             if juuretApp.fileManager.isFileLoaded {
                 // Navigation bar at top
-                NavigationBarView(prefetchManager: juuretApp.prefetchManager)
+                NavigationBarView(
+                    prefetchManager: juuretApp.prefetchManager,
+                    onShowHiskiWorkbench: {
+                        showingHiskiWorkbench = true
+                    }
+                )
                 
                 // Main content area - CHECK FOR PENDING ID FIRST
                 if let pendingId = juuretApp.pendingFamilyId {
@@ -73,13 +78,6 @@ struct JuuretView: View {
                     .opacity(isAIReady ? 1.0 : 0.0)
                     .animation(.easeInOut(duration: 0.3), value: isAIReady)
 
-                Button {
-                    showingHiskiWorkbench = true
-                } label: {
-                    Label("HisKi Workbench", systemImage: "magnifyingglass")
-                }
-                .disabled(juuretApp.currentFamily == nil)
-                
                 CachedFamiliesMenu()
             }
         }
@@ -94,13 +92,6 @@ struct JuuretView: View {
                         .opacity(isAIReady ? 1.0 : 0.0)
                         .animation(.easeInOut(duration: 0.3), value: isAIReady)
 
-                    Button {
-                        showingHiskiWorkbench = true
-                    } label: {
-                        Label("HisKi Workbench", systemImage: "magnifyingglass")
-                    }
-                    .disabled(juuretApp.currentFamily == nil)
-                    
                     CachedFamiliesMenu()
                 }
             }

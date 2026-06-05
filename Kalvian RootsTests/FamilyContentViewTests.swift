@@ -519,6 +519,30 @@ final class FamilyContentViewTests: XCTestCase {
         )
     }
 
+    func testHiskiWorkbenchButtonLivesInCustomNavigationBar() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        let navigationBarView = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/Views/NavigationBarView.swift"),
+            encoding: .utf8
+        )
+        let juuretView = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/Views/JuuretView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(navigationBarView.contains("var onShowHiskiWorkbench: () -> Void"))
+        XCTAssertTrue(navigationBarView.contains("Button(action: onShowHiskiWorkbench)"))
+        XCTAssertTrue(navigationBarView.contains(#"Text("HisKi")"#))
+        XCTAssertTrue(juuretView.contains("onShowHiskiWorkbench: {\n                        showingHiskiWorkbench = true"))
+        XCTAssertFalse(
+            juuretView.contains(#"Label("HisKi Workbench", systemImage: "magnifyingglass")"#),
+            "The workbench entry point belongs in the custom purple NavigationBarView, not only in the native system toolbar."
+        )
+    }
+
     func testComparisonDisplayDatePrefersHiskiWhenJuuretDisagrees() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
