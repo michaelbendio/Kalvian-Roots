@@ -100,6 +100,40 @@ final class FamilyChildrenComparisonBuilder {
         )
     }
 
+    func buildGroupFromHiskiRows(
+        couple: Couple,
+        coupleIndex: Int,
+        familySearchChildren: [FamilySearchChild],
+        rawRows: [HiskiService.HiskiFamilyBirthRow],
+        searchRequests: [HiskiService.FamilyBirthSearchRequest]
+    ) -> FamilyChildrenComparisonGroup {
+        let structuredRowsResult = hiskiService.filterFamilyBirthRowsAnchoredToJuuretChildren(
+            rawRows,
+            juuretChildren: couple.children,
+            additionalAnchorBirthDates: familySearchChildren.flatMap { child in
+                [child.birthDate, child.birth?.date, child.christeningDate, child.christening?.date]
+            }
+        )
+        log("Manual HisKi raw family-child rows parsed: \(structuredRowsResult.originalRowCount)")
+        log("Manual HisKi structured family-child rows \(structuredRowsResult.confidenceLabel): \(structuredRowsResult.rows.count)")
+
+        let result = comparisonService.compare(
+            juuretCandidates: comparisonService.makeJuuretCandidates(from: couple.children),
+            hiskiCandidates: comparisonService.makeHiskiCandidates(from: structuredRowsResult.rows),
+            familySearchCandidates: comparisonService.makeFamilySearchCandidates(
+                from: familySearchChildren,
+                matchingHiskiRows: structuredRowsResult.rows
+            )
+        )
+
+        return FamilyChildrenComparisonGroup(
+            coupleIndex: coupleIndex,
+            couple: couple,
+            hiskiSearchRequests: searchRequests,
+            result: result
+        )
+    }
+
     private func makeCitationProposals(
         couple: Couple,
         familySearchChildren: [FamilySearchChild],

@@ -228,6 +228,7 @@ struct HTMLRenderer {
         let displayedId = family.familyId
         let navBar = renderNavigationBar(homeId: homeId, displayedId: displayedId)
         let familyURL = "/family/\(urlEncode(displayedId))" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
+        let refreshURL = "/family/\(urlEncode(displayedId))/hiski-birth-search" + (displayedId == homeId ? "" : "?home=\(urlEncode(homeId))")
         let searchURLString = searchURL?.absoluteString ?? "https://hiski.genealogia.fi/hiski"
         let searchLink = searchURL.map { url in
             """
@@ -263,12 +264,24 @@ struct HTMLRenderer {
                             <h1>HisKi Births</h1>
                             <p>\(escapeHTML(displayedId))</p>
                         </div>
-                        <a class="family-workspace-action" href="\(escapeHTML(familyURL))">Family</a>
+                        <div class="hiski-workbench-actions">
+                            <a class="family-workspace-action" href="\(escapeHTML(familyURL))">Cancel</a>
+                            <button class="family-workspace-action"
+                                    type="submit"
+                                    form="hiskiBirthForm"
+                                    name="refreshFamily"
+                                    value="1"
+                                    data-family-refresh="1">Family</button>
+                        </div>
                     </div>
                     \(statusHTML)
                     <section class="hiski-workbench-section">
                         <h2>Search</h2>
-                        <form class="hiski-birth-form" onsubmit="return openHiskiSearch(event, this)">
+                        <form id="hiskiBirthForm"
+                              class="hiski-birth-form"
+                              method="POST"
+                              action="\(escapeHTML(refreshURL))"
+                              onsubmit="return openHiskiSearch(event, this)">
                             <div class="hiski-form-grid">
                                 \(renderHiskiWorkbenchInput("Child first name", name: "childFirstName", value: fields.childFirstName))
                                 \(renderHiskiWorkbenchInput("Start year", name: "startYear", value: fields.startYear))
@@ -315,11 +328,15 @@ struct HTMLRenderer {
                 };
 
                 function openHiskiSearch(event, form) {
+                    const clickedButton = event && event.submitter;
+                    if (clickedButton && clickedButton.dataset.familyRefresh) {
+                        return true;
+                    }
+
                     if (event) {
                         event.preventDefault();
                     }
 
-                    const clickedButton = event && event.submitter;
                     const baseURL = clickedButton && clickedButton.dataset.baseUrl
                         ? clickedButton.dataset.baseUrl
                         : hiskiBirthBaseURL;

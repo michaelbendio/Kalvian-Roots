@@ -443,6 +443,55 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertEqual(values["apatronyymi"], "Sigfridsdr")
     }
 
+    func testManualHiskiRowsBuildFamilyComparisonGroupForMarkers() {
+        let couple = Couple(
+            husband: Person(name: "Lauri", patronymic: "Luukkaanp."),
+            wife: Person(name: "Vappu", patronymic: "Simont."),
+            marriageDate: "03.12.1705",
+            children: [
+                Person(name: "Matti", birthDate: "05.02.1706"),
+                Person(name: "Juho", birthDate: "13.06.1708")
+            ]
+        )
+        let comparisonService = FamilyComparisonService(nameManager: nameEquivalenceManager)
+        let builder = FamilyChildrenComparisonBuilder(
+            hiskiService: service,
+            comparisonService: comparisonService,
+            loadHiskiSearchHtml: { _ in "" }
+        )
+        let rows = [
+            HiskiService.HiskiFamilyBirthRow(
+                birthDate: "5.2.1706",
+                childName: "Matthias",
+                fatherName: "Lars Lucason",
+                motherName: "Walbor Sim.dr.",
+                recordPath: "/hiski?en+0265+kastetut+1001",
+                parish: "Kälviä - Kelviä",
+                villageFarm: "Pärkola"
+            ),
+            HiskiService.HiskiFamilyBirthRow(
+                birthDate: "13.6.1708",
+                childName: "Johannes",
+                fatherName: "Lars Luca.son",
+                motherName: "Walbor Simonsdr.",
+                recordPath: "/hiski?en+0265+kastetut+1002",
+                parish: "Kälviä - Kelviä",
+                villageFarm: "Pärkola"
+            )
+        ]
+
+        let group = builder.buildGroupFromHiskiRows(
+            couple: couple,
+            coupleIndex: 0,
+            familySearchChildren: [],
+            rawRows: rows,
+            searchRequests: []
+        )
+
+        XCTAssertEqual(group.result.matches.count, 2)
+        XCTAssertTrue(group.result.rows.allSatisfy { $0.juuretKalvialla != nil && $0.hiski != nil })
+    }
+
     func testFamilyBirthSearchWindowFallsBackToFirstChildBirthYearWhenMarriageIsMissing() throws {
         let couple = Couple(
             husband: Person(name: "Matti", patronymic: "Juhonp."),

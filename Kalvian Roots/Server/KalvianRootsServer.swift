@@ -1184,6 +1184,7 @@ final class HTTPHandler: ChannelInboundHandler {
         var errorMessage: String?
         let resultsURLText = trimmedFormValue(form["resultsURL"])
         let selectedRecordURLText = trimmedFormValue(form["selectedRecordURL"])
+        let shouldRefreshFamily = trimmedFormValue(form["refreshFamily"]) != nil
 
         do {
             searchURL = try hiskiService.buildManualBirthSearchUrl(fields: fields)
@@ -1218,6 +1219,23 @@ final class HTTPHandler: ChannelInboundHandler {
         }
 
         let actualHomeId = homeId ?? familyId
+        if shouldRefreshFamily, errorMessage == nil {
+            let comparisonGroups = makeManualHiskiComparisonGroups(
+                familyId: familyId,
+                family: network.mainFamily,
+                searchURL: searchURL,
+                rows: rows,
+                session: session
+            )
+            let html = HTMLRenderer.renderFamily(
+                family: network.mainFamily,
+                network: network,
+                homeId: actualHomeId,
+                comparisonGroups: comparisonGroups
+            )
+            return .html(html, headers: responseHeaders(setCookieHeader: setCookieHeader))
+        }
+
         let html = HTMLRenderer.renderHiskiBirthWorkbench(
             family: network.mainFamily,
             homeId: actualHomeId,
@@ -1231,6 +1249,50 @@ final class HTTPHandler: ChannelInboundHandler {
         )
 
         return .html(html, headers: responseHeaders(setCookieHeader: setCookieHeader))
+    }
+
+    @MainActor
+    private func makeManualHiskiComparisonGroups(
+        familyId: String,
+        family: Family,
+        searchURL: URL?,
+        rows: [HiskiService.HiskiFamilyBirthRow],
+        session: BrowserSession
+    ) -> [FamilyChildrenComparisonGroup] {
+        guard let couple = family.primaryCouple else {
+            return []
+        }
+
+        let comparisonService = FamilyComparisonService(nameManager: session.nameEquivalenceManager)
+        let hiskiService = HiskiService(nameEquivalenceManager: session.nameEquivalenceManager)
+        hiskiService.setCurrentFamily(familyId)
+        let familySearchExtraction = session.familySearchExtraction(for: familyId)
+            ?? juuretApp?.familySearchExtraction(for: familyId)
+        let familySearchChildren = familySearchChildrenByCouple(
+            for: family,
+            extraction: familySearchExtraction
+        )[0] ?? []
+        let searchRequests = searchURL.map {
+            [HiskiService.FamilyBirthSearchRequest(label: "manual HisKi parent query", url: $0)]
+        } ?? []
+        let builder = FamilyChildrenComparisonBuilder(
+            hiskiService: hiskiService,
+            comparisonService: comparisonService,
+            loadHiskiSearchHtml: loadHiskiSearchHtml,
+            log: { [weak self] message in
+                self?.logger.info("[\(self?.requestID?.uuidString ?? "unknown")] \(message)")
+            }
+        )
+
+        return [
+            builder.buildGroupFromHiskiRows(
+                couple: couple,
+                coupleIndex: 0,
+                familySearchChildren: familySearchChildren,
+                rawRows: rows,
+                searchRequests: searchRequests
+            )
+        ]
     }
 
     @MainActor
