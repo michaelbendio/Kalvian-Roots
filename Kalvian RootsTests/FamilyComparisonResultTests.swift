@@ -2669,6 +2669,33 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         }
     }
 
+    func testServerRenderedChildNameLinkKeepsChildBirthWhenParentSharesName() {
+        let family = Family(
+            familyId: "RITA II 4",
+            pageReferences: ["267"],
+            couples: [
+                Couple(
+                    husband: Person(name: "Antti", patronymic: "Erikinp.", birthDate: "25.04.1770"),
+                    wife: Person(name: "Maria", patronymic: "Antint.", birthDate: "05.12.1774"),
+                    fullMarriageDate: "10.12.1794",
+                    children: [
+                        Person(name: "Maria", birthDate: "06.07.1799")
+                    ]
+                )
+            ]
+        )
+
+        let html = HTMLRenderer.renderFamily(family: family, network: nil)
+
+        let childNameFirstLink = #"/family/RITA%20II%204/cite?name=Maria&birth=06.07.1799""#
+        let childBirthFirstLink = #"/family/RITA%20II%204/cite?birth=06.07.1799&name=Maria""#
+        XCTAssertTrue(html.contains(childNameFirstLink) || html.contains(childBirthFirstLink), html)
+
+        let parentNameFirstLink = #"/family/RITA%20II%204/cite?name=Maria&birth=05.12.1774""#
+        let parentBirthFirstLink = #"/family/RITA%20II%204/cite?birth=05.12.1774&name=Maria""#
+        XCTAssertFalse(html.contains(parentNameFirstLink) || html.contains(parentBirthFirstLink), html)
+    }
+
     func testFamilyFormSubmissionRequestsReloadedFamilyPage() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -2703,6 +2730,22 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(browserSession.contains("cache.invalidate(familyId: normalizedId)"))
         XCTAssertTrue(browserSession.contains("await fileManager.autoLoadDefaultFile()"))
         XCTAssertTrue(browserSession.contains("return try await loadFamily(familyId: normalizedId)"))
+    }
+
+    func testServerCitationRoleDetectionUsesBirthAwarePersonEquality() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        let server = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/Server/KalvianRootsServer.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(server.contains("let isParent = family.allParents.contains { arePersonsEqual($0, person) }"))
+        XCTAssertTrue(server.contains("let isChild = family.allChildren.contains { arePersonsEqual($0, person) }"))
+        XCTAssertFalse(server.contains("let isParent = family.allParents.contains { $0.name == person.name }"))
+        XCTAssertFalse(server.contains("let isChild = family.allChildren.contains { $0.name == person.name }"))
     }
 
     func testHiskiBirthWorkbenchRendersEditableQueryAndMagnifierCitationRows() throws {

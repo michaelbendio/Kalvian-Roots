@@ -1608,8 +1608,8 @@ final class HTTPHandler: ChannelInboundHandler {
         let family = network.mainFamily
         
         // Determine role if not specified
-        let isParent = family.allParents.contains { $0.name == person.name }
-        let isChild = family.allChildren.contains { $0.name == person.name }
+        let isParent = family.allParents.contains { arePersonsEqual($0, person) }
+        let isChild = family.allChildren.contains { arePersonsEqual($0, person) }
         
         logger.info(
             "[\(requestID!)] 👤 Person role detection",
@@ -1685,6 +1685,25 @@ final class HTTPHandler: ChannelInboundHandler {
         }
         
         return .html(html, headers: responseHeaders)
+    }
+
+    private func arePersonsEqual(_ person1: Person, _ person2: Person) -> Bool {
+        if person1.id == person2.id {
+            return true
+        }
+
+        if let birth1 = person1.birthDate, let birth2 = person2.birthDate {
+            guard birth1 == birth2 else {
+                return false
+            }
+            return person1.name.lowercased() == person2.name.lowercased()
+        }
+
+        if person1.birthDate != nil || person2.birthDate != nil {
+            return false
+        }
+
+        return person1.name.lowercased() == person2.name.lowercased()
     }
 
     @MainActor
