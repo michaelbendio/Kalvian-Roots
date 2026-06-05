@@ -144,7 +144,7 @@ struct CitationGenerator {
             citation += formatEnhancementSourcesSection(sources: enhancementSources)
         }
         
-        return citation
+        return citation.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
     // MARK: - Section Formatters

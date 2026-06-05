@@ -44,6 +44,16 @@ final class CitationGeneratorTests: XCTestCase {
         XCTAssertTrue(citation.contains("Matti"), "Should have father name")
         XCTAssertTrue(citation.contains("Maria"), "Should have mother name")
     }
+
+    func testMainFamilyCitationDoesNotEndWithBlankLine() {
+        let citation = CitationGenerator.generateMainFamilyCitation(
+            family: testFamily,
+            targetPerson: nil,
+            network: nil
+        )
+
+        XCTAssertFalse(citation.hasSuffix("\n"))
+    }
     
     func testGenerateMainFamilyCitationWithTargetPerson() {
         // Given: Target person
@@ -364,6 +374,20 @@ final class CitationGeneratorTests: XCTestCase {
         // Then: Should contain asChild family info
         XCTAssertTrue(citation.contains("Information on"), "Should have header")
         XCTAssertTrue(citation.contains(asChildFamily.pageReferences[0]), "Should have page ref")
+    }
+
+    func testAsChildCitationDoesNotEndWithBlankLine() {
+        let person = Person(name: "Matti", birthDate: "15.02.1730", noteMarkers: [])
+        let asChildFamily = createAsChildFamily()
+
+        let citation = CitationGenerator.generateAsChildCitation(
+            for: person,
+            in: asChildFamily,
+            network: nil,
+            nameEquivalenceManager: nil
+        )
+
+        XCTAssertFalse(citation.hasSuffix("\n"))
     }
     
     func testGenerateAsChildCitationWithNetwork() {
