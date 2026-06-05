@@ -420,11 +420,19 @@ enum FamilyComparisonReviewDetector {
             return false
         }
 
-        return abs(Calendar(identifier: .gregorian).dateComponents(
+        let calendar = Calendar(identifier: .gregorian)
+        if abs(calendar.dateComponents(
             [.day],
             from: leftBirthDate,
             to: rightBirthDate
-        ).day ?? Int.max) <= 90
+        ).day ?? Int.max) <= 90 {
+            return true
+        }
+
+        let leftComponents = calendar.dateComponents([.year, .day], from: leftBirthDate)
+        let rightComponents = calendar.dateComponents([.year, .day], from: rightBirthDate)
+        return leftComponents.year == rightComponents.year &&
+            leftComponents.day == rightComponents.day
     }
 
     private static func sources(for row: FamilyComparisonResult.Match) -> Set<String> {

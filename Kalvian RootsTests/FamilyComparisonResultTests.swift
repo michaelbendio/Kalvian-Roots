@@ -776,6 +776,71 @@ final class FamilyComparisonResultTests: XCTestCase {
         )
     }
 
+    func testDisplayRowsCoalesceSameCanonicalNameWithSameYearMonthDiscrepancy() throws {
+        let result = FamilyComparisonResult(
+            familySearch: [
+                candidate(
+                    name: "Maria",
+                    birth: date(1799, 1, 6),
+                    source: .familySearch,
+                    familySearchId: "M8ZL-76J"
+                )
+            ],
+            juuretKalvialla: [
+                candidate(
+                    name: "Maria",
+                    birth: date(1799, 7, 6),
+                    source: .juuretKalvialla
+                )
+            ],
+            hiski: [
+                candidate(
+                    name: "Maria",
+                    birth: date(1799, 1, 6),
+                    source: .hiski
+                )
+            ]
+        )
+
+        XCTAssertEqual(result.rows.count, 2)
+
+        let displayRows = FamilyComparisonReviewDetector.displayRows(for: result.rows)
+        XCTAssertEqual(displayRows.count, 1)
+
+        let displayRow = try XCTUnwrap(displayRows.first)
+        XCTAssertEqual(displayRow.match.juuretKalvialla?.rawName, "Maria")
+        XCTAssertEqual(displayRow.match.familySearch?.rawName, "Maria")
+        XCTAssertEqual(displayRow.match.hiski?.rawName, "Maria")
+        XCTAssertEqual(
+            displayRow.reviewNote?.message,
+            "Possible same child with date discrepancy: Juuret has Maria (06 Jul 1799); FamilySearch has Maria (06 Jan 1799); HisKi has Maria (06 Jan 1799)."
+        )
+    }
+
+    func testDisplayRowsDoNotCoalesceSameCanonicalNameAcrossBirthYears() {
+        let result = FamilyComparisonResult(
+            familySearch: [
+                candidate(
+                    name: "Maria",
+                    birth: date(1799, 1, 6),
+                    source: .familySearch,
+                    familySearchId: "M8ZL-76J"
+                )
+            ],
+            juuretKalvialla: [
+                candidate(
+                    name: "Maria",
+                    birth: date(1800, 1, 6),
+                    source: .juuretKalvialla
+                )
+            ],
+            hiski: []
+        )
+
+        XCTAssertEqual(result.rows.count, 2)
+        XCTAssertEqual(FamilyComparisonReviewDetector.displayRows(for: result.rows).count, 2)
+    }
+
     private func candidate(
         name: String,
         identityName: String? = nil,
