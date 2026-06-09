@@ -62,6 +62,17 @@ final class LandingPageRendererTests: XCTestCase {
     }
 
     #if os(macOS)
+    func testServerQueryDecoderTreatsPlusAsSpaceForHiskiParameters() {
+        let items = HTTPHandler.decodedQueryItems(
+            from: "/family/PIENI-PORKOLA%202/hiski?name=Elisabet&event=birth&date=06.10.1711&father=Lauri+Luukkaanp.&mother=Vappu+Simont.&literal=A%2BB"
+        )
+        let values = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
+
+        XCTAssertEqual(values["father"], "Lauri Luukkaanp.")
+        XCTAssertEqual(values["mother"], "Vappu Simont.")
+        XCTAssertEqual(values["literal"], "A+B")
+    }
+
     func testLandingCoverAssetIsBundled() {
         XCTAssertNotNil(NSImage(named: "JuuretCover"))
     }

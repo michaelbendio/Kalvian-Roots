@@ -191,7 +191,7 @@ final class HTTPHandler: ChannelInboundHandler {
 
         let urlComponents = URLComponents(string: uri)
         let path = urlComponents?.path ?? "/"
-        let queryItems = urlComponents?.queryItems ?? []
+        let queryItems = Self.decodedQueryItems(from: uri)
 
         logger.info(
             "[\(requestID!)] 🛤️ Routing",
@@ -234,6 +234,29 @@ final class HTTPHandler: ChannelInboundHandler {
                 }
             }
         }
+    }
+
+    static func decodedQueryItems(from uri: String) -> [URLQueryItem] {
+        guard let queryStart = uri.firstIndex(of: "?") else {
+            return []
+        }
+
+        let rawQuery = uri[uri.index(after: queryStart)...]
+        return rawQuery.split(separator: "&").map { pair in
+            let parts = pair.split(separator: "=", maxSplits: 1)
+            let rawName = parts.first.map(String.init) ?? ""
+            let rawValue = parts.count > 1 ? String(parts[1]) : nil
+
+            return URLQueryItem(
+                name: decodeFormQueryComponent(rawName),
+                value: rawValue.map(decodeFormQueryComponent)
+            )
+        }
+    }
+
+    private static func decodeFormQueryComponent(_ value: String) -> String {
+        let formDecoded = value.replacingOccurrences(of: "+", with: " ")
+        return formDecoded.removingPercentEncoding ?? formDecoded
     }
 
     // MARK: - Route Dispatcher (MainActor only)
