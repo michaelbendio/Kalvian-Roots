@@ -315,7 +315,7 @@ final class FamilyContentViewTests: XCTestCase {
         XCTAssertFalse(FamilyIDs.isValid(familyId: "Rita II 14"))
     }
 
-    func testRenderedChildBirthHiskiLinksIncludeCoupleParentNames() {
+    func testRenderedChildBirthHiskiLinksDoNotIncludeCoupleParentNames() {
         let child = Person(name: "Carin", birthDate: "1.9.1801")
         let family = Family(
             familyId: "HASSINEN 1",
@@ -331,8 +331,11 @@ final class FamilyContentViewTests: XCTestCase {
 
         let html = HTMLRenderer.renderFamily(family: family, network: nil)
 
-        XCTAssertTrue(html.contains("father=Matts%20Anderss.%20Hassinen"))
-        XCTAssertTrue(html.contains("mother=Carin%20Thomadr."))
+        XCTAssertTrue(html.contains("etunimi=Carin"))
+        XCTAssertFalse(html.contains("father=Matts"))
+        XCTAssertFalse(html.contains("mother=Carin"))
+        XCTAssertFalse(html.contains("ietunimi=Matts"))
+        XCTAssertFalse(html.contains("aetunimi=Carin"))
     }
 
     func testBrowserNavigationOmitsHomeButtonAndSourceIconTogglesSourcePanel() {

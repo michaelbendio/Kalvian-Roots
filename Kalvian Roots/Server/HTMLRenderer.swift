@@ -954,6 +954,7 @@ struct HTMLRenderer {
             familyId: familyId,
             homeId: homeId
         )
+        let linkedCitationURL = eventType == .birth ? nil : citationURL
         if let href = hiskiSearchURL(
             date: date,
             eventType: eventType,
@@ -963,7 +964,7 @@ struct HTMLRenderer {
                 href: href,
                 text: date,
                 cssClass: linkClass,
-                citationURL: citationURL
+                citationURL: linkedCitationURL
             )
         }
         return renderHiskiSearchAnchor(href: citationURL, text: date, cssClass: linkClass)
@@ -991,8 +992,6 @@ struct HTMLRenderer {
                 return try hiskiService.birthSearchResultsURL(
                     name: person.name,
                     date: date,
-                    fatherName: person.fatherName,
-                    motherName: person.motherName,
                     parentBirthYear: CitationGenerator.extractBirthYear(from: person)
                 )
             case .death:
@@ -1038,14 +1037,19 @@ struct HTMLRenderer {
         homeId: String
     ) -> String {
         let homeParam = (familyId == homeId) ? "" : "&home=\(urlEncode(homeId))"
-        let params = buildQueryParams([
+        var queryParams: [String: String?] = [
             "name": person.name,
             "birth": person.birthDate,
             "event": eventType.rawValue,
-            "date": date,
-            "father": person.fatherName,
-            "mother": person.motherName
-        ])
+            "date": date
+        ]
+
+        if eventType != .birth {
+            queryParams["father"] = person.fatherName
+            queryParams["mother"] = person.motherName
+        }
+
+        let params = buildQueryParams(queryParams)
         return "/family/\(urlEncode(familyId))/hiski?\(params)\(homeParam)"
     }
 
@@ -1527,19 +1531,13 @@ struct HTMLRenderer {
                        class="date-link">\(escapeHTML(date))</a>
                     """
                 } else if let person = person {
-                    // Birth or death date
-                    let params = buildQueryParams([
-                        "name": person.name,
-                        "birth": person.birthDate,
-                        "event": eventType.rawValue,
-                        "date": date,
-                        "father": person.fatherName,
-                        "mother": person.motherName
-                    ])
-                    html += """
-                    <a href="/family/\(urlEncode(familyId))/hiski?\(params)\(homeParam)"
-                       class="date-link">\(escapeHTML(date))</a>
-                    """
+                    html += renderDateLink(
+                        date,
+                        eventType: eventType,
+                        person: person,
+                        familyId: familyId,
+                        homeId: homeId
+                    )
                 } else {
                     // Non-clickable date
                     html += escapeHTML(date)
