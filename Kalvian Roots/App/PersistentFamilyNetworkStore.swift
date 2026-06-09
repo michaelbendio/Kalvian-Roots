@@ -87,8 +87,9 @@ final class PersistentFamilyNetworkStore {
     // MARK: - Private Helpers
 
     private static func applicationSupportCacheDirectory(fileManager: FileManager) -> URL {
-        let baseDirectory = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? fileManager.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support", isDirectory: true)
+        guard let baseDirectory = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            fatalError("Application Support directory is not available for the current user domain")
+        }
 
         return baseDirectory
             .appendingPathComponent("Kalvian Roots", isDirectory: true)
