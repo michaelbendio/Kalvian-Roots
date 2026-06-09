@@ -12,8 +12,6 @@
 		09059B392F15CC48006367DA /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = 09059B382F15CC48006367DA /* NIOPosix */; };
 		09059B402F1879E8006367DA /* InMemoryLogging in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = 09059B3F2F1879E8006367DA /* InMemoryLogging */; };
 		09059B422F1879E8006367DA /* Logging in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = 09059B412F1879E8006367DA /* Logging */; };
-		09CB18602E2170CD0083983B /* FoundationModels.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09CB185F2E2170CD0083983B /* FoundationModels.framework */; };
-		09CB18622E2179350083983B /* FoundationModels.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09CB185F2E2170CD0083983B /* FoundationModels.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -29,7 +27,6 @@
 /* Begin PBXFileReference section */
 		09CB182E2E216DB10083983B /* Kalvian Roots.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Kalvian Roots.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		09CB183B2E216DB20083983B /* Kalvian RootsTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Kalvian RootsTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
-		09CB185F2E2170CD0083983B /* FoundationModels.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FoundationModels.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/FoundationModels.framework; sourceTree = DEVELOPER_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -73,7 +70,6 @@
 				09059B402F1879E8006367DA /* InMemoryLogging in Frameworks */,
 				09059B392F15CC48006367DA /* NIOPosix in Frameworks */,
 				09059B352F15CC48006367DA /* NIOCore in Frameworks */,
-				09CB18602E2170CD0083983B /* FoundationModels.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -81,7 +77,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				09CB18622E2179350083983B /* FoundationModels.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -111,7 +106,6 @@
 		09CB185E2E2170CD0083983B /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				09CB185F2E2170CD0083983B /* FoundationModels.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
