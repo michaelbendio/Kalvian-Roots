@@ -2245,6 +2245,51 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertFalse(html.contains("mother="))
     }
 
+    func testServerRenderedFamilySearchOnlyChildDateLinksParentlessBirthQuery() {
+        let nameManager = NameEquivalenceManager()
+        nameManager.clearAllEquivalences()
+        let family = Family(
+            familyId: "FS ONLY 1",
+            pageReferences: ["1"],
+            husband: Person(name: "Lauri", patronymic: "Luukkaanp."),
+            wife: Person(name: "Vappu", patronymic: "Simont."),
+            children: []
+        )
+        let result = FamilyComparisonResult(
+            familySearch: [
+                PersonCandidate(
+                    name: "Lucas Larsson",
+                    birthDate: date(1712, 12, 24),
+                    source: .familySearch,
+                    nameManager: nameManager,
+                    familySearchId: "M8ZB-VHW"
+                )
+            ],
+            juuretKalvialla: [],
+            hiski: []
+        )
+
+        let html = HTMLRenderer.renderFamily(
+            family: family,
+            network: nil,
+            comparisonResult: result
+        )
+
+        XCTAssertTrue(html.contains(#"class="family-line child-line comparison-only-child""#))
+        XCTAssertTrue(html.contains(#"<a href="https://hiski.genealogia.fi/hiski?"#))
+        XCTAssertTrue(html.contains(#"class="date-link""#))
+        XCTAssertTrue(html.contains(">24.12.1712</a>"))
+        XCTAssertTrue(html.contains(#"<span class="source-markers">FS</span>"#))
+        XCTAssertTrue(html.contains(#"<span class="familysearch-id">&lt;M8ZB-VHW&gt;</span>"#))
+        XCTAssertTrue(html.contains("etunimi=Lucas"))
+        XCTAssertTrue(html.contains("alkuvuosi=24.12.1712"))
+        XCTAssertFalse(html.contains("data-citation-url=\"/family/FS%20ONLY%201/hiski?"))
+        XCTAssertFalse(html.contains("father="))
+        XCTAssertFalse(html.contains("mother="))
+        XCTAssertFalse(html.contains("ietunimi=Lauri"))
+        XCTAssertFalse(html.contains("aetunimi=Vappu"))
+    }
+
     func testServerRenderedFamilyShowsJuuretOnlySourceMarkersInComparisonRows() {
         let nameManager = NameEquivalenceManager()
         nameManager.clearAllEquivalences()

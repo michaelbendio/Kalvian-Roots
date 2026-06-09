@@ -897,9 +897,13 @@ struct HTMLRenderer {
         let date = displayDate(for: row)
         let name = displayName(for: row)
         let dateHTML: String
-        if let hiski = row.hiski, date != "unknown" {
-            let hiskiPerson = Person(name: hiski.rawName, birthDate: date, noteMarkers: [])
-            dateHTML = renderDateLink(date, eventType: .birth, person: hiskiPerson, familyId: familyId, homeId: homeId)
+        let queryName = row.hiski?.rawName
+            ?? row.juuretKalvialla?.rawName
+            ?? row.familySearch?.rawName
+            ?? name
+        if date != "unknown", !queryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let queryPerson = Person(name: queryName, birthDate: date, noteMarkers: [])
+            dateHTML = renderDateLink(date, eventType: .birth, person: queryPerson, familyId: familyId, homeId: homeId)
         } else {
             dateHTML = escapeHTML(date)
         }
