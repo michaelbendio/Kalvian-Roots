@@ -7,11 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		09059B352F15CC48006367DA /* NIOCore in Frameworks */ = {isa = PBXBuildFile; productRef = 09059B342F15CC48006367DA /* NIOCore */; };
-		09059B372F15CC48006367DA /* NIOHTTP1 in Frameworks */ = {isa = PBXBuildFile; productRef = 09059B362F15CC48006367DA /* NIOHTTP1 */; };
-		09059B392F15CC48006367DA /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; productRef = 09059B382F15CC48006367DA /* NIOPosix */; };
-		09059B402F1879E8006367DA /* InMemoryLogging in Frameworks */ = {isa = PBXBuildFile; productRef = 09059B3F2F1879E8006367DA /* InMemoryLogging */; };
-		09059B422F1879E8006367DA /* Logging in Frameworks */ = {isa = PBXBuildFile; productRef = 09059B412F1879E8006367DA /* Logging */; };
+		09059B352F15CC48006367DA /* NIOCore in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = 09059B342F15CC48006367DA /* NIOCore */; };
+		09059B372F15CC48006367DA /* NIOHTTP1 in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = 09059B362F15CC48006367DA /* NIOHTTP1 */; };
+		09059B392F15CC48006367DA /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = 09059B382F15CC48006367DA /* NIOPosix */; };
+		09059B402F1879E8006367DA /* InMemoryLogging in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = 09059B3F2F1879E8006367DA /* InMemoryLogging */; };
+		09059B422F1879E8006367DA /* Logging in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = 09059B412F1879E8006367DA /* Logging */; };
 		09CB18602E2170CD0083983B /* FoundationModels.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09CB185F2E2170CD0083983B /* FoundationModels.framework */; };
 		09CB18622E2179350083983B /* FoundationModels.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09CB185F2E2170CD0083983B /* FoundationModels.framework */; };
 /* End PBXBuildFile section */
