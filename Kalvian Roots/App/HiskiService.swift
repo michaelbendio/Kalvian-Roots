@@ -25,6 +25,7 @@ enum HiskiServiceError: LocalizedError {
     case browserOpenFailed
     case noRecordFound
     case citationExtractionFailed
+    case queriesDisabled
 
     var errorDescription: String? {
         switch self {
@@ -40,6 +41,8 @@ enum HiskiServiceError: LocalizedError {
             return "No HisKi record found."
         case .citationExtractionFailed:
             return "HisKi citation link not found in record page."
+        case .queriesDisabled:
+            return HiskiService.queriesDisabledMessage
         }
     }
 }
@@ -350,6 +353,8 @@ class HiskiWebViewManager {
 // MARK: - Hiski Service
 
 class HiskiService {
+    static let queriesDisabled = true
+    static let queriesDisabledMessage = "HisKi queries are temporarily disabled while hiski.genealogia.fi is unresponsive."
     static let yearsBeforeMarriage = 1
     static let childbearingWindowYears = 35
     static let maxHiskiResults = 50
@@ -551,6 +556,10 @@ class HiskiService {
      * Query death record and return result abstraction
      */
     func queryDeathWithResult(name: String, date: String, mode: HiskiExtractionMode = .webView) async -> HiskiQueryResult {
+        guard !Self.queriesDisabled else {
+            return .error(message: Self.queriesDisabledMessage)
+        }
+
         do {
             let searchUrl = try deathSearchResultsURL(name: name, date: date)
             let firstName = queryFirstName(for: name)
@@ -610,6 +619,10 @@ class HiskiService {
         motherName: String? = nil,
         mode: HiskiExtractionMode = .webView
     ) async -> HiskiQueryResult {
+        guard !Self.queriesDisabled else {
+            return .error(message: Self.queriesDisabledMessage)
+        }
+
         do {
             let searchUrl = try birthSearchResultsURL(
                 name: name,
@@ -672,6 +685,10 @@ class HiskiService {
      * Query marriage record and return result abstraction
      */
     func queryMarriageWithResult(husbandName: String, wifeName: String, date: String, mode: HiskiExtractionMode = .webView) async -> HiskiQueryResult {
+        guard !Self.queriesDisabled else {
+            return .error(message: Self.queriesDisabledMessage)
+        }
+
         do {
             let searchUrl = try marriageSearchResultsURL(
                 husbandName: husbandName,
@@ -730,6 +747,10 @@ class HiskiService {
     // MARK: - Query Methods (using WKWebView for record pages)
     
     func queryDeath(name: String, date: String) async throws -> HiskiCitation {
+        guard !Self.queriesDisabled else {
+            throw HiskiServiceError.queriesDisabled
+        }
+
         let swedishName = normalizeForHiskiQuery(name)
         let firstName = swedishName.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishName
         let formattedDate = formatDateForHiski(date)
@@ -780,6 +801,10 @@ class HiskiService {
     }
     
     func queryBirth(name: String, date: String, fatherName: String? = nil, motherName: String? = nil) async throws -> HiskiCitation {
+        guard !Self.queriesDisabled else {
+            throw HiskiServiceError.queriesDisabled
+        }
+
         let swedishName = normalizeForHiskiQuery(name)
         let firstName = swedishName.split(separator: " ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? swedishName
         
@@ -853,6 +878,10 @@ class HiskiService {
     }
     
     func queryMarriage(husbandName: String, wifeName: String, date: String) async throws -> HiskiCitation {
+        guard !Self.queriesDisabled else {
+            throw HiskiServiceError.queriesDisabled
+        }
+
         let swedishHusband = normalizeForHiskiQuery(husbandName)
         let swedishWife = normalizeForHiskiQuery(wifeName)
         
@@ -1134,6 +1163,10 @@ class HiskiService {
      * Load record page and extract citation URL using pure HTTP
      */
     private func loadRecordAndExtractCitationHTTP(recordUrl: String) async throws -> String {
+        guard !Self.queriesDisabled else {
+            throw HiskiServiceError.queriesDisabled
+        }
+
         guard let url = URL(string: recordUrl) else {
             throw HiskiServiceError.urlCreationFailed
         }

@@ -1936,6 +1936,10 @@ final class HTTPHandler: ChannelInboundHandler {
     }
 
     private func loadHiskiSearchHtml(from url: URL) async throws -> String {
+        guard !HiskiService.queriesDisabled else {
+            throw HiskiServiceError.queriesDisabled
+        }
+
         let (data, _) = try await URLSession.shared.data(from: url)
         guard let html = String(data: data, encoding: .isoLatin1) else {
             throw HiskiServiceError.sessionFailed
