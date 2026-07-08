@@ -74,6 +74,7 @@ class JuuretApp {
     private var familySearchExtractions: [String: FamilySearchFamilyExtraction] = [:]
     private var familySearchComparisonRunCounter = 0
     private var familySearchExtractionRunCounter = 0
+    private var hiskiPreprocessTask: Task<Void, Never>?
 
     var currentFamilySearchExtractorPageURL: URL? {
         guard let currentFamily,
@@ -153,6 +154,7 @@ class JuuretApp {
 
         Task {
             await self.runJuuretHiskiComparisonPipeline(for: network.mainFamily)
+            self.startHiskiPreprocessing(after: network.mainFamily.familyId)
             await self.prepareFamilySearchWebKitForCurrentFamily(network.mainFamily)
         }
     }
@@ -1175,17 +1177,110 @@ class JuuretApp {
         appendFamilySearchComparisonDebug("comparison results assigned to UI state: \(familySearchComparisonResult?.rows.count ?? 0) rows")
     }
 
+    private func startHiskiPreprocessing(after familyId: String) {
+        let familyIds = FamilyIDs.familiesAfter(familyId, maxCount: 2)
+        guard !familyIds.isEmpty else {
+            return
+        }
+
+        hiskiPreprocessTask?.cancel()
+        logInfo(.cache, "🧭 HisKi preprocessing queued after \(familyId): \(familyIds.joined(separator: ", "))")
+        hiskiPreprocessTask = Task { [weak self] in
+            guard let self else { return }
+            await self.preprocessHiskiBirthSearches(familyIds: familyIds)
+        }
+    }
+
+    private func preprocessHiskiBirthSearches(familyIds: [String]) async {
+        for familyId in familyIds {
+            if Task.isCancelled {
+                return
+            }
+
+            do {
+                let family = try await familyForHiskiPreprocessing(familyId: familyId)
+                try await preloadHiskiBirthSearches(for: family)
+            } catch {
+                if Task.isCancelled {
+                    return
+                }
+
+                logWarn(.cache, "⚠️ HisKi preprocessing skipped for \(familyId): \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func familyForHiskiPreprocessing(familyId: String) async throws -> Family {
+        let normalizedId = familyId.uppercased().trimmingCharacters(in: .whitespaces)
+
+        if let cached = familyNetworkCache.getCachedNetwork(familyId: normalizedId) {
+            return cached.mainFamily
+        }
+
+        _ = try await familyNetworkCache.prefetchFamilyIfNeeded(
+            familyId: normalizedId,
+            fileManager: fileManager,
+            aiService: aiParsingService,
+            familyResolver: familyResolver
+        )
+
+        if let cached = familyNetworkCache.getCachedNetwork(familyId: normalizedId) {
+            return cached.mainFamily
+        }
+
+        throw ExtractionError.parsingFailed("Failed to prepare family for HisKi preprocessing: \(normalizedId)")
+    }
+
+    private func preloadHiskiBirthSearches(for family: Family) async throws {
+        let comparisonService = FamilyComparisonService(nameManager: nameEquivalenceManager)
+        let hiskiService = HiskiService(nameEquivalenceManager: nameEquivalenceManager)
+        hiskiService.setCurrentFamily(family.familyId)
+        let builder = FamilyChildrenComparisonBuilder(
+            hiskiService: hiskiService,
+            comparisonService: comparisonService,
+            loadHiskiSearchHtml: loadHiskiSearchHtml,
+            log: { message in
+                logInfo(.cache, "HisKi preprocess \(family.familyId): \(message)")
+            }
+        )
+        let extraction = familySearchExtraction(for: family.familyId)
+        let familySearchChildrenByCouple = familySearchChildrenByCouple(
+            for: family,
+            extraction: extraction
+        )
+
+        if extraction?.isSuccessful == true {
+            let count = familySearchChildrenByCouple.values.reduce(0) { $0 + $1.count }
+            logInfo(.cache, "HisKi preprocess \(family.familyId): using \(count) mapped FamilySearch children")
+        } else {
+            logInfo(.cache, "HisKi preprocess \(family.familyId): no stored FamilySearch extraction available")
+        }
+
+        for (coupleIndex, couple) in family.couples.enumerated() {
+            if Task.isCancelled {
+                return
+            }
+
+            let familySearchChildren = familySearchChildrenByCouple[coupleIndex] ?? []
+            guard !couple.children.isEmpty || !familySearchChildren.isEmpty else {
+                continue
+            }
+
+            _ = try await builder.buildGroup(
+                couple: couple,
+                coupleIndex: coupleIndex,
+                familySearchChildren: familySearchChildren,
+                loadCitationProposals: false
+            )
+        }
+    }
+
     private func loadHiskiSearchHtml(from url: URL) async throws -> String {
         guard !HiskiService.queriesDisabled else {
             throw HiskiServiceError.queriesDisabled
         }
 
-        let (data, _) = try await URLSession.shared.data(from: url)
-        guard let html = String(data: data, encoding: .isoLatin1) else {
-            throw HiskiServiceError.sessionFailed
-        }
-
-        return html
+        return try await HiskiQueryCoordinator.shared.loadHTML(from: url)
     }
 
     private func extractYear(from rawDate: String) -> Int? {
@@ -1290,6 +1385,7 @@ class JuuretApp {
             logInfo(.app, "✨ Family loaded from cache: \(normalizedId)")
 
             await runJuuretHiskiComparisonPipeline(for: cached.mainFamily)
+            startHiskiPreprocessing(after: cached.mainFamily.familyId)
             Task {
                 await prepareFamilySearchWebKitForCurrentFamily(cached.mainFamily)
             }
@@ -1386,6 +1482,7 @@ class JuuretApp {
             }
 
             await runJuuretHiskiComparisonPipeline(for: family)
+            startHiskiPreprocessing(after: family.familyId)
             Task {
                 await prepareFamilySearchWebKitForCurrentFamily(family)
             }

@@ -1940,12 +1940,7 @@ final class HTTPHandler: ChannelInboundHandler {
             throw HiskiServiceError.queriesDisabled
         }
 
-        let (data, _) = try await URLSession.shared.data(from: url)
-        guard let html = String(data: data, encoding: .isoLatin1) else {
-            throw HiskiServiceError.sessionFailed
-        }
-
-        return html
+        return try await HiskiQueryCoordinator.shared.loadHTML(from: url)
     }
 
     // MARK: - Response Writer (EventLoop only)

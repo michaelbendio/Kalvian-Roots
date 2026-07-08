@@ -352,8 +352,133 @@ class HiskiWebViewManager {
 
 // MARK: - Hiski Service
 
+struct HiskiQueryCacheEntry: Codable, Equatable, Sendable {
+    let url: String
+    let html: String
+    let fetchedAt: Date
+}
+
+actor HiskiQueryCoordinator {
+    typealias HTMLFetcher = @Sendable (URL) async throws -> String
+    typealias Sleeper = @Sendable (UInt64) async throws -> Void
+    typealias DelayProvider = @Sendable () -> TimeInterval
+
+    static let defaultMinimumDelaySeconds: TimeInterval = 30
+    static let defaultMaximumDelaySeconds: TimeInterval = 90
+
+    static let shared = HiskiQueryCoordinator()
+
+    private let cacheFileURL: URL
+    private let fetchHTML: HTMLFetcher
+    private let sleep: Sleeper
+    private let delayProvider: DelayProvider
+    private var cachedEntries: [String: HiskiQueryCacheEntry]?
+    private var lastNetworkFetchAt: Date?
+
+    init(
+        cacheFileURL: URL = HiskiQueryCoordinator.defaultCacheFileURL(),
+        fetchHTML: @escaping HTMLFetcher = HiskiQueryCoordinator.fetchHTMLWithURLSession,
+        sleep: @escaping Sleeper = { nanoseconds in try await Task.sleep(nanoseconds: nanoseconds) },
+        delayProvider: @escaping DelayProvider = {
+            Double.random(
+                in: HiskiQueryCoordinator.defaultMinimumDelaySeconds...HiskiQueryCoordinator.defaultMaximumDelaySeconds
+            )
+        },
+        initialLastNetworkFetchAt: Date? = nil
+    ) {
+        self.cacheFileURL = cacheFileURL
+        self.fetchHTML = fetchHTML
+        self.sleep = sleep
+        self.delayProvider = delayProvider
+        self.lastNetworkFetchAt = initialLastNetworkFetchAt
+    }
+
+    func loadHTML(from url: URL) async throws -> String {
+        let cacheKey = url.absoluteString
+        var entries = try loadCache()
+
+        if let cached = entries[cacheKey] {
+            logInfo(.cache, "⚡ HisKi cache hit: \(cacheKey)")
+            return cached.html
+        }
+
+        if lastNetworkFetchAt != nil {
+            let delaySeconds = max(0, delayProvider())
+            logInfo(.cache, "⏳ HisKi uncached query waiting \(Int(delaySeconds.rounded()))s: \(cacheKey)")
+            try await sleep(Self.nanoseconds(from: delaySeconds))
+        }
+
+        logInfo(.cache, "🌐 HisKi uncached query fetching: \(cacheKey)")
+        let html = try await fetchHTML(url)
+        lastNetworkFetchAt = Date()
+        entries[cacheKey] = HiskiQueryCacheEntry(
+            url: cacheKey,
+            html: html,
+            fetchedAt: Date()
+        )
+        try saveCache(entries)
+        cachedEntries = entries
+        logInfo(.cache, "💾 HisKi query success cached: \(cacheKey)")
+        return html
+    }
+
+    func cachedEntryCount() throws -> Int {
+        try loadCache().count
+    }
+
+    private func loadCache() throws -> [String: HiskiQueryCacheEntry] {
+        if let cachedEntries {
+            return cachedEntries
+        }
+
+        guard FileManager.default.fileExists(atPath: cacheFileURL.path) else {
+            cachedEntries = [:]
+            return [:]
+        }
+
+        let data = try Data(contentsOf: cacheFileURL)
+        let entries = try JSONDecoder().decode([String: HiskiQueryCacheEntry].self, from: data)
+        cachedEntries = entries
+        return entries
+    }
+
+    private func saveCache(_ entries: [String: HiskiQueryCacheEntry]) throws {
+        let directoryURL = cacheFileURL.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(entries)
+        try data.write(to: cacheFileURL, options: .atomic)
+    }
+
+    private static func fetchHTMLWithURLSession(from url: URL) async throws -> String {
+        let (data, _) = try await URLSession.shared.data(from: url)
+        guard let html = String(data: data, encoding: .isoLatin1) else {
+            throw HiskiServiceError.sessionFailed
+        }
+
+        return html
+    }
+
+    private static func defaultCacheFileURL() -> URL {
+        let applicationSupportURL = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
+
+        return applicationSupportURL
+            .appendingPathComponent("Kalvian Roots", isDirectory: true)
+            .appendingPathComponent("Cache", isDirectory: true)
+            .appendingPathComponent("hiski-query-cache.json")
+    }
+
+    private static func nanoseconds(from seconds: TimeInterval) -> UInt64 {
+        UInt64((seconds * 1_000_000_000).rounded())
+    }
+}
+
 class HiskiService {
-    static let queriesDisabled = true
+    static let queriesDisabled = false
     static let queriesDisabledMessage = "HisKi queries are temporarily disabled while hiski.genealogia.fi is unresponsive."
     static let yearsBeforeMarriage = 1
     static let childbearingWindowYears = 35
@@ -570,10 +695,7 @@ class HiskiService {
             logInfo(.app, "  Date: \(formattedDate)")
 
             // Fetch search results HTML
-            let (searchData, _) = try await URLSession.shared.data(from: searchUrl)
-            guard let searchHtml = String(data: searchData, encoding: .isoLatin1) else {
-                return .error(message: "Failed to fetch search results")
-            }
+            let searchHtml = try await HiskiQueryCoordinator.shared.loadHTML(from: searchUrl)
 
             // Find matching record URL from HTML
             guard let recordPath = findMatchingRecordUrl(from: searchHtml, queryDate: formattedDate) else {
@@ -642,10 +764,7 @@ class HiskiService {
             logInfo(.app, "  Date: \(formattedDate)")
 
             // Fetch search results HTML
-            let (searchData, _) = try await URLSession.shared.data(from: searchUrl)
-            guard let searchHtml = String(data: searchData, encoding: .isoLatin1) else {
-                return .error(message: "Failed to fetch search results")
-            }
+            let searchHtml = try await HiskiQueryCoordinator.shared.loadHTML(from: searchUrl)
 
             // Find matching record URL
             guard let recordPath = findMatchingRecordUrl(from: searchHtml, queryDate: formattedDate) else {
@@ -705,10 +824,7 @@ class HiskiService {
             logInfo(.app, "  Date: \(formattedDate)")
 
             // Fetch search results
-            let (searchData, _) = try await URLSession.shared.data(from: searchUrl)
-            guard let searchHtml = String(data: searchData, encoding: .isoLatin1) else {
-                return .error(message: "Failed to fetch search results")
-            }
+            let searchHtml = try await HiskiQueryCoordinator.shared.loadHTML(from: searchUrl)
 
             // Find matching record
             guard let recordPath = findMatchingRecordUrl(from: searchHtml, queryDate: formattedDate) else {
@@ -763,10 +879,7 @@ class HiskiService {
         let searchUrl = try buildDeathSearchUrl(name: firstName, date: formattedDate)
         
         // Fetch search results HTML
-        let (searchData, _) = try await URLSession.shared.data(from: searchUrl)
-        guard let searchHtml = String(data: searchData, encoding: .isoLatin1) else {
-            throw HiskiServiceError.sessionFailed
-        }
+        let searchHtml = try await HiskiQueryCoordinator.shared.loadHTML(from: searchUrl)
         
         // Find matching record URL from HTML
         guard let recordPath = findMatchingRecordUrl(from: searchHtml, queryDate: formattedDate) else {
@@ -841,10 +954,7 @@ class HiskiService {
         )
         
         // Fetch search results HTML
-        let (searchData, _) = try await URLSession.shared.data(from: searchUrl)
-        guard let searchHtml = String(data: searchData, encoding: .isoLatin1) else {
-            throw HiskiServiceError.sessionFailed
-        }
+        let searchHtml = try await HiskiQueryCoordinator.shared.loadHTML(from: searchUrl)
         
         // Find matching record URL
         guard let recordPath = findMatchingRecordUrl(from: searchHtml, queryDate: formattedDate) else {
@@ -899,10 +1009,7 @@ class HiskiService {
         let searchUrl = try buildMarriageSearchUrl(husbandName: husbandFirst, wifeName: wifeFirst, date: formattedDate)
         
         // Fetch search results
-        let (searchData, _) = try await URLSession.shared.data(from: searchUrl)
-        guard let searchHtml = String(data: searchData, encoding: .isoLatin1) else {
-            throw HiskiServiceError.sessionFailed
-        }
+        let searchHtml = try await HiskiQueryCoordinator.shared.loadHTML(from: searchUrl)
         
         // Find matching record
         guard let recordPath = findMatchingRecordUrl(from: searchHtml, queryDate: formattedDate) else {
@@ -1172,10 +1279,7 @@ class HiskiService {
         }
 
         // Fetch the record page HTML
-        let (recordData, _) = try await URLSession.shared.data(from: url)
-        guard let recordHtml = String(data: recordData, encoding: .isoLatin1) else {
-            throw HiskiServiceError.sessionFailed
-        }
+        let recordHtml = try await HiskiQueryCoordinator.shared.loadHTML(from: url)
 
         // Extract citation URL from HTML
         guard let citationUrl = Self.extractCitationUrlFromHtml(recordHtml) else {

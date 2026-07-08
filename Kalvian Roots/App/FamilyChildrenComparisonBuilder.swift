@@ -30,7 +30,10 @@ final class FamilyChildrenComparisonBuilder {
         familySearchChildren: [FamilySearchChild],
         loadCitationProposals: Bool
     ) async throws -> FamilyChildrenComparisonBuildResult? {
-        guard let hiskiWindow = HiskiService.familyBirthSearchWindow(for: couple) else {
+        guard let hiskiWindow = Self.familyBirthSearchWindow(
+            for: couple,
+            familySearchChildren: familySearchChildren
+        ) else {
             log("HisKi family-child search skipped for couple \(coupleIndex + 1): missing search window")
             return nil
         }
@@ -98,6 +101,58 @@ final class FamilyChildrenComparisonBuilder {
             ),
             proposals: proposals
         )
+    }
+
+    static func familyBirthSearchWindow(
+        for couple: Couple,
+        familySearchChildren: [FamilySearchChild]
+    ) -> HiskiService.FamilyBirthSearchWindow? {
+        let familySearchYears = familySearchChildren
+            .flatMap { child in
+                [child.birthDate, child.birth?.date, child.christeningDate, child.christening?.date]
+            }
+            .compactMap(extractYear)
+
+        guard !familySearchYears.isEmpty else {
+            return HiskiService.familyBirthSearchWindow(for: couple)
+        }
+
+        let fsStartYear = (familySearchYears.min() ?? 0) - 1
+        let fsEndYear = familySearchYears.max() ?? fsStartYear
+
+        guard let baseWindow = HiskiService.familyBirthSearchWindow(for: couple) else {
+            let startYear = fsStartYear - 4
+            return HiskiService.FamilyBirthSearchWindow(
+                startYear: startYear,
+                endYear: HiskiService.familyBirthEndYear(
+                    startYear: startYear,
+                    husbandDeathDate: couple.husband.deathDate,
+                    wifeDeathDate: couple.wife.deathDate
+                ),
+                sourceDescription: "FamilySearch child year range \(fsStartYear + 1)-\(fsEndYear)"
+            )
+        }
+
+        let startYear = min(baseWindow.startYear, fsStartYear)
+        let endYear = max(baseWindow.endYear, fsEndYear)
+        guard startYear != baseWindow.startYear || endYear != baseWindow.endYear else {
+            return baseWindow
+        }
+
+        return HiskiService.FamilyBirthSearchWindow(
+            startYear: startYear,
+            endYear: endYear,
+            sourceDescription: "\(baseWindow.sourceDescription), extended for FamilySearch child year range \(fsStartYear + 1)-\(fsEndYear)"
+        )
+    }
+
+    private static func extractYear(from rawDate: String?) -> Int? {
+        guard let rawDate,
+              let yearRange = rawDate.range(of: #"\b\d{3,4}\b"#, options: .regularExpression) else {
+            return nil
+        }
+
+        return Int(rawDate[yearRange])
     }
 
     func buildGroupFromHiskiRows(
