@@ -53,7 +53,13 @@ marriage dates are warmed for every Juuret Kälviällä couple, including
 additional spouses. For child birth dates, preprocessing uses the union of
 Juuret Kälviällä children and FamilySearch children when FamilySearch extraction
 succeeds, so FamilySearch-only children also warm the date-click HisKi cache.
-HisKi family-span queries remain HisKi's own candidate pool, but they can use
+Single-date birth and death queries use only the person's given name and an
+exact one-day date range. Marriage date queries use only the husband and wife's
+given names and the exact one-day date range. Parent names are not used in
+single-date queries.
+
+HisKi family-span queries remain HisKi's own candidate pool, and this is the
+query type that uses parent names. Family-span queries can use
 FamilySearch children to extend the query window for FamilySearch children that
 are not present in Juuret Kälviällä.
 

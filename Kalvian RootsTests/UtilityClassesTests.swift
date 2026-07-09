@@ -445,12 +445,10 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertTrue(true, "Should set current family")
     }
 
-    func testBuildBirthSearchUrlIncludesAvailableParentGivenNames() throws {
+    func testBuildBirthSearchUrlUsesOnlyChildGivenNameAndExactDate() throws {
         let url = try service.buildBirthSearchUrl(
             name: "Carin",
-            date: "1.9.1801",
-            fatherName: "Matts",
-            motherName: "Carin"
+            date: "1.9.1801"
         )
 
         let values = try queryValues(in: url)
@@ -458,16 +456,14 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertEqual(values["etunimi"], "Carin")
         XCTAssertEqual(values["alkuvuosi"], "1.9.1801")
         XCTAssertEqual(values["loppuvuosi"], "1.9.1801")
-        XCTAssertEqual(values["ietunimi"], "Matts")
-        XCTAssertEqual(values["aetunimi"], "Carin")
+        XCTAssertEqual(values["ietunimi"], "")
+        XCTAssertEqual(values["aetunimi"], "")
     }
 
-    func testBirthSearchResultsURLNormalizesDateAndUsesParentGivenNames() throws {
+    func testBirthSearchResultsURLNormalizesDateAndUsesOnlyChildGivenName() throws {
         let url = try service.birthSearchResultsURL(
             name: "Maria Mattsdotter",
-            date: "12.02.1696",
-            fatherName: "Matti Juhonp.",
-            motherName: "Kaarin Kustaant."
+            date: "12.02.1696"
         )
 
         let values = try queryValues(in: url)
@@ -475,8 +471,8 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertEqual(values["etunimi"], "Maria")
         XCTAssertEqual(values["alkuvuosi"], "12.2.1696")
         XCTAssertEqual(values["loppuvuosi"], "12.2.1696")
-        XCTAssertEqual(values["ietunimi"], "Matti")
-        XCTAssertEqual(values["aetunimi"], "Kaarin")
+        XCTAssertEqual(values["ietunimi"], "")
+        XCTAssertEqual(values["aetunimi"], "")
     }
 
     func testBuildFamilyBirthSearchUrlUsesBoundedFamilyQueryParameters() throws {

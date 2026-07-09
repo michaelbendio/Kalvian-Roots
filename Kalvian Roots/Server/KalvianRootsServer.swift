@@ -1071,8 +1071,6 @@ final class HTTPHandler: ChannelInboundHandler {
             let result = await hiskiService.queryBirthWithResult(
                 name: personName,
                 date: searchDate,
-                fatherName: fatherName,
-                motherName: motherName,
                 mode: .httpOnly
             )
             

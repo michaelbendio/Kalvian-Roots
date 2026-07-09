@@ -334,8 +334,8 @@ final class FamilyContentViewTests: XCTestCase {
         XCTAssertTrue(html.contains("/family/HASSINEN%201/hiski?"))
         XCTAssertTrue(html.contains("name=Carin"))
         XCTAssertTrue(html.contains("event=birth"))
-        XCTAssertTrue(html.contains("father=Matts"))
-        XCTAssertTrue(html.contains("mother=Carin"))
+        XCTAssertFalse(html.contains("father=Matts"))
+        XCTAssertFalse(html.contains("mother=Carin"))
     }
 
     func testBrowserNavigationOmitsHomeButtonAndSourceIconTogglesSourcePanel() {
@@ -790,6 +790,13 @@ final class FamilyContentViewTests: XCTestCase {
             juuretApp.range(of: "private func preloadHiskiBirthSearches(for family: Family)")
         )
         let helperSource = String(juuretApp[helperStart.lowerBound..<helperEnd.lowerBound])
+        let dateClickPreloadStart = try XCTUnwrap(
+            juuretApp.range(of: "private func preloadHiskiDateClickSearches(for family: Family)")
+        )
+        let dateClickPreloadEnd = try XCTUnwrap(
+            juuretApp.range(of: "private func preloadHiskiAdultDateClickSearches(")
+        )
+        let dateClickPreloadSource = String(juuretApp[dateClickPreloadStart.lowerBound..<dateClickPreloadEnd.lowerBound])
 
         XCTAssertLessThan(
             familySearchPreload.lowerBound,
@@ -824,6 +831,14 @@ final class FamilyContentViewTests: XCTestCase {
         )
         XCTAssertTrue(juuretApp.contains("row.juuretKalvialla ?? row.familySearch"))
         XCTAssertTrue(juuretApp.contains("hiskiService.birthSearchResultsURL("))
+        XCTAssertFalse(
+            dateClickPreloadSource.contains("fatherName: couple.husband.name"),
+            "Date-click cache warming should not use parent names for single-date child birth queries."
+        )
+        XCTAssertFalse(
+            dateClickPreloadSource.contains("motherName: couple.wife.name"),
+            "Date-click cache warming should not use parent names for single-date child birth queries."
+        )
         XCTAssertTrue(juuretApp.contains("hiskiService.deathSearchResultsURL("))
         XCTAssertTrue(juuretApp.contains("hiskiService.marriageSearchResultsURL("))
         XCTAssertTrue(juuretApp.contains("preloadHiskiAdultDateClickSearches"))

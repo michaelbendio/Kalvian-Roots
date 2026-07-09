@@ -1010,8 +1010,6 @@ struct HTMLRenderer {
                 return try hiskiService.birthSearchResultsURL(
                     name: person.name,
                     date: date,
-                    fatherName: person.fatherName,
-                    motherName: person.motherName,
                     parentBirthYear: CitationGenerator.extractBirthYear(from: person)
                 )
             case .death:
@@ -1063,9 +1061,6 @@ struct HTMLRenderer {
             "event": eventType.rawValue,
             "date": date
         ]
-
-        queryParams["father"] = person.fatherName
-        queryParams["mother"] = person.motherName
 
         let params = buildQueryParams(queryParams)
         return "/family/\(urlEncode(familyId))/hiski?\(params)\(homeParam)"

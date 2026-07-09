@@ -2204,7 +2204,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(html.contains(">Maria</a> <span class=\"source-markers\">J, H</span>"))
     }
 
-    func testServerRenderedHiskiOnlyChildDateLinksUseCachedHiskiRoute() {
+    func testServerRenderedHiskiOnlyChildDateLinksUseCachedParentlessHiskiRoute() {
         let nameManager = NameEquivalenceManager()
         nameManager.clearAllEquivalences()
         let family = Family(
@@ -2242,11 +2242,11 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(html.contains("date=21.11.1821"))
         XCTAssertTrue(html.contains("event=birth"))
         XCTAssertFalse(html.contains("data-citation-url=\"/family/HISKI%20ONLY%201/hiski?"))
-        XCTAssertTrue(html.contains("father="))
-        XCTAssertTrue(html.contains("mother="))
+        XCTAssertFalse(html.contains("father="))
+        XCTAssertFalse(html.contains("mother="))
     }
 
-    func testServerRenderedFamilySearchOnlyChildDateLinksUseCoupleParentBirthQuery() {
+    func testServerRenderedFamilySearchOnlyChildDateLinksUseCachedParentlessHiskiRoute() {
         let nameManager = NameEquivalenceManager()
         nameManager.clearAllEquivalences()
         let family = Family(
@@ -2286,8 +2286,8 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(html.contains("date=24.12.1712"))
         XCTAssertTrue(html.contains("event=birth"))
         XCTAssertFalse(html.contains("data-citation-url=\"/family/FS%20ONLY%201/hiski?"))
-        XCTAssertTrue(html.contains("father=Lauri"))
-        XCTAssertTrue(html.contains("mother=Vappu"))
+        XCTAssertFalse(html.contains("father=Lauri"))
+        XCTAssertFalse(html.contains("mother=Vappu"))
     }
 
     func testServerRenderedFamilyShowsJuuretOnlySourceMarkersInComparisonRows() {
@@ -2684,7 +2684,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertFalse(html.contains("function openHiskiResults(url)"))
     }
 
-    func testServerRenderedBirthDateLinksOpenCachedParentedHiskiRoute() {
+    func testServerRenderedBirthDateLinksOpenCachedParentlessHiskiRoute() {
         let family = Family(
             familyId: "SAKERI 1",
             pageReferences: ["264", "265"],
@@ -2702,8 +2702,6 @@ final class FamilySearchDOMServiceTests: XCTestCase {
             "name=Maria",
             "event=birth",
             "date=12.02.1696",
-            "father=Matti",
-            "mother=Kaarin",
             "target=\"_blank\"",
             "rel=\"noopener noreferrer\"",
             "function openHiskiResultAndCitation(event, link)"
@@ -2712,6 +2710,8 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         }
 
         XCTAssertFalse(html.contains("data-citation-url=\"/family/SAKERI%201/hiski?"))
+        XCTAssertFalse(html.contains("father=Matti"))
+        XCTAssertFalse(html.contains("mother=Kaarin"))
         XCTAssertFalse(html.contains("ietunimi=Matti"))
         XCTAssertFalse(html.contains("aetunimi=Kaarin"))
     }

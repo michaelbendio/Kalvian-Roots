@@ -487,8 +487,6 @@ class JuuretApp {
             result = await hiskiService.queryBirthWithResult(
                 name: person.name,
                 date: birthDate,
-                fatherName: person.fatherName,
-                motherName: person.motherName,
                 mode: mode
             )
             
@@ -1511,9 +1509,7 @@ class JuuretApp {
 
                 let searchURL = try hiskiService.birthSearchResultsURL(
                     name: candidate.rawName,
-                    date: formatHiskiPreloadDate(birthDate),
-                    fatherName: couple.husband.name,
-                    motherName: couple.wife.name
+                    date: formatHiskiPreloadDate(birthDate)
                 )
                 try await preloadHiskiDateClickSearchURL(
                     searchURL,
@@ -1537,9 +1533,7 @@ class JuuretApp {
         if let birthDate = nonBlankHiskiPreloadDate(person.birthDate) {
             let searchURL = try hiskiService.birthSearchResultsURL(
                 name: person.name,
-                date: birthDate,
-                fatherName: person.fatherName,
-                motherName: person.motherName
+                date: birthDate
             )
             try await preloadHiskiDateClickSearchURL(
                 searchURL,
