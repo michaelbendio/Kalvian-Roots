@@ -54,9 +54,6 @@ struct FamilyContentView: View {
                 familyHeader
                     .padding(.bottom, 8)
 
-                familySearchActionControls
-                    .padding(.bottom, 12)
-
                 if hasNoHiskiResultsNotice {
                     hiskiStatusToast
                         .padding(.bottom, 8)
@@ -330,30 +327,6 @@ struct FamilyContentView: View {
 
             if let reviewNote {
                 reviewAsterisk(reviewNote)
-            }
-        }
-    }
-
-    private var familySearchActionControls: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                #if os(macOS)
-                Button {
-                    juuretApp.openCurrentFamilySearchInApp()
-                } label: {
-                    Label("Open FamilySearch in Kalvian Roots", systemImage: "globe")
-                        .font(.system(.caption, design: .monospaced))
-                }
-                .buttonStyle(.bordered)
-
-                Button {
-                    juuretApp.extractCurrentFamilySearchInApp()
-                } label: {
-                    Label("Extract in-app FamilySearch", systemImage: "square.and.arrow.down")
-                        .font(.system(.caption, design: .monospaced))
-                }
-                .buttonStyle(.bordered)
-                #endif
             }
         }
     }

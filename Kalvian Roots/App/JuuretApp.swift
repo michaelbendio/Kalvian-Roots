@@ -154,6 +154,7 @@ class JuuretApp {
         }
 
         Task {
+            await self.prepareFamilySearchWebKitForCurrentFamily(network.mainFamily)
             await self.runJuuretHiskiComparisonPipeline(for: network.mainFamily)
             self.startHiskiPreprocessing(after: network.mainFamily.familyId)
         }
@@ -861,6 +862,56 @@ class JuuretApp {
                 appendFamilySearchComparisonDebug("FamilySearch phase: extraction failed")
                 appendFamilySearchComparisonDebug("FamilySearch in-app extraction failed: \(error.localizedDescription)")
             }
+        }
+        #endif
+    }
+
+    private func prepareFamilySearchWebKitForCurrentFamily(_ family: Family) async {
+        guard currentFamily?.familyId == family.familyId else {
+            return
+        }
+
+        #if os(macOS)
+        if let familySearchPersonId = fatherFamilySearchId(in: family) {
+            familySearchComparisonDebugMessage = "Waiting for FamilySearch sign-in/details page"
+            let extractionRunId = nextFamilySearchExtractionRunId()
+            appendFamilySearchComparisonDebug("FamilySearch extraction run: \(extractionRunId)")
+            appendFamilySearchComparisonDebug("FamilySearch phase: waiting for sign-in/details page")
+            appendFamilySearchComparisonDebug(
+                "FamilySearch WebKit URL at extraction start: \(FamilySearchWebViewExtractionManager.shared.currentPageURLString())"
+            )
+            appendFamilySearchComparisonDebug("FamilySearch automatic in-app extraction started: \(familySearchPersonId)")
+
+            do {
+                let extraction = try await FamilySearchWebViewExtractionManager.shared.openDetailsPageAndExtract(
+                    personId: familySearchPersonId,
+                    log: { [weak self] message in
+                        self?.appendFamilySearchComparisonDebug(message)
+                    }
+                )
+                let childCount = extraction.childCount ?? extraction.children.count
+                appendFamilySearchComparisonDebug(
+                    "FamilySearch WebKit URL at extraction completion: \(FamilySearchWebViewExtractionManager.shared.currentPageURLString())"
+                )
+                appendFamilySearchComparisonDebug("FamilySearch phase: extracted")
+                appendFamilySearchComparisonDebug("FamilySearch automatic in-app extraction returned: \(childCount) children")
+                appendFamilySearchComparisonDebug(
+                    "FamilySearch automatic extraction completed: \(extraction.status ?? (extraction.isSuccessful ? "success" : "unknown")), children \(childCount), spouse groups \(debugCount(extraction.spouseGroupCount ?? extraction.spouseGroups?.count))"
+                )
+
+                if storeFamilySearchExtractionForCurrentFamily(extraction) == nil {
+                    familySearchComparisonDebugMessage = "FamilySearch automatic extraction ignored"
+                }
+            } catch {
+                familySearchComparisonDebugMessage = "FamilySearch automatic extraction failed"
+                appendFamilySearchComparisonDebug("FamilySearch phase: extraction failed")
+                appendFamilySearchComparisonDebug(
+                    "FamilySearch WebKit URL at extraction failure: \(FamilySearchWebViewExtractionManager.shared.currentPageURLString())"
+                )
+                appendFamilySearchComparisonDebug("FamilySearch automatic extraction failed: \(error.localizedDescription)")
+            }
+        } else {
+            openCurrentFamilySearchInApp()
         }
         #endif
     }
@@ -1580,9 +1631,10 @@ class JuuretApp {
                 familyNetworkCache.nextFamilyReady = false
                 familyNetworkCache.nextFamilyId = nil
             }
-            
+
             logInfo(.app, "✨ Family loaded from cache: \(normalizedId)")
 
+            await prepareFamilySearchWebKitForCurrentFamily(cached.mainFamily)
             await runJuuretHiskiComparisonPipeline(for: cached.mainFamily)
             startHiskiPreprocessing(after: cached.mainFamily.familyId)
             
@@ -1677,6 +1729,7 @@ class JuuretApp {
                 errorMessage = nil
             }
 
+            await prepareFamilySearchWebKitForCurrentFamily(family)
             await runJuuretHiskiComparisonPipeline(for: family)
             startHiskiPreprocessing(after: family.familyId)
             

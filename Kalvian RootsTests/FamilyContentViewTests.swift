@@ -479,13 +479,8 @@ final class FamilyContentViewTests: XCTestCase {
             familyContentView.contains("guard juuretApp.familyChildrenComparisonGroups.isEmpty,"),
             "Primary-couple fallback must not reuse one grouped comparison result across spouse sections."
         )
-        XCTAssertTrue(
-            familyContentView.contains(#"Label("Extract in-app FamilySearch", systemImage: "square.and.arrow.down")"#)
-        )
-        XCTAssertTrue(
-            familyContentView.contains(#"Label("Open FamilySearch in Kalvian Roots", systemImage: "globe")"#),
-            "FamilySearch must stay user-initiated so sign-in and security checks can be handled before extraction."
-        )
+        XCTAssertFalse(familyContentView.contains(#"Label("Extract in-app FamilySearch", systemImage: "square.and.arrow.down")"#))
+        XCTAssertFalse(familyContentView.contains(#"Label("Open FamilySearch in Kalvian Roots", systemImage: "globe")"#))
     }
 
     func testComparisonSourceMarkersFollowCitationPanelState() throws {
@@ -640,7 +635,7 @@ final class FamilyContentViewTests: XCTestCase {
         XCTAssertTrue(juuretApp.contains("FamilySearch focus person death date:"))
     }
 
-    func testCurrentFamilySelectionDoesNotAutomaticallyExtractFamilySearch() throws {
+    func testCurrentFamilySelectionAutomaticallyExtractsFamilySearchBeforeComparison() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -650,11 +645,31 @@ final class FamilyContentViewTests: XCTestCase {
             encoding: .utf8
         )
 
-        XCTAssertFalse(
-            juuretApp.contains("prepareFamilySearchWebKitForCurrentFamily"),
-            "Current-family FamilySearch extraction must remain user-initiated, not run automatically after family selection."
+        let familySearchPreparation = try XCTUnwrap(
+            juuretApp.range(of: "await prepareFamilySearchWebKitForCurrentFamily(cached.mainFamily)")
         )
-        XCTAssertFalse(juuretApp.contains("FamilySearch automatic in-app extraction started"))
+        let cachedComparison = try XCTUnwrap(
+            juuretApp.range(of: "await runJuuretHiskiComparisonPipeline(for: cached.mainFamily)")
+        )
+        let familySearchPreparationAfterParse = try XCTUnwrap(
+            juuretApp.range(of: "await prepareFamilySearchWebKitForCurrentFamily(family)")
+        )
+        let parsedComparison = try XCTUnwrap(
+            juuretApp.range(of: "await runJuuretHiskiComparisonPipeline(for: family)")
+        )
+
+        XCTAssertLessThan(
+            familySearchPreparation.lowerBound,
+            cachedComparison.lowerBound,
+            "Cached current-family selection should extract FamilySearch before building the FS/Juuret/HisKi comparison."
+        )
+        XCTAssertLessThan(
+            familySearchPreparationAfterParse.lowerBound,
+            parsedComparison.lowerBound,
+            "Newly parsed current-family selection should extract FamilySearch before building the FS/Juuret/HisKi comparison."
+        )
+        XCTAssertTrue(juuretApp.contains("prepareFamilySearchWebKitForCurrentFamily"))
+        XCTAssertTrue(juuretApp.contains("FamilySearch automatic in-app extraction started"))
     }
 
     func testUpcomingFamilyPreprocessingLoadsFamilySearchBeforeHiski() throws {
