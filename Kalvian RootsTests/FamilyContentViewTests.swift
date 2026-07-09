@@ -764,7 +764,7 @@ final class FamilyContentViewTests: XCTestCase {
         XCTAssertTrue(juuretApp.contains("FamilySearch automatic in-app extraction started"))
     }
 
-    func testUpcomingFamilyPreprocessingSkipsFamilySearchAndWarmsHiski() throws {
+    func testUpcomingFamilyPreprocessingUsesParsedFatherFamilySearchIdBeforeHiski() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -774,21 +774,45 @@ final class FamilyContentViewTests: XCTestCase {
             encoding: .utf8
         )
 
+        let familySearchPreload = try XCTUnwrap(
+            juuretApp.range(of: "_ = try await preloadFamilySearchExtractionForPreprocessing(for: family)")
+        )
         let dateClickPreload = try XCTUnwrap(
             juuretApp.range(of: "try await preloadHiskiDateClickSearches(for: family)")
         )
         let familySpanPreload = try XCTUnwrap(
             juuretApp.range(of: "try await preloadHiskiBirthSearches(for: family)")
         )
+        let helperStart = try XCTUnwrap(
+            juuretApp.range(of: "private func preloadFamilySearchExtractionForPreprocessing(for family: Family)")
+        )
+        let helperEnd = try XCTUnwrap(
+            juuretApp.range(of: "private func preloadHiskiBirthSearches(for family: Family)")
+        )
+        let helperSource = String(juuretApp[helperStart.lowerBound..<helperEnd.lowerBound])
 
-        XCTAssertFalse(
-            juuretApp.contains("_ = try await preloadFamilySearchExtraction(for: family)"),
-            "Upcoming-family preprocessing should not hand additional families to FamilySearch in the background."
+        XCTAssertLessThan(
+            familySearchPreload.lowerBound,
+            dateClickPreload.lowerBound,
+            "Upcoming-family FamilySearch extraction should run before HisKi date-click cache warming so FS-only children can warm date-click queries."
         )
         XCTAssertLessThan(
             dateClickPreload.lowerBound,
             familySpanPreload.lowerBound,
             "Date-click HisKi cache warming should run before the family-span HisKi query runs."
+        )
+        XCTAssertTrue(juuretApp.contains("private let familySearchPreprocessDelayRange: ClosedRange<Double> = 30...90"))
+        XCTAssertTrue(
+            helperSource.contains("guard let familySearchPersonId = fatherFamilySearchId(in: family)"),
+            "Upcoming-family FamilySearch preprocessing should use only the parsed father FamilySearch ID."
+        )
+        XCTAssertFalse(
+            helperSource.contains("primaryFamilySearchParentIdInSourceText"),
+            "Upcoming-family FamilySearch preprocessing must not fall back to source-text ID scanning because a child ID can appear before the next family head."
+        )
+        XCTAssertFalse(
+            helperSource.contains("familySearchParentId(in: family)"),
+            "Upcoming-family FamilySearch preprocessing should not use spouse fallback; it should be keyed to the parsed next-family father."
         )
         XCTAssertTrue(juuretApp.contains("row.juuretKalvialla ?? row.familySearch"))
         XCTAssertTrue(juuretApp.contains("hiskiService.birthSearchResultsURL("))

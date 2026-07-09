@@ -41,6 +41,8 @@ private final class HiskiDateClickPreloadTracker {
     }
 }
 
+private let familySearchPreprocessDelayRange: ClosedRange<Double> = 30...90
+
 /**
  * JuuretApp - Main application coordinator
  *
@@ -1317,6 +1319,15 @@ class JuuretApp {
 
             do {
                 let family = try await familyForHiskiPreprocessing(familyId: familyId)
+                do {
+                    _ = try await preloadFamilySearchExtractionForPreprocessing(for: family)
+                } catch {
+                    if Task.isCancelled {
+                        return
+                    }
+
+                    logWarn(.cache, "⚠️ FamilySearch preprocessing failed for \(familyId): \(error.localizedDescription)")
+                }
                 try await preloadHiskiDateClickSearches(for: family)
                 try await preloadHiskiBirthSearches(for: family)
             } catch {
@@ -1348,6 +1359,43 @@ class JuuretApp {
         }
 
         throw ExtractionError.parsingFailed("Failed to prepare family for HisKi preprocessing: \(normalizedId)")
+    }
+
+    private func preloadFamilySearchExtractionForPreprocessing(for family: Family) async throws -> FamilySearchFamilyExtraction? {
+        if let extraction = familySearchExtraction(for: family.familyId),
+           extraction.hasExtractedChildrenForComparison {
+            let count = extraction.childCount ?? extraction.children.count
+            logInfo(.cache, "FamilySearch preprocess \(family.familyId): using cached extraction, children \(count)")
+            return extraction
+        }
+
+        guard let familySearchPersonId = fatherFamilySearchId(in: family) else {
+            logInfo(.cache, "FamilySearch preprocess \(family.familyId): skipped, no parsed father FamilySearch ID")
+            return nil
+        }
+
+        #if os(macOS)
+        let delay = Double.random(in: familySearchPreprocessDelayRange)
+        logInfo(.cache, "FamilySearch preprocess \(family.familyId): waiting \(Int(delay.rounded()))s before extracting father \(familySearchPersonId)")
+        try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        if Task.isCancelled {
+            return nil
+        }
+
+        let extraction = try await FamilySearchWebViewExtractionManager.shared.openDetailsPageAndExtract(
+            personId: familySearchPersonId,
+            log: { message in
+                logInfo(.cache, "FamilySearch preprocess \(family.familyId): \(message)")
+            }
+        )
+        storeFamilySearchExtraction(extraction, for: family.familyId, rerunComparison: false)
+        let count = extraction.childCount ?? extraction.children.count
+        logInfo(.cache, "FamilySearch preprocess \(family.familyId): extraction stored, children \(count)")
+        return extraction
+        #else
+        logInfo(.cache, "FamilySearch preprocess \(family.familyId): skipped, in-app WebKit extraction is macOS-only")
+        return nil
+        #endif
     }
 
     private func preloadHiskiBirthSearches(for family: Family) async throws {

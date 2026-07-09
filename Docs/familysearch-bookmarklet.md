@@ -31,17 +31,28 @@ Upcoming-Family Preprocessing
 -----------------------------
 
 After a family is loaded and the user confirms VPN readiness, Kalvian Roots may
-preprocess HisKi queries for the next two Juuret Kälviällä families. This
-preprocessing is Juuret-driven and does not hand upcoming families to
-FamilySearch in the background. FamilySearch extraction remains current-family
-and UI-driven so the user can handle sign-in or security checks directly.
+preprocess the next two Juuret Kälviällä families. For each upcoming family it
+first attempts visible WebKit FamilySearch extraction only when the parsed
+Juuret father has a FamilySearch ID. The app waits a random 30-90 seconds before
+each upcoming FamilySearch extraction. If FamilySearch requires sign-in or a
+security check and the user is present, the user can complete it in the visible
+WebKit window. If FamilySearch refuses to continue while the user is away, that
+family's FamilySearch preprocessing may fail and HisKi preprocessing continues
+with the data already available.
+
+Upcoming-family FamilySearch preprocessing must not use raw source-text ID
+fallbacks. In particular, it must not scan the Juuret block for the first
+FamilySearch ID because a child in one family can later be the father of a
+different family. If the parsed next-family father has no FamilySearch ID,
+FamilySearch preprocessing for that upcoming family is skipped.
 
 For date-click HisKi searches, preprocessing warms the same query cache used
 when the user clicks dates in the UI. Adult birth/death dates and couple
 marriage dates are warmed for every Juuret Kälviällä couple, including
-additional spouses. For child birth dates, preprocessing uses Juuret Kälviällä
-children plus any already-cached FamilySearch children. HisKi family-span
-queries remain HisKi's own candidate pool, but they can use already-cached
+additional spouses. For child birth dates, preprocessing uses the union of
+Juuret Kälviällä children and FamilySearch children when FamilySearch extraction
+succeeds, so FamilySearch-only children also warm the date-click HisKi cache.
+HisKi family-span queries remain HisKi's own candidate pool, but they can use
 FamilySearch children to extend the query window for FamilySearch children that
 are not present in Juuret Kälviällä.
 
