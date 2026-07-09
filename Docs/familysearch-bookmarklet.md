@@ -18,6 +18,20 @@ family does not automatically open FamilySearch. The family view keeps manual
 available so the user can locate the right FamilySearch Details page manually
 and then extract from the current page.
 
+Upcoming-Family Preprocessing
+-----------------------------
+
+After a family is loaded, Kalvian Roots may preprocess the next two Juuret
+Kälviällä families. This preprocessing is Juuret-driven and bounded to the
+FamilySearch parent IDs already present in the upcoming Juuret family records.
+It does not crawl recursively.
+
+FamilySearch preprocessing waits a random 30-90 seconds before each uncached
+extraction and stores successful results in the app's in-memory extraction
+cache. HisKi preprocessing for that same upcoming family then uses the cached
+FamilySearch children when extending the HisKi query window for FamilySearch
+children that are not present in Juuret Kälviällä.
+
 Extraction Scope
 ----------------
 

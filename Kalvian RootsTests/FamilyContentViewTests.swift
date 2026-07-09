@@ -640,7 +640,7 @@ final class FamilyContentViewTests: XCTestCase {
         XCTAssertTrue(juuretApp.contains("FamilySearch focus person death date:"))
     }
 
-    func testFamilySelectionDoesNotAutomaticallyExtractFamilySearch() throws {
+    func testCurrentFamilySelectionDoesNotAutomaticallyExtractFamilySearch() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -652,9 +652,34 @@ final class FamilyContentViewTests: XCTestCase {
 
         XCTAssertFalse(
             juuretApp.contains("prepareFamilySearchWebKitForCurrentFamily"),
-            "FamilySearch extraction must remain user-initiated, not run automatically after family selection."
+            "Current-family FamilySearch extraction must remain user-initiated, not run automatically after family selection."
         )
         XCTAssertFalse(juuretApp.contains("FamilySearch automatic in-app extraction started"))
+    }
+
+    func testUpcomingFamilyPreprocessingLoadsFamilySearchBeforeHiski() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        let juuretApp = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/App/JuuretApp.swift"),
+            encoding: .utf8
+        )
+
+        let familySearchPreload = try XCTUnwrap(
+            juuretApp.range(of: "_ = try await preloadFamilySearchExtraction(for: family)")
+        )
+        let hiskiPreload = try XCTUnwrap(
+            juuretApp.range(of: "try await preloadHiskiBirthSearches(for: family)")
+        )
+
+        XCTAssertLessThan(
+            familySearchPreload.lowerBound,
+            hiskiPreload.lowerBound,
+            "Upcoming-family preprocessing must load FamilySearch before HisKi so FS-only children can extend HisKi queries."
+        )
+        XCTAssertTrue(juuretApp.contains("familySearchPreprocessDelayRange: ClosedRange<Double> = 30...90"))
     }
 
     func testFamilySearchAndJuuretFatherBirthDateFormatsParseToComparableDates() {

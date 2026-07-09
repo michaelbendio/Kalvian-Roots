@@ -75,6 +75,7 @@ class JuuretApp {
     private var familySearchComparisonRunCounter = 0
     private var familySearchExtractionRunCounter = 0
     private var hiskiPreprocessTask: Task<Void, Never>?
+    private let familySearchPreprocessDelayRange: ClosedRange<Double> = 30...90
 
     var currentFamilySearchExtractorPageURL: URL? {
         guard let currentFamily,
@@ -719,7 +720,9 @@ class JuuretApp {
         let normalizedFamilyId = normalizedFamilySearchExtractionKey(familyId)
         familySearchExtractions[normalizedFamilyId] = extraction
         logInfo(.ui, "🧪 FamilySearch extraction stored for SwiftUI: \(normalizedFamilyId), children: \(extraction.children.count)")
-        appendFamilySearchFocusPersonDebug(from: extraction)
+        if currentFamily?.familyId.uppercased() == normalizedFamilyId {
+            appendFamilySearchFocusPersonDebug(from: extraction)
+        }
 
         guard rerunComparison else {
             return
@@ -1138,7 +1141,7 @@ class JuuretApp {
         }
 
         hiskiPreprocessTask?.cancel()
-        logInfo(.cache, "🧭 HisKi preprocessing queued after \(familyId): \(familyIds.joined(separator: ", "))")
+        logInfo(.cache, "🧭 Upcoming family preprocessing queued after \(familyId): \(familyIds.joined(separator: ", "))")
         hiskiPreprocessTask = Task { [weak self] in
             guard let self else { return }
             await self.preprocessHiskiBirthSearches(familyIds: familyIds)
@@ -1153,6 +1156,7 @@ class JuuretApp {
 
             do {
                 let family = try await familyForHiskiPreprocessing(familyId: familyId)
+                _ = try await preloadFamilySearchExtraction(for: family)
                 try await preloadHiskiBirthSearches(for: family)
             } catch {
                 if Task.isCancelled {
@@ -1183,6 +1187,45 @@ class JuuretApp {
         }
 
         throw ExtractionError.parsingFailed("Failed to prepare family for HisKi preprocessing: \(normalizedId)")
+    }
+
+    private func preloadFamilySearchExtraction(for family: Family) async throws -> FamilySearchFamilyExtraction? {
+        if let extraction = familySearchExtraction(for: family.familyId),
+           extraction.hasExtractedChildrenForComparison {
+            logInfo(.cache, "FamilySearch preprocess \(family.familyId): using stored extraction")
+            return extraction
+        }
+
+        guard let familySearchPersonId = familySearchParentId(in: family)
+            ?? primaryFamilySearchParentIdInSourceText(for: family.familyId) else {
+            logInfo(.cache, "FamilySearch preprocess \(family.familyId): skipped, no parent FamilySearch ID")
+            return nil
+        }
+
+        #if os(macOS)
+        let delay = Double.random(in: familySearchPreprocessDelayRange)
+        logInfo(.cache, "FamilySearch preprocess \(family.familyId): waiting \(Int(delay.rounded()))s before extracting \(familySearchPersonId)")
+        try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+
+        if Task.isCancelled {
+            return nil
+        }
+
+        let extraction = try await FamilySearchWebViewExtractionManager.shared.openDetailsPageAndExtract(
+            personId: familySearchPersonId,
+            log: { message in
+                logInfo(.cache, "FamilySearch preprocess \(family.familyId): \(message)")
+            }
+        )
+
+        storeFamilySearchExtraction(extraction, for: family.familyId, rerunComparison: false)
+        let childCount = extraction.childCount ?? extraction.children.count
+        logInfo(.cache, "FamilySearch preprocess \(family.familyId): stored \(childCount) children")
+        return extraction
+        #else
+        logInfo(.cache, "FamilySearch preprocess \(family.familyId): skipped, WebKit extraction requires macOS")
+        return nil
+        #endif
     }
 
     private func preloadHiskiBirthSearches(for family: Family) async throws {
