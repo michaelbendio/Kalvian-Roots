@@ -344,6 +344,30 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertEqual(box.delays, [45_000_000_000])
     }
 
+    func testWebViewCitationExtractionFallsBackToCachedHTTPExtraction() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        let hiskiService = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/App/HiskiService.swift"),
+            encoding: .utf8
+        )
+
+        let helperStart = try XCTUnwrap(
+            hiskiService.range(of: "private func extractCitationURL(recordUrl: String, mode: HiskiExtractionMode)")
+        )
+        let helperEnd = try XCTUnwrap(
+            hiskiService.range(of: "private func findMatchingRecordUrl", range: helperStart.lowerBound..<hiskiService.endIndex)
+        )
+        let helperSource = String(hiskiService[helperStart.lowerBound..<helperEnd.lowerBound])
+
+        XCTAssertTrue(helperSource.contains("HiskiWebViewManager.shared.loadRecordAndExtractCitation"))
+        XCTAssertTrue(helperSource.contains("catch"))
+        XCTAssertTrue(helperSource.contains("loadRecordAndExtractCitationHTTP(recordUrl: recordUrl)"))
+        XCTAssertTrue(helperSource.contains("falling back to cached HTTP extraction"))
+    }
+
     func testFamilyBirthSearchWindowExtendsForFamilySearchOnlyChildYears() {
         let couple = Couple(
             husband: Person(name: "Matti", patronymic: "Matinp."),

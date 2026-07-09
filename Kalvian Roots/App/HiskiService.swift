@@ -704,20 +704,7 @@ class HiskiService {
             // Load record page and extract citation
             let recordUrl = "https://hiski.genealogia.fi" + recordPath
 
-            let citationUrl: String
-            switch mode {
-            case .webView:
-                #if os(macOS)
-                guard let url = URL(string: recordUrl) else {
-                    return .error(message: "Invalid record URL")
-                }
-                citationUrl = try await HiskiWebViewManager.shared.loadRecordAndExtractCitation(url: url)
-                #else
-                return .error(message: "WebView extraction not supported on iOS")
-                #endif
-            case .httpOnly:
-                citationUrl = try await loadRecordAndExtractCitationHTTP(recordUrl: recordUrl)
-            }
+            let citationUrl = try await extractCitationURL(recordUrl: recordUrl, mode: mode)
 
             return .found(citationURL: citationUrl, recordURL: recordUrl)
 
@@ -765,20 +752,7 @@ class HiskiService {
             // Load record page and extract citation
             let recordUrl = "https://hiski.genealogia.fi" + recordPath
 
-            let citationUrl: String
-            switch mode {
-            case .webView:
-                #if os(macOS)
-                guard let url = URL(string: recordUrl) else {
-                    return .error(message: "Invalid record URL")
-                }
-                citationUrl = try await HiskiWebViewManager.shared.loadRecordAndExtractCitation(url: url)
-                #else
-                return .error(message: "WebView extraction not supported on iOS")
-                #endif
-            case .httpOnly:
-                citationUrl = try await loadRecordAndExtractCitationHTTP(recordUrl: recordUrl)
-            }
+            let citationUrl = try await extractCitationURL(recordUrl: recordUrl, mode: mode)
 
             return .found(citationURL: citationUrl, recordURL: recordUrl)
 
@@ -825,20 +799,7 @@ class HiskiService {
             // Load record page and extract citation
             let recordUrl = "https://hiski.genealogia.fi" + recordPath
 
-            let citationUrl: String
-            switch mode {
-            case .webView:
-                #if os(macOS)
-                guard let url = URL(string: recordUrl) else {
-                    return .error(message: "Invalid record URL")
-                }
-                citationUrl = try await HiskiWebViewManager.shared.loadRecordAndExtractCitation(url: url)
-                #else
-                return .error(message: "WebView extraction not supported on iOS")
-                #endif
-            case .httpOnly:
-                citationUrl = try await loadRecordAndExtractCitationHTTP(recordUrl: recordUrl)
-            }
+            let citationUrl = try await extractCitationURL(recordUrl: recordUrl, mode: mode)
 
             return .found(citationURL: citationUrl, recordURL: recordUrl)
 
@@ -1011,6 +972,28 @@ class HiskiService {
     }
     
     // MARK: - HTML Parsing (matching hiski.py algorithm)
+
+    private func extractCitationURL(recordUrl: String, mode: HiskiExtractionMode) async throws -> String {
+        switch mode {
+        case .webView:
+            #if os(macOS)
+            guard let url = URL(string: recordUrl) else {
+                throw HiskiServiceError.urlCreationFailed
+            }
+
+            do {
+                return try await HiskiWebViewManager.shared.loadRecordAndExtractCitation(url: url)
+            } catch {
+                logWarn(.app, "⚠️ HisKi WebView citation extraction failed; falling back to cached HTTP extraction: \(Self.errorDescription(for: error))")
+                return try await loadRecordAndExtractCitationHTTP(recordUrl: recordUrl)
+            }
+            #else
+            return try await loadRecordAndExtractCitationHTTP(recordUrl: recordUrl)
+            #endif
+        case .httpOnly:
+            return try await loadRecordAndExtractCitationHTTP(recordUrl: recordUrl)
+        }
+    }
     
     private func findMatchingRecordUrl(from html: String, queryDate: String) -> String? {
         // Confirm results exist via <LI>Years line
