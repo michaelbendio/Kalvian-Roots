@@ -849,7 +849,13 @@ struct HTMLRenderer {
                     showsSourceMarkers: showsSourceMarkers
                 )
             }
-            return renderComparisonOnlyChild(displayRow, familyId: familyId, homeId: homeId, showsSourceMarkers: showsSourceMarkers)
+            return renderComparisonOnlyChild(
+                displayRow,
+                couple: couple,
+                familyId: familyId,
+                homeId: homeId,
+                showsSourceMarkers: showsSourceMarkers
+            )
         }.joined(separator: "\n")
     }
 
@@ -889,6 +895,7 @@ struct HTMLRenderer {
 
     private static func renderComparisonOnlyChild(
         _ displayRow: FamilyComparisonDisplayRow,
+        couple: Couple,
         familyId: String,
         homeId: String,
         showsSourceMarkers: Bool
@@ -903,6 +910,10 @@ struct HTMLRenderer {
             ?? name
         if date != "unknown", !queryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             let queryPerson = Person(name: queryName, birthDate: date, noteMarkers: [])
+                .withHiskiParentNames(
+                    father: couple.husband.displayName,
+                    mother: couple.wife.displayName
+                )
             dateHTML = renderDateLink(date, eventType: .birth, person: queryPerson, familyId: familyId, homeId: homeId)
         } else {
             dateHTML = escapeHTML(date)
@@ -959,6 +970,9 @@ struct HTMLRenderer {
             homeId: homeId
         )
         let linkedCitationURL = eventType == .birth ? nil : citationURL
+        if eventType == .birth {
+            return renderHiskiSearchAnchor(href: citationURL, text: date, cssClass: linkClass)
+        }
         if let href = hiskiSearchURL(
             date: date,
             eventType: eventType,
@@ -996,6 +1010,8 @@ struct HTMLRenderer {
                 return try hiskiService.birthSearchResultsURL(
                     name: person.name,
                     date: date,
+                    fatherName: person.fatherName,
+                    motherName: person.motherName,
                     parentBirthYear: CitationGenerator.extractBirthYear(from: person)
                 )
             case .death:
@@ -1048,10 +1064,8 @@ struct HTMLRenderer {
             "date": date
         ]
 
-        if eventType != .birth {
-            queryParams["father"] = person.fatherName
-            queryParams["mother"] = person.motherName
-        }
+        queryParams["father"] = person.fatherName
+        queryParams["mother"] = person.motherName
 
         let params = buildQueryParams(queryParams)
         return "/family/\(urlEncode(familyId))/hiski?\(params)\(homeParam)"

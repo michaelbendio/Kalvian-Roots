@@ -331,11 +331,11 @@ final class FamilyContentViewTests: XCTestCase {
 
         let html = HTMLRenderer.renderFamily(family: family, network: nil)
 
-        XCTAssertTrue(html.contains("etunimi=Carin"))
-        XCTAssertFalse(html.contains("father=Matts"))
-        XCTAssertFalse(html.contains("mother=Carin"))
-        XCTAssertFalse(html.contains("ietunimi=Matts"))
-        XCTAssertFalse(html.contains("aetunimi=Carin"))
+        XCTAssertTrue(html.contains("/family/HASSINEN%201/hiski?"))
+        XCTAssertTrue(html.contains("name=Carin"))
+        XCTAssertTrue(html.contains("event=birth"))
+        XCTAssertTrue(html.contains("father=Matts"))
+        XCTAssertTrue(html.contains("mother=Carin"))
     }
 
     func testBrowserNavigationOmitsHomeButtonAndSourceIconTogglesSourcePanel() {
