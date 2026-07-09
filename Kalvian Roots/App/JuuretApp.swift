@@ -33,6 +33,14 @@ enum SpouseChildMatcher {
     }
 }
 
+private final class HiskiDateClickPreloadTracker {
+    private var warmedURLs: Set<URL> = []
+
+    func insert(_ url: URL) -> Bool {
+        warmedURLs.insert(url).inserted
+    }
+}
+
 /**
  * JuuretApp - Main application coordinator
  *
@@ -1157,7 +1165,7 @@ class JuuretApp {
             do {
                 let family = try await familyForHiskiPreprocessing(familyId: familyId)
                 _ = try await preloadFamilySearchExtraction(for: family)
-                try await preloadHiskiBirthDateSearches(for: family)
+                try await preloadHiskiDateClickSearches(for: family)
                 try await preloadHiskiBirthSearches(for: family)
             } catch {
                 if Task.isCancelled {
@@ -1273,7 +1281,7 @@ class JuuretApp {
         }
     }
 
-    private func preloadHiskiBirthDateSearches(for family: Family) async throws {
+    private func preloadHiskiDateClickSearches(for family: Family) async throws {
         let extraction = familySearchExtraction(for: family.familyId)
         let familySearchChildrenByCouple = familySearchChildrenByCouple(
             for: family,
@@ -1283,11 +1291,31 @@ class JuuretApp {
         let comparisonService = FamilyComparisonService(nameManager: nameEquivalenceManager)
         let hiskiService = HiskiService(nameEquivalenceManager: nameEquivalenceManager)
         hiskiService.setCurrentFamily(family.familyId)
+        let tracker = HiskiDateClickPreloadTracker()
 
         for (coupleIndex, couple) in family.couples.enumerated() {
             if Task.isCancelled {
                 return
             }
+
+            try await preloadHiskiAdultDateClickSearches(
+                for: couple.husband,
+                familyId: family.familyId,
+                hiskiService: hiskiService,
+                tracker: tracker
+            )
+            try await preloadHiskiAdultDateClickSearches(
+                for: couple.wife,
+                familyId: family.familyId,
+                hiskiService: hiskiService,
+                tracker: tracker
+            )
+            try await preloadHiskiMarriageDateClickSearch(
+                for: couple,
+                familyId: family.familyId,
+                hiskiService: hiskiService,
+                tracker: tracker
+            )
 
             let familySearchChildren = familySearchChildrenByCouple[coupleIndex] ?? []
             let union = comparisonService.compare(
@@ -1312,10 +1340,126 @@ class JuuretApp {
                     fatherName: couple.husband.name,
                     motherName: couple.wife.name
                 )
-                _ = try await loadHiskiSearchHtml(from: searchURL)
-                logInfo(.cache, "HisKi child-date preprocess \(family.familyId): cached \(candidate.rawName), \(formatHiskiPreloadDate(birthDate))")
+                try await preloadHiskiDateClickSearchURL(
+                    searchURL,
+                    tracker: tracker,
+                    logMessage: "HisKi child-date preprocess \(family.familyId): cached \(candidate.rawName), \(formatHiskiPreloadDate(birthDate))"
+                )
             }
         }
+    }
+
+    private func preloadHiskiAdultDateClickSearches(
+        for person: Person,
+        familyId: String,
+        hiskiService: HiskiService,
+        tracker: HiskiDateClickPreloadTracker
+    ) async throws {
+        if Task.isCancelled {
+            return
+        }
+
+        if let birthDate = nonBlankHiskiPreloadDate(person.birthDate) {
+            let searchURL = try hiskiService.birthSearchResultsURL(
+                name: person.name,
+                date: birthDate,
+                fatherName: person.fatherName,
+                motherName: person.motherName
+            )
+            try await preloadHiskiDateClickSearchURL(
+                searchURL,
+                tracker: tracker,
+                logMessage: "HisKi adult-date preprocess \(familyId): cached birth \(person.name), \(birthDate)"
+            )
+        }
+
+        if Task.isCancelled {
+            return
+        }
+
+        if let deathDate = nonBlankHiskiPreloadDate(person.deathDate) {
+            let searchURL = try hiskiService.deathSearchResultsURL(
+                name: person.name,
+                date: deathDate
+            )
+            try await preloadHiskiDateClickSearchURL(
+                searchURL,
+                tracker: tracker,
+                logMessage: "HisKi adult-date preprocess \(familyId): cached death \(person.name), \(deathDate)"
+            )
+        }
+    }
+
+    private func preloadHiskiMarriageDateClickSearch(
+        for couple: Couple,
+        familyId: String,
+        hiskiService: HiskiService,
+        tracker: HiskiDateClickPreloadTracker
+    ) async throws {
+        guard let marriageDate = nonBlankHiskiPreloadDate(couple.fullMarriageDate ?? couple.marriageDate) else {
+            return
+        }
+
+        let parentBirthYear = CitationGenerator.extractBirthYear(from: couple.husband)
+            ?? CitationGenerator.extractBirthYear(from: couple.wife)
+        let displayDate = displayHiskiPreloadMarriageDate(
+            marriageDate,
+            parentBirthYear: parentBirthYear
+        )
+        let searchURL = try hiskiService.marriageSearchResultsURL(
+            husbandName: couple.husband.name,
+            wifeName: couple.wife.name,
+            date: displayDate
+        )
+        try await preloadHiskiDateClickSearchURL(
+            searchURL,
+            tracker: tracker,
+            logMessage: "HisKi marriage-date preprocess \(familyId): cached \(couple.husband.name) + \(couple.wife.name), \(displayDate)"
+        )
+    }
+
+    private func preloadHiskiDateClickSearchURL(
+        _ searchURL: URL,
+        tracker: HiskiDateClickPreloadTracker,
+        logMessage: String
+    ) async throws {
+        guard tracker.insert(searchURL) else {
+            return
+        }
+
+        _ = try await loadHiskiSearchHtml(from: searchURL)
+        logInfo(.cache, logMessage)
+    }
+
+    private func nonBlankHiskiPreloadDate(_ date: String?) -> String? {
+        let trimmed = date?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func displayHiskiPreloadMarriageDate(_ date: String, parentBirthYear: Int?) -> String {
+        let trimmed = date.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if trimmed.contains(".") {
+            let components = trimmed.components(separatedBy: ".")
+            if components.count == 3,
+               components[2].count == 2,
+               let twoDigitYear = Int(components[2]) {
+                let fullYear = CitationGenerator.inferCentury(
+                    for: twoDigitYear,
+                    parentBirthYear: parentBirthYear
+                )
+                return "\(components[0]).\(components[1]).\(fullYear)"
+            }
+        }
+
+        if trimmed.count == 2, let twoDigitYear = Int(trimmed) {
+            return String(CitationGenerator.inferCentury(
+                for: twoDigitYear,
+                parentBirthYear: parentBirthYear
+            ))
+        }
+
+        return trimmed
     }
 
     private func formatHiskiPreloadDate(_ date: Date) -> String {

@@ -670,8 +670,8 @@ final class FamilyContentViewTests: XCTestCase {
         let familySearchPreload = try XCTUnwrap(
             juuretApp.range(of: "_ = try await preloadFamilySearchExtraction(for: family)")
         )
-        let childDatePreload = try XCTUnwrap(
-            juuretApp.range(of: "try await preloadHiskiBirthDateSearches(for: family)")
+        let dateClickPreload = try XCTUnwrap(
+            juuretApp.range(of: "try await preloadHiskiDateClickSearches(for: family)")
         )
         let familySpanPreload = try XCTUnwrap(
             juuretApp.range(of: "try await preloadHiskiBirthSearches(for: family)")
@@ -679,17 +679,21 @@ final class FamilyContentViewTests: XCTestCase {
 
         XCTAssertLessThan(
             familySearchPreload.lowerBound,
-            childDatePreload.lowerBound,
-            "Upcoming-family preprocessing must load FamilySearch before child-date HisKi cache warming."
+            dateClickPreload.lowerBound,
+            "Upcoming-family preprocessing must load FamilySearch before date-click HisKi cache warming."
         )
         XCTAssertLessThan(
-            childDatePreload.lowerBound,
+            dateClickPreload.lowerBound,
             familySpanPreload.lowerBound,
-            "Child-date HisKi cache warming should use the FS/Juuret union before the family-span HisKi query runs."
+            "Date-click HisKi cache warming should use the FS/Juuret union before the family-span HisKi query runs."
         )
         XCTAssertTrue(juuretApp.contains("familySearchPreprocessDelayRange: ClosedRange<Double> = 30...90"))
         XCTAssertTrue(juuretApp.contains("row.juuretKalvialla ?? row.familySearch"))
         XCTAssertTrue(juuretApp.contains("hiskiService.birthSearchResultsURL("))
+        XCTAssertTrue(juuretApp.contains("hiskiService.deathSearchResultsURL("))
+        XCTAssertTrue(juuretApp.contains("hiskiService.marriageSearchResultsURL("))
+        XCTAssertTrue(juuretApp.contains("preloadHiskiAdultDateClickSearches"))
+        XCTAssertTrue(juuretApp.contains("preloadHiskiMarriageDateClickSearch"))
     }
 
     func testFamilySearchOnlyRowsCanBuildHiskiLookupPerson() throws {

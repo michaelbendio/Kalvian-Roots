@@ -30,13 +30,15 @@ FamilySearch preprocessing waits a random 30-90 seconds before each uncached
 extraction and stores successful results in the app's in-memory extraction
 cache.
 
-For child-date HisKi searches, preprocessing builds the union of Juuret
-Kälviällä children and FamilySearch children through the normal comparison
-model. It then warms the same HisKi birth-date query cache used when the user
-clicks a child date in the UI. HisKi family-span queries remain HisKi's own
-candidate pool, but they can use the cached FamilySearch children to extend the
-query window for FamilySearch children that are not present in Juuret
-Kälviällä.
+For date-click HisKi searches, preprocessing warms the same query cache used
+when the user clicks dates in the UI. Adult birth/death dates and couple
+marriage dates are warmed for every Juuret Kälviällä couple, including
+additional spouses. For child birth dates, preprocessing builds the union of
+Juuret Kälviällä children and FamilySearch children through the normal
+comparison model before warming the child birth-date query cache. HisKi
+family-span queries remain HisKi's own candidate pool, but they can use the
+cached FamilySearch children to extend the query window for FamilySearch
+children that are not present in Juuret Kälviällä.
 
 Extraction Scope
 ----------------
