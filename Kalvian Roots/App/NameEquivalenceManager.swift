@@ -140,8 +140,12 @@ class NameEquivalenceManager {
     }
 
     func hiskiPatronymicSearchInput(for patronymic: String) -> String? {
-        // HisKi already handles most patronymic variants; these Pietari-derived forms need explicit query terms.
+        // HisKi already handles most patronymic variants; these forms need explicit query-only terms.
         switch firstNormalizedToken(in: patronymic) {
+        case "luukkaanp":
+            return "Lucason"
+        case "luukkaant":
+            return "Lucasdr"
         case "pietarinp":
             return "Perss"
         case "pietarint":

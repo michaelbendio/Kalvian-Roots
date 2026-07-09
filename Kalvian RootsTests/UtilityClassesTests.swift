@@ -133,6 +133,8 @@ final class NameEquivalenceManagerTests: XCTestCase {
     func testHiskiQueryFormsAreProvidedByNameEquivalenceManager() {
         XCTAssertEqual(manager.hiskiGivenNameSearchInput(for: "Malin"), "Magdalena")
         XCTAssertEqual(manager.hiskiGivenNameSearchInput(for: "Pietari"), "Per")
+        XCTAssertEqual(manager.hiskiPatronymicSearchInput(for: "Luukkaanp."), "Lucason")
+        XCTAssertEqual(manager.hiskiPatronymicSearchInput(for: "Luukkaant."), "Lucasdr")
         XCTAssertEqual(manager.hiskiPatronymicSearchInput(for: "Pietarinp."), "Perss")
         XCTAssertEqual(manager.hiskiPatronymicSearchInput(for: "Pietarint."), "Persdr")
         XCTAssertEqual(manager.hiskiSurnameSearchInput(forPatronymic: "Luukkaanp."), "Lucason")
@@ -878,6 +880,17 @@ final class HiskiServiceTests: XCTestCase {
             "HisKi parent surname fallback",
             "exact Juuret parent names fallback"
         ])
+
+        let primaryValues = try queryValues(in: requests[0].url)
+
+        XCTAssertEqual(primaryValues["ietunimi"], "Lauri")
+        XCTAssertEqual(primaryValues["ipatronyymi"], "Lucason")
+        XCTAssertEqual(primaryValues["isukunimi"], "")
+        XCTAssertEqual(primaryValues["aetunimi"], "Vappu")
+        XCTAssertEqual(primaryValues["apatronyymi"], "Simont")
+        XCTAssertEqual(primaryValues["asukunimi"], "")
+        XCTAssertEqual(primaryValues["alkuvuosi"], "1704")
+        XCTAssertEqual(primaryValues["loppuvuosi"], "1740")
 
         let surnameValues = try queryValues(in: requests[1].url)
 
