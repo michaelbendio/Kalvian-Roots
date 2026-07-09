@@ -399,12 +399,13 @@ and differences:
 This identifies discrepancies and additional children.
 
 
-Stage 8 – Prepare HisKi Citation Proposals
-------------------------------------------
+Stage 8 – Prepare HisKi Citation Links On Demand
+------------------------------------------------
 
-For each HisKi child that corresponds to a FamilySearch person:
+For a HisKi child selected by the user:
 
-    prepare citation proposal
+    load the child detail page
+    harvest the final citation URL
 
 Example
 
@@ -414,8 +415,11 @@ Example
 
 Notes
 
-    The citation proposal uses the final citation URL harvested from
-    the child detail page.
+    The citation URL uses the final URL harvested from the child detail
+    page. Kalvian Roots does not automatically fetch every detail page
+    after the family-span HisKi query, because family-span rows are enough
+    to show HisKi markers and the extra detail-page traffic is only needed
+    when the user asks for a citation.
 
 
 Stage 9 – Insert HisKi Citations (Manual Approval)

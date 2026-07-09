@@ -672,7 +672,7 @@ final class FamilyContentViewTests: XCTestCase {
         )
     }
 
-    func testHiskiMarkersPublishBeforeCitationFetchWaits() throws {
+    func testHiskiMarkersPublishWithoutAutomaticCitationFetches() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -681,8 +681,8 @@ final class FamilyContentViewTests: XCTestCase {
             contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/App/JuuretApp.swift"),
             encoding: .utf8
         )
-        let comparisonBuilder = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/App/FamilyChildrenComparisonBuilder.swift"),
+        let familyContentView = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/Views/FamilyContentView.swift"),
             encoding: .utf8
         )
 
@@ -692,27 +692,20 @@ final class FamilyContentViewTests: XCTestCase {
         let comparisonAssignment = try XCTUnwrap(
             juuretApp.range(of: "let report = renderJuuretHiskiComparisonReport(displayResult)\n            familySearchComparisonResult = displayResult")
         )
-        let proposalFetch = try XCTUnwrap(
-            juuretApp.range(of: "comparisonBuilder.makeCitationProposals")
-        )
+        let proposalFetch = juuretApp.range(of: "comparisonBuilder.makeCitationProposals")
 
         XCTAssertLessThan(
             noCitationLoad.lowerBound,
             comparisonAssignment.lowerBound,
-            "The visible HisKi comparison should be built without waiting for citation/detail pages."
+            "The visible HisKi comparison should be built without citation/detail pages."
         )
-        XCTAssertLessThan(
-            comparisonAssignment.lowerBound,
-            proposalFetch.lowerBound,
-            "H markers should be assigned to UI state before citation proposal loading starts."
+        XCTAssertNil(
+            proposalFetch,
+            "Current-family comparison should not automatically fetch HisKi citation/detail pages."
         )
-        XCTAssertTrue(
-            comparisonBuilder.contains("let structuredRows: [HiskiService.HiskiFamilyBirthRow]"),
-            "The builder should return parsed rows so citation proposals can load after marker publication."
-        )
-        XCTAssertTrue(
-            comparisonBuilder.contains("func makeCitationProposals("),
-            "Citation proposal loading should remain available as a follow-up step."
+        XCTAssertFalse(
+            familyContentView.contains("HisKi Citation Proposals"),
+            "The automatic HisKi citation proposal panel should not render."
         )
     }
 
@@ -771,7 +764,7 @@ final class FamilyContentViewTests: XCTestCase {
         XCTAssertTrue(juuretApp.contains("FamilySearch automatic in-app extraction started"))
     }
 
-    func testUpcomingFamilyPreprocessingLoadsFamilySearchBeforeHiski() throws {
+    func testUpcomingFamilyPreprocessingSkipsFamilySearchAndWarmsHiski() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -781,9 +774,6 @@ final class FamilyContentViewTests: XCTestCase {
             encoding: .utf8
         )
 
-        let familySearchPreload = try XCTUnwrap(
-            juuretApp.range(of: "_ = try await preloadFamilySearchExtraction(for: family)")
-        )
         let dateClickPreload = try XCTUnwrap(
             juuretApp.range(of: "try await preloadHiskiDateClickSearches(for: family)")
         )
@@ -791,17 +781,15 @@ final class FamilyContentViewTests: XCTestCase {
             juuretApp.range(of: "try await preloadHiskiBirthSearches(for: family)")
         )
 
-        XCTAssertLessThan(
-            familySearchPreload.lowerBound,
-            dateClickPreload.lowerBound,
-            "Upcoming-family preprocessing must load FamilySearch before date-click HisKi cache warming."
+        XCTAssertFalse(
+            juuretApp.contains("_ = try await preloadFamilySearchExtraction(for: family)"),
+            "Upcoming-family preprocessing should not hand additional families to FamilySearch in the background."
         )
         XCTAssertLessThan(
             dateClickPreload.lowerBound,
             familySpanPreload.lowerBound,
-            "Date-click HisKi cache warming should use the FS/Juuret union before the family-span HisKi query runs."
+            "Date-click HisKi cache warming should run before the family-span HisKi query runs."
         )
-        XCTAssertTrue(juuretApp.contains("familySearchPreprocessDelayRange: ClosedRange<Double> = 30...90"))
         XCTAssertTrue(juuretApp.contains("row.juuretKalvialla ?? row.familySearch"))
         XCTAssertTrue(juuretApp.contains("hiskiService.birthSearchResultsURL("))
         XCTAssertTrue(juuretApp.contains("hiskiService.deathSearchResultsURL("))

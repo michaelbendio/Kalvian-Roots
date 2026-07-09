@@ -107,36 +107,6 @@ struct FamilyContentView: View {
                         .padding(.top, 4)
                 }
 
-                if !juuretApp.hiskiCitationProposals.isEmpty {
-                    GroupBox("HisKi Citation Proposals") {
-                        VStack(alignment: .leading, spacing: 4) {
-                            ForEach(juuretApp.hiskiCitationProposals, id: \.citationURL) { proposal in
-                                let shortCitation = proposal.shortCitationString(from: proposal.citationURL)
-
-                                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                                    Text(proposal.displayName)
-                                        .foregroundStyle(.primary)
-
-                                    Text("—")
-                                        .foregroundStyle(.secondary)
-
-                                    Button {
-                                        copyToClipboard(shortCitation)
-                                    } label: {
-                                        Text(shortCitation)
-                                            .underline()
-                                            .foregroundStyle(Color(hex: "0066cc"))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                                .font(.system(.caption, design: .monospaced))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        }
-                    }
-                    .padding(.top, 12)
-                }
-
                 if shouldRenderFamilySearchComparisonUI && juuretApp.isFamilySearchComparisonPanelVisible {
                     familySearchComparisonPanel
                         .padding(.top, 12)

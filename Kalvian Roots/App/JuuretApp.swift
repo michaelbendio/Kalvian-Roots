@@ -84,7 +84,6 @@ class JuuretApp {
     private var familySearchExtractionRunCounter = 0
     private var hiskiPreprocessTask: Task<Void, Never>?
     private var hiskiVPNReadyContinuation: CheckedContinuation<Bool, Never>?
-    private let familySearchPreprocessDelayRange: ClosedRange<Double> = 30...90
     var hiskiVPNReadinessFamilyId: String?
 
     var isWaitingForHiskiVPN: Bool {
@@ -1176,24 +1175,7 @@ class JuuretApp {
             appendFamilySearchComparisonDebug("comparison results assigned to UI state: \(comparisonGroups.reduce(0) { $0 + $1.result.rows.count }) rows")
             logInfo(.app, "📋 Juuret + HisKi comparison report for \(family.familyId):\n\(report)")
 
-            var proposals: [HiskiCitationProposal] = []
-            for buildResult in buildResults {
-                let comparisonFamilySearchChildren = familySearchChildrenByCouple[buildResult.group.coupleIndex] ?? []
-                let groupProposals = await comparisonBuilder.makeCitationProposals(
-                    couple: buildResult.group.couple,
-                    familySearchChildren: comparisonFamilySearchChildren,
-                    structuredRows: buildResult.structuredRows,
-                    loadCitationProposals: true
-                )
-                proposals.append(contentsOf: groupProposals)
-            }
-
-            guard currentFamily?.familyId == family.familyId else {
-                return
-            }
-
-            let proposalReport = storeHiskiCitationProposals(proposals)
-            logInfo(.app, "📎 HisKi citation proposals for \(family.familyId):\n\(proposalReport)")
+            appendFamilySearchComparisonDebug("HisKi citation proposals skipped: citation links load on demand from child/date clicks")
         } catch {
             guard currentFamily?.familyId == family.familyId else {
                 return
@@ -1335,7 +1317,6 @@ class JuuretApp {
 
             do {
                 let family = try await familyForHiskiPreprocessing(familyId: familyId)
-                _ = try await preloadFamilySearchExtraction(for: family)
                 try await preloadHiskiDateClickSearches(for: family)
                 try await preloadHiskiBirthSearches(for: family)
             } catch {
@@ -1367,45 +1348,6 @@ class JuuretApp {
         }
 
         throw ExtractionError.parsingFailed("Failed to prepare family for HisKi preprocessing: \(normalizedId)")
-    }
-
-    private func preloadFamilySearchExtraction(for family: Family) async throws -> FamilySearchFamilyExtraction? {
-        if let extraction = familySearchExtraction(for: family.familyId),
-           extraction.hasExtractedChildrenForComparison {
-            logInfo(.cache, "FamilySearch preprocess \(family.familyId): using stored extraction")
-            return extraction
-        }
-
-        guard let familySearchPersonId = familySearchParentId(in: family)
-            ?? primaryFamilySearchParentIdInSourceText(for: family.familyId) else {
-            logInfo(.cache, "FamilySearch preprocess \(family.familyId): skipped, no parent FamilySearch ID")
-            return nil
-        }
-
-        #if os(macOS)
-        let delay = Double.random(in: familySearchPreprocessDelayRange)
-        logInfo(.cache, "FamilySearch preprocess \(family.familyId): waiting \(Int(delay.rounded()))s before extracting \(familySearchPersonId)")
-        try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-
-        if Task.isCancelled {
-            return nil
-        }
-
-        let extraction = try await FamilySearchWebViewExtractionManager.shared.openDetailsPageAndExtract(
-            personId: familySearchPersonId,
-            log: { message in
-                logInfo(.cache, "FamilySearch preprocess \(family.familyId): \(message)")
-            }
-        )
-
-        storeFamilySearchExtraction(extraction, for: family.familyId, rerunComparison: false)
-        let childCount = extraction.childCount ?? extraction.children.count
-        logInfo(.cache, "FamilySearch preprocess \(family.familyId): stored \(childCount) children")
-        return extraction
-        #else
-        logInfo(.cache, "FamilySearch preprocess \(family.familyId): skipped, WebKit extraction requires macOS")
-        return nil
-        #endif
     }
 
     private func preloadHiskiBirthSearches(for family: Family) async throws {
