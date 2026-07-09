@@ -282,6 +282,9 @@ Query behavior:
     - Broad search (max results increased)
     - No child name constraint
     - Parent-based filtering
+    - HisKi query spelling exceptions are supplied by NameEquivalenceManager
+      and consumed by HiskiService when constructing URLs. Do not add
+      service-local query synonym tables.
 
 Record identification:
 
