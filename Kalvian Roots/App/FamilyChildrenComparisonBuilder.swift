@@ -2,6 +2,7 @@ import Foundation
 
 struct FamilyChildrenComparisonBuildResult {
     let group: FamilyChildrenComparisonGroup
+    let structuredRows: [HiskiService.HiskiFamilyBirthRow]
     let proposals: [HiskiCitationProposal]
 }
 
@@ -85,7 +86,7 @@ final class FamilyChildrenComparisonBuilder {
             )
         )
 
-        let proposals = try await makeCitationProposals(
+        let proposals = await makeCitationProposals(
             couple: couple,
             familySearchChildren: familySearchChildren,
             structuredRows: structuredRows,
@@ -99,6 +100,7 @@ final class FamilyChildrenComparisonBuilder {
                 hiskiSearchRequests: searchRequests,
                 result: result
             ),
+            structuredRows: structuredRows,
             proposals: proposals
         )
     }
@@ -189,12 +191,12 @@ final class FamilyChildrenComparisonBuilder {
         )
     }
 
-    private func makeCitationProposals(
+    func makeCitationProposals(
         couple: Couple,
         familySearchChildren: [FamilySearchChild],
         structuredRows: [HiskiService.HiskiFamilyBirthRow],
         loadCitationProposals: Bool
-    ) async throws -> [HiskiCitationProposal] {
+    ) async -> [HiskiCitationProposal] {
         guard loadCitationProposals else {
             return []
         }

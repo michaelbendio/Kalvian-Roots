@@ -1118,8 +1118,7 @@ class JuuretApp {
         )
 
         do {
-            var comparisonGroups: [FamilyChildrenComparisonGroup] = []
-            var proposals: [HiskiCitationProposal] = []
+            var buildResults: [FamilyChildrenComparisonBuildResult] = []
 
             for (coupleIndex, comparisonCouple) in family.couples.enumerated() {
                 let comparisonFamilySearchChildren = familySearchChildrenByCouple[coupleIndex] ?? []
@@ -1132,15 +1131,15 @@ class JuuretApp {
                     couple: comparisonCouple,
                     coupleIndex: coupleIndex,
                     familySearchChildren: comparisonFamilySearchChildren,
-                    loadCitationProposals: true
+                    loadCitationProposals: false
                 ) else {
                     continue
                 }
 
-                comparisonGroups.append(groupResult.group)
-                proposals.append(contentsOf: groupResult.proposals)
+                buildResults.append(groupResult)
             }
 
+            let comparisonGroups = buildResults.map(\.group)
             guard let displayResult = comparisonGroups.first?.result else {
                 assignFamilySearchComparisonFallback(
                     family: family,
@@ -1157,9 +1156,10 @@ class JuuretApp {
             }
 
             let report = renderJuuretHiskiComparisonReport(displayResult)
-            let proposalReport = storeHiskiCitationProposals(proposals)
             familySearchComparisonResult = displayResult
             familyChildrenComparisonGroups = comparisonGroups
+            comparisonReport = report
+            hiskiCitationProposals = []
             if let storedFamilySearchExtraction, !storedFamilySearchExtraction.isSuccessful {
                 let status = storedFamilySearchExtraction.status ?? "extractorError"
                 let reason = storedFamilySearchExtraction.failureReason ?? "FamilySearch extraction failed"
@@ -1175,6 +1175,24 @@ class JuuretApp {
             appendFamilySearchComparisonDebug("comparison groups assigned to UI state: \(comparisonGroups.count)")
             appendFamilySearchComparisonDebug("comparison results assigned to UI state: \(comparisonGroups.reduce(0) { $0 + $1.result.rows.count }) rows")
             logInfo(.app, "📋 Juuret + HisKi comparison report for \(family.familyId):\n\(report)")
+
+            var proposals: [HiskiCitationProposal] = []
+            for buildResult in buildResults {
+                let comparisonFamilySearchChildren = familySearchChildrenByCouple[buildResult.group.coupleIndex] ?? []
+                let groupProposals = await comparisonBuilder.makeCitationProposals(
+                    couple: buildResult.group.couple,
+                    familySearchChildren: comparisonFamilySearchChildren,
+                    structuredRows: buildResult.structuredRows,
+                    loadCitationProposals: true
+                )
+                proposals.append(contentsOf: groupProposals)
+            }
+
+            guard currentFamily?.familyId == family.familyId else {
+                return
+            }
+
+            let proposalReport = storeHiskiCitationProposals(proposals)
             logInfo(.app, "📎 HisKi citation proposals for \(family.familyId):\n\(proposalReport)")
         } catch {
             guard currentFamily?.familyId == family.familyId else {

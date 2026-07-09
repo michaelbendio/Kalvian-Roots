@@ -20,7 +20,7 @@ queries. The navigation bar shows a green VPN-ready control just to the left of
 the family ID field. The user turns on the VPN, clicks that control, and then
 Kalvian Roots starts the HisKi family-span query and date-click cache warming
 queries. When HisKi results return, H markers are added to the existing
-comparison.
+comparison before slower citation/detail-page fetches continue.
 
 When the Juuret father does not yet have a FamilySearch ID, selecting the
 family opens FamilySearch in the visible WebKit window so the user can locate

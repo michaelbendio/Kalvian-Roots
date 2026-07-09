@@ -672,6 +672,50 @@ final class FamilyContentViewTests: XCTestCase {
         )
     }
 
+    func testHiskiMarkersPublishBeforeCitationFetchWaits() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        let juuretApp = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/App/JuuretApp.swift"),
+            encoding: .utf8
+        )
+        let comparisonBuilder = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/App/FamilyChildrenComparisonBuilder.swift"),
+            encoding: .utf8
+        )
+
+        let noCitationLoad = try XCTUnwrap(
+            juuretApp.range(of: "loadCitationProposals: false")
+        )
+        let comparisonAssignment = try XCTUnwrap(
+            juuretApp.range(of: "let report = renderJuuretHiskiComparisonReport(displayResult)\n            familySearchComparisonResult = displayResult")
+        )
+        let proposalFetch = try XCTUnwrap(
+            juuretApp.range(of: "comparisonBuilder.makeCitationProposals")
+        )
+
+        XCTAssertLessThan(
+            noCitationLoad.lowerBound,
+            comparisonAssignment.lowerBound,
+            "The visible HisKi comparison should be built without waiting for citation/detail pages."
+        )
+        XCTAssertLessThan(
+            comparisonAssignment.lowerBound,
+            proposalFetch.lowerBound,
+            "H markers should be assigned to UI state before citation proposal loading starts."
+        )
+        XCTAssertTrue(
+            comparisonBuilder.contains("let structuredRows: [HiskiService.HiskiFamilyBirthRow]"),
+            "The builder should return parsed rows so citation proposals can load after marker publication."
+        )
+        XCTAssertTrue(
+            comparisonBuilder.contains("func makeCitationProposals("),
+            "Citation proposal loading should remain available as a follow-up step."
+        )
+    }
+
     func testCurrentFamilySelectionAutomaticallyExtractsFamilySearchBeforeComparison() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
