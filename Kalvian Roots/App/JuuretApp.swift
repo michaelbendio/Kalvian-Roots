@@ -1157,6 +1157,7 @@ class JuuretApp {
             do {
                 let family = try await familyForHiskiPreprocessing(familyId: familyId)
                 _ = try await preloadFamilySearchExtraction(for: family)
+                try await preloadHiskiBirthDateSearches(for: family)
                 try await preloadHiskiBirthSearches(for: family)
             } catch {
                 if Task.isCancelled {
@@ -1270,6 +1271,63 @@ class JuuretApp {
                 loadCitationProposals: false
             )
         }
+    }
+
+    private func preloadHiskiBirthDateSearches(for family: Family) async throws {
+        let extraction = familySearchExtraction(for: family.familyId)
+        let familySearchChildrenByCouple = familySearchChildrenByCouple(
+            for: family,
+            extraction: extraction
+        )
+
+        let comparisonService = FamilyComparisonService(nameManager: nameEquivalenceManager)
+        let hiskiService = HiskiService(nameEquivalenceManager: nameEquivalenceManager)
+        hiskiService.setCurrentFamily(family.familyId)
+
+        for (coupleIndex, couple) in family.couples.enumerated() {
+            if Task.isCancelled {
+                return
+            }
+
+            let familySearchChildren = familySearchChildrenByCouple[coupleIndex] ?? []
+            let union = comparisonService.compare(
+                juuretCandidates: comparisonService.makeJuuretCandidates(from: couple.children),
+                hiskiCandidates: [],
+                familySearchCandidates: comparisonService.makeFamilySearchCandidates(from: familySearchChildren)
+            )
+
+            for row in union.rows {
+                if Task.isCancelled {
+                    return
+                }
+
+                guard let candidate = row.juuretKalvialla ?? row.familySearch,
+                      let birthDate = candidate.birthDate else {
+                    continue
+                }
+
+                let searchURL = try hiskiService.birthSearchResultsURL(
+                    name: candidate.rawName,
+                    date: formatHiskiPreloadDate(birthDate),
+                    fatherName: couple.husband.name,
+                    motherName: couple.wife.name
+                )
+                _ = try await loadHiskiSearchHtml(from: searchURL)
+                logInfo(.cache, "HisKi child-date preprocess \(family.familyId): cached \(candidate.rawName), \(formatHiskiPreloadDate(birthDate))")
+            }
+        }
+    }
+
+    private func formatHiskiPreloadDate(_ date: Date) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "dd.MM.yyyy"
+        return formatter.string(from: date)
     }
 
     private func loadHiskiSearchHtml(from url: URL) async throws -> String {

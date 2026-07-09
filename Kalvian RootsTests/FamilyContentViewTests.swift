@@ -670,16 +670,44 @@ final class FamilyContentViewTests: XCTestCase {
         let familySearchPreload = try XCTUnwrap(
             juuretApp.range(of: "_ = try await preloadFamilySearchExtraction(for: family)")
         )
-        let hiskiPreload = try XCTUnwrap(
+        let childDatePreload = try XCTUnwrap(
+            juuretApp.range(of: "try await preloadHiskiBirthDateSearches(for: family)")
+        )
+        let familySpanPreload = try XCTUnwrap(
             juuretApp.range(of: "try await preloadHiskiBirthSearches(for: family)")
         )
 
         XCTAssertLessThan(
             familySearchPreload.lowerBound,
-            hiskiPreload.lowerBound,
-            "Upcoming-family preprocessing must load FamilySearch before HisKi so FS-only children can extend HisKi queries."
+            childDatePreload.lowerBound,
+            "Upcoming-family preprocessing must load FamilySearch before child-date HisKi cache warming."
+        )
+        XCTAssertLessThan(
+            childDatePreload.lowerBound,
+            familySpanPreload.lowerBound,
+            "Child-date HisKi cache warming should use the FS/Juuret union before the family-span HisKi query runs."
         )
         XCTAssertTrue(juuretApp.contains("familySearchPreprocessDelayRange: ClosedRange<Double> = 30...90"))
+        XCTAssertTrue(juuretApp.contains("row.juuretKalvialla ?? row.familySearch"))
+        XCTAssertTrue(juuretApp.contains("hiskiService.birthSearchResultsURL("))
+    }
+
+    func testFamilySearchOnlyRowsCanBuildHiskiLookupPerson() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        let familyContentView = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/Views/FamilyContentView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(
+            familyContentView.contains("row.hiski ?? row.juuretKalvialla ?? row.familySearch"),
+            "FS-only rows in the FS/Juuret union should also be able to trigger the same HisKi date lookup."
+        )
+        XCTAssertTrue(familyContentView.contains("fatherName: couple.husband.name"))
+        XCTAssertTrue(familyContentView.contains("motherName: couple.wife.name"))
     }
 
     func testFamilySearchAndJuuretFatherBirthDateFormatsParseToComparableDates() {

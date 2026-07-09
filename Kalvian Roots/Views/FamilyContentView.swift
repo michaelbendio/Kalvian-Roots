@@ -1001,11 +1001,16 @@ struct FamilyContentView: View {
             return child
         }
 
-        guard let candidate = row.hiski ?? row.juuretKalvialla else {
+        guard let candidate = row.hiski ?? row.juuretKalvialla ?? row.familySearch else {
             return nil
         }
 
-        return Person(name: candidate.rawName, birthDate: formatUnionDate(candidate.birthDate))
+        return Person(
+            name: candidate.rawName,
+            birthDate: formatUnionDate(candidate.birthDate),
+            fatherName: couple.husband.name,
+            motherName: couple.wife.name
+        )
     }
 
     private func juuretChild(for row: FamilyComparisonResult.Match, in couple: Couple) -> Person? {
