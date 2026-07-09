@@ -83,7 +83,13 @@ class JuuretApp {
     private var familySearchComparisonRunCounter = 0
     private var familySearchExtractionRunCounter = 0
     private var hiskiPreprocessTask: Task<Void, Never>?
+    private var hiskiVPNReadyContinuation: CheckedContinuation<Bool, Never>?
     private let familySearchPreprocessDelayRange: ClosedRange<Double> = 30...90
+    var hiskiVPNReadinessFamilyId: String?
+
+    var isWaitingForHiskiVPN: Bool {
+        hiskiVPNReadinessFamilyId != nil
+    }
 
     var currentFamilySearchExtractorPageURL: URL? {
         guard let currentFamily,
@@ -128,6 +134,7 @@ class JuuretApp {
     func showFamilyFromCache(_ network: FamilyNetwork, startSynchronization: Bool = true) {
         let familyId = network.mainFamily.familyId
         let before = self.currentFamily?.familyId ?? "nil"
+        cancelHiskiVPNReadyWait()
 
         // Set current family and activate workflow with cached network
         self.currentFamily = network.mainFamily
@@ -155,6 +162,13 @@ class JuuretApp {
 
         Task {
             await self.prepareFamilySearchWebKitForCurrentFamily(network.mainFamily)
+            guard await self.waitForHiskiVPNReady(for: network.mainFamily) else {
+                return
+            }
+            guard self.currentFamily?.familyId == network.mainFamily.familyId else {
+                return
+            }
+
             await self.runJuuretHiskiComparisonPipeline(for: network.mainFamily)
             self.startHiskiPreprocessing(after: network.mainFamily.familyId)
         }
@@ -864,6 +878,46 @@ class JuuretApp {
             }
         }
         #endif
+    }
+
+    func confirmHiskiVPNReady() {
+        guard let continuation = hiskiVPNReadyContinuation else {
+            return
+        }
+
+        let familyId = hiskiVPNReadinessFamilyId ?? "current family"
+        hiskiVPNReadinessFamilyId = nil
+        hiskiVPNReadyContinuation = nil
+        appendFamilySearchComparisonDebug("HisKi VPN readiness confirmed for \(familyId)")
+        familySearchComparisonDebugMessage = "HisKi queries starting"
+        continuation.resume(returning: true)
+    }
+
+    private func waitForHiskiVPNReady(for family: Family) async -> Bool {
+        guard currentFamily?.familyId == family.familyId else {
+            return false
+        }
+
+        if let continuation = hiskiVPNReadyContinuation {
+            hiskiVPNReadyContinuation = nil
+            continuation.resume(returning: false)
+        }
+
+        familySearchComparisonDebugMessage = "FamilySearch complete; turn VPN on for HisKi"
+        appendFamilySearchComparisonDebug("HisKi queries waiting for VPN confirmation")
+        hiskiVPNReadinessFamilyId = family.familyId
+
+        return await withCheckedContinuation { continuation in
+            hiskiVPNReadyContinuation = continuation
+        }
+    }
+
+    private func cancelHiskiVPNReadyWait() {
+        hiskiVPNReadinessFamilyId = nil
+        if let continuation = hiskiVPNReadyContinuation {
+            hiskiVPNReadyContinuation = nil
+            continuation.resume(returning: false)
+        }
     }
 
     private func prepareFamilySearchWebKitForCurrentFamily(_ family: Family) async {
@@ -1590,6 +1644,7 @@ class JuuretApp {
         
         // Set processing state and pending family ID
         await MainActor.run {
+            cancelHiskiVPNReadyWait()
             isProcessing = true
             errorMessage = nil
             currentFamily = nil
@@ -1635,6 +1690,13 @@ class JuuretApp {
             logInfo(.app, "✨ Family loaded from cache: \(normalizedId)")
 
             await prepareFamilySearchWebKitForCurrentFamily(cached.mainFamily)
+            guard await waitForHiskiVPNReady(for: cached.mainFamily) else {
+                return
+            }
+            guard currentFamily?.familyId == cached.mainFamily.familyId else {
+                return
+            }
+
             await runJuuretHiskiComparisonPipeline(for: cached.mainFamily)
             startHiskiPreprocessing(after: cached.mainFamily.familyId)
             
@@ -1730,6 +1792,13 @@ class JuuretApp {
             }
 
             await prepareFamilySearchWebKitForCurrentFamily(family)
+            guard await waitForHiskiVPNReady(for: family) else {
+                return
+            }
+            guard currentFamily?.familyId == family.familyId else {
+                return
+            }
+
             await runJuuretHiskiComparisonPipeline(for: family)
             startHiskiPreprocessing(after: family.familyId)
             

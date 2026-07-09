@@ -60,6 +60,22 @@ struct NavigationBarView: View {
 
             // Family ID input with clear button and dropdown
             HStack(spacing: 4) {
+                if juuretApp.isWaitingForHiskiVPN {
+                    Button {
+                        juuretApp.confirmHiskiVPNReady()
+                    } label: {
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 10, height: 10)
+                            .padding(8)
+                            .background(Color.white.opacity(0.9))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("VPN is active; start HisKi queries")
+                    .accessibilityLabel("VPN is active; start HisKi queries")
+                }
+
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 0) {
                         TextField("Enter family ID...", text: $familyIdInput)

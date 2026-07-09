@@ -530,6 +530,13 @@ final class FamilyContentViewTests: XCTestCase {
         XCTAssertTrue(navigationBarView.contains("var onShowHiskiWorkbench: () -> Void"))
         XCTAssertTrue(navigationBarView.contains("Button(action: onShowHiskiWorkbench)"))
         XCTAssertTrue(navigationBarView.contains(#"Text("HisKi")"#))
+        XCTAssertTrue(navigationBarView.contains("if juuretApp.isWaitingForHiskiVPN"))
+        XCTAssertTrue(navigationBarView.contains("juuretApp.confirmHiskiVPNReady()"))
+        XCTAssertLessThan(
+            try XCTUnwrap(navigationBarView.range(of: "if juuretApp.isWaitingForHiskiVPN")).lowerBound,
+            try XCTUnwrap(navigationBarView.range(of: #"TextField("Enter family ID...""#)).lowerBound,
+            "The VPN-ready green dot belongs immediately before the family ID text field."
+        )
         XCTAssertTrue(juuretView.contains("onShowHiskiWorkbench: {\n                        showingHiskiWorkbench = true"))
         XCTAssertFalse(
             juuretView.contains(#"Label("HisKi Workbench", systemImage: "magnifyingglass")"#),
@@ -651,24 +658,42 @@ final class FamilyContentViewTests: XCTestCase {
         let cachedComparison = try XCTUnwrap(
             juuretApp.range(of: "await runJuuretHiskiComparisonPipeline(for: cached.mainFamily)")
         )
+        let cachedVPNGate = try XCTUnwrap(
+            juuretApp.range(of: "await waitForHiskiVPNReady(for: cached.mainFamily)")
+        )
         let familySearchPreparationAfterParse = try XCTUnwrap(
             juuretApp.range(of: "await prepareFamilySearchWebKitForCurrentFamily(family)")
         )
         let parsedComparison = try XCTUnwrap(
             juuretApp.range(of: "await runJuuretHiskiComparisonPipeline(for: family)")
         )
+        let parsedVPNGate = try XCTUnwrap(
+            juuretApp.range(of: "await waitForHiskiVPNReady(for: family)")
+        )
 
         XCTAssertLessThan(
             familySearchPreparation.lowerBound,
+            cachedVPNGate.lowerBound,
+            "Cached current-family selection should extract FamilySearch before waiting for VPN confirmation."
+        )
+        XCTAssertLessThan(
+            cachedVPNGate.lowerBound,
             cachedComparison.lowerBound,
-            "Cached current-family selection should extract FamilySearch before building the FS/Juuret/HisKi comparison."
+            "Cached current-family selection should not build the HisKi comparison until the VPN is confirmed."
         )
         XCTAssertLessThan(
             familySearchPreparationAfterParse.lowerBound,
+            parsedVPNGate.lowerBound,
+            "Newly parsed current-family selection should extract FamilySearch before waiting for VPN confirmation."
+        )
+        XCTAssertLessThan(
+            parsedVPNGate.lowerBound,
             parsedComparison.lowerBound,
-            "Newly parsed current-family selection should extract FamilySearch before building the FS/Juuret/HisKi comparison."
+            "Newly parsed current-family selection should not build the HisKi comparison until the VPN is confirmed."
         )
         XCTAssertTrue(juuretApp.contains("prepareFamilySearchWebKitForCurrentFamily"))
+        XCTAssertTrue(juuretApp.contains("confirmHiskiVPNReady"))
+        XCTAssertTrue(juuretApp.contains("HisKi queries waiting for VPN confirmation"))
         XCTAssertTrue(juuretApp.contains("FamilySearch automatic in-app extraction started"))
     }
 
