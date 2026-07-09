@@ -1664,14 +1664,18 @@ class HiskiService {
             label: String,
             fatherSearchName: String,
             fatherSearchPatronymic: String?,
+            fatherSearchSurname: String? = nil,
             motherSearchName: String,
-            motherSearchPatronymic: String?
+            motherSearchPatronymic: String?,
+            motherSearchSurname: String? = nil
         ) throws {
             let url = try makeFamilyBirthSearchUrl(
                 fatherName: fatherSearchName,
                 fatherPatronymic: fatherSearchPatronymic,
+                fatherSurname: fatherSearchSurname,
                 motherName: motherSearchName,
                 motherPatronymic: motherSearchPatronymic,
+                motherSurname: motherSearchSurname,
                 startYear: startYear,
                 endYear: boundedEndYear
             )
@@ -1687,6 +1691,8 @@ class HiskiService {
         let hiskiMotherName = normalizeForHiskiQuery(motherName)
         let hiskiFatherPatronymic = hiskiPatronymicSearchInput(for: fatherPatronymic)
         let hiskiMotherPatronymic = hiskiPatronymicSearchInput(for: motherPatronymic)
+        let hiskiFatherSurname = hiskiSurnameSearchInput(forPatronymic: fatherPatronymic)
+        let hiskiMotherSurname = hiskiSurnameSearchInput(forPatronymic: motherPatronymic)
 
         try appendRequest(
             label: "primary HisKi parent query",
@@ -1695,6 +1701,18 @@ class HiskiService {
             motherSearchName: hiskiMotherName,
             motherSearchPatronymic: hiskiMotherPatronymic
         )
+
+        if hiskiFatherSurname != nil || hiskiMotherSurname != nil {
+            try appendRequest(
+                label: "HisKi parent surname fallback",
+                fatherSearchName: hiskiFatherName,
+                fatherSearchPatronymic: nil,
+                fatherSearchSurname: hiskiFatherSurname,
+                motherSearchName: hiskiMotherName,
+                motherSearchPatronymic: nil,
+                motherSearchSurname: hiskiMotherSurname
+            )
+        }
 
         try appendRequest(
             label: "exact Juuret parent names fallback",
@@ -1774,8 +1792,10 @@ class HiskiService {
     private func makeFamilyBirthSearchUrl(
         fatherName: String,
         fatherPatronymic: String?,
+        fatherSurname: String? = nil,
         motherName: String,
         motherPatronymic: String?,
+        motherSurname: String? = nil,
         startYear: Int,
         endYear: Int?
     ) throws -> URL {
@@ -1795,8 +1815,8 @@ class HiskiService {
             "aetunimi": motherName,
             "ipatronyymi": fatherPatronymic ?? "",
             "apatronyymi": motherPatronymic ?? "",
-            "isukunimi": "",
-            "asukunimi": "",
+            "isukunimi": fatherSurname ?? "",
+            "asukunimi": motherSurname ?? "",
             "iammatti": "",
             "aammatti": "",
             "ketunimi": "",
@@ -1957,6 +1977,34 @@ class HiskiService {
             return "Perss"
         case "pietarint":
             return "Persdr"
+        default:
+            return nil
+        }
+    }
+
+    private func hiskiSurnameSearchInput(forPatronymic patronymic: String?) -> String? {
+        guard let patronymic else {
+            return nil
+        }
+
+        let cleaned = patronymic.trimmingCharacters(
+            in: .whitespacesAndNewlines.union(.punctuationCharacters)
+        )
+        let patronymicToken = cleaned
+            .split(whereSeparator: \.isWhitespace)
+            .first
+            .map(String.init)?
+            .trimmingCharacters(in: .punctuationCharacters)
+
+        guard let patronymicToken, !patronymicToken.isEmpty else {
+            return nil
+        }
+
+        switch normalizedHiskiLookupToken(patronymicToken) {
+        case "luukkaanp":
+            return "Lucason"
+        case "luukkaant":
+            return "Lucasdr"
         default:
             return nil
         }

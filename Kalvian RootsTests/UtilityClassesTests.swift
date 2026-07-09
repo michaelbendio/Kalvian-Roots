@@ -853,6 +853,34 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertEqual(finalValues["apatronyymi"], "Josefint")
     }
 
+    func testBuildFamilyBirthSearchRequestsIncludesHiskiSurnameFallbackForLuukkaanp() throws {
+        let requests = try service.buildFamilyBirthSearchRequests(
+            fatherName: "Lauri",
+            fatherPatronymic: "Luukkaanp.",
+            motherName: "Vappu",
+            motherPatronymic: "Simont.",
+            startYear: 1704,
+            endYear: 1740
+        )
+
+        XCTAssertEqual(requests.map(\.label), [
+            "primary HisKi parent query",
+            "HisKi parent surname fallback",
+            "exact Juuret parent names fallback"
+        ])
+
+        let surnameValues = try queryValues(in: requests[1].url)
+
+        XCTAssertEqual(surnameValues["ietunimi"], "Lauri")
+        XCTAssertEqual(surnameValues["ipatronyymi"], "")
+        XCTAssertEqual(surnameValues["isukunimi"], "Lucason")
+        XCTAssertEqual(surnameValues["aetunimi"], "Vappu")
+        XCTAssertEqual(surnameValues["apatronyymi"], "")
+        XCTAssertEqual(surnameValues["asukunimi"], "")
+        XCTAssertEqual(surnameValues["alkuvuosi"], "1704")
+        XCTAssertEqual(surnameValues["loppuvuosi"], "1740")
+    }
+
     func testParseFamilyBirthResultsTableParsesTdOnlyChildRows() {
         let html = """
         <html>
