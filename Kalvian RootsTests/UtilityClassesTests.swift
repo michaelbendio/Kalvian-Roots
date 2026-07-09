@@ -240,11 +240,6 @@ final class NameEquivalenceManagerTests: XCTestCase {
 
 // MARK: - HiskiService Tests
 
-final class HiskiQueryCoordinatorTestBox: @unchecked Sendable {
-    var requestedURLs: [URL] = []
-    var delays: [UInt64] = []
-}
-
 @MainActor
 final class HiskiServiceTests: XCTestCase {
     
@@ -267,84 +262,7 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertNotNil(service, "Service should initialize")
     }
 
-    func testHiskiQueryCoordinatorCachesSuccessfulFetches() async throws {
-        let cacheURL = temporaryHiskiCacheURL()
-        let url = try XCTUnwrap(URL(string: "https://hiski.genealogia.fi/hiski?en+test-success"))
-        let box = HiskiQueryCoordinatorTestBox()
-        let coordinator = HiskiQueryCoordinator(
-            cacheFileURL: cacheURL,
-            fetchHTML: { requestedURL in
-                box.requestedURLs.append(requestedURL)
-                return "<html>success</html>"
-            },
-            sleep: { nanoseconds in
-                box.delays.append(nanoseconds)
-            },
-            delayProvider: { 30 }
-        )
-
-        let firstHTML = try await coordinator.loadHTML(from: url)
-        let secondHTML = try await coordinator.loadHTML(from: url)
-
-        XCTAssertEqual(firstHTML, "<html>success</html>")
-        XCTAssertEqual(secondHTML, "<html>success</html>")
-        XCTAssertEqual(box.requestedURLs, [url])
-        XCTAssertTrue(box.delays.isEmpty)
-        let cachedEntryCount = try await coordinator.cachedEntryCount()
-        XCTAssertEqual(cachedEntryCount, 1)
-    }
-
-    func testHiskiQueryCoordinatorDoesNotCacheFailures() async throws {
-        let cacheURL = temporaryHiskiCacheURL()
-        let url = try XCTUnwrap(URL(string: "https://hiski.genealogia.fi/hiski?en+test-failure"))
-        let box = HiskiQueryCoordinatorTestBox()
-        let coordinator = HiskiQueryCoordinator(
-            cacheFileURL: cacheURL,
-            fetchHTML: { requestedURL in
-                box.requestedURLs.append(requestedURL)
-                throw HiskiServiceError.sessionFailed
-            },
-            sleep: { _ in },
-            delayProvider: { 30 }
-        )
-
-        do {
-            _ = try await coordinator.loadHTML(from: url)
-            XCTFail("Expected HisKi fetch failure")
-        } catch HiskiServiceError.sessionFailed {
-            // Expected.
-        }
-
-        XCTAssertEqual(box.requestedURLs, [url])
-        let cachedEntryCount = try await coordinator.cachedEntryCount()
-        XCTAssertEqual(cachedEntryCount, 0)
-    }
-
-    func testHiskiQueryCoordinatorSpacesUncachedQueriesAfterPreviousNetworkFetch() async throws {
-        let cacheURL = temporaryHiskiCacheURL()
-        let url = try XCTUnwrap(URL(string: "https://hiski.genealogia.fi/hiski?en+test-delay"))
-        let box = HiskiQueryCoordinatorTestBox()
-        let coordinator = HiskiQueryCoordinator(
-            cacheFileURL: cacheURL,
-            fetchHTML: { requestedURL in
-                box.requestedURLs.append(requestedURL)
-                return "<html>delayed</html>"
-            },
-            sleep: { nanoseconds in
-                box.delays.append(nanoseconds)
-            },
-            delayProvider: { 45 },
-            initialLastNetworkFetchAt: Date()
-        )
-
-        let html = try await coordinator.loadHTML(from: url)
-
-        XCTAssertEqual(html, "<html>delayed</html>")
-        XCTAssertEqual(box.requestedURLs, [url])
-        XCTAssertEqual(box.delays, [45_000_000_000])
-    }
-
-    func testWebViewCitationExtractionFallsBackToCachedHTTPExtraction() throws {
+    func testWebViewCitationExtractionFallsBackToHTTPExtraction() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -365,7 +283,7 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertTrue(helperSource.contains("HiskiWebViewManager.shared.loadRecordAndExtractCitation"))
         XCTAssertTrue(helperSource.contains("catch"))
         XCTAssertTrue(helperSource.contains("loadRecordAndExtractCitationHTTP(recordUrl: recordUrl)"))
-        XCTAssertTrue(helperSource.contains("falling back to cached HTTP extraction"))
+        XCTAssertTrue(helperSource.contains("falling back to HTTP extraction"))
     }
 
     func testFamilyBirthSearchWindowExtendsForFamilySearchOnlyChildYears() {
@@ -390,12 +308,6 @@ final class HiskiServiceTests: XCTestCase {
         XCTAssertEqual(window?.startYear, 1797)
         XCTAssertEqual(window?.endYear, 1838)
         XCTAssertTrue(window?.sourceDescription.contains("FamilySearch child year range 1798-1838") == true)
-    }
-
-    private func temporaryHiskiCacheURL() -> URL {
-        let directoryURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        return directoryURL.appendingPathComponent("hiski-query-cache.json")
     }
 
     #if os(macOS)

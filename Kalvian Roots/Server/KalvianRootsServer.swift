@@ -1938,7 +1938,7 @@ final class HTTPHandler: ChannelInboundHandler {
             throw HiskiServiceError.queriesDisabled
         }
 
-        return try await HiskiQueryCoordinator.shared.loadHTML(from: url)
+        return try await HiskiService.fetchHTML(from: url)
     }
 
     // MARK: - Response Writer (EventLoop only)

@@ -18,41 +18,22 @@ Juuret/FamilySearch comparison immediately so FS markers can appear beside
 children before HisKi runs. It then pauses before starting HisKi network
 queries. The navigation bar shows a green VPN-ready control just to the left of
 the family ID field. The user turns on the VPN, clicks that control, and then
-Kalvian Roots starts the HisKi family-span query and date-click cache warming
-queries. When HisKi results return, H markers are added to the existing
-comparison. HisKi citation/detail-page links are loaded on demand from
-child/date clicks, not fetched automatically into a proposal panel.
+Kalvian Roots starts the HisKi family-span query. When HisKi results return, H
+markers are added to the existing comparison. HisKi citation/detail-page links
+and date-click searches load on demand, without HisKi cache warming or
+preprocessing.
 
 When the Juuret father does not yet have a FamilySearch ID, selecting the
 family opens FamilySearch in the visible WebKit window so the user can locate
 the right FamilySearch Details page manually.
 
-Upcoming-Family Preprocessing
------------------------------
+No Upcoming-Family HisKi Preprocessing
+--------------------------------------
 
-After a family is loaded and the user confirms VPN readiness, Kalvian Roots may
-preprocess the next two Juuret Kälviällä families. For each upcoming family it
-first attempts visible WebKit FamilySearch extraction only when the parsed
-Juuret father has a FamilySearch ID. The app waits a random 30-90 seconds before
-each upcoming FamilySearch extraction. If FamilySearch requires sign-in or a
-security check and the user is present, the user can complete it in the visible
-WebKit window. If FamilySearch refuses to continue while the user is away, that
-family's FamilySearch preprocessing may fail and HisKi preprocessing continues
-with the data already available.
+Kalvian Roots does not preprocess upcoming families, warm HisKi date-click
+searches, or maintain a HisKi query cache. All HisKi requests are made for the
+current user action after VPN readiness is confirmed.
 
-Upcoming-family FamilySearch preprocessing must not use raw source-text ID
-fallbacks. In particular, it must not scan the Juuret block for the first
-FamilySearch ID because a child in one family can later be the father of a
-different family. If the parsed next-family father has no FamilySearch ID,
-upcoming-family preprocessing stops and reports an error so the missing
-FamilySearch ID can be added before cache warming continues.
-
-For date-click HisKi searches, preprocessing warms the same query cache used
-when the user clicks dates in the UI. Adult birth/death dates and couple
-marriage dates are warmed for every Juuret Kälviällä couple, including
-additional spouses. For child birth dates, preprocessing uses the union of
-Juuret Kälviällä children and FamilySearch children when FamilySearch extraction
-succeeds, so FamilySearch-only children also warm the date-click HisKi cache.
 Single-date birth and death queries use only the person's given name and an
 exact one-day date range. Marriage date queries use only the husband and wife's
 given names and the exact one-day date range. Parent names are not used in
