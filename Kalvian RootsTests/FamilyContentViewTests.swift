@@ -642,6 +642,36 @@ final class FamilyContentViewTests: XCTestCase {
         XCTAssertTrue(juuretApp.contains("FamilySearch focus person death date:"))
     }
 
+    func testFamilySearchExtractionPublishesMarkersBeforeHiskiRuns() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        let juuretApp = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/App/JuuretApp.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(
+            juuretApp.contains("publishFamilySearchComparisonSnapshot(for: currentFamily)"),
+            "Storing FamilySearch extraction should publish FS markers immediately."
+        )
+        XCTAssertFalse(
+            juuretApp.contains("Task {\n            await runJuuretHiskiComparisonPipeline(for: currentFamily)\n        }"),
+            "FamilySearch extraction storage must not start HisKi before VPN confirmation."
+        )
+        XCTAssertTrue(
+            juuretApp.contains("hiskiCandidates: []"),
+            "The immediate FamilySearch snapshot should compare Juuret and FamilySearch without HisKi candidates."
+        )
+        XCTAssertTrue(
+            juuretApp.contains("FamilySearch comparison ready; HisKi pending")
+        )
+        XCTAssertTrue(
+            juuretApp.contains("FamilySearch phase: FS-only comparison built")
+        )
+    }
+
     func testCurrentFamilySelectionAutomaticallyExtractsFamilySearchBeforeComparison() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

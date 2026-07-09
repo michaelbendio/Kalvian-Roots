@@ -756,9 +756,7 @@ class JuuretApp {
             return
         }
 
-        Task {
-            await runJuuretHiskiComparisonPipeline(for: currentFamily)
-        }
+        publishFamilySearchComparisonSnapshot(for: currentFamily)
     }
 
     private func appendFamilySearchFocusPersonDebug(from extraction: FamilySearchFamilyExtraction) {
@@ -968,6 +966,56 @@ class JuuretApp {
             openCurrentFamilySearchInApp()
         }
         #endif
+    }
+
+    private func publishFamilySearchComparisonSnapshot(for family: Family) {
+        guard currentFamily?.familyId == family.familyId else {
+            return
+        }
+
+        let comparisonService = FamilyComparisonService(nameManager: nameEquivalenceManager)
+        let familySearchChildrenByCouple = familySearchChildrenByCouple(
+            for: family,
+            extraction: familySearchExtraction(for: family.familyId)
+        )
+        var comparisonGroups: [FamilyChildrenComparisonGroup] = []
+
+        for (coupleIndex, couple) in family.couples.enumerated() {
+            let familySearchChildren = familySearchChildrenByCouple[coupleIndex] ?? []
+            guard !couple.children.isEmpty || !familySearchChildren.isEmpty else {
+                continue
+            }
+
+            let result = comparisonService.compare(
+                juuretCandidates: comparisonService.makeJuuretCandidates(from: couple.children),
+                hiskiCandidates: [],
+                familySearchCandidates: comparisonService.makeFamilySearchCandidates(from: familySearchChildren)
+            )
+            comparisonGroups.append(
+                FamilyChildrenComparisonGroup(
+                    coupleIndex: coupleIndex,
+                    couple: couple,
+                    hiskiSearchRequests: [],
+                    result: result
+                )
+            )
+        }
+
+        guard let displayResult = comparisonGroups.first?.result else {
+            return
+        }
+
+        let familySearchChildCount = familySearchChildrenByCouple.values.reduce(0) { $0 + $1.count }
+        familySearchComparisonResult = displayResult
+        familyChildrenComparisonGroups = comparisonGroups
+        hiskiCitationProposals = []
+        comparisonReport = ""
+        familySearchComparisonDebugMessage = familySearchChildCount == 0
+            ? "FamilySearch extracted; no children mapped"
+            : "FamilySearch comparison ready; HisKi pending"
+        appendFamilySearchComparisonDebug("FamilySearch phase: FS-only comparison built")
+        appendFamilySearchComparisonDebug("FamilySearch-only groups assigned to UI state: \(comparisonGroups.count)")
+        appendFamilySearchComparisonDebug("FamilySearch-only rows assigned to UI state: \(comparisonGroups.reduce(0) { $0 + $1.result.rows.count }) rows")
     }
 
     private func runJuuretHiskiComparisonPipeline(for family: Family) async {
