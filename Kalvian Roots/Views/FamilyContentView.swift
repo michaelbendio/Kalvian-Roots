@@ -54,13 +54,8 @@ struct FamilyContentView: View {
                 familyHeader
                     .padding(.bottom, 8)
 
-                if !juuretApp.currentFamilyHasFatherFamilySearchId {
-                    familySearchActionControls
-                        .padding(.bottom, 12)
-                } else {
-                    Color.clear
-                        .frame(height: 4)
-                }
+                familySearchActionControls
+                    .padding(.bottom, 12)
 
                 if hasNoHiskiResultsNotice {
                     hiskiStatusToast
@@ -343,6 +338,14 @@ struct FamilyContentView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 #if os(macOS)
+                Button {
+                    juuretApp.openCurrentFamilySearchInApp()
+                } label: {
+                    Label("Open FamilySearch in Kalvian Roots", systemImage: "globe")
+                        .font(.system(.caption, design: .monospaced))
+                }
+                .buttonStyle(.bordered)
+
                 Button {
                     juuretApp.extractCurrentFamilySearchInApp()
                 } label: {

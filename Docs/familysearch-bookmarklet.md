@@ -8,13 +8,15 @@ Behavior
 --------
 
 When the Juuret father has a FamilySearch ID, selecting the family in Kalvian
-Roots opens the visible FamilySearch WebKit window to that father's Details
-page and runs extraction after the page finishes loading.
+Roots does not automatically open FamilySearch or run extraction. The user must
+explicitly open FamilySearch in the visible WebKit window and explicitly start
+extraction.
 
 When the Juuret father does not yet have a FamilySearch ID, selecting the
-family opens FamilySearch in the visible WebKit window. The family view keeps an
-"Extract in-app FamilySearch" button available so the user can locate the right
-FamilySearch Details page manually and then extract from the current page.
+family does not automatically open FamilySearch. The family view keeps manual
+"Open FamilySearch in Kalvian Roots" and "Extract in-app FamilySearch" buttons
+available so the user can locate the right FamilySearch Details page manually
+and then extract from the current page.
 
 Extraction Scope
 ----------------

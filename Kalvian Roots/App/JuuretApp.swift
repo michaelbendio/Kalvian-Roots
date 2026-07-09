@@ -85,14 +85,6 @@ class JuuretApp {
         return URL(string: FamilySearchDOMService.detailsURL(for: familySearchPersonId))
     }
 
-    var currentFamilyHasFatherFamilySearchId: Bool {
-        guard let currentFamily else {
-            return false
-        }
-
-        return fatherFamilySearchId(in: currentFamily) != nil
-    }
-    
     // MARK: - Detail Routing (macOS NavigationSplitView)
     enum DetailRoute: Equatable {
         case family(id: String)
@@ -155,7 +147,6 @@ class JuuretApp {
         Task {
             await self.runJuuretHiskiComparisonPipeline(for: network.mainFamily)
             self.startHiskiPreprocessing(after: network.mainFamily.familyId)
-            await self.prepareFamilySearchWebKitForCurrentFamily(network.mainFamily)
         }
     }
     
@@ -728,6 +719,7 @@ class JuuretApp {
         let normalizedFamilyId = normalizedFamilySearchExtractionKey(familyId)
         familySearchExtractions[normalizedFamilyId] = extraction
         logInfo(.ui, "🧪 FamilySearch extraction stored for SwiftUI: \(normalizedFamilyId), children: \(extraction.children.count)")
+        appendFamilySearchFocusPersonDebug(from: extraction)
 
         guard rerunComparison else {
             return
@@ -741,6 +733,17 @@ class JuuretApp {
         Task {
             await runJuuretHiskiComparisonPipeline(for: currentFamily)
         }
+    }
+
+    private func appendFamilySearchFocusPersonDebug(from extraction: FamilySearchFamilyExtraction) {
+        guard let focusPerson = extraction.focusPerson else {
+            return
+        }
+
+        appendFamilySearchComparisonDebug("FamilySearch focus person ID: \(focusPerson.id ?? "")")
+        appendFamilySearchComparisonDebug("FamilySearch focus person name: \(focusPerson.name ?? "")")
+        appendFamilySearchComparisonDebug("FamilySearch focus person birth date: \(focusPerson.birthDate ?? "")")
+        appendFamilySearchComparisonDebug("FamilySearch focus person death date: \(focusPerson.deathDate ?? "")")
     }
 
     func storeFamilySearchExtractionForCurrentFamily(
@@ -847,55 +850,6 @@ class JuuretApp {
                 appendFamilySearchComparisonDebug("FamilySearch phase: extraction failed")
                 appendFamilySearchComparisonDebug("FamilySearch in-app extraction failed: \(error.localizedDescription)")
             }
-        }
-        #endif
-    }
-
-    private func prepareFamilySearchWebKitForCurrentFamily(_ family: Family) async {
-        guard currentFamily?.familyId == family.familyId else {
-            return
-        }
-
-        #if os(macOS)
-        if let familySearchPersonId = fatherFamilySearchId(in: family) {
-            familySearchComparisonDebugMessage = "Waiting for FamilySearch sign-in/details page"
-            let extractionRunId = nextFamilySearchExtractionRunId()
-            appendFamilySearchComparisonDebug("FamilySearch extraction run: \(extractionRunId)")
-            appendFamilySearchComparisonDebug("FamilySearch phase: waiting for sign-in/details page")
-            appendFamilySearchComparisonDebug(
-                "FamilySearch WebKit URL at extraction start: \(FamilySearchWebViewExtractionManager.shared.currentPageURLString())"
-            )
-            appendFamilySearchComparisonDebug("FamilySearch automatic in-app extraction started: \(familySearchPersonId)")
-            do {
-                let extraction = try await FamilySearchWebViewExtractionManager.shared.openDetailsPageAndExtract(
-                    personId: familySearchPersonId,
-                    log: { [weak self] message in
-                        self?.appendFamilySearchComparisonDebug(message)
-                    }
-                )
-                let childCount = extraction.childCount ?? extraction.children.count
-                appendFamilySearchComparisonDebug(
-                    "FamilySearch WebKit URL at extraction completion: \(FamilySearchWebViewExtractionManager.shared.currentPageURLString())"
-                )
-                appendFamilySearchComparisonDebug("FamilySearch phase: extracted")
-                appendFamilySearchComparisonDebug("FamilySearch automatic in-app extraction returned: \(childCount) children")
-                appendFamilySearchComparisonDebug(
-                    "FamilySearch automatic extraction completed: \(extraction.status ?? (extraction.isSuccessful ? "success" : "unknown")), children \(childCount), spouse groups \(debugCount(extraction.spouseGroupCount ?? extraction.spouseGroups?.count))"
-                )
-
-                if storeFamilySearchExtractionForCurrentFamily(extraction) == nil {
-                    familySearchComparisonDebugMessage = "FamilySearch automatic extraction ignored"
-                }
-            } catch {
-                familySearchComparisonDebugMessage = "FamilySearch automatic extraction failed"
-                appendFamilySearchComparisonDebug("FamilySearch phase: extraction failed")
-                appendFamilySearchComparisonDebug(
-                    "FamilySearch WebKit URL at extraction failure: \(FamilySearchWebViewExtractionManager.shared.currentPageURLString())"
-                )
-                appendFamilySearchComparisonDebug("FamilySearch automatic extraction failed: \(error.localizedDescription)")
-            }
-        } else {
-            openCurrentFamilySearchInApp()
         }
         #endif
     }
@@ -1386,9 +1340,6 @@ class JuuretApp {
 
             await runJuuretHiskiComparisonPipeline(for: cached.mainFamily)
             startHiskiPreprocessing(after: cached.mainFamily.familyId)
-            Task {
-                await prepareFamilySearchWebKitForCurrentFamily(cached.mainFamily)
-            }
             
             prefetchManager.startPrefetchAll()
             
@@ -1483,9 +1434,6 @@ class JuuretApp {
 
             await runJuuretHiskiComparisonPipeline(for: family)
             startHiskiPreprocessing(after: family.familyId)
-            Task {
-                await prepareFamilySearchWebKitForCurrentFamily(family)
-            }
             
             let totalTime = Date().timeIntervalSince(startTime)
             logInfo(.app, "✅ Family extraction complete in \(String(format: "%.2f", totalTime))s")

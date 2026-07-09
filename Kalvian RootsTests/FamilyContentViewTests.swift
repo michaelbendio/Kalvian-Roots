@@ -480,15 +480,11 @@ final class FamilyContentViewTests: XCTestCase {
             "Primary-couple fallback must not reuse one grouped comparison result across spouse sections."
         )
         XCTAssertTrue(
-            familyContentView.contains("if !juuretApp.currentFamilyHasFatherFamilySearchId"),
-            "Manual in-app FamilySearch extraction must stay visible when the Juuret father has no FamilySearch ID."
-        )
-        XCTAssertTrue(
             familyContentView.contains(#"Label("Extract in-app FamilySearch", systemImage: "square.and.arrow.down")"#)
         )
-        XCTAssertFalse(
+        XCTAssertTrue(
             familyContentView.contains(#"Label("Open FamilySearch in Kalvian Roots", systemImage: "globe")"#),
-            "The automatic WebKit path should not leave a redundant open button in the family view."
+            "FamilySearch must stay user-initiated so sign-in and security checks can be handled before extraction."
         )
     }
 
@@ -642,6 +638,23 @@ final class FamilyContentViewTests: XCTestCase {
         XCTAssertTrue(juuretApp.contains("FamilySearch focus person name:"))
         XCTAssertTrue(juuretApp.contains("FamilySearch focus person birth date:"))
         XCTAssertTrue(juuretApp.contains("FamilySearch focus person death date:"))
+    }
+
+    func testFamilySelectionDoesNotAutomaticallyExtractFamilySearch() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        let juuretApp = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/App/JuuretApp.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertFalse(
+            juuretApp.contains("prepareFamilySearchWebKitForCurrentFamily"),
+            "FamilySearch extraction must remain user-initiated, not run automatically after family selection."
+        )
+        XCTAssertFalse(juuretApp.contains("FamilySearch automatic in-app extraction started"))
     }
 
     func testFamilySearchAndJuuretFatherBirthDateFormatsParseToComparableDates() {
