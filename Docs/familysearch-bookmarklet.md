@@ -44,7 +44,8 @@ Upcoming-family FamilySearch preprocessing must not use raw source-text ID
 fallbacks. In particular, it must not scan the Juuret block for the first
 FamilySearch ID because a child in one family can later be the father of a
 different family. If the parsed next-family father has no FamilySearch ID,
-FamilySearch preprocessing for that upcoming family is skipped.
+upcoming-family preprocessing stops and reports an error so the missing
+FamilySearch ID can be added before cache warming continues.
 
 For date-click HisKi searches, preprocessing warms the same query cache used
 when the user clicks dates in the UI. Adult birth/death dates and couple

@@ -806,6 +806,14 @@ final class FamilyContentViewTests: XCTestCase {
             helperSource.contains("guard let familySearchPersonId = fatherFamilySearchId(in: family)"),
             "Upcoming-family FamilySearch preprocessing should use only the parsed father FamilySearch ID."
         )
+        XCTAssertTrue(
+            helperSource.contains("throw MissingPreprocessFamilySearchFatherIdError(familyId: family.familyId)"),
+            "A missing parsed father FamilySearch ID should stop upcoming-family preprocessing with an error."
+        )
+        XCTAssertTrue(
+            juuretApp.contains("errorMessage = message"),
+            "The missing father FamilySearch ID should be surfaced as an app error."
+        )
         XCTAssertFalse(
             helperSource.contains("primaryFamilySearchParentIdInSourceText"),
             "Upcoming-family FamilySearch preprocessing must not fall back to source-text ID scanning because a child ID can appear before the next family head."

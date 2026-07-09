@@ -41,6 +41,14 @@ private final class HiskiDateClickPreloadTracker {
     }
 }
 
+private struct MissingPreprocessFamilySearchFatherIdError: LocalizedError {
+    let familyId: String
+
+    var errorDescription: String? {
+        "Upcoming-family preprocessing stopped: \(familyId) has no parsed father FamilySearch ID"
+    }
+}
+
 private let familySearchPreprocessDelayRange: ClosedRange<Double> = 30...90
 
 /**
@@ -1322,6 +1330,13 @@ class JuuretApp {
                 do {
                     _ = try await preloadFamilySearchExtractionForPreprocessing(for: family)
                 } catch {
+                    if let missingIdError = error as? MissingPreprocessFamilySearchFatherIdError {
+                        let message = missingIdError.localizedDescription
+                        errorMessage = message
+                        logWarn(.cache, "⚠️ \(message)")
+                        return
+                    }
+
                     if Task.isCancelled {
                         return
                     }
@@ -1370,8 +1385,7 @@ class JuuretApp {
         }
 
         guard let familySearchPersonId = fatherFamilySearchId(in: family) else {
-            logInfo(.cache, "FamilySearch preprocess \(family.familyId): skipped, no parsed father FamilySearch ID")
-            return nil
+            throw MissingPreprocessFamilySearchFatherIdError(familyId: family.familyId)
         }
 
         #if os(macOS)
