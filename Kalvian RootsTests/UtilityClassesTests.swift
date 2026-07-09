@@ -130,6 +130,16 @@ final class NameEquivalenceManagerTests: XCTestCase {
         XCTAssertEqual(manager.canonicalName(for: "Annika"), "anna")
     }
 
+    func testHiskiQueryFormsAreProvidedByNameEquivalenceManager() {
+        XCTAssertEqual(manager.hiskiGivenNameSearchInput(for: "Malin"), "Magdalena")
+        XCTAssertEqual(manager.hiskiGivenNameSearchInput(for: "Pietari"), "Per")
+        XCTAssertEqual(manager.hiskiPatronymicSearchInput(for: "Pietarinp."), "Perss")
+        XCTAssertEqual(manager.hiskiPatronymicSearchInput(for: "Pietarint."), "Persdr")
+        XCTAssertEqual(manager.hiskiSurnameSearchInput(forPatronymic: "Luukkaanp."), "Lucason")
+        XCTAssertEqual(manager.hiskiSurnameSearchInput(forPatronymic: "Luukkaant."), "Lucasdr")
+        XCTAssertNil(manager.hiskiSurnameSearchInput(forPatronymic: "Matinp."))
+    }
+
     func testClearAllEquivalencesClearsOnlyUserEquivalences() {
         manager.addEquivalence(between: "CustomA", and: "CustomB")
 

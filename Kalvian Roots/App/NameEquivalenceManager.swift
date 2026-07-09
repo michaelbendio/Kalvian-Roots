@@ -125,6 +125,44 @@ class NameEquivalenceManager {
         logDebug(.nameEquivalence, "✅ Equivalence added and saved")
     }
 
+    // MARK: - HisKi Query Forms
+
+    func hiskiGivenNameSearchInput(for name: String) -> String? {
+        // HisKi already handles most Finnish/Swedish equivalents; these are only known query exceptions.
+        switch firstNormalizedToken(in: name) {
+        case "malin":
+            return "Magdalena"
+        case "pietari":
+            return "Per"
+        default:
+            return nil
+        }
+    }
+
+    func hiskiPatronymicSearchInput(for patronymic: String) -> String? {
+        // HisKi already handles most patronymic variants; these Pietari-derived forms need explicit query terms.
+        switch firstNormalizedToken(in: patronymic) {
+        case "pietarinp":
+            return "Perss"
+        case "pietarint":
+            return "Persdr"
+        default:
+            return nil
+        }
+    }
+
+    func hiskiSurnameSearchInput(forPatronymic patronymic: String) -> String? {
+        // Query-only fallback for HisKi rows that store patronymics in surname fields.
+        switch firstNormalizedToken(in: patronymic) {
+        case "luukkaanp":
+            return "Lucason"
+        case "luukkaant":
+            return "Lucasdr"
+        default:
+            return nil
+        }
+    }
+
 
     // MARK: - Helper Methods
 
@@ -145,6 +183,10 @@ class NameEquivalenceManager {
             .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
             .lowercased()
             .folding(options: .diacriticInsensitive, locale: .current)
+    }
+
+    private func firstNormalizedToken(in value: String) -> String {
+        tokenizeName(value).first ?? ""
     }
 
     private func canonicalTokenName(for token: String) -> String {

@@ -1913,7 +1913,7 @@ class HiskiService {
 
         var parts = trimmed.split(whereSeparator: \.isWhitespace).map(String.init)
         guard let firstPart = parts.first,
-              let override = hiskiGivenNameOverride(for: firstPart) else {
+              let override = nameEquivalenceManager.hiskiGivenNameSearchInput(for: firstPart) else {
             return trimmed
         }
 
@@ -1930,18 +1930,6 @@ class HiskiService {
             .first?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             ?? normalizedName
-    }
-
-    private func hiskiGivenNameOverride(for name: String) -> String? {
-        // HisKi already handles most Finnish/Swedish equivalents; these are only known query exceptions.
-        switch normalizedHiskiLookupToken(name) {
-        case "malin":
-            return "Magdalena"
-        case "pietari":
-            return "Per"
-        default:
-            return nil
-        }
     }
 
     private func hiskiPatronymicSearchInput(for patronymic: String?) -> String? {
@@ -1962,24 +1950,12 @@ class HiskiService {
             return nil
         }
 
-        if let override = hiskiPatronymicOverride(for: patronymicToken) {
+        if let override = nameEquivalenceManager.hiskiPatronymicSearchInput(for: patronymicToken) {
             logInfo(.app, "✅ HisKi patronymic override '\(patronymicToken)' → '\(override)'")
             return override
         }
 
         return patronymicToken
-    }
-
-    private func hiskiPatronymicOverride(for patronymic: String) -> String? {
-        // HisKi already handles most patronymic variants; these Pietari-derived forms need explicit query terms.
-        switch normalizedHiskiLookupToken(patronymic) {
-        case "pietarinp":
-            return "Perss"
-        case "pietarint":
-            return "Persdr"
-        default:
-            return nil
-        }
     }
 
     private func hiskiSurnameSearchInput(forPatronymic patronymic: String?) -> String? {
@@ -2000,21 +1976,7 @@ class HiskiService {
             return nil
         }
 
-        switch normalizedHiskiLookupToken(patronymicToken) {
-        case "luukkaanp":
-            return "Lucason"
-        case "luukkaant":
-            return "Lucasdr"
-        default:
-            return nil
-        }
-    }
-
-    private func normalizedHiskiLookupToken(_ value: String) -> String {
-        value
-            .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
-            .lowercased()
-            .folding(options: .diacriticInsensitive, locale: .current)
+        return nameEquivalenceManager.hiskiSurnameSearchInput(forPatronymic: patronymicToken)
     }
     
     // MARK: - Date Formatting
