@@ -90,6 +90,7 @@ pages.
 - See `Docs/mcp-architecture.md` for the DSH/MCP service and tool contracts
 - See `Docs/mcp-roadmap.md` for the authoritative MCP phases 0 through 10
 - See `Docs/mcp-baseline.md` for the recorded Phase 0 test baseline
+- See `Docs/mcp-phase1.md` for the completed Book Text Service acceptance record
 - See `Schemas/mcp/v1/tool-catalog.json` for the versioned MCP tool schemas
 - See `development.md` for current build, test, and development workflow
 

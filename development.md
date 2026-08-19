@@ -9,9 +9,10 @@ the Kalvian Roots checkout.
 - Use a feature branch only when the user asks for one or the change is risky
   enough to need isolation.
 - DSH/MCP work is intentionally isolated in `/Users/michaelbendio/KRoots.dsh`
-  on `feature/kalvian-roots-mcp`. Its contract, roadmap, and starting baseline
-  are in `Docs/mcp-architecture.md`, `Docs/mcp-roadmap.md`, and
-  `Docs/mcp-baseline.md`.
+  on `feature/kalvian-roots-mcp`. Its contract, roadmap, starting baseline, and
+  completed Book Text Service acceptance record are in
+  `Docs/mcp-architecture.md`, `Docs/mcp-roadmap.md`, `Docs/mcp-baseline.md`, and
+  `Docs/mcp-phase1.md`.
 - Before committing, run `git status -sb` and stage only the files that belong
   to the requested change.
 

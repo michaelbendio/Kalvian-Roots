@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import KalvianRootsCore
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -48,13 +49,18 @@ final class RootsFileManager {
 
     var errorMessage: String?
 
+    /// Read-only source index supplied by KalvianRootsCore.
+    private var bookTextSnapshot: BookTextSnapshot?
+
     /// The ONE canonical file name (normalize at comparison time)
     private let defaultFileName = "JuuretKälviällä.roots"
     private let bookmarkKey = "FileBookmark"
+    private let documentsDirectoryOverride: URL?
 
     // MARK: - Init
     
-    init() {
+    init(documentsDirectory: URL? = nil) {
+        self.documentsDirectoryOverride = documentsDirectory
         logInfo(.file, "📁 RootsFileManager initialized (local Documents)")
     }
 
@@ -62,17 +68,16 @@ final class RootsFileManager {
 
     /// The local Documents folder where the file lives.
     private func documentsURL() -> URL? {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+        if let documentsDirectoryOverride {
+            return documentsDirectoryOverride
+        }
+        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
     }
     
     /// Canonical local file URL (<app/user Documents>/JuuretKälviällä.roots)
     func getCanonicalFileURL() -> URL? {
         guard let docsURL = documentsURL() else { return nil }
         return docsURL.appendingPathComponent(defaultFileName)
-    }
-
-    private func getLocalFallbackFileURL() -> URL? {
-        getCanonicalFileURL()
     }
 
     private func fileExists(at url: URL?) -> Bool {
@@ -175,17 +180,15 @@ final class RootsFileManager {
         }
 
         do {
-            let content = try String(contentsOf: url, encoding: .utf8)
-            
-            // Validate canonical marker
-            guard validateCanonicalMarker(in: content) else {
-                throw RootsFileManagerError.loadFailed("""
-                    Missing canonical marker.
-                    The first line must be "canonical"
-                    """)
-            }
+            let data = try Data(contentsOf: url, options: [.mappedIfSafe])
+            let snapshot = try BookTextSnapshot(
+                data: data,
+                fileName: url.lastPathComponent,
+                sourceId: sourceId(for: url)
+            )
+            let content = snapshot.completeText
 
-            await finishLoadingFile(content: content, from: url)
+            await finishLoadingFile(content: content, from: url, snapshot: snapshot)
             
             logInfo(.file, "✅ File loaded successfully")
             return content
@@ -199,62 +202,42 @@ final class RootsFileManager {
         }
     }
 
-    private func finishLoadingFile(content: String, from url: URL) async {
-        refreshLocalFallbackCopy(with: content, sourceURL: url)
-
+    private func finishLoadingFile(
+        content: String,
+        from url: URL,
+        snapshot: BookTextSnapshot
+    ) async {
         await MainActor.run {
             self.currentFileURL = url
             self.currentFileContent = content
+            self.bookTextSnapshot = snapshot
             self.isFileLoaded = true
             self.errorMessage = nil
         }
     }
 
-    private func refreshLocalFallbackCopy(with content: String, sourceURL: URL) {
-        guard let localFallbackURL = getLocalFallbackFileURL() else {
-            logWarn(.file, "⚠️ Could not resolve local Documents fallback path")
-            return
+    private func sourceId(for url: URL) -> String {
+        if url.standardizedFileURL == getCanonicalFileURL()?.standardizedFileURL {
+            return "local-documents"
         }
-
-        guard sourceURL.standardizedFileURL != localFallbackURL.standardizedFileURL else {
-            logDebug(.file, "📄 Loaded local Documents fallback copy")
-            return
-        }
-
-        do {
-            try FileManager.default.createDirectory(
-                at: localFallbackURL.deletingLastPathComponent(),
-                withIntermediateDirectories: true,
-                attributes: nil
-            )
-            try content.write(to: localFallbackURL, atomically: true, encoding: .utf8)
-            logInfo(.file, "💾 Refreshed local Documents fallback copy")
-        } catch {
-            logWarn(.file, "⚠️ Failed to refresh local Documents fallback copy: \(error.localizedDescription)")
-        }
+        return ExplicitBookSourceLocator.sourceId(for: url)
     }
 
     private func setLoadFailure(_ message: String) async {
         await MainActor.run {
             self.currentFileURL = nil
             self.currentFileContent = nil
+            self.bookTextSnapshot = nil
             self.isFileLoaded = false
             self.errorMessage = message
         }
-    }
-
-    /// Validate the canonical marker
-    private func validateCanonicalMarker(in content: String) -> Bool {
-        let lines = content.components(separatedBy: .newlines)
-        guard let firstLine = lines.first else { return false }
-        let normalized = firstLine.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return normalized == "canonical"
     }
 
     /// Clear the currently loaded file
     func clearFile() {
         currentFileURL = nil
         currentFileContent = nil
+        bookTextSnapshot = nil
         isFileLoaded = false
         errorMessage = nil
         logInfo(.file, "🗑️ Cleared loaded file")
@@ -310,15 +293,13 @@ final class RootsFileManager {
         defer { url.stopAccessingSecurityScopedResource() }
         
         do {
-            let content = try String(contentsOf: url, encoding: .utf8)
-            
-            // Validate canonical marker
-            guard validateCanonicalMarker(in: content) else {
-                throw RootsFileManagerError.loadFailed("""
-                    Missing canonical marker.
-                    The first line must be "canonical"
-                    """)
-            }
+            let data = try Data(contentsOf: url, options: [.mappedIfSafe])
+            let snapshot = try BookTextSnapshot(
+                data: data,
+                fileName: url.lastPathComponent,
+                sourceId: sourceId(for: url)
+            )
+            let content = snapshot.completeText
             
             // Save security-scoped bookmark for future launches
             do {
@@ -333,7 +314,7 @@ final class RootsFileManager {
                 logWarn(.file, "⚠️ Failed to save bookmark: \(error)")
             }
 
-            await finishLoadingFile(content: content, from: url)
+            await finishLoadingFile(content: content, from: url, snapshot: snapshot)
             
             logInfo(.file, "✅ File loaded via iOS picker")
             return content
@@ -362,137 +343,25 @@ final class RootsFileManager {
 
     /**
      * Extract family text for a specific family ID
-     */
-    /**
-     * Extract family text for a specific family ID
-     * FIXED: Properly stops at blank line followed by new family ID
+     * while preserving the exact indexed source block.
      */
     func extractFamilyText(familyId: String) -> String? {
-        guard FamilyIDs.isValid(familyId: familyId) else {
-            logWarn(.file, "⚠️ Invalid family ID: \(familyId)")
-            return nil
-        }
-        
-        guard let content = currentFileContent else {
+        guard let bookTextSnapshot else {
             logError(.file, "❌ No file content loaded")
             return nil
         }
-        
-        let lines = content.components(separatedBy: .newlines)
-        var out = [String]()
-        var found = false
-        var previousWasBlank = false
-        var shouldStop = false
-        
-        let contentLines = Array(lines.dropFirst(2)) // Skip canonical marker and blank line
-        
-        for (index, line) in contentLines.enumerated() {
-            if shouldStop {
-                break
-            }
-            
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            
-            if trimmed == "#" {
-                continue // Skip bookmarks
-            }
-            
-            let isBlank = trimmed.isEmpty
-            
-            if !found {
-                // Looking for our target family
-                if trimmed.lowercased().hasPrefix(familyId.lowercased()) {
-                    found = true
-                    out.append(line)
-                }
-            } else {
-                // We're inside our target family
-                if isBlank && previousWasBlank {
-                    // Two consecutive blank lines = end of family
-                    logDebug(.file, "✅ Found end of family (double blank) at line \(index)")
-                    break
-                } else if isBlank && !previousWasBlank {
-                    // First blank line after content - check if next family starts
-                    // Look ahead to see if next non-blank line is a new family ID
-                    var lookAheadIndex = index + 1
-                    var foundNextFamily = false
-                    
-                    while lookAheadIndex < contentLines.count {
-                        let nextLine = contentLines[lookAheadIndex].trimmingCharacters(in: .whitespaces)
-                        
-                        if nextLine == "#" {
-                            // Skip bookmarks
-                            lookAheadIndex += 1
-                            continue
-                        }
-                        
-                        if nextLine.isEmpty {
-                            // Another blank line - definitely end of family
-                            logDebug(.file, "✅ Found end of family (double blank detected during lookahead) at line \(index)")
-                            shouldStop = true
-                            foundNextFamily = true
-                            break
-                        }
-                        
-                        // Found non-blank content - check if it's a family ID
-                        if let firstChar = nextLine.first, firstChar.isUppercase {
-                            // Looks like a family ID - check if it's in our valid set
-                            let potentialFamilyId = nextLine.components(separatedBy: .whitespaces)
-                                .prefix(while: { !$0.isEmpty })
-                                .joined(separator: " ")
-                            
-                            // Try matching with 1-3 words + number
-                            let words = nextLine.components(separatedBy: .whitespaces)
-                            for wordCount in 1...min(3, words.count) {
-                                let candidate = words.prefix(wordCount).joined(separator: " ")
-                                if FamilyIDs.validFamilyIds.contains(where: { $0.hasPrefix(candidate) }) {
-                                    logDebug(.file, "✅ Found end of family (next family '\(candidate)' detected) at line \(index)")
-                                    shouldStop = true
-                                    foundNextFamily = true
-                                    break
-                                }
-                            }
-                            if foundNextFamily {
-                                break
-                            }
-                        }
-                        
-                        // If we hit non-family content, this blank is part of current family
-                        break
-                    }
-                    
-                    if !foundNextFamily {
-                        // The blank line is part of the current family
-                        out.append(line)
-                    }
-                } else {
-                    // Normal content line
-                    out.append(line)
-                }
-            }
-            
-            previousWasBlank = isBlank
-        }
-        
-        if !found {
-            logWarn(.file, "⚠️ Family \(familyId) not found in file")
+
+        do {
+            let record = try bookTextSnapshot.familyText(familyId: familyId)
+            logInfo(
+                .file,
+                "✅ Extracted \(record.familyId): lines \(record.span.startLine)-\(record.span.endLine), \(record.rawText.utf8.count) bytes"
+            )
+            return record.rawText
+        } catch {
+            logWarn(.file, "⚠️ Could not extract family \(familyId): \(error.localizedDescription)")
             return nil
         }
-        
-        let result = out.isEmpty ? nil : out.joined(separator: "\n")
-        
-        if let result = result {
-            let lineCount = out.count
-            let charCount = result.count
-            logInfo(.file, "✅ Extracted \(familyId): \(lineCount) lines, \(charCount) characters")
-            
-            // Log a warning if the extraction seems unusually large
-            if charCount > 10000 {
-                logWarn(.file, "⚠️ Large extraction detected (\(charCount) chars) - may exceed token limits")
-            }
-        }
-        
-        return result
     }
 
     /**

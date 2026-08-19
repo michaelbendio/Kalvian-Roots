@@ -35,6 +35,12 @@ No AI or network access is involved.
 missing, malformed, boundary-prefix, unavailable-file, wrong-marker, and
 changed-source cases are tested; the canonical source hash is unchanged.
 
+**Status:** Complete. `KalvianRootsCore` provides the read-only Book Text
+Service and exact-source models. The existing app delegates validation and
+family extraction to the same core. Sixteen core contract tests and three app
+integration tests cover the gate; the complete app scheme passes 455 tests with
+no failures or skips. Acceptance evidence is recorded in `mcp-phase1.md`.
+
 ## Phase 2 — First MCP vertical slice
 
 **Deliverable:** Create the Swift MCP executable and expose only

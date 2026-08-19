@@ -28,6 +28,19 @@ The roadmap for this work is `mcp-roadmap.md`. The recorded starting state is
 | Who owns credentials? | The local Swift host owns them. DSH, MCP tool arguments, responses, plugin instructions, and audit records never contain secrets. |
 | What is cached? | Derived parsed families, resolved networks, and research results, keyed by source and schema revisions. Exact book text remains authoritative and is not replaced by a cache. |
 
+### FamilySearch progress annotations in the source
+
+Angle-bracket values such as `<9DS5-XQ4>` are Juuret Project annotations, not
+text printed in *Juuret Kälviällä*. They identify the person's FamilySearch
+page and indicate that the person's source citations have been entered there.
+
+The Book Text Service preserves these annotations byte-for-byte because they
+are present in the canonical local source revision. Later parsing represents
+them separately as `familySearchId` and reviewed-work status. They are not book
+facts, are not rendered as Juuret evidence, and do not participate in person
+identity matching. Duplicate or conflicting IDs are reported. Adding,
+replacing, or removing an annotation requires explicit approval.
+
 ## Dependency and process boundaries
 
 ```text
@@ -172,6 +185,12 @@ protocol BookTextServing: Sendable {
 trimming and collapsing whitespace, but the returned identifier and text retain
 source spelling. A family header must match an identifier boundary, not merely
 a string prefix.
+
+The raw block begins at the family header and includes the original line ending
+of its final content line. Separator-only blank lines and a trailing `#`
+bookmark between families are outside the block. Interior blank lines, spelling,
+tabs, punctuation, line endings, and angle-bracket FamilySearch annotations are
+preserved exactly.
 
 The service is read-only. It distinguishes malformed identifiers, identifiers
 not in the source, missing source configuration, unreadable source, and a source
