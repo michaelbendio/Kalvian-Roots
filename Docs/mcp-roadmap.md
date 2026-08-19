@@ -20,8 +20,10 @@ boundaries. Record existing test status.
 answers every interface question.
 
 **Status:** Contract work is recorded in `mcp-architecture.md`. Baseline status
-is recorded in `mcp-baseline.md`. The Xcode test gate remains open because this
-machine currently has no configured Apple developer toolchain.
+is recorded in `mcp-baseline.md`. Xcode 27 beta 5 runs the full scheme: 448 tests
+pass and four existing tests fail. The exact failures are recorded in the
+baseline, so the Phase 0 test gate remains open without expanding this phase
+into unrelated test cleanup.
 
 ## Phase 1 — Book-access foundation
 

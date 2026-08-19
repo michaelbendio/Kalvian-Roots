@@ -12,6 +12,7 @@ Recorded on 2026-08-19 in the isolated MCP worktree.
 | Working tree before Phase 0 edits | Clean |
 | Original checkout | `/Users/michaelbendio/Kalvian-Roots`, retained on `feature/juuret-project-workup-cli` at the same commit |
 | macOS | 27.0 build 26A5416b, arm64 |
+| Xcode | 27.0 beta 5, build 27A5237l, at `~/Downloads/Xcode-beta.app` |
 | Python | 3.12.10 |
 
 ## Canonical source snapshot
@@ -51,26 +52,35 @@ python3 -m unittest -v test_search_spouse.py
 
 `git diff --check` passed before documentation edits.
 
-### Blocked Swift baseline
+### Swift application baseline
 
-The application test command is:
+The complete existing application scheme was run with the installed Xcode beta:
 
 ```sh
-xcodebuild test -project "Kalvian Roots.xcodeproj" -scheme "Kalvian Roots"
+DEVELOPER_DIR="$HOME/Downloads/Xcode-beta.app/Contents/Developer" \
+  xcodebuild test \
+  -project "Kalvian Roots.xcodeproj" \
+  -scheme "Kalvian Roots" \
+  -destination "platform=macOS"
 ```
 
-It could not start because this machine has no active Apple developer directory
-and no Xcode application was found under `/Applications`. The exact diagnostic
-begins:
+Result: **448 passed, 4 failed, 0 skipped**. The four failing tests and their
+reported assertions are:
 
-```text
-xcode-select: error: Unable to get active developer directory.
-```
+1. `FamilySearchComparisonClipboardFormatterTests.testServerComparisonTableUsesGroupedSameDateNameMatch()`
+   — `XCTAssertEqual failed: ("0") is not equal to ("1")`.
+2. `FamilyWorkupServiceTests.testWorkupProposesApprovedFamilySearchIdSourceUpdateForMatchedChild()`
+   — `XCTAssertTrue failed`.
+3. `FamilySearchDOMServiceTests.testFamilySearchExtractorIncludesCardLineParserWithoutBookmarkletCallback()`
+   — `XCTAssertTrue failed`.
+4. `FamilySearchDOMServiceTests.testServerRenderedSourceSpouseFamilySearchIdDoesNotRequireNetworkLookup()`
+   — `XCTUnwrap failed: expected non-nil value of type "Range<Index>"`.
 
-This is a machine/toolchain blocker, not a demonstrated Swift test failure. The
-Phase 0 test gate remains open until the full existing scheme runs on a
-configured Xcode installation. If that run exposes pre-existing failures, they
-must be recorded exactly without broadening Phase 0 into unrelated cleanup.
+The result bundle was generated under local Xcode Derived Data. Re-running only
+these four tests reproduced all four failures. Phase 0 changes only
+documentation and schemas, so these are recorded as existing baseline failures,
+not regressions caused by the Phase 0 slice. Per repository policy, Phase 0 does
+not broaden into unrelated test-target cleanup.
 
 ## Existing implementation inventory
 
@@ -119,6 +129,6 @@ These are recorded risks, not Phase 0 behavior changes:
 | Provenance, errors, credentials, cache, audit, and approval defined | Pass — `mcp-architecture.md` |
 | Eleven-phase roadmap recorded | Pass — `mcp-roadmap.md` |
 | Existing non-Xcode test status recorded | Pass |
-| Existing app tests still pass | Blocked — Xcode toolchain unavailable |
+| Existing app tests still pass | Fail — 448 passed and the 4 existing failures above remain |
 
 Phase 0 is therefore **documented but not yet closed**.
