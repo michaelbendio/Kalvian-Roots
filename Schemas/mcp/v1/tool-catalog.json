@@ -336,6 +336,20 @@
         "claims": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/factClaim" } }
       }
     },
+    "familyReferenceEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fromFamilyId", "toFamilyId", "direction", "rawReference", "sourcePerson", "status"],
+      "properties": {
+        "fromFamilyId": { "$ref": "#/$defs/nonemptyString" },
+        "toFamilyId": { "$ref": "#/$defs/nonemptyString" },
+        "direction": { "type": "string", "enum": ["as_child", "as_parent"] },
+        "rawReference": { "$ref": "#/$defs/nonemptyString" },
+        "sourcePerson": { "$ref": "#/$defs/personReference" },
+        "status": { "type": "string", "enum": ["resolved", "missing", "mismatch", "ambiguous", "cycle", "limit_reached"] },
+        "matchedPerson": { "$ref": "#/$defs/personReference" }
+      }
+    },
     "familyNetworkResolution": {
       "type": "object",
       "additionalProperties": false,
@@ -345,7 +359,7 @@
         "startingFamilyId": { "$ref": "#/$defs/nonemptyString" },
         "complete": { "type": "boolean" },
         "families": { "type": "array", "items": { "$ref": "#/$defs/parsedFamilyRecord" } },
-        "edges": { "type": "array", "items": { "type": "object" } },
+        "edges": { "type": "array", "items": { "$ref": "#/$defs/familyReferenceEdge" } },
         "missingReferences": { "type": "array", "items": { "$ref": "#/$defs/warning" } },
         "cycles": { "type": "array", "items": { "type": "array", "items": { "$ref": "#/$defs/nonemptyString" } } },
         "claims": { "type": "array", "items": { "$ref": "#/$defs/factClaim" } },

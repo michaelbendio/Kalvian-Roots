@@ -9,14 +9,17 @@ final class KalvianRootsMCPServerTests: XCTestCase {
   private let fixedDate = Date(timeIntervalSince1970: 1_777_777_777)
   private let fixedOperationID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
 
-  func testDiscoveryExposesPhaseThreeTools() async throws {
+  func testDiscoveryExposesPhaseFourTools() async throws {
     let session = try await makeSession()
     defer { session.stop() }
 
     let (tools, nextCursor) = try await session.client.listTools()
 
     XCTAssertNil(nextCursor)
-    XCTAssertEqual(tools.map(\.name), ["get_family_text", "parse_family", "get_parsed_family"])
+    XCTAssertEqual(tools.map(\.name), [
+      "get_family_text", "parse_family", "get_parsed_family",
+      "resolve_family_references", "resolve_person_context",
+    ])
     XCTAssertEqual(tools.first?.annotations.readOnlyHint, true)
     XCTAssertEqual(tools.first?.annotations.openWorldHint, false)
   }
@@ -130,6 +133,74 @@ final class KalvianRootsMCPServerTests: XCTestCase {
     XCTAssertEqual(audits.map(\.externalServicesContacted), [[], []])
   }
 
+  func testResolvePersonContextReturnsMariaHarvestedClaimsAndConflict() async throws {
+    let session = try await makeSession()
+    defer { session.stop() }
+
+    let result = try await session.client.callTool(
+      name: "resolve_person_context",
+      arguments: [
+        "familyId": "SAKERI 4",
+        "person": .object([
+          "familyId": "SAKERI 4", "coupleIndex": 0, "role": "child",
+          "personIndex": 0, "rawName": "Maria", "rawBirthDate": "03.03.1756",
+          "familySearchId": "KN1X-VHG",
+        ]),
+        "limits": .object([
+          "maxFamilies": 3, "maxDepth": 3, "maxElapsedSeconds": 10,
+        ]),
+      ]
+    )
+
+    XCTAssertEqual(result.isError, false)
+    let envelope: ToolEnvelope<PersonContextResolution> = try decodeTextContent(result.content)
+    XCTAssertEqual(envelope.data.families.map(\.familyId), ["SAKERI 4", "PUUKANGAS 6"])
+    XCTAssertEqual(
+      envelope.data.claims.first { $0.field == "deathDate" }?.value,
+      "04.10.1829"
+    )
+    XCTAssertEqual(
+      envelope.data.claims.first {
+        $0.field == "marriageDate" && $0.derivation == .referenceHarvested
+      }?.value,
+      "26.12.1782"
+    )
+    XCTAssertEqual(envelope.conflicts.map(\.field), ["birthDate"])
+    XCTAssertEqual(envelope.provenance.map(\.familyId), ["SAKERI 4", "PUUKANGAS 6"])
+    XCTAssertTrue(envelope.warnings.contains { $0.code == "cycle_detected" })
+
+    let audits = await session.auditWriter.records
+    let audit = try XCTUnwrap(audits.first)
+    XCTAssertEqual(audit.externalServicesContacted, [])
+    XCTAssertEqual(audit.conflicts, ["birthDate:source_values_disagree"])
+    XCTAssertEqual(audit.request["maxFamilies"], "3")
+    XCTAssertEqual(audit.request["maxDepth"], "3")
+    XCTAssertEqual(audit.request["person.rawName"], "Maria")
+    XCTAssertEqual(audit.request["person.rawBirthDate"], "03.03.1756")
+  }
+
+  func testResolveFamilyReferencesReturnsBoundedIncompleteGraph() async throws {
+    let session = try await makeSession()
+    defer { session.stop() }
+
+    let result = try await session.client.callTool(
+      name: "resolve_family_references",
+      arguments: [
+        "familyId": "SAKERI 4",
+        "limits": .object([
+          "maxFamilies": 2, "maxDepth": 0, "maxElapsedSeconds": 10,
+        ]),
+      ]
+    )
+
+    XCTAssertEqual(result.isError, false)
+    let envelope: ToolEnvelope<FamilyNetworkResolution> = try decodeTextContent(result.content)
+    XCTAssertFalse(envelope.data.complete)
+    XCTAssertEqual(envelope.data.families.map(\.familyId), ["SAKERI 4"])
+    XCTAssertEqual(envelope.data.edges.map(\.status), [.limitReached])
+    XCTAssertTrue(envelope.warnings.contains { $0.code == "traversal_limit_reached" })
+  }
+
   func testFileAuditWriterUsesAppendOnlyJSONLines() async throws {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -217,12 +288,30 @@ private actor StubParsingService: FamilyParsingServing {
   private var records: [String: ParsedFamilyRecord] = [:]
 
   func parseFamily(source: FamilyTextRecord, cachePolicy: ParseCachePolicy) async throws -> ParsedFamilyRecord {
-    let family = Family(
-      familyId: source.familyId,
-      pageReferences: source.span.pageReferences,
-      husband: Person(name: "Antti", patronymic: "Mikonp."),
-      wife: Person(name: "Brita", patronymic: "Juhont.")
-    )
+    let family: Family
+    if source.familyId == "PUUKANGAS 6" {
+      family = Family(
+        familyId: source.familyId, pageReferences: source.span.pageReferences,
+        couples: [Couple(
+          husband: Person(name: "Juho", patronymic: "Juhonp.", birthDate: "03.09.1754"),
+          wife: Person(
+            name: "Maria", patronymic: "Antint.", birthDate: "13.03.1756",
+            deathDate: "04.10.1829", asChild: "SAKERI 4", familySearchId: "KN1X-VHG"
+          ),
+          fullMarriageDate: "26.12.1782"
+        )]
+      )
+    } else {
+      family = Family(
+        familyId: source.familyId, pageReferences: source.span.pageReferences,
+        husband: Person(name: "Antti", patronymic: "Mikonp."),
+        wife: Person(name: "Brita", patronymic: "Juhont."),
+        children: [Person(
+          name: "Maria", birthDate: "03.03.1756", marriageDate: "82",
+          spouse: "Juho Styrman", asParent: "PUUKANGAS 6", familySearchId: "KN1X-VHG"
+        )]
+      )
+    }
     let record = ParsedFamilyRecord(
       familyId: source.familyId, source: source.source, span: source.span,
       parserImplementationVersion: "legacy-schema2-unknown", parsedFamily: family

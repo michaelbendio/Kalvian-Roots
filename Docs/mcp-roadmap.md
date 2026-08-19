@@ -90,6 +90,14 @@ detection, conflict reporting, and field-level provenance.
 and death claims retain their source family/page/span; the 3 March versus 13
 March birth conflict remains visible; cycles terminate safely.
 
+**Status:** Complete. The shared deterministic `FamilyNetworkService` exposes
+`resolve_family_references` and `resolve_person_context`. It follows only
+explicit references within caller-supplied limits, reuses the Phase 3 caches,
+matches people with birth and relationship evidence rather than name alone,
+and returns field-level claims, graph edges, missing or mismatched references,
+cycles, duplicate warnings, and conflicts. The `SAKERI 4` to `PUUKANGAS 6`
+acceptance run and verification evidence are recorded in `mcp-phase4.md`.
+
 ## Phase 5 — Juuret Citation Service
 
 **Deliverable:** Expose deterministic Juuret citation generation for a selected
