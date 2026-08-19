@@ -198,6 +198,13 @@ Family network caches are local durable app data:
 
     Application Support/Kalvian Roots/Cache/families.json
 
+This existing schema-2 cache contains the accumulated DeepSeek-derived,
+decoded family networks and must be reused as the Phase 3 bootstrap source.
+Do not discard or bulk-regenerate valid cached families just to add newer MCP
+metadata. Legacy imports must disclose that the old cache does not contain the
+raw DeepSeek response, source hash, or parser/prompt version. Live parsing is
+reserved for a cache miss, an unusable entry, or an explicit refresh.
+
 Do not reintroduce iCloud/ubiquity, CoreData, CloudKit, or temporary cache
 fallback behavior without an explicit design change.
 

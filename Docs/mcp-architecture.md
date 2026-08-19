@@ -77,8 +77,11 @@ unrelated data:
 
 Breaking MCP changes increment the major version. Additive optional fields may
 increment the minor version. Responses always declare all applicable versions.
-Cached AI output is valid only when its source hash, family schema version, and
-parser implementation version all match.
+New native parsed-family cache output is valid only when its source hash,
+family schema version, and parser implementation version all match. The
+existing schema-2 `families.json` predates those fields and is handled through
+the explicit legacy-import policy below rather than being silently treated as
+a native cache hit.
 
 The MCP catalog treats parsed family data as a schema-versioned object. The
 machine-readable `juuret-family/1` content schema is committed in Phase 3, when
@@ -355,6 +358,31 @@ structured `details`. Codes are:
 
 - Book text is always read from the configured source and never served from a
   derived cache.
+- The existing
+  `Application Support/Kalvian Roots/Cache/families.json` file is the primary
+  bootstrap source for already parsed families. It remains owned by the
+  existing `FamilyNetworkCache` and `PersistentFamilyNetworkStore`; the MCP
+  implementation must reuse those models and storage rather than create a
+  competing reader or overwrite the file.
+- A schema-2 legacy entry stores a decoded `FamilyNetwork`, cache timestamp,
+  and extraction duration. It does not retain the raw DeepSeek response,
+  source-file hash, family-block hash, prompt/parser version, or JSON schema
+  identifier. Code and reports must not imply that those fields are known.
+- Phase 3 may import a legacy entry into the new parsed-family cache after it
+  decodes through the existing model, passes the current structural validator,
+  identifies the requested main family, and is associated with the current
+  exact Book Text Service block. The imported record records the legacy cache
+  key and timestamp, the current source span used for association, an import
+  timestamp, and a warning that the original source revision and parser build
+  are unknown. Association with the current source is not evidence that the
+  legacy parse was produced from that revision.
+- A usable legacy hit avoids a live DeepSeek call. DeepSeek is used only when
+  neither a matching native entry nor a usable legacy entry exists, or when the
+  caller explicitly selects `refresh`. `cacheOnly` never invokes DeepSeek.
+- Malformed, undecodable, or wrong-family legacy entries are reported and left
+  untouched. Import must not delete, rewrite, or wholesale regenerate the
+  existing cache. Page or source discrepancies become warnings or conflicts;
+  they are not silently resolved.
 - Parsed-family cache keys include source SHA-256, family ID, family schema
   version, and parser implementation version.
 - Network-resolution cache keys additionally include resolution-policy version
@@ -363,9 +391,10 @@ structured `details`. Codes are:
   exact returned names, and canonical record reference.
 - Cache records live under local Application Support and never in iCloud,
   temporary directories, CoreData, or CloudKit.
-- A stale cache is a miss, not a migration guess. Corrupt or inaccessible cache
-  state is reported. The service does not silently continue with throwaway
-  storage.
+- A stale native cache is a miss, not a migration guess. The documented legacy
+  import above is the only compatibility path for schema-2 family-network
+  entries. Corrupt or inaccessible cache state is reported. The service does
+  not silently continue with throwaway storage.
 - Tests use saved source, JSON, and HTML fixtures. Live smoke tests are separate
   and opt-in.
 

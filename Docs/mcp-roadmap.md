@@ -55,12 +55,16 @@ and structured errors work; no AI, HiSki, or FamilySearch access occurs.
 **Deliverable:** Move the existing DeepSeek-backed parser behind the shared
 service boundary. Add `parse_family` and `get_parsed_family`, versioned schema
 validation, validated cache behavior, saved JSON fixtures, and credential-provider
-integration.
+integration. Reuse the existing Application Support `families.json` cache as a
+legacy bootstrap source; do not regenerate cached families merely because the
+new native cache contract adds source and parser version metadata.
 
 **Test gate:** Difficult saved families, multiple spouses, exact names and
 patronymics, invalid JSON, unsupported schemas, and cache invalidation are
 covered without live calls. A separate opt-in smoke test checks the current
-DeepSeek prompt.
+DeepSeek prompt. Tests also cover importing a usable schema-2 cached family,
+reporting its limited legacy provenance, rejecting a malformed legacy entry,
+and making no DeepSeek call on a usable legacy-cache hit.
 
 ## Phase 4 — Family Network Service
 
