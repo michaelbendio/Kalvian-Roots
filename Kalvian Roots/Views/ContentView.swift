@@ -3,6 +3,7 @@
 //
 
 import SwiftUI
+import KalvianRootsCore
 
 struct ContentView: View {
     @Environment(JuuretApp.self) private var app

@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import KalvianRootsCore
 
 /**
  * Complete family network supporting citation generation

@@ -9,14 +9,14 @@ final class KalvianRootsMCPServerTests: XCTestCase {
   private let fixedDate = Date(timeIntervalSince1970: 1_777_777_777)
   private let fixedOperationID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
 
-  func testDiscoveryExposesOnlyGetFamilyText() async throws {
+  func testDiscoveryExposesPhaseThreeTools() async throws {
     let session = try await makeSession()
     defer { session.stop() }
 
     let (tools, nextCursor) = try await session.client.listTools()
 
     XCTAssertNil(nextCursor)
-    XCTAssertEqual(tools.map(\.name), ["get_family_text"])
+    XCTAssertEqual(tools.map(\.name), ["get_family_text", "parse_family", "get_parsed_family"])
     XCTAssertEqual(tools.first?.annotations.readOnlyHint, true)
     XCTAssertEqual(tools.first?.annotations.openWorldHint, false)
   }
@@ -96,13 +96,38 @@ final class KalvianRootsMCPServerTests: XCTestCase {
     XCTAssertEqual(malformed.isError, true)
     XCTAssertEqual(malformedError.code, "invalid_request")
 
-    let unknown = try await session.client.callTool(name: "parse_family")
+    let unknown = try await session.client.callTool(name: "future_tool")
     let unknownError: ToolErrorEnvelope = try decodeTextContent(unknown.content)
     XCTAssertEqual(unknown.isError, true)
     XCTAssertEqual(unknownError.code, "unsupported_operation")
 
     let records = await session.auditWriter.records
     XCTAssertEqual(records.map(\.errorCode), ["invalid_request", "unsupported_operation"])
+  }
+
+  func testParseFamilyAndGetParsedFamilyReturnVersionedStructuredData() async throws {
+    let session = try await makeSession()
+    defer { session.stop() }
+    let source = try await session.bookTextService.getFamilyText(
+      familyId: "SAKERI 4", expectedSourceSHA256: nil
+    )
+    let parsed = try await session.client.callTool(
+      name: "parse_family", arguments: ["familyId": "SAKERI 4", "cachePolicy": "cacheOnly"]
+    )
+    XCTAssertEqual(parsed.isError, false)
+    let parsedEnvelope: ToolEnvelope<ParsedFamilyRecord> = try decodeTextContent(parsed.content)
+    XCTAssertEqual(parsedEnvelope.data.familySchemaVersion, "juuret-family/1")
+    XCTAssertEqual(parsedEnvelope.data.parsedFamily.primaryCouple?.husband.displayName, "Antti Mikonp.")
+
+    let cached = try await session.client.callTool(
+      name: "get_parsed_family",
+      arguments: ["familyId": "SAKERI 4", "sourceSHA256": .string(source.source.sha256)]
+    )
+    XCTAssertEqual(cached.isError, false)
+    let cachedEnvelope: ToolEnvelope<ParsedFamilyRecord> = try decodeTextContent(cached.content)
+    XCTAssertEqual(cachedEnvelope.data, parsedEnvelope.data)
+    let audits = await session.auditWriter.records
+    XCTAssertEqual(audits.map(\.externalServicesContacted), [[], []])
   }
 
   func testFileAuditWriterUsesAppendOnlyJSONLines() async throws {
@@ -156,8 +181,10 @@ final class KalvianRootsMCPServerTests: XCTestCase {
       now: { fixedDate }
     )
     let auditWriter = MemoryMCPAuditWriter()
+    let parsingService = StubParsingService()
     let server = await KalvianRootsMCPServerFactory(
       bookTextService: bookTextService,
+      familyParsingService: parsingService,
       auditWriter: auditWriter,
       now: { fixedDate },
       operationID: { fixedOperationID }
@@ -184,6 +211,31 @@ final class KalvianRootsMCPServerTests: XCTestCase {
     }
     return try JSONDecoder().decode(T.self, from: Data(text.utf8))
   }
+}
+
+private actor StubParsingService: FamilyParsingServing {
+  private var records: [String: ParsedFamilyRecord] = [:]
+
+  func parseFamily(source: FamilyTextRecord, cachePolicy: ParseCachePolicy) async throws -> ParsedFamilyRecord {
+    let family = Family(
+      familyId: source.familyId,
+      pageReferences: source.span.pageReferences,
+      husband: Person(name: "Antti", patronymic: "Mikonp."),
+      wife: Person(name: "Brita", patronymic: "Juhont.")
+    )
+    let record = ParsedFamilyRecord(
+      familyId: source.familyId, source: source.source, span: source.span,
+      parserImplementationVersion: "legacy-schema2-unknown", parsedFamily: family
+    )
+    records[key(source.familyId, source.source.sha256)] = record
+    return record
+  }
+
+  func getParsedFamily(familyId: String, sourceSHA256: String) async throws -> ParsedFamilyRecord? {
+    records[key(familyId, sourceSHA256)]
+  }
+
+  private func key(_ familyId: String, _ hash: String) -> String { "\(familyId)|\(hash)" }
 }
 
 private struct TestSession {

@@ -72,6 +72,14 @@ DeepSeek prompt. Tests also cover importing a usable schema-2 cached family,
 reporting its limited legacy provenance, rejecting a malformed legacy entry,
 and making no DeepSeek call on a usable legacy-cache hit.
 
+**Status:** Complete. The app and MCP executable now share the existing
+`Person`, `Couple`, and `Family` models, one JSON decoder, prompt, and DeepSeek
+client. `parse_family` and `get_parsed_family` are available through MCP. The
+existing schema-2 cache is imported read-only into a separate source-aware
+native cache, with its provenance limitation reported. Offline, live-smoke,
+full-app, release-process, and installed-plugin evidence is recorded in
+`mcp-phase3.md`.
+
 ## Phase 4 — Family Network Service
 
 **Deliverable:** Expose deterministic `as_child` and `as_parent` resolution,

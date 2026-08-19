@@ -4,7 +4,7 @@ import KalvianRootsCore
 import MCP
 
 public let kalvianRootsMCPContractVersion = "1.0"
-public let kalvianRootsMCPExecutableVersion = "0.1.0"
+public let kalvianRootsMCPExecutableVersion = "0.2.0"
 
 public struct ToolWarning: Codable, Equatable, Sendable {
   public let code: String
@@ -127,17 +127,20 @@ public struct KalvianRootsMCPServerFactory {
   public typealias OperationIDProvider = @Sendable () -> UUID
 
   private let bookTextService: any BookTextServing
+  private let familyParsingService: any FamilyParsingServing
   private let auditWriter: any MCPAuditWriting
   private let now: NowProvider
   private let operationID: OperationIDProvider
 
   public init(
     bookTextService: any BookTextServing = BookTextService(),
+    familyParsingService: any FamilyParsingServing = FamilyParsingService(ai: DeepSeekFamilyClient()),
     auditWriter: any MCPAuditWriting = FileMCPAuditWriter(),
     now: @escaping NowProvider = { Date() },
     operationID: @escaping OperationIDProvider = { UUID() }
   ) {
     self.bookTextService = bookTextService
+    self.familyParsingService = familyParsingService
     self.auditWriter = auditWriter
     self.now = now
     self.operationID = operationID
@@ -148,15 +151,16 @@ public struct KalvianRootsMCPServerFactory {
       name: "kalvian-roots",
       version: kalvianRootsMCPExecutableVersion,
       title: "Kalvian Roots",
-      instructions: "Read exact family blocks from the local canonical Juuret source.",
+      instructions: "Read exact Juuret family blocks and return validated cache-first parsed families.",
       capabilities: .init(tools: .init(listChanged: false))
     )
 
     await server.withMethodHandler(ListTools.self) { _ in
-      .init(tools: [Self.getFamilyTextTool])
+      .init(tools: [Self.getFamilyTextTool, Self.parseFamilyTool, Self.getParsedFamilyTool])
     }
 
     let bookTextService = self.bookTextService
+    let familyParsingService = self.familyParsingService
     let auditWriter = self.auditWriter
     let now = self.now
     let operationID = self.operationID
@@ -164,6 +168,20 @@ public struct KalvianRootsMCPServerFactory {
     await server.withMethodHandler(CallTool.self) { request in
       let id = operationID().uuidString.lowercased()
       let generatedAt = Self.rfc3339(now())
+
+      if request.name == "parse_family" {
+        return await Self.handleParseFamily(
+          request: request, operationId: id, generatedAt: generatedAt,
+          bookTextService: bookTextService, familyParsingService: familyParsingService,
+          auditWriter: auditWriter
+        )
+      }
+      if request.name == "get_parsed_family" {
+        return await Self.handleGetParsedFamily(
+          request: request, operationId: id, generatedAt: generatedAt,
+          familyParsingService: familyParsingService, auditWriter: auditWriter
+        )
+      }
 
       guard request.name == "get_family_text" else {
         return await Self.errorResult(
@@ -328,6 +346,197 @@ public struct KalvianRootsMCPServerFactory {
       openWorldHint: false
     )
   )
+
+  private static let parseFamilyTool = Tool(
+    name: "parse_family",
+    title: "Parse Juuret family",
+    description: "Return a validated structured family, using the accumulated local cache before DeepSeek.",
+    inputSchema: .object([
+      "type": "object", "additionalProperties": false, "required": ["familyId"],
+      "properties": .object([
+        "familyId": .object(["type": "string", "minLength": 3, "maxLength": 80]),
+        "expectedSourceSHA256": .object(["type": "string", "pattern": "^[a-f0-9]{64}$"]),
+        "cachePolicy": .object([
+          "type": "string", "enum": ["useValidated", "refresh", "cacheOnly"],
+          "default": "useValidated",
+        ]),
+      ]),
+    ]),
+    annotations: .init(
+      title: "Parse Juuret family", readOnlyHint: true, destructiveHint: false,
+      idempotentHint: false, openWorldHint: true
+    )
+  )
+
+  private static let getParsedFamilyTool = Tool(
+    name: "get_parsed_family",
+    title: "Get cached parsed family",
+    description: "Return a source-revision-matched parsed family without network access.",
+    inputSchema: .object([
+      "type": "object", "additionalProperties": false,
+      "required": ["familyId", "sourceSHA256"],
+      "properties": .object([
+        "familyId": .object(["type": "string", "minLength": 3, "maxLength": 80]),
+        "sourceSHA256": .object(["type": "string", "pattern": "^[a-f0-9]{64}$"]),
+      ]),
+    ]),
+    annotations: .init(
+      title: "Get cached parsed family", readOnlyHint: true, destructiveHint: false,
+      idempotentHint: true, openWorldHint: false
+    )
+  )
+
+  private struct ParsedFamilyNotFound: Codable, Sendable {
+    let found: Bool
+    init() { found = false }
+  }
+
+  private static func handleParseFamily(
+    request: CallTool.Parameters,
+    operationId: String,
+    generatedAt: String,
+    bookTextService: any BookTextServing,
+    familyParsingService: any FamilyParsingServing,
+    auditWriter: any MCPAuditWriting
+  ) async -> CallTool.Result {
+    let arguments = request.arguments ?? [:]
+    let unexpected = Set(arguments.keys).subtracting(["familyId", "expectedSourceSHA256", "cachePolicy"]).sorted()
+    guard unexpected.isEmpty,
+      let familyId = arguments["familyId"]?.stringValue,
+      let policy = ParseCachePolicy(rawValue: arguments["cachePolicy"]?.stringValue ?? "useValidated")
+    else {
+      return await errorResult(
+        code: "invalid_request", message: "parse_family arguments are invalid.",
+        operationId: operationId, retryable: false, details: nil,
+        request: request, generatedAt: generatedAt, auditWriter: auditWriter
+      )
+    }
+    let expectedHash = arguments["expectedSourceSHA256"]?.stringValue
+    if let expectedHash, !isSHA256(expectedHash) {
+      return await errorResult(
+        code: "invalid_request", message: "expectedSourceSHA256 must be a lowercase SHA-256 string.",
+        operationId: operationId, retryable: false, details: nil,
+        request: request, generatedAt: generatedAt, auditWriter: auditWriter
+      )
+    }
+    do {
+      let source = try await bookTextService.getFamilyText(
+        familyId: familyId, expectedSourceSHA256: expectedHash
+      )
+      let preexisting = policy == .refresh ? nil : try await familyParsingService.getParsedFamily(
+        familyId: source.familyId, sourceSHA256: source.source.sha256
+      )
+      let record = try await familyParsingService.parseFamily(source: source, cachePolicy: policy)
+      let warningModels = record.warnings.map { ToolWarning(code: $0.code, message: $0.message) }
+      let envelope = ToolEnvelope(
+        contractVersion: kalvianRootsMCPContractVersion, operationId: operationId,
+        generatedAt: generatedAt, tool: request.name, readOnly: true, data: record,
+        warnings: warningModels, conflicts: [], provenance: [source.span], auditRef: "audit:\(operationId)"
+      )
+      let data = try encode(envelope)
+      let contactedDeepSeek = preexisting == nil && record.parserImplementationVersion != "legacy-schema2-unknown"
+      let cacheStatus = preexisting != nil ? "validated_hit"
+        : record.parserImplementationVersion == "legacy-schema2-unknown" ? "legacy_import" : "write"
+      try await auditWriter.append(MCPAuditRecord(
+        operationId: operationId, timestamp: generatedAt, tool: request.name,
+        contractVersion: kalvianRootsMCPContractVersion, executableVersion: kalvianRootsMCPExecutableVersion,
+        request: auditRequest(request), sourceSHA256: source.source.sha256,
+        blockSHA256: source.span.blockSha256, resultSHA256: sha256(data), cacheStatus: cacheStatus,
+        externalServicesContacted: contactedDeepSeek ? ["DeepSeek"] : [],
+        warnings: warningModels.map(\.code), conflicts: [], status: "success", errorCode: nil
+      ))
+      return try .init(
+        content: [.text(text: String(decoding: data, as: UTF8.self), annotations: nil, _meta: nil)],
+        structuredContent: envelope, isError: false
+      )
+    } catch let error as BookTextError {
+      return await errorResult(
+        code: error.code, message: error.localizedDescription, operationId: operationId,
+        retryable: isRetryable(error), details: details(for: error), request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter
+      )
+    } catch let error as FamilyParsingError {
+      return await errorResult(
+        code: error.code, message: error.localizedDescription, operationId: operationId,
+        retryable: error.code == "ai_request_failed", details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter
+      )
+    } catch {
+      return await errorResult(
+        code: "internal_error", message: "The operation could not be completed.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter
+      )
+    }
+  }
+
+  private static func handleGetParsedFamily(
+    request: CallTool.Parameters,
+    operationId: String,
+    generatedAt: String,
+    familyParsingService: any FamilyParsingServing,
+    auditWriter: any MCPAuditWriting
+  ) async -> CallTool.Result {
+    let arguments = request.arguments ?? [:]
+    guard Set(arguments.keys).subtracting(["familyId", "sourceSHA256"]).isEmpty,
+      let familyId = arguments["familyId"]?.stringValue,
+      let sourceHash = arguments["sourceSHA256"]?.stringValue,
+      isSHA256(sourceHash)
+    else {
+      return await errorResult(
+        code: "invalid_request", message: "familyId and sourceSHA256 are required.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter
+      )
+    }
+    do {
+      let record = try await familyParsingService.getParsedFamily(
+        familyId: familyId, sourceSHA256: sourceHash
+      )
+      let resultData: Data
+      let structured: Value
+      if let record {
+        resultData = try encode(ToolEnvelope(
+          contractVersion: kalvianRootsMCPContractVersion, operationId: operationId,
+          generatedAt: generatedAt, tool: request.name, readOnly: true, data: record,
+          warnings: record.warnings.map { ToolWarning(code: $0.code, message: $0.message) },
+          conflicts: [], provenance: [record.span], auditRef: "audit:\(operationId)"
+        ))
+      } else {
+        resultData = try encode(ToolEnvelope(
+          contractVersion: kalvianRootsMCPContractVersion, operationId: operationId,
+          generatedAt: generatedAt, tool: request.name, readOnly: true,
+          data: ParsedFamilyNotFound(), warnings: [], conflicts: [], provenance: [],
+          auditRef: "audit:\(operationId)"
+        ))
+      }
+      structured = try JSONDecoder().decode(Value.self, from: resultData)
+      try await auditWriter.append(MCPAuditRecord(
+        operationId: operationId, timestamp: generatedAt, tool: request.name,
+        contractVersion: kalvianRootsMCPContractVersion, executableVersion: kalvianRootsMCPExecutableVersion,
+        request: auditRequest(request), sourceSHA256: sourceHash, blockSHA256: record?.span.blockSha256,
+        resultSHA256: sha256(resultData), cacheStatus: record == nil ? "miss" : "validated_hit",
+        externalServicesContacted: [], warnings: record?.warnings.map(\.code) ?? [], conflicts: [],
+        status: "success", errorCode: nil
+      ))
+      return try .init(
+        content: [.text(text: String(decoding: resultData, as: UTF8.self), annotations: nil, _meta: nil)],
+        structuredContent: structured, isError: false
+      )
+    } catch let error as FamilyParsingError {
+      return await errorResult(
+        code: error.code, message: error.localizedDescription, operationId: operationId,
+        retryable: false, details: nil, request: request, generatedAt: generatedAt,
+        auditWriter: auditWriter
+      )
+    } catch {
+      return await errorResult(
+        code: "internal_error", message: "The operation could not be completed.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter
+      )
+    }
+  }
 
   private static func errorResult(
     code: String,

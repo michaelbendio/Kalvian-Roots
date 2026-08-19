@@ -7,6 +7,7 @@
 
 #if os(macOS)
 import Foundation
+import KalvianRootsCore
 
 /**
  * Token types for family display rendering

@@ -8,6 +8,7 @@
 //
 
 import XCTest
+import KalvianRootsCore
 import SwiftUI
 @testable import Kalvian_Roots
 

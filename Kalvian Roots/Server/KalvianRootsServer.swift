@@ -9,6 +9,7 @@
 #if os(macOS)
 import AppKit
 import Foundation
+import KalvianRootsCore
 import NIO
 import NIOCore
 import NIOHTTP1

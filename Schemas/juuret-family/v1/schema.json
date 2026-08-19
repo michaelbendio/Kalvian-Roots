@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kalvian-roots.local/schemas/juuret-family/1",
+  "title": "Juuret parsed family",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["familyId", "pageReferences", "couples", "notes", "noteDefinitions"],
+  "properties": {
+    "familyId": { "type": "string", "minLength": 1 },
+    "pageReferences": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "couples": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/couple" } },
+    "notes": { "type": "array", "items": { "type": "string" } },
+    "noteDefinitions": { "type": "object", "additionalProperties": { "type": "string" } }
+  },
+  "$defs": {
+    "nullableString": { "type": ["string", "null"] },
+    "person": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "noteMarkers"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "patronymic": { "$ref": "#/$defs/nullableString" },
+        "birthDate": { "$ref": "#/$defs/nullableString" },
+        "deathDate": { "$ref": "#/$defs/nullableString" },
+        "marriageDate": { "$ref": "#/$defs/nullableString" },
+        "fullMarriageDate": { "$ref": "#/$defs/nullableString" },
+        "spouse": { "$ref": "#/$defs/nullableString" },
+        "asChild": { "$ref": "#/$defs/nullableString" },
+        "asParent": { "$ref": "#/$defs/nullableString" },
+        "familySearchId": { "$ref": "#/$defs/nullableString" },
+        "spouseFamilySearchId": { "$ref": "#/$defs/nullableString" },
+        "noteMarkers": { "type": "array", "items": { "type": "string" } },
+        "fatherName": { "$ref": "#/$defs/nullableString" },
+        "motherName": { "$ref": "#/$defs/nullableString" },
+        "spouseBirthDate": { "$ref": "#/$defs/nullableString" },
+        "spouseParentsFamilyId": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "couple": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["husband", "wife", "children", "coupleNotes"],
+      "properties": {
+        "husband": { "$ref": "#/$defs/person" },
+        "wife": { "$ref": "#/$defs/person" },
+        "marriageDate": { "$ref": "#/$defs/nullableString" },
+        "fullMarriageDate": { "$ref": "#/$defs/nullableString" },
+        "children": { "type": "array", "items": { "$ref": "#/$defs/person" } },
+        "childrenDiedInfancy": { "type": ["integer", "null"], "minimum": 0 },
+        "coupleNotes": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

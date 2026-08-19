@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import KalvianRootsCore
 import SwiftUI
 
 #if os(macOS)

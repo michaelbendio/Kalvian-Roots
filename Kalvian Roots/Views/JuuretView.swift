@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import KalvianRootsCore
 #if os(iOS)
 import UniformTypeIdentifiers
 #endif

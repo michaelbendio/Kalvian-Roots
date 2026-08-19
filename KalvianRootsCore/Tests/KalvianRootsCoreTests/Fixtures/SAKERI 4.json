@@ -1,0 +1,34 @@
+{
+  "familyId": "SAKERI 4",
+  "pageReferences": ["265", "266"],
+  "couples": [
+    {
+      "husband": {
+        "name": "Antti",
+        "patronymic": "Mikonp.",
+        "birthDate": "05.08.1729",
+        "noteMarkers": []
+      },
+      "wife": {
+        "name": "Brita",
+        "patronymic": "Juhont.",
+        "birthDate": "04.01.1735",
+        "noteMarkers": []
+      },
+      "fullMarriageDate": "08.10.1750",
+      "children": [
+        {
+          "name": "Maria",
+          "birthDate": "03.03.1756",
+          "spouse": "Juho Styrman",
+          "asParent": "Puukangas 6",
+          "familySearchId": "KN1X-VHG",
+          "noteMarkers": []
+        }
+      ],
+      "coupleNotes": []
+    }
+  ],
+  "notes": [],
+  "noteDefinitions": {}
+}

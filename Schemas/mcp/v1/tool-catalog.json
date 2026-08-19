@@ -268,8 +268,7 @@
         "familySchemaVersion": { "const": "juuret-family/1" },
         "parserImplementationVersion": { "$ref": "#/$defs/nonemptyString" },
         "parsedFamily": {
-          "type": "object",
-          "description": "Validated family data governed by the schema named in familySchemaVersion. The juuret-family/1 schema is committed and enforced in Phase 3."
+          "$ref": "../../juuret-family/v1/schema.json"
         },
         "warnings": { "type": "array", "items": { "$ref": "#/$defs/warning" } }
       }

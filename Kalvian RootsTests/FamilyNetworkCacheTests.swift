@@ -4,6 +4,7 @@
 //
 
 import XCTest
+import KalvianRootsCore
 @testable import Kalvian_Roots
 
 @MainActor

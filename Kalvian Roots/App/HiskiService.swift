@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import KalvianRootsCore
 import SwiftUI
 import Combine
 #if os(macOS)

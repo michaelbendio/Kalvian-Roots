@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import KalvianRootsCore
 #if os(macOS)
 import AppKit
 #elseif os(iOS)

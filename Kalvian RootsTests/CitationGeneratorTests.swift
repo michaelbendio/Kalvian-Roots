@@ -6,6 +6,7 @@
 //
 
 import XCTest
+import KalvianRootsCore
 @testable import Kalvian_Roots
 
 final class CitationGeneratorTests: XCTestCase {

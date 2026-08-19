@@ -7,6 +7,7 @@
 
 import XCTest
 import SwiftUI
+import KalvianRootsCore
 @testable import Kalvian_Roots
 
 final class FamilyContentViewTests: XCTestCase {

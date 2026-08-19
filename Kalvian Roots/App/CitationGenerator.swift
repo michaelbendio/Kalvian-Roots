@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import KalvianRootsCore
 
 /**
  * Citation Generator for Finnish Genealogical Records

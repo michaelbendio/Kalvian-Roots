@@ -1,4 +1,5 @@
 import Foundation
+import KalvianRootsCore
 
 enum JuuretOriginPhraseFilter {
     private static let originPattern = #"(?i)(?:^|\s+)synt\.\s+[^,;\n.]+"#

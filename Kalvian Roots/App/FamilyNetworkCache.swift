@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import KalvianRootsCore
 
 @MainActor
 protocol FamilyNetworkCaching: AnyObject {

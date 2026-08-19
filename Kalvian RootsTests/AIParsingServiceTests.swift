@@ -6,6 +6,7 @@
 //
 
 import XCTest
+import KalvianRootsCore
 @testable import Kalvian_Roots
 
 @MainActor
@@ -102,18 +103,9 @@ final class AIParsingServiceTests: XCTestCase {
     }
 
     func testPromptIgnoresSyntOriginPhrases() throws {
-        let repositoryRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-
-        let aiServicesSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/App/AIServices.swift"),
-            encoding: .utf8
-        )
-
-        XCTAssertTrue(aiServicesSource.contains(#"Ignore origin-place phrases beginning with "synt.":"#))
-        XCTAssertTrue(aiServicesSource.contains(#""synt. Veteli" means the person was originally from Veteli"#))
-        XCTAssertTrue(aiServicesSource.contains(#"Do NOT store "synt." text in notes, coupleNotes, deathDate, spouse, asChild, or asParent"#))
+        let prompt = DeepSeekFamilyPrompt.make(familyId: "TEST 1", familyText: "source")
+        XCTAssertTrue(prompt.contains(#"Ignore origin phrases beginning "synt.""#))
+        XCTAssertTrue(prompt.contains("rather than putting them in facts or notes"))
     }
 
     func testParsedFamilySuppressesSyntOriginPhrasesFromModelOutput() async throws {
@@ -179,16 +171,9 @@ final class AIParsingServiceTests: XCTestCase {
     }
 
     func testPromptRequestsChildSpouseFamilySearchIdSeparatelyFromChildId() throws {
-        let repositoryRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-
-        let aiServicesSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("Kalvian Roots/App/AIServices.swift"),
-            encoding: .utf8
-        )
-
-        XCTAssertTrue(aiServicesSource.contains(#""spouseFamilySearchId": "string or null (spouse's <ID> after spouse name)""#))
+        let prompt = DeepSeekFamilyPrompt.make(familyId: "TEST 1", familyText: "source")
+        XCTAssertTrue(prompt.contains("spouseFamilySearchId"))
+        XCTAssertTrue(prompt.contains("Keep child and spouse IDs separate"))
     }
     
     func testServiceNameAfterConfiguration() throws {

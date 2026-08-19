@@ -7,6 +7,7 @@
 
 import Foundation
 import Testing
+import KalvianRootsCore
 @testable import Kalvian_Roots
 
 struct Kalvian_RootsTests {

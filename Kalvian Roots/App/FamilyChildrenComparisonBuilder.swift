@@ -1,4 +1,5 @@
 import Foundation
+import KalvianRootsCore
 
 struct FamilyChildrenComparisonBuildResult {
     let group: FamilyChildrenComparisonGroup

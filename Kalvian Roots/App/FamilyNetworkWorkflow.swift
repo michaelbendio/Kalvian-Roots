@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import KalvianRootsCore
 
 /**
  * Simplified workflow for processing a nuclear family

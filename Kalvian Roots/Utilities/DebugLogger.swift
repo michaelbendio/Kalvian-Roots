@@ -5,6 +5,7 @@
 //
 
 import Foundation
+import KalvianRootsCore
 
 // MARK: - LogLevel and LogCategory
 

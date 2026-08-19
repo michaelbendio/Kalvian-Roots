@@ -1,4 +1,5 @@
 import Foundation
+import KalvianRootsCore
 
 struct HiskiCitationProposal: Equatable {
     let identity: PersonIdentity

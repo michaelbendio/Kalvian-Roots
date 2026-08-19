@@ -1,4 +1,5 @@
 import Foundation
+import KalvianRootsCore
 
 struct FamilyWorkup: Codable, Equatable {
     struct PersonSummary: Codable, Equatable {

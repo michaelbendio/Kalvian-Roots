@@ -7,6 +7,7 @@
 
 #if os(macOS)
 import Foundation
+import KalvianRootsCore
 
 /**
  * HTML Renderer for server-rendered family pages

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import KalvianRootsCore
 
 struct ClanBrowserView: View {
     @Environment(JuuretApp.self) private var juuretApp
@@ -383,4 +384,3 @@ struct FlowLayout: Layout {
     ClanBrowserView(isPresented: .constant(true))
         .environment(JuuretApp())
 }
-

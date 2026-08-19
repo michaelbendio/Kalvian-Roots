@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import KalvianRootsCore
 
 /**
  * FamilyResolver handles cross-reference resolution for genealogical families

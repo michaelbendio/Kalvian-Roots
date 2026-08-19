@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import KalvianRootsCore
 
 struct NavigationBarView: View {
     @Environment(JuuretApp.self) private var juuretApp

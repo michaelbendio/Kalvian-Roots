@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import KalvianRootsCore
 @testable import Kalvian_Roots
 #if os(macOS)
 import NIOHTTP1

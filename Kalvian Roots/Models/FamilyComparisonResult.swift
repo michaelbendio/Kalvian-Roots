@@ -12,6 +12,7 @@
 */
 
 import Foundation
+import KalvianRootsCore
 
 struct FamilyComparisonResult {
 

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "juuret-family/1",
+  "familyId": "HYYPPÄ 7",
+  "pageReferences": ["10"],
+  "couples": [
+    {
+      "husband": {"name": "Jaakko", "patronymic": "Jaakonp.", "noteMarkers": []},
+      "wife": {"name": "Brita", "patronymic": "Antint.", "noteMarkers": []},
+      "children": [
+        {"name": "Maria", "birthDate": "01.01.1751", "noteMarkers": []},
+        {"name": "Maria", "birthDate": "02.02.1753", "noteMarkers": []}
+      ],
+      "coupleNotes": []
+    },
+    {
+      "husband": {"name": "Jaakko", "patronymic": "Jaakonp.", "noteMarkers": []},
+      "wife": {"name": "Elisabet", "patronymic": "Matint.", "noteMarkers": []},
+      "children": [
+        {"name": "Antti", "birthDate": "03.03.1760", "noteMarkers": []}
+      ],
+      "coupleNotes": []
+    }
+  ],
+  "notes": [],
+  "noteDefinitions": {}
+}

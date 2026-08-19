@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import KalvianRootsCore
 
 /**
  * Enhanced person line view with clickable elements and enhanced dates
