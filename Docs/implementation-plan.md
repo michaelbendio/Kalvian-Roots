@@ -1,6 +1,13 @@
 Kalvian Roots Implementation Plan
 =================================
 
+Scope Note
+----------
+
+This is the existing application's historical comparison-stage plan. The DSH/MCP
+project uses the separate 11-phase roadmap in `Docs/mcp-roadmap.md` and the
+Phase 0 contract in `Docs/mcp-architecture.md`.
+
 Purpose
 -------
 

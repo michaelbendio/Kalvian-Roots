@@ -8,6 +8,10 @@ the Kalvian Roots checkout.
 - `main` is the active development branch for this personal project.
 - Use a feature branch only when the user asks for one or the change is risky
   enough to need isolation.
+- DSH/MCP work is intentionally isolated in `/Users/michaelbendio/KRoots.dsh`
+  on `feature/kalvian-roots-mcp`. Its contract, roadmap, and starting baseline
+  are in `Docs/mcp-architecture.md`, `Docs/mcp-roadmap.md`, and
+  `Docs/mcp-baseline.md`.
 - Before committing, run `git status -sb` and stage only the files that belong
   to the requested change.
 

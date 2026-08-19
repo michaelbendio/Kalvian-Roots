@@ -1,0 +1,459 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kalvian-roots.local/schemas/mcp/v1/tool-catalog.json",
+  "title": "Kalvian Roots MCP tool catalog",
+  "contractVersion": "1.0",
+  "description": "Normative request and response-data schemas for the initial read-only Kalvian Roots MCP surface.",
+  "tools": [
+    {
+      "name": "get_family_text",
+      "introducedInPhase": 2,
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["familyId"],
+        "properties": {
+          "familyId": { "$ref": "#/$defs/familyId" },
+          "expectedSourceSHA256": { "$ref": "#/$defs/sha256" }
+        }
+      },
+      "outputDataSchema": { "$ref": "#/$defs/familyTextRecord" }
+    },
+    {
+      "name": "parse_family",
+      "introducedInPhase": 3,
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["familyId"],
+        "properties": {
+          "familyId": { "$ref": "#/$defs/familyId" },
+          "expectedSourceSHA256": { "$ref": "#/$defs/sha256" },
+          "cachePolicy": { "$ref": "#/$defs/cachePolicy" }
+        }
+      },
+      "outputDataSchema": { "$ref": "#/$defs/parsedFamilyRecord" }
+    },
+    {
+      "name": "get_parsed_family",
+      "introducedInPhase": 3,
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["familyId", "sourceSHA256"],
+        "properties": {
+          "familyId": { "$ref": "#/$defs/familyId" },
+          "sourceSHA256": { "$ref": "#/$defs/sha256" }
+        }
+      },
+      "outputDataSchema": {
+        "oneOf": [
+          { "$ref": "#/$defs/parsedFamilyRecord" },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["found"],
+            "properties": { "found": { "const": false } }
+          }
+        ]
+      }
+    },
+    {
+      "name": "resolve_family_references",
+      "introducedInPhase": 4,
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["familyId", "limits"],
+        "properties": {
+          "familyId": { "$ref": "#/$defs/familyId" },
+          "expectedSourceSHA256": { "$ref": "#/$defs/sha256" },
+          "limits": { "$ref": "#/$defs/traversalLimits" }
+        }
+      },
+      "outputDataSchema": { "$ref": "#/$defs/familyNetworkResolution" }
+    },
+    {
+      "name": "resolve_person_context",
+      "introducedInPhase": 4,
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["familyId", "person", "limits"],
+        "properties": {
+          "familyId": { "$ref": "#/$defs/familyId" },
+          "expectedSourceSHA256": { "$ref": "#/$defs/sha256" },
+          "person": { "$ref": "#/$defs/personReference" },
+          "limits": { "$ref": "#/$defs/traversalLimits" }
+        }
+      },
+      "outputDataSchema": { "$ref": "#/$defs/personContextResolution" }
+    },
+    {
+      "name": "generate_juuret_citation",
+      "introducedInPhase": 5,
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["contextId", "selectedPerson"],
+        "properties": {
+          "contextId": { "$ref": "#/$defs/nonemptyString" },
+          "selectedPerson": { "$ref": "#/$defs/personReference" }
+        }
+      },
+      "outputDataSchema": { "$ref": "#/$defs/citationProposal" }
+    },
+    {
+      "name": "build_hiski_query",
+      "introducedInPhase": 6,
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["eventType", "person", "motivatingClaimId"],
+        "properties": {
+          "eventType": { "$ref": "#/$defs/eventType" },
+          "person": { "$ref": "#/$defs/personReference" },
+          "motivatingClaimId": { "$ref": "#/$defs/nonemptyString" },
+          "contextId": { "$ref": "#/$defs/nonemptyString" }
+        }
+      },
+      "outputDataSchema": { "$ref": "#/$defs/hiskiQuerySpecification" }
+    },
+    {
+      "name": "search_hiski",
+      "introducedInPhase": 6,
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["query", "liveSearchApproved"],
+        "properties": {
+          "query": { "$ref": "#/$defs/hiskiQuerySpecification" },
+          "liveSearchApproved": { "const": true }
+        }
+      },
+      "outputDataSchema": { "$ref": "#/$defs/hiskiSearchResult" }
+    },
+    {
+      "name": "get_hiski_record",
+      "introducedInPhase": 6,
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["candidateId", "liveFetchApproved"],
+        "properties": {
+          "candidateId": { "$ref": "#/$defs/nonemptyString" },
+          "liveFetchApproved": { "const": true }
+        }
+      },
+      "outputDataSchema": { "$ref": "#/$defs/hiskiRecord" }
+    },
+    {
+      "name": "compare_family_sources",
+      "introducedInPhase": 7,
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["contextId"],
+        "properties": {
+          "contextId": { "$ref": "#/$defs/nonemptyString" },
+          "familySearchCandidates": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/personCandidate" }
+          },
+          "hiskiCandidateIds": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/nonemptyString" }
+          }
+        }
+      },
+      "outputDataSchema": { "$ref": "#/$defs/familyComparison" }
+    },
+    {
+      "name": "prepare_citation_proposals",
+      "introducedInPhase": 7,
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["comparisonId", "selectedPerson"],
+        "properties": {
+          "comparisonId": { "$ref": "#/$defs/nonemptyString" },
+          "selectedPerson": { "$ref": "#/$defs/personReference" }
+        }
+      },
+      "outputDataSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["proposals"],
+        "properties": {
+          "proposals": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/citationProposal" }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "nonemptyString": { "type": "string", "minLength": 1 },
+    "familyId": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 80,
+      "pattern": "^\\s*[^\\r\\n]+\\s+[0-9]+[A-Za-z]?\\s*$"
+    },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "cachePolicy": {
+      "type": "string",
+      "enum": ["useValidated", "refresh", "cacheOnly"],
+      "default": "useValidated"
+    },
+    "sourceRevision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceId", "fileName", "sha256", "byteCount", "loadedAt", "canonicalMarkerValid"],
+      "properties": {
+        "sourceId": { "$ref": "#/$defs/nonemptyString" },
+        "fileName": { "const": "JuuretKälviällä.roots" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "byteCount": { "type": "integer", "minimum": 1 },
+        "loadedAt": { "type": "string", "format": "date-time" },
+        "canonicalMarkerValid": { "type": "boolean" }
+      }
+    },
+    "sourceSpan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceId", "sourceSha256", "familyId", "pageReferences", "startLine", "endLine", "blockSha256"],
+      "properties": {
+        "sourceId": { "$ref": "#/$defs/nonemptyString" },
+        "sourceSha256": { "$ref": "#/$defs/sha256" },
+        "familyId": { "$ref": "#/$defs/nonemptyString" },
+        "pageReferences": { "type": "array", "items": { "type": "string" } },
+        "startLine": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1 },
+        "blockSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "familyTextRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["familyId", "rawText", "source", "span"],
+      "properties": {
+        "familyId": { "$ref": "#/$defs/nonemptyString" },
+        "rawText": { "type": "string", "minLength": 1, "maxLength": 65536 },
+        "source": { "$ref": "#/$defs/sourceRevision" },
+        "span": { "$ref": "#/$defs/sourceSpan" }
+      }
+    },
+    "parsedFamilyRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["found", "familyId", "source", "span", "familySchemaVersion", "parserImplementationVersion", "parsedFamily", "warnings"],
+      "properties": {
+        "found": { "const": true },
+        "familyId": { "$ref": "#/$defs/nonemptyString" },
+        "source": { "$ref": "#/$defs/sourceRevision" },
+        "span": { "$ref": "#/$defs/sourceSpan" },
+        "familySchemaVersion": { "const": "juuret-family/1" },
+        "parserImplementationVersion": { "$ref": "#/$defs/nonemptyString" },
+        "parsedFamily": {
+          "type": "object",
+          "description": "Validated family data governed by the schema named in familySchemaVersion. The juuret-family/1 schema is committed and enforced in Phase 3."
+        },
+        "warnings": { "type": "array", "items": { "$ref": "#/$defs/warning" } }
+      }
+    },
+    "personReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["familyId", "coupleIndex", "role", "personIndex", "rawName"],
+      "properties": {
+        "familyId": { "$ref": "#/$defs/nonemptyString" },
+        "coupleIndex": { "type": "integer", "minimum": 0 },
+        "role": { "type": "string", "enum": ["parent", "child", "spouse"] },
+        "personIndex": { "type": "integer", "minimum": 0 },
+        "rawName": { "$ref": "#/$defs/nonemptyString" },
+        "rawBirthDate": { "type": "string" },
+        "rawPatronymic": { "type": "string" },
+        "familySearchId": { "type": "string" }
+      }
+    },
+    "traversalLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxFamilies", "maxDepth", "maxElapsedSeconds"],
+      "properties": {
+        "maxFamilies": { "type": "integer", "minimum": 1, "maximum": 25 },
+        "maxDepth": { "type": "integer", "minimum": 0, "maximum": 10 },
+        "maxElapsedSeconds": { "type": "integer", "minimum": 1, "maximum": 300 }
+      }
+    },
+    "warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "$ref": "#/$defs/nonemptyString" },
+        "message": { "$ref": "#/$defs/nonemptyString" },
+        "details": { "type": "object" }
+      }
+    },
+    "factClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claimId", "subjectRef", "field", "value", "sourceSpan", "sourceFieldPath", "derivation", "warnings"],
+      "properties": {
+        "claimId": { "$ref": "#/$defs/nonemptyString" },
+        "subjectRef": { "$ref": "#/$defs/personReference" },
+        "field": { "$ref": "#/$defs/nonemptyString" },
+        "value": { "type": "string" },
+        "sourceSpan": { "$ref": "#/$defs/sourceSpan" },
+        "sourceFieldPath": { "$ref": "#/$defs/nonemptyString" },
+        "derivation": { "type": "string", "enum": ["direct", "aiParsed", "referenceHarvested"] },
+        "parserSchemaVersion": { "type": "string" },
+        "parserImplementationVersion": { "type": "string" },
+        "warnings": { "type": "array", "items": { "$ref": "#/$defs/warning" } }
+      }
+    },
+    "factConflict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subjectRef", "field", "reason", "claims"],
+      "properties": {
+        "subjectRef": { "$ref": "#/$defs/personReference" },
+        "field": { "$ref": "#/$defs/nonemptyString" },
+        "reason": { "$ref": "#/$defs/nonemptyString" },
+        "claims": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/factClaim" } }
+      }
+    },
+    "familyNetworkResolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resolutionId", "startingFamilyId", "complete", "families", "edges", "missingReferences", "cycles", "claims", "conflicts"],
+      "properties": {
+        "resolutionId": { "$ref": "#/$defs/nonemptyString" },
+        "startingFamilyId": { "$ref": "#/$defs/nonemptyString" },
+        "complete": { "type": "boolean" },
+        "families": { "type": "array", "items": { "$ref": "#/$defs/parsedFamilyRecord" } },
+        "edges": { "type": "array", "items": { "type": "object" } },
+        "missingReferences": { "type": "array", "items": { "$ref": "#/$defs/warning" } },
+        "cycles": { "type": "array", "items": { "type": "array", "items": { "$ref": "#/$defs/nonemptyString" } } },
+        "claims": { "type": "array", "items": { "$ref": "#/$defs/factClaim" } },
+        "conflicts": { "type": "array", "items": { "$ref": "#/$defs/factConflict" } }
+      }
+    },
+    "personContextResolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contextId", "selectedPerson", "complete", "families", "claims", "conflicts"],
+      "properties": {
+        "contextId": { "$ref": "#/$defs/nonemptyString" },
+        "selectedPerson": { "$ref": "#/$defs/personReference" },
+        "complete": { "type": "boolean" },
+        "families": { "type": "array", "items": { "$ref": "#/$defs/parsedFamilyRecord" } },
+        "claims": { "type": "array", "items": { "$ref": "#/$defs/factClaim" } },
+        "conflicts": { "type": "array", "items": { "$ref": "#/$defs/factConflict" } }
+      }
+    },
+    "citationProposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["proposalId", "citationType", "selectedPerson", "renderedText", "sourceSpans", "conflicts", "warnings", "requiresApproval"],
+      "properties": {
+        "proposalId": { "$ref": "#/$defs/nonemptyString" },
+        "citationType": { "type": "string", "enum": ["juuret", "hiski"] },
+        "selectedPerson": { "$ref": "#/$defs/personReference" },
+        "renderedText": { "$ref": "#/$defs/nonemptyString" },
+        "sourceSpans": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/sourceSpan" } },
+        "conflicts": { "type": "array", "items": { "$ref": "#/$defs/factConflict" } },
+        "warnings": { "type": "array", "items": { "$ref": "#/$defs/warning" } },
+        "requiresApproval": { "const": true }
+      }
+    },
+    "eventType": { "type": "string", "enum": ["birthChristening", "marriage", "deathBurial"] },
+    "hiskiQuerySpecification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["queryId", "eventType", "parameters", "url", "motivatingClaimId"],
+      "properties": {
+        "queryId": { "$ref": "#/$defs/nonemptyString" },
+        "eventType": { "$ref": "#/$defs/eventType" },
+        "parameters": { "type": "object", "additionalProperties": { "type": "string" } },
+        "url": { "type": "string", "format": "uri" },
+        "motivatingClaimId": { "$ref": "#/$defs/nonemptyString" }
+      }
+    },
+    "hiskiCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidateId", "eventType", "rawEventDate", "rawNames", "rowText", "detailPath"],
+      "properties": {
+        "candidateId": { "$ref": "#/$defs/nonemptyString" },
+        "eventType": { "$ref": "#/$defs/eventType" },
+        "rawEventDate": { "type": "string" },
+        "rawNames": { "type": "array", "items": { "type": "string" } },
+        "rowText": { "$ref": "#/$defs/nonemptyString" },
+        "detailPath": { "$ref": "#/$defs/nonemptyString" }
+      }
+    },
+    "hiskiSearchResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query", "retrievedAt", "responseSha256", "candidates"],
+      "properties": {
+        "query": { "$ref": "#/$defs/hiskiQuerySpecification" },
+        "retrievedAt": { "type": "string", "format": "date-time" },
+        "responseSha256": { "$ref": "#/$defs/sha256" },
+        "candidates": { "type": "array", "items": { "$ref": "#/$defs/hiskiCandidate" } }
+      }
+    },
+    "hiskiRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidateId", "retrievedAt", "responseSha256", "recordText", "canonicalLink"],
+      "properties": {
+        "candidateId": { "$ref": "#/$defs/nonemptyString" },
+        "retrievedAt": { "type": "string", "format": "date-time" },
+        "responseSha256": { "$ref": "#/$defs/sha256" },
+        "recordText": { "$ref": "#/$defs/nonemptyString" },
+        "canonicalLink": { "type": "string", "format": "uri" }
+      }
+    },
+    "personCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "rawName", "rawBirthDate"],
+      "properties": {
+        "source": { "type": "string", "enum": ["familySearch", "juuretKalvialla", "hiski"] },
+        "rawName": { "$ref": "#/$defs/nonemptyString" },
+        "rawBirthDate": { "$ref": "#/$defs/nonemptyString" },
+        "rawDeathDate": { "type": "string" },
+        "familySearchId": { "type": "string" },
+        "hiskiCandidateId": { "type": "string" },
+        "provenance": { "type": "array", "items": { "$ref": "#/$defs/sourceSpan" } }
+      }
+    },
+    "familyComparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["comparisonId", "rows", "conflicts", "warnings"],
+      "properties": {
+        "comparisonId": { "$ref": "#/$defs/nonemptyString" },
+        "rows": { "type": "array", "items": { "type": "object" } },
+        "conflicts": { "type": "array", "items": { "$ref": "#/$defs/factConflict" } },
+        "warnings": { "type": "array", "items": { "$ref": "#/$defs/warning" } }
+      }
+    }
+  }
+}

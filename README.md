@@ -87,6 +87,10 @@ pages.
 - See `Docs/Architecture.md` for architecture and data flow
 - See `Docs/implementation-plan.md` for the staged implementation plan and current status
 - See `Docs/familysearch-bookmarklet.md` for the current FamilySearch WebKit extraction workflow
+- See `Docs/mcp-architecture.md` for the DSH/MCP service and tool contracts
+- See `Docs/mcp-roadmap.md` for the authoritative MCP phases 0 through 10
+- See `Docs/mcp-baseline.md` for the recorded Phase 0 test baseline
+- See `Schemas/mcp/v1/tool-catalog.json` for the versioned MCP tool schemas
 - See `development.md` for current build, test, and development workflow
 
 ## Targets

@@ -1,6 +1,13 @@
 Kalvian Roots Architecture
 ==========================
 
+MCP Project Contract
+--------------------
+
+This document describes the existing application architecture. The Phase 0
+contract for the DSH/MCP integration is `Docs/mcp-architecture.md`, and its
+authoritative 0–10 roadmap is `Docs/mcp-roadmap.md`.
+
 Overview
 --------
 
