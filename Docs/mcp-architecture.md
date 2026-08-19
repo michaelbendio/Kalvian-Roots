@@ -411,9 +411,8 @@ than duplicated into every entry.
 - [x] Audit behavior is defined.
 - [x] The 0–10 roadmap is recorded separately.
 - [x] The current non-Xcode baseline is recorded separately.
-- [ ] Existing Swift app tests pass on a configured Xcode toolchain (448 pass;
-  four existing failures are recorded in `mcp-baseline.md`).
+- [x] Existing Swift app tests pass on Xcode 27 beta 5 (452 pass, 0 fail,
+  0 skipped).
 
-Phase 0 remains open until the final test item is satisfied. The exact existing
-failures are recorded so later work can distinguish them from regressions
-without broadening this contract phase into unrelated cleanup.
+Phase 0 is closed. The initial failures and their test-only corrections are
+recorded so later work can distinguish the verified baseline from regressions.

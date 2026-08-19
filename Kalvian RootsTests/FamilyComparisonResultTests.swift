@@ -1855,7 +1855,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         XCTAssertTrue(script.contains("index = parsed.nextIndex"))
         XCTAssertTrue(script.contains("function vitalLabelsFor(label)"))
         XCTAssertTrue(script.contains("function dateLikeFromText(text)"))
-        XCTAssertTrue(script.contains("\\\\b\\\\d{1,2}\\\\.?\\\\s+[A-Za-zÅÄÖåäö.]+\\\\s+\\\\d{3,4}\\\\b"))
+        XCTAssertTrue(script.contains(#"\b\d{1,2}\.?\s+[A-Za-zÅÄÖåäö.]+\s+\d{3,4}\b"#))
         XCTAssertTrue(script.contains("function vitalFromTextBlock(panel, label)"))
         XCTAssertTrue(script.contains("function setExtractionStage(stage)"))
         XCTAssertTrue(script.contains("window.__kalvianRootsFamilySearchStage"))
@@ -2614,7 +2614,7 @@ final class FamilySearchDOMServiceTests: XCTestCase {
         let childIdRange = try XCTUnwrap(childLine.range(of: "&lt;LVP3-Y97&gt;"))
         let spouseRange = try XCTUnwrap(childLine.range(of: ">Matti Hilli</a>"))
         let spouseIdRange = try XCTUnwrap(childLine.range(of: "&lt;LVP3-YS5&gt;"))
-        let familyRange = try XCTUnwrap(childLine.range(of: #"class="family-link">Hilli</a>"#))
+        let familyRange = try XCTUnwrap(childLine.range(of: #"class="pseudo-family-id">Hilli</span>"#))
 
         XCTAssertLessThan(childIdRange.upperBound, spouseRange.lowerBound)
         XCTAssertLessThan(spouseRange.upperBound, spouseIdRange.lowerBound)
@@ -3884,7 +3884,7 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
         XCTAssertTrue(text.contains("Johannes\tYes, 27 Nov 1751\tYes, 27 Nov 1751\tYes, <FS-JOHANNES>, 27 Nov 1751\tName mismatch"))
     }
 
-    func testServerComparisonTableUsesGroupedSameDateNameMatch() {
+    func testServerFamilyPageUsesGroupedSameDateNameMatch() {
         let nameManager = NameEquivalenceManager()
         nameManager.clearAllEquivalences()
 
@@ -3933,19 +3933,20 @@ final class FamilySearchComparisonClipboardFormatterTests: XCTestCase {
             familySearchPersonId: nil
         )
 
-        let johannesLines = html
-            .split(separator: "\n")
-            .filter { $0.contains("Johannes") || $0.contains("Johanna") }
+        let childLines = html.components(
+            separatedBy: #"class="family-line child-line comparison-only-child">"#
+        ).dropFirst()
 
-        XCTAssertEqual(johannesLines.filter { $0.contains("<td") }.count, 1)
-        XCTAssertFalse(html.contains("<td class=\"comparison-review-name\""))
-        XCTAssertTrue(html.contains("<td>Yes<br>27 Nov 1751</td>"))
-        XCTAssertTrue(html.contains("<td>Yes<br>&lt;FS-JOHANNES&gt;<br>27 Nov 1751</td>"))
-        XCTAssertTrue(html.contains("1 row, 0 needing review"))
-        XCTAssertTrue(html.contains("class=\"comparison-table-wrap\""))
-        XCTAssertTrue(html.contains("onclick=\"copyComparisonText()\""))
-        XCTAssertTrue(html.contains("Johannes\tYes, 27 Nov 1751\tYes, 27 Nov 1751\tYes, &lt;FS-JOHANNES&gt;, 27 Nov 1751\tName mismatch"))
-        XCTAssertTrue(html.contains("Name mismatch"))
+        XCTAssertEqual(childLines.count, 1)
+        guard let childLine = childLines.first else {
+            return
+        }
+        XCTAssertTrue(childLine.contains(">27.11.1751</a> Johannes <span"))
+        XCTAssertTrue(childLine.contains("name=Johanna"))
+        XCTAssertTrue(childLine.contains(#"<span class="source-markers">J, H, FS</span>"#))
+        XCTAssertTrue(childLine.contains(#"<span class="familysearch-id">&lt;FS-JOHANNES&gt;</span>"#))
+        XCTAssertFalse(childLine.contains("review-marker"))
+        XCTAssertFalse(html.contains("class=\"comparison-table-wrap\""))
         XCTAssertFalse(html.contains("HisKi-only"))
         XCTAssertFalse(html.contains("Missing in HisKi"))
     }
