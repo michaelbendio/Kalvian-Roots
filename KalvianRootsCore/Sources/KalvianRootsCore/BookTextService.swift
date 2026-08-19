@@ -306,7 +306,7 @@ public struct BookTextSnapshot: Sendable {
     self.completeText = completeText
     self.sourceRevision = SourceRevision(
       sourceId: sourceId,
-      fileName: fileName,
+      fileName: canonicalRootsFileName,
       sha256: hash,
       byteCount: data.count,
       loadedAt: Self.rfc3339(loadedAt),

@@ -50,6 +50,12 @@ no failures or skips. Acceptance evidence is recorded in `mcp-phase1.md`.
 Text Service result; discovery, startup, shutdown, standard-output discipline,
 and structured errors work; no AI, HiSki, or FamilySearch access occurs.
 
+**Status:** Complete. `KalvianRootsMCP` exposes only `get_family_text` over
+stdio and is registered through the enabled personal `kalvian-roots` plugin.
+Five MCP adapter tests, sixteen core tests, a release-executable protocol test,
+and a fresh Codex client call satisfy the gate. Acceptance evidence is recorded
+in `mcp-phase2.md`.
+
 ## Phase 3 — Family Parsing Service
 
 **Deliverable:** Move the existing DeepSeek-backed parser behind the shared

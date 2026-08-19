@@ -23,6 +23,11 @@ final class BookTextServiceTests: XCTestCase {
     XCTAssertEqual(record.span.startLine, 14)
     XCTAssertEqual(record.span.endLine, 27)
     XCTAssertEqual(record.source.loadedAt, "1970-01-01T00:00:00.000Z")
+    XCTAssertEqual(
+      Array(record.source.fileName.utf8),
+      Array(canonicalRootsFileName.utf8),
+      "The response must use the schema's canonical NFC filename literal"
+    )
     XCTAssertTrue(record.rawText.contains("<KN1X-VHG>"))
     XCTAssertFalse(record.rawText.contains("SAKERI 40"))
     XCTAssertFalse(record.rawText.contains("\n#"))
