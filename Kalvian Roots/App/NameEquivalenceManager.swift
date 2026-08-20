@@ -1,4 +1,5 @@
 import Foundation
+import KalvianRootsCore
 
 /**
  * NameEquivalenceManager
@@ -128,43 +129,15 @@ class NameEquivalenceManager {
     // MARK: - HisKi Query Forms
 
     func hiskiGivenNameSearchInput(for name: String) -> String? {
-        // HisKi already handles most Finnish/Swedish equivalents; these are only known query exceptions.
-        switch firstNormalizedToken(in: name) {
-        case "malin":
-            return "Magdalena"
-        case "pietari":
-            return "Per"
-        default:
-            return nil
-        }
+        HiskiQueryRules.givenNameSearchInput(for: name)
     }
 
     func hiskiPatronymicSearchInput(for patronymic: String) -> String? {
-        // HisKi already handles most patronymic variants; these forms need explicit query-only terms.
-        switch firstNormalizedToken(in: patronymic) {
-        case "luukkaanp":
-            return "Lucason"
-        case "luukkaant":
-            return "Lucasdr"
-        case "pietarinp":
-            return "Perss"
-        case "pietarint":
-            return "Persdr"
-        default:
-            return nil
-        }
+        HiskiQueryRules.patronymicSearchInput(for: patronymic)
     }
 
     func hiskiSurnameSearchInput(forPatronymic patronymic: String) -> String? {
-        // Query-only fallback for HisKi rows that store patronymics in surname fields.
-        switch firstNormalizedToken(in: patronymic) {
-        case "luukkaanp":
-            return "Lucason"
-        case "luukkaant":
-            return "Lucasdr"
-        default:
-            return nil
-        }
+        HiskiQueryRules.surnameSearchInput(forPatronymic: patronymic)
     }
 
 

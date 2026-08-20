@@ -299,7 +299,7 @@ normative, and a change to either follows the version rules above.
 | `generate_juuret_citation` | Phase 5 | resolved context ID, selected `PersonReference` | `CitationProposal` | None |
 | `build_hiski_query` | Phase 6 | event type and motivating person/fact context | Query specification and URL | None |
 | `search_hiski` | Phase 6 | query specification; explicit live-search flag | Candidate result rows and query provenance | HiSki only |
-| `get_hiski_record` | Phase 6 | candidate record reference | Exact detail evidence and canonical `sl.gif`-derived link | HiSki only |
+| `get_hiski_record` | Phase 6 | query specification and candidate record reference | Exact detail evidence, motivating Juuret provenance, and canonical `sl.gif`-derived link | HiSki only |
 | `compare_family_sources` | Phase 7 | Juuret context plus structured FamilySearch/HiSki candidates | `FamilyComparisonResult` representation and discrepancies | None |
 | `prepare_citation_proposals` | Phase 7 | comparison/workup ID and selected person | Juuret and HiSki proposals requiring approval | None |
 

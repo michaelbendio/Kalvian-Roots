@@ -116,12 +116,14 @@
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["eventType", "person", "motivatingClaimId"],
+        "required": ["eventType", "primaryName", "date", "motivation"],
         "properties": {
           "eventType": { "$ref": "#/$defs/eventType" },
-          "person": { "$ref": "#/$defs/personReference" },
-          "motivatingClaimId": { "$ref": "#/$defs/nonemptyString" },
-          "contextId": { "$ref": "#/$defs/nonemptyString" }
+          "primaryName": { "$ref": "#/$defs/nonemptyString" },
+          "secondaryName": { "type": "string" },
+          "date": { "$ref": "#/$defs/nonemptyString" },
+          "parentBirthYear": { "type": "integer" },
+          "motivation": { "$ref": "#/$defs/hiskiQueryMotivation" }
         }
       },
       "outputDataSchema": { "$ref": "#/$defs/hiskiQuerySpecification" }
@@ -133,10 +135,10 @@
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["query", "liveSearchApproved"],
+        "required": ["query", "allowLiveNetwork"],
         "properties": {
           "query": { "$ref": "#/$defs/hiskiQuerySpecification" },
-          "liveSearchApproved": { "const": true }
+          "allowLiveNetwork": { "const": true }
         }
       },
       "outputDataSchema": { "$ref": "#/$defs/hiskiSearchResult" }
@@ -148,10 +150,11 @@
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["candidateId", "liveFetchApproved"],
+        "required": ["query", "candidate", "allowLiveNetwork"],
         "properties": {
-          "candidateId": { "$ref": "#/$defs/nonemptyString" },
-          "liveFetchApproved": { "const": true }
+          "query": { "$ref": "#/$defs/hiskiQuerySpecification" },
+          "candidate": { "$ref": "#/$defs/hiskiCandidate" },
+          "allowLiveNetwork": { "const": true }
         }
       },
       "outputDataSchema": { "$ref": "#/$defs/hiskiRecord" }
@@ -397,53 +400,81 @@
         "requiresApproval": { "const": true }
       }
     },
-    "eventType": { "type": "string", "enum": ["birthChristening", "marriage", "deathBurial"] },
+    "eventType": { "type": "string", "enum": ["birth", "marriage", "death"] },
+    "hiskiQueryMotivation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["person", "juuretField", "juuretValue", "sourceSpan"],
+      "properties": {
+        "person": { "$ref": "#/$defs/personReference" },
+        "juuretField": { "$ref": "#/$defs/nonemptyString" },
+        "juuretValue": { "$ref": "#/$defs/nonemptyString" },
+        "sourceSpan": { "$ref": "#/$defs/sourceSpan" }
+      }
+    },
     "hiskiQuerySpecification": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["queryId", "eventType", "parameters", "url", "motivatingClaimId"],
+      "required": ["queryId", "eventType", "requestedPrimaryName", "requestedDate", "queryPrimaryName", "queryDate", "searchURL", "motivation"],
       "properties": {
         "queryId": { "$ref": "#/$defs/nonemptyString" },
         "eventType": { "$ref": "#/$defs/eventType" },
-        "parameters": { "type": "object", "additionalProperties": { "type": "string" } },
-        "url": { "type": "string", "format": "uri" },
-        "motivatingClaimId": { "$ref": "#/$defs/nonemptyString" }
+        "requestedPrimaryName": { "$ref": "#/$defs/nonemptyString" },
+        "requestedSecondaryName": { "type": "string" },
+        "requestedDate": { "$ref": "#/$defs/nonemptyString" },
+        "parentBirthYear": { "type": "integer" },
+        "queryPrimaryName": { "$ref": "#/$defs/nonemptyString" },
+        "querySecondaryName": { "type": "string" },
+        "queryDate": { "$ref": "#/$defs/nonemptyString" },
+        "searchURL": { "type": "string", "format": "uri" },
+        "motivation": { "$ref": "#/$defs/hiskiQueryMotivation" }
+      }
+    },
+    "hiskiResultField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "value"],
+      "properties": {
+        "label": { "$ref": "#/$defs/nonemptyString" },
+        "value": { "type": "string" }
       }
     },
     "hiskiCandidate": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["candidateId", "eventType", "rawEventDate", "rawNames", "rowText", "detailPath"],
+      "required": ["candidateId", "eventType", "recordURL", "recordPath", "fields", "rowText"],
       "properties": {
         "candidateId": { "$ref": "#/$defs/nonemptyString" },
         "eventType": { "$ref": "#/$defs/eventType" },
-        "rawEventDate": { "type": "string" },
-        "rawNames": { "type": "array", "items": { "type": "string" } },
-        "rowText": { "$ref": "#/$defs/nonemptyString" },
-        "detailPath": { "$ref": "#/$defs/nonemptyString" }
+        "recordURL": { "type": "string", "format": "uri" },
+        "recordPath": { "$ref": "#/$defs/nonemptyString" },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/hiskiResultField" } },
+        "rowText": { "type": "string" }
       }
     },
     "hiskiSearchResult": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["query", "retrievedAt", "responseSha256", "candidates"],
+      "required": ["query", "candidates", "candidateCount", "ambiguous", "responseSha256"],
       "properties": {
         "query": { "$ref": "#/$defs/hiskiQuerySpecification" },
-        "retrievedAt": { "type": "string", "format": "date-time" },
-        "responseSha256": { "$ref": "#/$defs/sha256" },
-        "candidates": { "type": "array", "items": { "$ref": "#/$defs/hiskiCandidate" } }
+        "candidates": { "type": "array", "items": { "$ref": "#/$defs/hiskiCandidate" } },
+        "candidateCount": { "type": "integer", "minimum": 0 },
+        "ambiguous": { "type": "boolean" },
+        "responseSha256": { "$ref": "#/$defs/sha256" }
       }
     },
     "hiskiRecord": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["candidateId", "retrievedAt", "responseSha256", "recordText", "canonicalLink"],
+      "required": ["query", "candidate", "citationURL", "fields", "recordText", "responseSha256"],
       "properties": {
-        "candidateId": { "$ref": "#/$defs/nonemptyString" },
-        "retrievedAt": { "type": "string", "format": "date-time" },
-        "responseSha256": { "$ref": "#/$defs/sha256" },
-        "recordText": { "$ref": "#/$defs/nonemptyString" },
-        "canonicalLink": { "type": "string", "format": "uri" }
+        "query": { "$ref": "#/$defs/hiskiQuerySpecification" },
+        "candidate": { "$ref": "#/$defs/hiskiCandidate" },
+        "citationURL": { "type": "string", "format": "uri" },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/hiskiResultField" } },
+        "recordText": { "type": "string" },
+        "responseSha256": { "$ref": "#/$defs/sha256" }
       }
     },
     "personCandidate": {

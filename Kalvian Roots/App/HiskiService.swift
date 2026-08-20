@@ -1069,37 +1069,7 @@ class HiskiService {
      * This replicates the logic from the Python script hiski.py
      */
     static func extractCitationUrlFromHtml(_ html: String) -> String? {
-        // Pattern to find citation links with +t in the href.
-        // Example: HREF="/hiski?en+t4086417"
-        let citationHrefPattern = #"href\s*=\s*["'](/hiski\?en\+t\d+)["']"#
-        if let citationPath = firstCapture(in: html, pattern: citationHrefPattern) {
-            let citationUrl = "https://hiski.genealogia.fi" + citationPath
-            logInfo(.app, "📋 Extracted citation URL from HTML: \(citationUrl)")
-            return citationUrl
-        }
-
-        // HisKi record pages may expose the stable event id as:
-        // Link to this event [ 4087076 ]
-        let eventCodePattern = #"Link(?:\s|&nbsp;)+to(?:\s|&nbsp;)+this(?:\s|&nbsp;)+event[\s\S]*?\[\s*(\d+)\s*\]"#
-        if let eventCode = firstCapture(in: html, pattern: eventCodePattern) {
-            let citationUrl = "https://hiski.genealogia.fi/hiski?en+t\(eventCode)"
-            logInfo(.app, "📋 Built HisKi citation URL from event code: \(citationUrl)")
-            return citationUrl
-        }
-
-        logWarn(.app, "⚠️ Could not find citation link in record page HTML")
-        return nil
-    }
-
-    private static func firstCapture(in text: String, pattern: String) -> String? {
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
-              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-              match.numberOfRanges > 1,
-              let captureRange = Range(match.range(at: 1), in: text) else {
-            return nil
-        }
-
-        return String(text[captureRange])
+        HiskiHTMLParser.citationURL(fromRecordHTML: html)
     }
 
     /**
@@ -1294,15 +1264,7 @@ class HiskiService {
     }
     
     private func extractSlGifHref(from html: String) -> String? {
-        let pattern = "<a\\s+href=\"([^\"]+)\">\\s*<img[^>]+src=\"/historia/sl\\.gif\""
-
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
-              let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
-              let hrefRange = Range(match.range(at: 1), in: html) else {
-            return nil
-        }
-
-        return String(html[hrefRange])
+        HiskiHTMLParser.slGifHref(from: html)
     }
 
     private func extractTableCellContents(from html: String) -> [String] {
@@ -1367,31 +1329,7 @@ class HiskiService {
     // MARK: - URL Building
 
     func buildBirthSearchUrl(name: String, date: String) throws -> URL {
-        let params = [
-            "komento": "haku",
-            "srk": parishes,
-            "kirja": "kastetut",
-            "kieli": "en",
-            "etunimi": name,
-            "alkuvuosi": date,
-            "loppuvuosi": date,
-            "ikyla": "",
-            "maxkpl": String(Self.maxHiskiResults),
-            "ietunimi": "",
-            "aetunimi": "",
-            "ipatronyymi": "",
-            "apatronyymi": "",
-            "isukunimi": "",
-            "asukunimi": "",
-            "iammatti": "",
-            "aammatti": "",
-            "ketunimi": "",
-            "kpatronyymi": "",
-            "ksukunimi": "",
-            "kammatti": ""
-        ]
-
-        return try buildSearchUrl(params: params)
+        try HiskiQueryRules.searchURL(eventType: .birth, primaryName: name, date: date)
     }
 
     func buildFamilyBirthSearchUrl(
@@ -1666,55 +1604,16 @@ class HiskiService {
     }
     
     private func buildDeathSearchUrl(name: String, date: String) throws -> URL {
-        let params = [
-            "komento": "haku",
-            "srk": parishes,
-            "kirja": "haudatut",
-            "kieli": "en",
-            "alkuvuosi": date,
-            "loppuvuosi": date,
-            "maxkpl": String(Self.maxHiskiResults),
-            "ietunimi": name,
-            "aetunimi": "",
-            "ipatronyymi": "",
-            "apatronyymi": "",
-            "isukunimi": "",
-            "asukunimi": "",
-            "iammatti": "",
-            "aammatti": "",
-            "ikyla": "",
-            "ssuhde": "ei+v%E4li%E4",
-            "ksyy": "",
-            "syntalku": "",
-            "syntloppu": "",
-            "ika": ""
-        ]
-        
-        return try buildSearchUrl(params: params)
+        try HiskiQueryRules.searchURL(eventType: .death, primaryName: name, date: date)
     }
     
     private func buildMarriageSearchUrl(husbandName: String, wifeName: String, date: String) throws -> URL {
-        let params = [
-            "komento": "haku",
-            "srk": parishes,
-            "kirja": "vihityt",
-            "kieli": "en",
-            "alkuvuosi": date,
-            "loppuvuosi": date,
-            "maxkpl": String(Self.maxHiskiResults),
-            "ietunimi": husbandName,
-            "aetunimi": wifeName,
-            "ipatronyymi": "",
-            "apatronyymi": "",
-            "isukunimi": "",
-            "asukunimi": "",
-            "iammatti": "",
-            "aammatti": "",
-            "ikyla": "",
-            "akyla": ""
-        ]
-        
-        return try buildSearchUrl(params: params)
+        try HiskiQueryRules.searchURL(
+            eventType: .marriage,
+            primaryName: husbandName,
+            secondaryName: wifeName,
+            date: date
+        )
     }
     
     private func buildSearchUrl(params: [String: String]) throws -> URL {
@@ -1810,25 +1709,6 @@ class HiskiService {
     // MARK: - Date Formatting
     
     private func formatDateForHiski(_ dateString: String, parentBirthYear: Int? = nil) -> String {
-        var cleaned = dateString.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        if cleaned.contains(".") {
-            let components = cleaned.components(separatedBy: ".")
-            if components.count == 3 {
-                let day = String(Int(components[0]) ?? 0)
-                let month = String(Int(components[1]) ?? 0)
-                var year = components[2]
-                
-                // If 2-digit year, expand using CitationGenerator's logic
-                if year.count == 2, let twoDigitYear = Int(year) {
-                    let fullYear = CitationGenerator.inferCentury(for: twoDigitYear, parentBirthYear: parentBirthYear)
-                    year = String(fullYear)
-                }
-                
-                return "\(day).\(month).\(year)"
-            }
-        }
-        
-        return cleaned
+        HiskiQueryRules.dateForQuery(dateString, parentBirthYear: parentBirthYear)
     }
 }

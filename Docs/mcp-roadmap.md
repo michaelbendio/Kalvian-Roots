@@ -126,6 +126,12 @@ retrieval through the existing `sl.gif` logic.
 names remain exact; ambiguous sets remain candidates; an opt-in live smoke test
 succeeds under the explicit VPN-ready workflow.
 
+**Status:** Implementation complete; live acceptance pending. Shared query,
+date, name-exception, `sl.gif`, and citation-link rules now serve both the app
+and MCP. Saved birth, marriage, death, and detail fixtures pass; live tools
+require explicit network opt-in. The remaining gate is the VPN-confirmed smoke
+test documented in `mcp-phase6.md`.
+
 ## Phase 7 — Single-family DSH researcher
 
 **Deliverable:** Teach DSH to coordinate the services for one family and return

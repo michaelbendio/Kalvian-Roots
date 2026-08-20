@@ -9,7 +9,7 @@ final class KalvianRootsMCPServerTests: XCTestCase {
   private let fixedDate = Date(timeIntervalSince1970: 1_777_777_777)
   private let fixedOperationID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
 
-  func testDiscoveryExposesPhaseFiveTools() async throws {
+  func testDiscoveryExposesPhaseSixTools() async throws {
     let session = try await makeSession()
     defer { session.stop() }
 
@@ -20,9 +20,68 @@ final class KalvianRootsMCPServerTests: XCTestCase {
       "get_family_text", "parse_family", "get_parsed_family",
       "resolve_family_references", "resolve_person_context",
       "generate_juuret_citation",
+      "build_hiski_query", "search_hiski", "get_hiski_record",
     ])
     XCTAssertEqual(tools.first?.annotations.readOnlyHint, true)
     XCTAssertEqual(tools.first?.annotations.openWorldHint, false)
+  }
+
+  func testHiskiToolsBuildSearchAndRetrieveWithoutChoosingAmbiguousCandidate() async throws {
+    let session = try await makeSession()
+    defer { session.stop() }
+    let source = try await session.bookTextService.getFamilyText(
+      familyId: "SAKERI 4", expectedSourceSHA256: nil)
+    let person = PersonReference(
+      familyId: "SAKERI 4", coupleIndex: 0, role: .child, personIndex: 0,
+      rawName: "Maria", rawBirthDate: "03.03.1756")
+    let motivation = HiskiQueryMotivation(
+      person: person, juuretField: "birthDate", juuretValue: "03.03.1756",
+      sourceSpan: source.span)
+
+    let built = try await session.client.callTool(
+      name: "build_hiski_query",
+      arguments: [
+        "eventType": "birth", "primaryName": "Maria", "date": "03.03.1756",
+        "motivation": try Value(motivation),
+      ])
+    XCTAssertEqual(built.isError, false)
+    let builtEnvelope: ToolEnvelope<HiskiQuery> = try decodeTextContent(built.content)
+    XCTAssertEqual(builtEnvelope.data.queryDate, "3.3.1756")
+    XCTAssertEqual(builtEnvelope.provenance, [source.span])
+
+    let blocked = try await session.client.callTool(
+      name: "search_hiski",
+      arguments: ["query": try Value(builtEnvelope.data), "allowLiveNetwork": false])
+    let blockedError: ToolErrorEnvelope = try decodeTextContent(blocked.content)
+    XCTAssertEqual(blockedError.code, "approval_required")
+
+    let searched = try await session.client.callTool(
+      name: "search_hiski",
+      arguments: ["query": try Value(builtEnvelope.data), "allowLiveNetwork": true])
+    XCTAssertEqual(searched.isError, false)
+    let searchEnvelope: ToolEnvelope<HiskiSearchResult> = try decodeTextContent(searched.content)
+    XCTAssertEqual(searchEnvelope.data.candidateCount, 2)
+    XCTAssertTrue(searchEnvelope.data.ambiguous)
+    XCTAssertEqual(searchEnvelope.data.candidates.map { $0.fields.last?.value }, ["Maria", "Maria Elisabeta"])
+    XCTAssertEqual(searchEnvelope.warnings.map(\.code), ["ambiguous_hiski_candidates"])
+
+    let recordResult = try await session.client.callTool(
+      name: "get_hiski_record",
+      arguments: [
+        "query": try Value(searchEnvelope.data.query),
+        "candidate": try Value(searchEnvelope.data.candidates[0]),
+        "allowLiveNetwork": true,
+      ])
+    let recordEnvelope: ToolEnvelope<HiskiRecord> = try decodeTextContent(recordResult.content)
+    XCTAssertEqual(recordEnvelope.data.citationURL, "https://hiski.genealogia.fi/hiski?en+t4087076")
+    XCTAssertEqual(recordEnvelope.data.query.motivation, builtEnvelope.data.motivation)
+    XCTAssertEqual(recordEnvelope.data.candidate.fields.last?.value, "Maria")
+    XCTAssertEqual(recordEnvelope.provenance, [builtEnvelope.data.motivation.sourceSpan])
+
+    let audits = await session.auditWriter.records
+    XCTAssertEqual(audits.map(\.externalServicesContacted), [
+      [], [], ["hiski.genealogia.fi"], ["hiski.genealogia.fi"],
+    ])
   }
 
   func testSakeri4ResponseMatchesBookTextServiceExactly() async throws {
@@ -323,6 +382,7 @@ final class KalvianRootsMCPServerTests: XCTestCase {
       bookTextService: bookTextService,
       familyParsingService: parsingService,
       personContextStore: contextStore,
+      hiskiResearchService: StubHiskiResearchService(),
       auditWriter: auditWriter,
       now: { fixedDate },
       operationID: { fixedOperationID }
@@ -349,6 +409,64 @@ final class KalvianRootsMCPServerTests: XCTestCase {
     }
     return try JSONDecoder().decode(T.self, from: Data(text.utf8))
   }
+}
+
+private struct StubHiskiResearchService: HiskiResearchServing {
+  private let builder = HiskiResearchService(fetcher: StubHiskiFetcher())
+
+  func buildQuery(
+    eventType: HiskiEventType,
+    primaryName: String,
+    secondaryName: String?,
+    date: String,
+    parentBirthYear: Int?,
+    motivation: HiskiQueryMotivation
+  ) throws -> HiskiQuery {
+    try builder.buildQuery(
+      eventType: eventType, primaryName: primaryName, secondaryName: secondaryName,
+      date: date, parentBirthYear: parentBirthYear, motivation: motivation)
+  }
+
+  func search(_ query: HiskiQuery, allowLiveNetwork: Bool) async throws -> HiskiSearchResult {
+    guard allowLiveNetwork else { throw HiskiResearchServiceError.liveNetworkApprovalRequired }
+    let fields1 = [
+      HiskiResultField(label: "Born", value: "3.3.1756"),
+      HiskiResultField(label: "Child", value: "Maria"),
+    ]
+    let fields2 = [
+      HiskiResultField(label: "Born", value: "3.3.1756"),
+      HiskiResultField(label: "Child", value: "Maria Elisabeta"),
+    ]
+    return HiskiSearchResult(query: query, candidates: [
+      HiskiResultCandidate(
+        candidateId: "candidate-1", eventType: .birth,
+        recordURL: "https://hiski.genealogia.fi/hiski?en+0265+kastetut+3326",
+        recordPath: "/hiski?en+0265+kastetut+3326", fields: fields1,
+        rowText: "3.3.1756 | Maria"),
+      HiskiResultCandidate(
+        candidateId: "candidate-2", eventType: .birth,
+        recordURL: "https://hiski.genealogia.fi/hiski?en+0165+kastetut+9988",
+        recordPath: "/hiski?en+0165+kastetut+9988", fields: fields2,
+        rowText: "3.3.1756 | Maria Elisabeta"),
+    ], responseSha256: String(repeating: "a", count: 64))
+  }
+
+  func record(
+    for candidate: HiskiResultCandidate,
+    query: HiskiQuery,
+    allowLiveNetwork: Bool
+  ) async throws -> HiskiRecord {
+    guard allowLiveNetwork else { throw HiskiResearchServiceError.liveNetworkApprovalRequired }
+    return HiskiRecord(
+      query: query, candidate: candidate,
+      citationURL: "https://hiski.genealogia.fi/hiski?en+t4087076",
+      fields: candidate.fields, recordText: candidate.rowText,
+      responseSha256: String(repeating: "b", count: 64))
+  }
+}
+
+private struct StubHiskiFetcher: HiskiHTMLFetching {
+  func html(from url: URL) async throws -> String { "" }
 }
 
 private actor StubParsingService: FamilyParsingServing {

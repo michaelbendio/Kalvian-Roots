@@ -4,7 +4,7 @@ import KalvianRootsCore
 import MCP
 
 public let kalvianRootsMCPContractVersion = "1.0"
-public let kalvianRootsMCPExecutableVersion = "0.4.0"
+public let kalvianRootsMCPExecutableVersion = "0.5.0"
 
 public struct ToolWarning: Codable, Equatable, Sendable {
   public let code: String
@@ -131,6 +131,7 @@ public struct KalvianRootsMCPServerFactory {
   private let familyNetworkService: any FamilyNetworkServing
   private let citationService: any CitationServing
   private let personContextStore: any PersonContextStoring
+  private let hiskiResearchService: any HiskiResearchServing
   private let auditWriter: any MCPAuditWriting
   private let now: NowProvider
   private let operationID: OperationIDProvider
@@ -141,6 +142,7 @@ public struct KalvianRootsMCPServerFactory {
     familyNetworkService: (any FamilyNetworkServing)? = nil,
     citationService: any CitationServing = JuuretCitationService(),
     personContextStore: any PersonContextStoring = FilePersonContextStore(),
+    hiskiResearchService: any HiskiResearchServing = HiskiResearchService(),
     auditWriter: any MCPAuditWriting = FileMCPAuditWriter(),
     now: @escaping NowProvider = { Date() },
     operationID: @escaping OperationIDProvider = { UUID() }
@@ -152,6 +154,7 @@ public struct KalvianRootsMCPServerFactory {
     )
     self.citationService = citationService
     self.personContextStore = personContextStore
+    self.hiskiResearchService = hiskiResearchService
     self.auditWriter = auditWriter
     self.now = now
     self.operationID = operationID
@@ -162,7 +165,7 @@ public struct KalvianRootsMCPServerFactory {
       name: "kalvian-roots",
       version: kalvianRootsMCPExecutableVersion,
       title: "Kalvian Roots",
-      instructions: "Read, parse, resolve, and prepare deterministic Juuret citation proposals.",
+      instructions: "Read, parse, resolve, prepare Juuret citations, and research bounded HiSki evidence.",
       capabilities: .init(tools: .init(listChanged: false))
     )
 
@@ -171,6 +174,7 @@ public struct KalvianRootsMCPServerFactory {
         Self.getFamilyTextTool, Self.parseFamilyTool, Self.getParsedFamilyTool,
         Self.resolveFamilyReferencesTool, Self.resolvePersonContextTool,
         Self.generateJuuretCitationTool,
+        Self.buildHiskiQueryTool, Self.searchHiskiTool, Self.getHiskiRecordTool,
       ])
     }
 
@@ -179,6 +183,7 @@ public struct KalvianRootsMCPServerFactory {
     let familyNetworkService = self.familyNetworkService
     let citationService = self.citationService
     let personContextStore = self.personContextStore
+    let hiskiResearchService = self.hiskiResearchService
     let auditWriter = self.auditWriter
     let now = self.now
     let operationID = self.operationID
@@ -212,6 +217,24 @@ public struct KalvianRootsMCPServerFactory {
           request: request, operationId: id, generatedAt: generatedAt,
           citationService: citationService, personContextStore: personContextStore,
           auditWriter: auditWriter
+        )
+      }
+      if request.name == "build_hiski_query" {
+        return await Self.handleBuildHiskiQuery(
+          request: request, operationId: id, generatedAt: generatedAt,
+          hiskiResearchService: hiskiResearchService, auditWriter: auditWriter
+        )
+      }
+      if request.name == "search_hiski" {
+        return await Self.handleSearchHiski(
+          request: request, operationId: id, generatedAt: generatedAt,
+          hiskiResearchService: hiskiResearchService, auditWriter: auditWriter
+        )
+      }
+      if request.name == "get_hiski_record" {
+        return await Self.handleGetHiskiRecord(
+          request: request, operationId: id, generatedAt: generatedAt,
+          hiskiResearchService: hiskiResearchService, auditWriter: auditWriter
         )
       }
       if request.name == "resolve_person_context" {
@@ -508,6 +531,133 @@ public struct KalvianRootsMCPServerFactory {
     )
   )
 
+  private static let sourceSpanSchema: Value = .object([
+    "type": "object", "additionalProperties": false,
+    "required": [
+      "sourceId", "sourceSha256", "familyId", "pageReferences", "startLine",
+      "endLine", "blockSha256",
+    ],
+    "properties": .object([
+      "sourceId": .object(["type": "string", "minLength": 1]),
+      "sourceSha256": .object(["type": "string", "pattern": "^[a-f0-9]{64}$"]),
+      "familyId": .object(["type": "string", "minLength": 3]),
+      "pageReferences": .object([
+        "type": "array", "items": .object(["type": "string"]),
+      ]),
+      "startLine": .object(["type": "integer", "minimum": 1]),
+      "endLine": .object(["type": "integer", "minimum": 1]),
+      "blockSha256": .object(["type": "string", "pattern": "^[a-f0-9]{64}$"]),
+    ]),
+  ])
+
+  private static let hiskiMotivationSchema: Value = .object([
+    "type": "object", "additionalProperties": false,
+    "required": ["person", "juuretField", "juuretValue", "sourceSpan"],
+    "properties": .object([
+      "person": personReferenceSchema,
+      "juuretField": .object(["type": "string", "minLength": 1]),
+      "juuretValue": .object(["type": "string", "minLength": 1]),
+      "sourceSpan": sourceSpanSchema,
+    ]),
+  ])
+
+  private static let hiskiQuerySchema: Value = .object([
+    "type": "object", "additionalProperties": false,
+    "required": [
+      "queryId", "eventType", "requestedPrimaryName", "requestedDate",
+      "queryPrimaryName", "queryDate", "searchURL", "motivation",
+    ],
+    "properties": .object([
+      "queryId": .object(["type": "string", "minLength": 1]),
+      "eventType": .object(["type": "string", "enum": ["birth", "marriage", "death"]]),
+      "requestedPrimaryName": .object(["type": "string", "minLength": 1]),
+      "requestedSecondaryName": .object(["type": "string"]),
+      "requestedDate": .object(["type": "string", "minLength": 1]),
+      "parentBirthYear": .object(["type": "integer"]),
+      "queryPrimaryName": .object(["type": "string", "minLength": 1]),
+      "querySecondaryName": .object(["type": "string"]),
+      "queryDate": .object(["type": "string", "minLength": 1]),
+      "searchURL": .object(["type": "string", "minLength": 1]),
+      "motivation": hiskiMotivationSchema,
+    ]),
+  ])
+
+  private static let hiskiCandidateSchema: Value = .object([
+    "type": "object", "additionalProperties": false,
+    "required": ["candidateId", "eventType", "recordURL", "recordPath", "fields", "rowText"],
+    "properties": .object([
+      "candidateId": .object(["type": "string", "minLength": 1]),
+      "eventType": .object(["type": "string", "enum": ["birth", "marriage", "death"]]),
+      "recordURL": .object(["type": "string", "minLength": 1]),
+      "recordPath": .object(["type": "string", "minLength": 1]),
+      "fields": .object([
+        "type": "array",
+        "items": .object([
+          "type": "object", "additionalProperties": false,
+          "required": ["label", "value"],
+          "properties": .object([
+            "label": .object(["type": "string", "minLength": 1]),
+            "value": .object(["type": "string"]),
+          ]),
+        ]),
+      ]),
+      "rowText": .object(["type": "string"]),
+    ]),
+  ])
+
+  private static let buildHiskiQueryTool = Tool(
+    name: "build_hiski_query", title: "Build HiSki query",
+    description: "Build a deterministic birth, marriage, or death query tied to the Juuret fact that motivated it.",
+    inputSchema: .object([
+      "type": "object", "additionalProperties": false,
+      "required": ["eventType", "primaryName", "date", "motivation"],
+      "properties": .object([
+        "eventType": .object(["type": "string", "enum": ["birth", "marriage", "death"]]),
+        "primaryName": .object(["type": "string", "minLength": 1]),
+        "secondaryName": .object(["type": "string"]),
+        "date": .object(["type": "string", "minLength": 1]),
+        "parentBirthYear": .object(["type": "integer"]),
+        "motivation": hiskiMotivationSchema,
+      ]),
+    ]),
+    annotations: .init(
+      title: "Build HiSki query", readOnlyHint: true, destructiveHint: false,
+      idempotentHint: true, openWorldHint: false)
+  )
+
+  private static let searchHiskiTool = Tool(
+    name: "search_hiski", title: "Search HiSki",
+    description: "Explicitly run a previously built HiSki query and return every date-matching sl.gif candidate without selecting an identity.",
+    inputSchema: .object([
+      "type": "object", "additionalProperties": false,
+      "required": ["query", "allowLiveNetwork"],
+      "properties": .object([
+        "query": hiskiQuerySchema,
+        "allowLiveNetwork": .object(["type": "boolean", "const": true]),
+      ]),
+    ]),
+    annotations: .init(
+      title: "Search HiSki", readOnlyHint: true, destructiveHint: false,
+      idempotentHint: false, openWorldHint: true)
+  )
+
+  private static let getHiskiRecordTool = Tool(
+    name: "get_hiski_record", title: "Get HiSki detail record",
+    description: "Explicitly retrieve one HiSki sl.gif detail record and its canonical citation link while retaining the motivating Juuret query.",
+    inputSchema: .object([
+      "type": "object", "additionalProperties": false,
+      "required": ["query", "candidate", "allowLiveNetwork"],
+      "properties": .object([
+        "query": hiskiQuerySchema,
+        "candidate": hiskiCandidateSchema,
+        "allowLiveNetwork": .object(["type": "boolean", "const": true]),
+      ]),
+    ]),
+    annotations: .init(
+      title: "Get HiSki detail record", readOnlyHint: true, destructiveHint: false,
+      idempotentHint: false, openWorldHint: true)
+  )
+
   private struct ParsedFamilyNotFound: Codable, Sendable {
     let found: Bool
     init() { found = false }
@@ -676,6 +826,26 @@ public struct KalvianRootsMCPServerFactory {
   private struct GenerateCitationArguments: Decodable {
     let contextId: String
     let selectedPerson: PersonReference
+  }
+
+  private struct BuildHiskiQueryArguments: Decodable {
+    let eventType: HiskiEventType
+    let primaryName: String
+    let secondaryName: String?
+    let date: String
+    let parentBirthYear: Int?
+    let motivation: HiskiQueryMotivation
+  }
+
+  private struct SearchHiskiArguments: Decodable {
+    let query: HiskiQuery
+    let allowLiveNetwork: Bool
+  }
+
+  private struct GetHiskiRecordArguments: Decodable {
+    let query: HiskiQuery
+    let candidate: HiskiResultCandidate
+    let allowLiveNetwork: Bool
   }
 
   private struct PreparedStartingFamily {
@@ -887,6 +1057,144 @@ public struct KalvianRootsMCPServerFactory {
     }
   }
 
+  private static func handleBuildHiskiQuery(
+    request: CallTool.Parameters,
+    operationId: String,
+    generatedAt: String,
+    hiskiResearchService: any HiskiResearchServing,
+    auditWriter: any MCPAuditWriting
+  ) async -> CallTool.Result {
+    let allowed: Set<String> = [
+      "eventType", "primaryName", "secondaryName", "date", "parentBirthYear", "motivation",
+    ]
+    guard Set((request.arguments ?? [:]).keys).subtracting(allowed).isEmpty,
+      let arguments = try? decodeArguments(BuildHiskiQueryArguments.self, request: request)
+    else {
+      return await errorResult(
+        code: "invalid_request", message: "build_hiski_query arguments are invalid.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter)
+    }
+    do {
+      let query = try hiskiResearchService.buildQuery(
+        eventType: arguments.eventType, primaryName: arguments.primaryName,
+        secondaryName: arguments.secondaryName, date: arguments.date,
+        parentBirthYear: arguments.parentBirthYear, motivation: arguments.motivation)
+      let envelope = ToolEnvelope(
+        contractVersion: kalvianRootsMCPContractVersion, operationId: operationId,
+        generatedAt: generatedAt, tool: request.name, readOnly: true, data: query,
+        warnings: [], conflicts: [FactConflict](), provenance: [query.motivation.sourceSpan],
+        auditRef: "audit:\(operationId)")
+      return try await successResult(
+        envelope: envelope, request: request, operationId: operationId,
+        generatedAt: generatedAt, auditWriter: auditWriter, cacheStatus: "not_applicable",
+        externalServicesContacted: [])
+    } catch let error as HiskiResearchServiceError {
+      return await errorResult(
+        code: error.code, message: error.localizedDescription, operationId: operationId,
+        retryable: false, details: nil, request: request, generatedAt: generatedAt,
+        auditWriter: auditWriter)
+    } catch {
+      return await errorResult(
+        code: "internal_error", message: "The operation could not be completed.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter)
+    }
+  }
+
+  private static func handleSearchHiski(
+    request: CallTool.Parameters,
+    operationId: String,
+    generatedAt: String,
+    hiskiResearchService: any HiskiResearchServing,
+    auditWriter: any MCPAuditWriting
+  ) async -> CallTool.Result {
+    let allowed: Set<String> = ["query", "allowLiveNetwork"]
+    guard Set((request.arguments ?? [:]).keys).subtracting(allowed).isEmpty,
+      let arguments = try? decodeArguments(SearchHiskiArguments.self, request: request)
+    else {
+      return await errorResult(
+        code: "invalid_request", message: "search_hiski arguments are invalid.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter)
+    }
+    do {
+      let result = try await hiskiResearchService.search(
+        arguments.query, allowLiveNetwork: arguments.allowLiveNetwork)
+      let warnings = result.ambiguous
+        ? [ToolWarning(
+          code: "ambiguous_hiski_candidates",
+          message: "Multiple HiSki rows match the query date; review every candidate.")]
+        : []
+      let envelope = ToolEnvelope(
+        contractVersion: kalvianRootsMCPContractVersion, operationId: operationId,
+        generatedAt: generatedAt, tool: request.name, readOnly: true, data: result,
+        warnings: warnings, conflicts: [FactConflict](),
+        provenance: [result.query.motivation.sourceSpan], auditRef: "audit:\(operationId)")
+      return try await successResult(
+        envelope: envelope, request: request, operationId: operationId,
+        generatedAt: generatedAt, auditWriter: auditWriter, cacheStatus: "not_applicable",
+        externalServicesContacted: ["hiski.genealogia.fi"])
+    } catch let error as HiskiResearchServiceError {
+      return await errorResult(
+        code: error.code, message: error.localizedDescription, operationId: operationId,
+        retryable: hiskiRetryable(error), details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter,
+        externalServicesContacted: arguments.allowLiveNetwork ? ["hiski.genealogia.fi"] : [])
+    } catch {
+      return await errorResult(
+        code: "network_error", message: error.localizedDescription, operationId: operationId,
+        retryable: true, details: nil, request: request, generatedAt: generatedAt,
+        auditWriter: auditWriter,
+        externalServicesContacted: arguments.allowLiveNetwork ? ["hiski.genealogia.fi"] : [])
+    }
+  }
+
+  private static func handleGetHiskiRecord(
+    request: CallTool.Parameters,
+    operationId: String,
+    generatedAt: String,
+    hiskiResearchService: any HiskiResearchServing,
+    auditWriter: any MCPAuditWriting
+  ) async -> CallTool.Result {
+    let allowed: Set<String> = ["query", "candidate", "allowLiveNetwork"]
+    guard Set((request.arguments ?? [:]).keys).subtracting(allowed).isEmpty,
+      let arguments = try? decodeArguments(GetHiskiRecordArguments.self, request: request)
+    else {
+      return await errorResult(
+        code: "invalid_request", message: "get_hiski_record arguments are invalid.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter)
+    }
+    do {
+      let record = try await hiskiResearchService.record(
+        for: arguments.candidate, query: arguments.query,
+        allowLiveNetwork: arguments.allowLiveNetwork)
+      let envelope = ToolEnvelope(
+        contractVersion: kalvianRootsMCPContractVersion, operationId: operationId,
+        generatedAt: generatedAt, tool: request.name, readOnly: true, data: record,
+        warnings: [], conflicts: [FactConflict](),
+        provenance: [record.query.motivation.sourceSpan],
+        auditRef: "audit:\(operationId)")
+      return try await successResult(
+        envelope: envelope, request: request, operationId: operationId,
+        generatedAt: generatedAt, auditWriter: auditWriter, cacheStatus: "not_applicable",
+        externalServicesContacted: ["hiski.genealogia.fi"])
+    } catch let error as HiskiResearchServiceError {
+      return await errorResult(
+        code: error.code, message: error.localizedDescription, operationId: operationId,
+        retryable: hiskiRetryable(error), details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter,
+        externalServicesContacted: arguments.allowLiveNetwork ? ["hiski.genealogia.fi"] : [])
+    } catch {
+      return await errorResult(
+        code: "network_error", message: error.localizedDescription, operationId: operationId,
+        retryable: true, details: nil, request: request, generatedAt: generatedAt,
+        auditWriter: auditWriter,
+        externalServicesContacted: arguments.allowLiveNetwork ? ["hiski.genealogia.fi"] : [])
+    }
+  }
+
   private static func prepareStartingFamily(
     familyId: String,
     expectedSourceSHA256: String?,
@@ -984,6 +1292,11 @@ public struct KalvianRootsMCPServerFactory {
     return warnings.map(\.code).filter { seen.insert($0).inserted }
   }
 
+  private static func hiskiRetryable(_ error: HiskiResearchServiceError) -> Bool {
+    if case .serverResponse = error { return true }
+    return false
+  }
+
   private static func cacheSummary(_ statuses: [String]) -> String {
     var seen: Set<String> = []
     let unique = statuses.filter { seen.insert($0).inserted }
@@ -994,6 +1307,32 @@ public struct KalvianRootsMCPServerFactory {
     value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
   }
 
+  private static func successResult<Data: Codable & Sendable>(
+    envelope: ToolEnvelope<Data>,
+    request: CallTool.Parameters,
+    operationId: String,
+    generatedAt: String,
+    auditWriter: any MCPAuditWriting,
+    cacheStatus: String,
+    externalServicesContacted: [String]
+  ) async throws -> CallTool.Result {
+    let data = try encode(envelope)
+    try await auditWriter.append(MCPAuditRecord(
+      operationId: operationId, timestamp: generatedAt, tool: request.name,
+      contractVersion: kalvianRootsMCPContractVersion,
+      executableVersion: kalvianRootsMCPExecutableVersion,
+      request: auditRequest(request),
+      sourceSHA256: envelope.provenance.first?.sourceSha256,
+      blockSHA256: envelope.provenance.first?.blockSha256,
+      resultSHA256: sha256(data), cacheStatus: cacheStatus,
+      externalServicesContacted: externalServicesContacted,
+      warnings: uniqueWarningCodes(envelope.warnings),
+      conflicts: conflictSummary(envelope.conflicts), status: "success", errorCode: nil))
+    return try .init(
+      content: [.text(text: String(decoding: data, as: UTF8.self), annotations: nil, _meta: nil)],
+      structuredContent: envelope, isError: false)
+  }
+
   private static func errorResult(
     code: String,
     message: String,
@@ -1002,7 +1341,8 @@ public struct KalvianRootsMCPServerFactory {
     details: [String: String]?,
     request: CallTool.Parameters,
     generatedAt: String,
-    auditWriter: any MCPAuditWriting
+    auditWriter: any MCPAuditWriting,
+    externalServicesContacted: [String] = []
   ) async -> CallTool.Result {
     let error = ToolErrorEnvelope(
       code: code,
@@ -1025,7 +1365,7 @@ public struct KalvianRootsMCPServerFactory {
         blockSHA256: nil,
         resultSHA256: sha256(data),
         cacheStatus: "not_applicable",
-        externalServicesContacted: [],
+        externalServicesContacted: externalServicesContacted,
         warnings: [],
         conflicts: [],
         status: "error",
