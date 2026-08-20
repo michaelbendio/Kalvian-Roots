@@ -227,6 +227,7 @@ public struct PersonContextResolution: Codable, Equatable, Sendable {
   public let selectedPerson: PersonReference
   public let complete: Bool
   public let families: [ParsedFamilyRecord]
+  public let edges: [FamilyReferenceEdge]
   public let claims: [FactClaim]
   public let conflicts: [FactConflict]
 
@@ -237,7 +238,8 @@ public struct PersonContextResolution: Codable, Equatable, Sendable {
 
   public init(
     contextId: String, selectedPerson: PersonReference, complete: Bool,
-    families: [ParsedFamilyRecord], claims: [FactClaim], conflicts: [FactConflict],
+    families: [ParsedFamilyRecord], edges: [FamilyReferenceEdge] = [],
+    claims: [FactClaim], conflicts: [FactConflict],
     missingReferences: [NetworkWarning] = [], cycles: [[String]] = [],
     externalServicesContacted: [String] = [], cacheStatuses: [String] = []
   ) {
@@ -245,6 +247,7 @@ public struct PersonContextResolution: Codable, Equatable, Sendable {
     self.selectedPerson = selectedPerson
     self.complete = complete
     self.families = families
+    self.edges = edges
     self.claims = claims
     self.conflicts = conflicts
     self.missingReferences = missingReferences
@@ -254,7 +257,8 @@ public struct PersonContextResolution: Codable, Equatable, Sendable {
   }
 
   private enum CodingKeys: String, CodingKey {
-    case contextId, selectedPerson, complete, families, claims, conflicts
+    case contextId, selectedPerson, complete, families, edges, claims, conflicts
+    case missingReferences, cycles
   }
 
   public init(from decoder: Decoder) throws {
@@ -263,10 +267,13 @@ public struct PersonContextResolution: Codable, Equatable, Sendable {
     selectedPerson = try container.decode(PersonReference.self, forKey: .selectedPerson)
     complete = try container.decode(Bool.self, forKey: .complete)
     families = try container.decode([ParsedFamilyRecord].self, forKey: .families)
+    edges = try container.decodeIfPresent([FamilyReferenceEdge].self, forKey: .edges) ?? []
     claims = try container.decode([FactClaim].self, forKey: .claims)
     conflicts = try container.decode([FactConflict].self, forKey: .conflicts)
-    missingReferences = []
-    cycles = []
+    missingReferences =
+      try container.decodeIfPresent(
+        [NetworkWarning].self, forKey: .missingReferences) ?? []
+    cycles = try container.decodeIfPresent([[String]].self, forKey: .cycles) ?? []
     externalServicesContacted = []
     cacheStatuses = []
   }
@@ -356,11 +363,13 @@ public struct FamilyNetworkService: FamilyNetworkServing, Sendable {
     return PersonContextResolution(
       contextId: stableID(
         "context", startingFamily.familyId, personKey(selectedReference),
-        startingFamily.source.sha256
+        startingFamily.source.sha256, String(limits.maxFamilies), String(limits.maxDepth),
+        String(limits.maxElapsedSeconds)
       ),
       selectedPerson: selectedReference,
       complete: state.complete,
       families: state.families,
+      edges: state.edges,
       claims: selectedClaims,
       conflicts: conflicts(in: selectedClaims),
       missingReferences: state.warnings,

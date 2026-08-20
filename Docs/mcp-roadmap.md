@@ -108,6 +108,14 @@ and conflicts.
 multiple spouses, missing dates, conflicts, and the approved multi-page display
 policy are covered; no AI or network calls occur.
 
+**Status:** Complete. The deterministic `JuuretCitationService` and
+`generate_juuret_citation` MCP tool render approval-required proposals from
+durably stored resolved contexts. The app and MCP renderer share the core date,
+marriage-year, and footnote display rules. Maria's exact citation, supplemental
+page-204 provenance wording, conflicts, multiple spouses, missing dates, and
+`as_child` citation selection are covered. Verification evidence is recorded
+in `mcp-phase5.md`.
+
 ## Phase 6 — HiSki research service
 
 **Deliverable:** Expose deterministic birth, marriage, and death query

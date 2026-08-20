@@ -4,7 +4,7 @@ import KalvianRootsCore
 import MCP
 
 public let kalvianRootsMCPContractVersion = "1.0"
-public let kalvianRootsMCPExecutableVersion = "0.3.0"
+public let kalvianRootsMCPExecutableVersion = "0.4.0"
 
 public struct ToolWarning: Codable, Equatable, Sendable {
   public let code: String
@@ -129,6 +129,8 @@ public struct KalvianRootsMCPServerFactory {
   private let bookTextService: any BookTextServing
   private let familyParsingService: any FamilyParsingServing
   private let familyNetworkService: any FamilyNetworkServing
+  private let citationService: any CitationServing
+  private let personContextStore: any PersonContextStoring
   private let auditWriter: any MCPAuditWriting
   private let now: NowProvider
   private let operationID: OperationIDProvider
@@ -137,6 +139,8 @@ public struct KalvianRootsMCPServerFactory {
     bookTextService: any BookTextServing = BookTextService(),
     familyParsingService: any FamilyParsingServing = FamilyParsingService(ai: DeepSeekFamilyClient()),
     familyNetworkService: (any FamilyNetworkServing)? = nil,
+    citationService: any CitationServing = JuuretCitationService(),
+    personContextStore: any PersonContextStoring = FilePersonContextStore(),
     auditWriter: any MCPAuditWriting = FileMCPAuditWriter(),
     now: @escaping NowProvider = { Date() },
     operationID: @escaping OperationIDProvider = { UUID() }
@@ -146,6 +150,8 @@ public struct KalvianRootsMCPServerFactory {
     self.familyNetworkService = familyNetworkService ?? FamilyNetworkService(
       bookTextService: bookTextService, parsingService: familyParsingService
     )
+    self.citationService = citationService
+    self.personContextStore = personContextStore
     self.auditWriter = auditWriter
     self.now = now
     self.operationID = operationID
@@ -156,7 +162,7 @@ public struct KalvianRootsMCPServerFactory {
       name: "kalvian-roots",
       version: kalvianRootsMCPExecutableVersion,
       title: "Kalvian Roots",
-      instructions: "Read, parse, and deterministically resolve bounded Juuret family evidence.",
+      instructions: "Read, parse, resolve, and prepare deterministic Juuret citation proposals.",
       capabilities: .init(tools: .init(listChanged: false))
     )
 
@@ -164,12 +170,15 @@ public struct KalvianRootsMCPServerFactory {
       .init(tools: [
         Self.getFamilyTextTool, Self.parseFamilyTool, Self.getParsedFamilyTool,
         Self.resolveFamilyReferencesTool, Self.resolvePersonContextTool,
+        Self.generateJuuretCitationTool,
       ])
     }
 
     let bookTextService = self.bookTextService
     let familyParsingService = self.familyParsingService
     let familyNetworkService = self.familyNetworkService
+    let citationService = self.citationService
+    let personContextStore = self.personContextStore
     let auditWriter = self.auditWriter
     let now = self.now
     let operationID = self.operationID
@@ -198,11 +207,19 @@ public struct KalvianRootsMCPServerFactory {
           familyNetworkService: familyNetworkService, auditWriter: auditWriter
         )
       }
+      if request.name == "generate_juuret_citation" {
+        return await Self.handleGenerateJuuretCitation(
+          request: request, operationId: id, generatedAt: generatedAt,
+          citationService: citationService, personContextStore: personContextStore,
+          auditWriter: auditWriter
+        )
+      }
       if request.name == "resolve_person_context" {
         return await Self.handleResolvePersonContext(
           request: request, operationId: id, generatedAt: generatedAt,
           bookTextService: bookTextService, familyParsingService: familyParsingService,
-          familyNetworkService: familyNetworkService, auditWriter: auditWriter
+          familyNetworkService: familyNetworkService, personContextStore: personContextStore,
+          auditWriter: auditWriter
         )
       }
 
@@ -473,6 +490,24 @@ public struct KalvianRootsMCPServerFactory {
     )
   )
 
+  private static let generateJuuretCitationTool = Tool(
+    name: "generate_juuret_citation",
+    title: "Generate Juuret citation proposal",
+    description: "Render a deterministic Juuret citation proposal from a stored resolved person context. The proposal preserves source spans and conflicts and always requires human approval.",
+    inputSchema: .object([
+      "type": "object", "additionalProperties": false,
+      "required": ["contextId", "selectedPerson"],
+      "properties": .object([
+        "contextId": .object(["type": "string", "minLength": 1]),
+        "selectedPerson": personReferenceSchema,
+      ]),
+    ]),
+    annotations: .init(
+      title: "Generate Juuret citation proposal", readOnlyHint: true,
+      destructiveHint: false, idempotentHint: true, openWorldHint: false
+    )
+  )
+
   private struct ParsedFamilyNotFound: Codable, Sendable {
     let found: Bool
     init() { found = false }
@@ -638,6 +673,11 @@ public struct KalvianRootsMCPServerFactory {
     let limits: TraversalLimits
   }
 
+  private struct GenerateCitationArguments: Decodable {
+    let contextId: String
+    let selectedPerson: PersonReference
+  }
+
   private struct PreparedStartingFamily {
     let record: ParsedFamilyRecord
     let cacheStatus: String
@@ -718,6 +758,7 @@ public struct KalvianRootsMCPServerFactory {
     bookTextService: any BookTextServing,
     familyParsingService: any FamilyParsingServing,
     familyNetworkService: any FamilyNetworkServing,
+    personContextStore: any PersonContextStoring,
     auditWriter: any MCPAuditWriting
   ) async -> CallTool.Result {
     let allowed: Set<String> = ["familyId", "expectedSourceSHA256", "person", "limits"]
@@ -742,6 +783,7 @@ public struct KalvianRootsMCPServerFactory {
       let resolution = try await familyNetworkService.resolvePersonContext(
         person: arguments.person, startingFamily: prepared.record, limits: arguments.limits
       )
+      try await personContextStore.store(resolution)
       let warnings = toolWarnings(
         records: resolution.families, network: resolution.missingReferences,
         cycles: resolution.cycles
@@ -774,6 +816,72 @@ public struct KalvianRootsMCPServerFactory {
     } catch {
       return await networkErrorResult(
         error, request: request, operationId: operationId,
+        generatedAt: generatedAt, auditWriter: auditWriter
+      )
+    }
+  }
+
+  private static func handleGenerateJuuretCitation(
+    request: CallTool.Parameters,
+    operationId: String,
+    generatedAt: String,
+    citationService: any CitationServing,
+    personContextStore: any PersonContextStoring,
+    auditWriter: any MCPAuditWriting
+  ) async -> CallTool.Result {
+    let allowed: Set<String> = ["contextId", "selectedPerson"]
+    guard Set((request.arguments ?? [:]).keys).subtracting(allowed).isEmpty,
+      let arguments = try? decodeArguments(GenerateCitationArguments.self, request: request),
+      !arguments.contextId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else {
+      return await errorResult(
+        code: "invalid_request", message: "generate_juuret_citation arguments are invalid.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter
+      )
+    }
+
+    do {
+      guard let context = try await personContextStore.context(id: arguments.contextId) else {
+        throw CitationServiceError.contextNotFound(arguments.contextId)
+      }
+      let proposal = try citationService.generateJuuretCitation(
+        context: context, selectedPerson: arguments.selectedPerson
+      )
+      let warnings = proposal.warnings.map {
+        ToolWarning(code: $0.code, message: $0.message)
+      }
+      let envelope = ToolEnvelope(
+        contractVersion: kalvianRootsMCPContractVersion, operationId: operationId,
+        generatedAt: generatedAt, tool: request.name, readOnly: true, data: proposal,
+        warnings: warnings, conflicts: proposal.conflicts,
+        provenance: proposal.sourceSpans, auditRef: "audit:\(operationId)"
+      )
+      let data = try encode(envelope)
+      try await auditWriter.append(MCPAuditRecord(
+        operationId: operationId, timestamp: generatedAt, tool: request.name,
+        contractVersion: kalvianRootsMCPContractVersion,
+        executableVersion: kalvianRootsMCPExecutableVersion,
+        request: auditRequest(request), sourceSHA256: proposal.sourceSpans.first?.sourceSha256,
+        blockSHA256: proposal.sourceSpans.first?.blockSha256, resultSHA256: sha256(data),
+        cacheStatus: "context_hit", externalServicesContacted: [],
+        warnings: uniqueWarningCodes(warnings), conflicts: conflictSummary(proposal.conflicts),
+        status: "success", errorCode: nil
+      ))
+      return try .init(
+        content: [.text(text: String(decoding: data, as: UTF8.self), annotations: nil, _meta: nil)],
+        structuredContent: envelope, isError: false
+      )
+    } catch let error as CitationServiceError {
+      return await errorResult(
+        code: error.code, message: error.localizedDescription, operationId: operationId,
+        retryable: false, details: nil, request: request, generatedAt: generatedAt,
+        auditWriter: auditWriter
+      )
+    } catch {
+      return await errorResult(
+        code: "internal_error", message: "The operation could not be completed.",
+        operationId: operationId, retryable: false, details: nil, request: request,
         generatedAt: generatedAt, auditWriter: auditWriter
       )
     }
@@ -871,6 +979,11 @@ public struct KalvianRootsMCPServerFactory {
     conflicts.map { "\($0.field):\($0.reason)" }
   }
 
+  private static func uniqueWarningCodes(_ warnings: [ToolWarning]) -> [String] {
+    var seen: Set<String> = []
+    return warnings.map(\.code).filter { seen.insert($0).inserted }
+  }
+
   private static func cacheSummary(_ statuses: [String]) -> String {
     var seen: Set<String> = []
     let unique = statuses.filter { seen.insert($0).inserted }
@@ -953,6 +1066,9 @@ public struct KalvianRootsMCPServerFactory {
     }
     if let policy = request.arguments?["cachePolicy"]?.stringValue {
       result["cachePolicy"] = policy
+    }
+    if let contextId = request.arguments?["contextId"]?.stringValue {
+      result["contextId"] = contextId
     }
     if let limits = request.arguments?["limits"]?.objectValue {
       for name in ["maxFamilies", "maxDepth", "maxElapsedSeconds"] {

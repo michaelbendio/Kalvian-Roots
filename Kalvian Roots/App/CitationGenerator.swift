@@ -763,111 +763,19 @@ struct CitationGenerator {
     // MARK: - Date Formatting
     
     private static func formatDate(_ date: String, parentBirthYear: Int? = nil) -> String {
-        let trimmed = date.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // Handle approximate dates (n 1666 -> abt 1666)
-        if trimmed.hasPrefix("n ") {
-            let yearPart = String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
-            return "abt \(yearPart)"
-        }
-        
-        // Handle "n" prefix without space (n1666 -> abt 1666)
-        if trimmed.hasPrefix("n") && trimmed.count > 1 {
-            let yearPart = String(trimmed.dropFirst(1))
-            if Int(yearPart) != nil {
-                return "abt \(yearPart)"
-            }
-        }
-        
-        let components = trimmed.components(separatedBy: ".")
-        if components.count == 3,
-           let day = Int(components[0]),
-           let month = Int(components[1]) {
-            let monthNames = ["January", "February", "March", "April", "May", "June",
-                            "July", "August", "September", "October", "November", "December"]
-            
-            if month >= 1 && month <= 12 {
-                let year: String
-                if components[2].count == 4 {
-                    // Full 4-digit year
-                    year = components[2]
-                } else if components[2].count == 2, let twoDigitYear = Int(components[2]) {
-                    // 2-digit year - infer century
-                    year = String(inferCentury(for: twoDigitYear, parentBirthYear: parentBirthYear))
-                } else {
-                    return trimmed
-                }
-                return "\(day) \(monthNames[month - 1]) \(year)"
-            }
-        }
-        return trimmed
+        JuuretCitationFormatting.date(date, parentBirthYear: parentBirthYear)
     }
     
     private static func extractMarriageYear(_ marriageDate: String, parentBirthYear: Int?) -> String {
-        let trimmed = marriageDate.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // If already full date, format it
-        if trimmed.contains(".") {
-            return formatDate(trimmed, parentBirthYear: parentBirthYear)
-        }
-        
-        // If 4-digit year, return as-is
-        if trimmed.count == 4 && Int(trimmed) != nil {
-            return trimmed
-        }
-        
-        // If 2-digit year, infer century
-        if trimmed.count == 2, let twoDigitYear = Int(trimmed) {
-            let fullYear = inferCentury(for: twoDigitYear, parentBirthYear: parentBirthYear)
-            return String(fullYear)
-        }
-        
-        return trimmed
+        JuuretCitationFormatting.marriageDate(marriageDate, parentBirthYear: parentBirthYear)
     }
     
     static func inferCentury(for twoDigitYear: Int, parentBirthYear: Int?) -> Int {
-        if let birthYear = parentBirthYear {
-            // Marriage typically happens 15-50 years after birth
-            let candidates = [1600 + twoDigitYear, 1700 + twoDigitYear, 1800 + twoDigitYear]
-            let ages = candidates.map { $0 - birthYear }
-            
-            // Prefer century that puts marriage age in range 15-50
-            for (index, age) in ages.enumerated() {
-                if age >= 15 && age <= 50 {
-                    return candidates[index]
-                }
-            }
-            
-            // Pick closest to reasonable range
-            let distances = ages.map { age -> Int in
-                if age < 15 { return 15 - age }
-                else { return age - 50 }
-            }
-            
-            if let minIndex = distances.indices.min(by: { distances[$0] < distances[$1] }) {
-                return candidates[minIndex]
-            }
-        }
-        
-        // Default fallback
-        return 1700 + twoDigitYear
+        JuuretCitationFormatting.inferCentury(for: twoDigitYear, parentBirthYear: parentBirthYear)
     }
 
     static func extractBirthYear(from person: Person) -> Int? {
-        guard let birthDate = person.birthDate else { return nil }
-        
-        // Handle DD.MM.YYYY format
-        let components = birthDate.components(separatedBy: ".")
-        if components.count == 3, let year = Int(components[2]) {
-            return year
-        }
-        
-        // Handle year-only format
-        if birthDate.count == 4, let year = Int(birthDate) {
-            return year
-        }
-        
-        return nil
+        JuuretCitationFormatting.birthYear(from: person.birthDate)
     }
     
     private static func extractWidowInfo(from notes: [String], spouseIndex: Int) -> String? {

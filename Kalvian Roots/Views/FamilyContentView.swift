@@ -1123,24 +1123,11 @@ enum FamilySearchComparisonClipboardFormatter {
 }
 
 func displayFootnoteMarker(_ marker: String) -> String {
-    marker.map { $0 == "★" ? "*" : $0 }.map(String.init).joined()
+    JuuretCitationFormatting.footnoteMarker(marker)
 }
 
 func displayFootnoteText(_ text: String) -> String {
-    var markerEnd = text.startIndex
-    while markerEnd < text.endIndex {
-        let character = text[markerEnd]
-        guard character == "★" || character == "*" else { break }
-        markerEnd = text.index(after: markerEnd)
-    }
-
-    guard markerEnd > text.startIndex else {
-        return text
-    }
-
-    let marker = String(text[..<markerEnd])
-    let suffix = String(text[markerEnd...])
-    return displayFootnoteMarker(marker) + suffix
+    JuuretCitationFormatting.footnoteText(text)
 }
 
 // MARK: - View Modifiers

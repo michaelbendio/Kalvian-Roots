@@ -369,14 +369,17 @@
     "personContextResolution": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["contextId", "selectedPerson", "complete", "families", "claims", "conflicts"],
+      "required": ["contextId", "selectedPerson", "complete", "families", "edges", "claims", "conflicts", "missingReferences", "cycles"],
       "properties": {
         "contextId": { "$ref": "#/$defs/nonemptyString" },
         "selectedPerson": { "$ref": "#/$defs/personReference" },
         "complete": { "type": "boolean" },
         "families": { "type": "array", "items": { "$ref": "#/$defs/parsedFamilyRecord" } },
+        "edges": { "type": "array", "items": { "$ref": "#/$defs/familyReferenceEdge" } },
         "claims": { "type": "array", "items": { "$ref": "#/$defs/factClaim" } },
-        "conflicts": { "type": "array", "items": { "$ref": "#/$defs/factConflict" } }
+        "conflicts": { "type": "array", "items": { "$ref": "#/$defs/factConflict" } },
+        "missingReferences": { "type": "array", "items": { "$ref": "#/$defs/warning" } },
+        "cycles": { "type": "array", "items": { "type": "array", "items": { "$ref": "#/$defs/nonemptyString" } } }
       }
     },
     "citationProposal": {

@@ -9,7 +9,7 @@ final class KalvianRootsMCPServerTests: XCTestCase {
   private let fixedDate = Date(timeIntervalSince1970: 1_777_777_777)
   private let fixedOperationID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
 
-  func testDiscoveryExposesPhaseFourTools() async throws {
+  func testDiscoveryExposesPhaseFiveTools() async throws {
     let session = try await makeSession()
     defer { session.stop() }
 
@@ -19,6 +19,7 @@ final class KalvianRootsMCPServerTests: XCTestCase {
     XCTAssertEqual(tools.map(\.name), [
       "get_family_text", "parse_family", "get_parsed_family",
       "resolve_family_references", "resolve_person_context",
+      "generate_juuret_citation",
     ])
     XCTAssertEqual(tools.first?.annotations.readOnlyHint, true)
     XCTAssertEqual(tools.first?.annotations.openWorldHint, false)
@@ -201,6 +202,70 @@ final class KalvianRootsMCPServerTests: XCTestCase {
     XCTAssertTrue(envelope.warnings.contains { $0.code == "traversal_limit_reached" })
   }
 
+  func testGenerateJuuretCitationUsesStoredContextAndRequiresApproval() async throws {
+    let session = try await makeSession()
+    defer { session.stop() }
+    let person: Value = .object([
+      "familyId": "SAKERI 4", "coupleIndex": 0, "role": "child",
+      "personIndex": 0, "rawName": "Maria", "rawBirthDate": "03.03.1756",
+      "familySearchId": "KN1X-VHG",
+    ])
+    let resolved = try await session.client.callTool(
+      name: "resolve_person_context",
+      arguments: [
+        "familyId": "SAKERI 4", "person": person,
+        "limits": .object([
+          "maxFamilies": 3, "maxDepth": 3, "maxElapsedSeconds": 10,
+        ]),
+      ]
+    )
+    let context: ToolEnvelope<PersonContextResolution> = try decodeTextContent(resolved.content)
+
+    let result = try await session.client.callTool(
+      name: "generate_juuret_citation",
+      arguments: ["contextId": .string(context.data.contextId), "selectedPerson": person]
+    )
+
+    XCTAssertEqual(result.isError, false)
+    let envelope: ToolEnvelope<CitationProposal> = try decodeTextContent(result.content)
+    XCTAssertTrue(envelope.data.requiresApproval)
+    XCTAssertTrue(envelope.data.renderedText.contains("→ Maria"))
+    XCTAssertTrue(envelope.data.renderedText.contains("4 October 1829"))
+    XCTAssertTrue(envelope.data.renderedText.contains("26 December 1782"))
+    XCTAssertTrue(envelope.data.renderedText.contains("Additional information:"))
+    XCTAssertEqual(envelope.data.sourceSpans.map(\.familyId), ["SAKERI 4", "PUUKANGAS 6"])
+    XCTAssertEqual(envelope.data.conflicts.map(\.field), ["birthDate"])
+    XCTAssertEqual(envelope.provenance, envelope.data.sourceSpans)
+
+    let audits = await session.auditWriter.records
+    XCTAssertEqual(audits.count, 2)
+    XCTAssertEqual(audits.last?.tool, "generate_juuret_citation")
+    XCTAssertEqual(audits.last?.cacheStatus, "context_hit")
+    XCTAssertEqual(audits.last?.externalServicesContacted, [])
+    XCTAssertEqual(audits.last?.request["contextId"], context.data.contextId)
+  }
+
+  func testGenerateJuuretCitationRejectsUnknownContext() async throws {
+    let session = try await makeSession()
+    defer { session.stop() }
+
+    let result = try await session.client.callTool(
+      name: "generate_juuret_citation",
+      arguments: [
+        "contextId": "missing-context",
+        "selectedPerson": .object([
+          "familyId": "SAKERI 4", "coupleIndex": 0, "role": "child",
+          "personIndex": 0, "rawName": "Maria",
+        ]),
+      ]
+    )
+
+    XCTAssertEqual(result.isError, true)
+    let error: ToolErrorEnvelope = try decodeTextContent(result.content)
+    XCTAssertEqual(error.code, "record_not_found")
+    XCTAssertFalse(error.retryable)
+  }
+
   func testFileAuditWriterUsesAppendOnlyJSONLines() async throws {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -253,9 +318,11 @@ final class KalvianRootsMCPServerTests: XCTestCase {
     )
     let auditWriter = MemoryMCPAuditWriter()
     let parsingService = StubParsingService()
+    let contextStore = MemoryPersonContextStore()
     let server = await KalvianRootsMCPServerFactory(
       bookTextService: bookTextService,
       familyParsingService: parsingService,
+      personContextStore: contextStore,
       auditWriter: auditWriter,
       now: { fixedDate },
       operationID: { fixedOperationID }

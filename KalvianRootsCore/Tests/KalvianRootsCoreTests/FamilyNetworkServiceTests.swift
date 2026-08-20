@@ -81,6 +81,25 @@ final class FamilyNetworkServiceTests: XCTestCase {
     XCTAssertTrue(result.conflicts.isEmpty)
   }
 
+  func testContextIDIncludesTraversalLimits() async throws {
+    let fixture = NetworkFixture.standard
+    let person = PersonReference(
+      familyId: "SAKERI 4", coupleIndex: 0, role: .child, personIndex: 0,
+      rawName: "Maria"
+    )
+
+    let shallow = try await fixture.service.resolvePersonContext(
+      person: person, startingFamily: fixture.sakeri,
+      limits: TraversalLimits(maxFamilies: 1, maxDepth: 0, maxElapsedSeconds: 10)
+    )
+    let expanded = try await fixture.service.resolvePersonContext(
+      person: person, startingFamily: fixture.sakeri,
+      limits: TraversalLimits(maxFamilies: 3, maxDepth: 3, maxElapsedSeconds: 10)
+    )
+
+    XCTAssertNotEqual(shallow.contextId, expanded.contextId)
+  }
+
   func testReferenceRequiresRelationshipEvidenceAndDoesNotMatchByNameAlone() async throws {
     let fixture = NetworkFixture.standard
     var targetFamily = fixture.puukangas.parsedFamily
