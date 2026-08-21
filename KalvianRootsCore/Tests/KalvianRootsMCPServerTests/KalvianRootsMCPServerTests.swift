@@ -9,7 +9,7 @@ final class KalvianRootsMCPServerTests: XCTestCase {
   private let fixedDate = Date(timeIntervalSince1970: 1_777_777_777)
   private let fixedOperationID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
 
-  func testDiscoveryExposesPhaseEightTools() async throws {
+  func testDiscoveryExposesCurrentRoadmapTools() async throws {
     let session = try await makeSession()
     defer { session.stop() }
 
@@ -23,6 +23,10 @@ final class KalvianRootsMCPServerTests: XCTestCase {
       "build_hiski_query", "search_hiski", "get_hiski_record",
       "compare_family_sources", "prepare_citation_proposals",
       "start_family_traversal", "resume_family_traversal", "get_family_traversal",
+      "get_citation_review", "record_citation_decision",
+      "record_familysearch_attachment_outcome",
+      "create_pilot_report", "get_pilot_report", "refresh_pilot_report",
+      "record_pilot_readiness",
     ])
     XCTAssertEqual(tools.first?.annotations.readOnlyHint, true)
     XCTAssertEqual(tools.first?.annotations.openWorldHint, false)
@@ -61,6 +65,26 @@ final class KalvianRootsMCPServerTests: XCTestCase {
       name: "get_family_traversal", arguments: ["sessionId": try Value(started.data.sessionId)])
     let fetched: ToolEnvelope<TraversalSession> = try decodeTextContent(fetchedResult.content)
     XCTAssertEqual(fetched.data, second.data)
+
+    let pilotDefinition = PilotDefinition(
+      name: "fixture pilot", familyIds: ["SAKERI 4", "PUUKANGAS 6"],
+      traversalSessionId: started.data.sessionId, citationReviewIds: [])
+    let pilotResult = try await session.client.callTool(
+      name: "create_pilot_report", arguments: ["definition": try Value(pilotDefinition)])
+    var pilot: ToolEnvelope<PilotReport> = try decodeTextContent(pilotResult.content)
+    XCTAssertEqual(pilot.data.completedFamilyIds, ["SAKERI 4", "PUUKANGAS 6"])
+    XCTAssertEqual(pilot.data.readiness, .pending)
+    XCTAssertTrue(pilot.data.broaderTraversalBlocked)
+
+    let readinessResult = try await session.client.callTool(
+      name: "record_pilot_readiness", arguments: [
+        "pilotId": try Value(pilot.data.pilotId), "readiness": "not_ready",
+        "note": "Supervised real-person acceptance is still pending.",
+        "explicitHumanConfirmation": true,
+      ])
+    pilot = try decodeTextContent(readinessResult.content)
+    XCTAssertEqual(pilot.data.readiness, .notReady)
+    XCTAssertTrue(pilot.data.broaderTraversalBlocked)
   }
 
   func testSingleFamilyResearcherPreparesTraceableWorkupWithoutNetworkMutation() async throws {
@@ -124,6 +148,33 @@ final class KalvianRootsMCPServerTests: XCTestCase {
     XCTAssertTrue(workup.data.renderedReport.contains("PUUKANGAS 6"))
     XCTAssertTrue(workup.data.renderedReport.contains("No FamilySearch change or canonical Juuret source change was performed."))
     XCTAssertFalse(workup.data.humanDecisionsRequired.isEmpty)
+
+    let reviewResult = try await session.client.callTool(
+      name: "get_citation_review", arguments: ["reviewId": try Value(workup.data.workupId)])
+    var review: ToolEnvelope<CitationReviewRecord> = try decodeTextContent(reviewResult.content)
+    XCTAssertEqual(review.data.items.count, 2)
+    XCTAssertTrue(review.data.items.allSatisfy { $0.currentDisposition == nil })
+
+    let approvalResult = try await session.client.callTool(
+      name: "record_citation_decision", arguments: [
+        "reviewId": try Value(workup.data.workupId),
+        "proposalId": try Value(workup.data.juuretCitationProposal.proposalId),
+        "disposition": "approved", "explicitHumanConfirmation": true,
+      ])
+    review = try decodeTextContent(approvalResult.content)
+    XCTAssertEqual(review.data.items[0].currentDisposition, .approved)
+
+    let attachmentResult = try await session.client.callTool(
+      name: "record_familysearch_attachment_outcome", arguments: [
+        "reviewId": try Value(workup.data.workupId),
+        "proposalId": try Value(workup.data.juuretCitationProposal.proposalId),
+        "status": "attached", "familySearchPersonId": "KN1X-VHG",
+        "explicitHumanConfirmation": true,
+      ])
+    review = try decodeTextContent(attachmentResult.content)
+    XCTAssertEqual(review.data.items[0].latestAttachmentOutcome, .attached)
+    XCTAssertEqual(
+      review.data.items[0].attachmentOutcomes.last?.familySearchPersonId, "KN1X-VHG")
 
     let audits = await session.auditWriter.records
     XCTAssertEqual(Array(audits.suffix(2)).map(\.externalServicesContacted), [[], []])
@@ -487,6 +538,11 @@ final class KalvianRootsMCPServerTests: XCTestCase {
       worker: ParsedFamilyTraversalWorker(
         bookTextService: bookTextService, parsingService: parsingService),
       store: MemoryTraversalSessionStore(), now: { fixedDate })
+    let citationReviewService = CitationReviewService(
+      store: MemoryCitationReviewStore(), now: { fixedDate })
+    let pilotService = PilotService(
+      traversalService: traversalService, citationReviewService: citationReviewService,
+      store: MemoryPilotReportStore(), now: { fixedDate })
     let server = await KalvianRootsMCPServerFactory(
       bookTextService: bookTextService,
       familyParsingService: parsingService,
@@ -495,6 +551,8 @@ final class KalvianRootsMCPServerTests: XCTestCase {
       hiskiEvidenceStore: evidenceStore,
       familyComparisonStore: comparisonStore,
       traversalSessionService: traversalService,
+      citationReviewService: citationReviewService,
+      pilotService: pilotService,
       auditWriter: auditWriter,
       now: { fixedDate },
       operationID: { fixedOperationID }

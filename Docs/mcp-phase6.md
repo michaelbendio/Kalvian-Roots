@@ -58,8 +58,13 @@ Run on 2026-08-19 with Xcode 27 beta 5:
 - the complete existing app test scheme passed; and
 - the tool catalog is valid JSON.
 
-The opt-in live smoke remains pending VPN confirmation. Phase 6 is not marked
-fully accepted until that test succeeds.
+The opt-in live smoke was run on 2026-08-20 with ExpressVPN connected through
+Netherlands - Amsterdam. The HTTPS request to `hiski.genealogia.fi` timed out
+after 60 seconds, so the test failed without accepting an empty or partial
+response. ExpressVPN was then disconnected, and FamilySearch was not accessed.
+Phase 6 remains acceptance-pending until a VPN-backed request succeeds. This is
+an external-network blocker, not an offline parsing or query-construction test
+failure.
 
 ## Phase boundary
 

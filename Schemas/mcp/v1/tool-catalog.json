@@ -3,7 +3,7 @@
   "$id": "https://kalvian-roots.local/schemas/mcp/v1/tool-catalog.json",
   "title": "Kalvian Roots MCP tool catalog",
   "contractVersion": "1.0",
-  "description": "Normative request and response-data schemas for the initial read-only Kalvian Roots MCP surface.",
+  "description": "Normative request and response-data schemas for the bounded, approval-controlled Kalvian Roots MCP surface.",
   "tools": [
     {
       "name": "get_family_text",
@@ -235,6 +235,108 @@
         "properties": { "sessionId": { "$ref": "#/$defs/nonemptyString" } }
       },
       "outputDataSchema": { "$ref": "#/$defs/traversalSession" }
+    },
+    {
+      "name": "get_citation_review",
+      "introducedInPhase": 9,
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reviewId"],
+        "properties": { "reviewId": { "$ref": "#/$defs/nonemptyString" } }
+      },
+      "outputDataSchema": { "$ref": "#/$defs/citationReviewRecord" }
+    },
+    {
+      "name": "record_citation_decision",
+      "introducedInPhase": 9,
+      "readOnly": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reviewId", "proposalId", "disposition", "explicitHumanConfirmation"],
+        "properties": {
+          "reviewId": { "$ref": "#/$defs/nonemptyString" },
+          "proposalId": { "$ref": "#/$defs/nonemptyString" },
+          "disposition": { "$ref": "#/$defs/citationDisposition" },
+          "note": { "type": "string" },
+          "explicitHumanConfirmation": { "const": true }
+        }
+      },
+      "outputDataSchema": { "$ref": "#/$defs/citationReviewRecord" }
+    },
+    {
+      "name": "record_familysearch_attachment_outcome",
+      "introducedInPhase": 9,
+      "readOnly": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reviewId", "proposalId", "status", "explicitHumanConfirmation"],
+        "properties": {
+          "reviewId": { "$ref": "#/$defs/nonemptyString" },
+          "proposalId": { "$ref": "#/$defs/nonemptyString" },
+          "status": { "$ref": "#/$defs/attachmentOutcomeStatus" },
+          "familySearchPersonId": { "type": "string" },
+          "note": { "type": "string" },
+          "explicitHumanConfirmation": { "const": true }
+        }
+      },
+      "outputDataSchema": { "$ref": "#/$defs/citationReviewRecord" }
+    },
+    {
+      "name": "create_pilot_report",
+      "introducedInPhase": 10,
+      "readOnly": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["definition"],
+        "properties": { "definition": { "$ref": "#/$defs/pilotDefinition" } }
+      },
+      "outputDataSchema": { "$ref": "#/$defs/pilotReport" }
+    },
+    {
+      "name": "get_pilot_report",
+      "introducedInPhase": 10,
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pilotId"],
+        "properties": { "pilotId": { "$ref": "#/$defs/nonemptyString" } }
+      },
+      "outputDataSchema": { "$ref": "#/$defs/pilotReport" }
+    },
+    {
+      "name": "refresh_pilot_report",
+      "introducedInPhase": 10,
+      "readOnly": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pilotId"],
+        "properties": { "pilotId": { "$ref": "#/$defs/nonemptyString" } }
+      },
+      "outputDataSchema": { "$ref": "#/$defs/pilotReport" }
+    },
+    {
+      "name": "record_pilot_readiness",
+      "introducedInPhase": 10,
+      "readOnly": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pilotId", "readiness", "note", "explicitHumanConfirmation"],
+        "properties": {
+          "pilotId": { "$ref": "#/$defs/nonemptyString" },
+          "readiness": { "type": "string", "enum": ["ready", "not_ready"] },
+          "note": { "$ref": "#/$defs/nonemptyString" },
+          "explicitHumanConfirmation": { "const": true }
+        }
+      },
+      "outputDataSchema": { "$ref": "#/$defs/pilotReport" }
     }
   ],
   "$defs": {
@@ -624,6 +726,121 @@
         "stopReason": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "citationDisposition": {
+      "type": "string",
+      "enum": ["approved", "rejected", "deferred"]
+    },
+    "attachmentOutcomeStatus": {
+      "type": "string",
+      "enum": ["copied", "attached", "failed", "deferred"]
+    },
+    "citationDecisionEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decisionId", "proposalId", "disposition", "decidedAt"],
+      "properties": {
+        "decisionId": { "$ref": "#/$defs/nonemptyString" },
+        "proposalId": { "$ref": "#/$defs/nonemptyString" },
+        "disposition": { "$ref": "#/$defs/citationDisposition" },
+        "decidedAt": { "type": "string", "format": "date-time" },
+        "note": { "type": "string" }
+      }
+    },
+    "attachmentOutcomeEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcomeId", "proposalId", "status", "recordedAt"],
+      "properties": {
+        "outcomeId": { "$ref": "#/$defs/nonemptyString" },
+        "proposalId": { "$ref": "#/$defs/nonemptyString" },
+        "status": { "$ref": "#/$defs/attachmentOutcomeStatus" },
+        "recordedAt": { "type": "string", "format": "date-time" },
+        "familySearchPersonId": { "type": "string" },
+        "note": { "type": "string" }
+      }
+    },
+    "citationReviewItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["proposal", "decisions", "attachmentOutcomes"],
+      "properties": {
+        "proposal": { "$ref": "#/$defs/citationProposal" },
+        "decisions": { "type": "array", "items": { "$ref": "#/$defs/citationDecisionEvent" } },
+        "attachmentOutcomes": { "type": "array", "items": { "$ref": "#/$defs/attachmentOutcomeEvent" } }
+      }
+    },
+    "citationReviewRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "reviewId", "workup", "attachmentMode", "createdAt", "updatedAt", "items"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "reviewId": { "$ref": "#/$defs/nonemptyString" },
+        "workup": { "$ref": "#/$defs/familyResearchWorkup" },
+        "attachmentMode": { "const": "manual_or_visible_ui_only" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "items": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/citationReviewItem" } }
+      }
+    },
+    "pilotDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "familyIds", "traversalSessionId", "citationReviewIds"],
+      "properties": {
+        "name": { "$ref": "#/$defs/nonemptyString" },
+        "familyIds": { "type": "array", "minItems": 1, "maxItems": 25, "items": { "$ref": "#/$defs/familyId" } },
+        "traversalSessionId": { "$ref": "#/$defs/nonemptyString" },
+        "citationReviewIds": { "type": "array", "items": { "$ref": "#/$defs/nonemptyString" } }
+      }
+    },
+    "pilotMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "label", "status", "note"],
+      "properties": {
+        "code": { "$ref": "#/$defs/nonemptyString" },
+        "label": { "$ref": "#/$defs/nonemptyString" },
+        "status": { "type": "string", "enum": ["measured", "pending_human_review", "unavailable"] },
+        "value": { "type": "number" },
+        "unit": { "type": "string" },
+        "numerator": { "type": "integer", "minimum": 0 },
+        "denominator": { "type": "integer", "minimum": 0 },
+        "note": { "$ref": "#/$defs/nonemptyString" }
+      }
+    },
+    "pilotReadinessEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decisionId", "readiness", "decidedAt", "note"],
+      "properties": {
+        "decisionId": { "$ref": "#/$defs/nonemptyString" },
+        "readiness": { "type": "string", "enum": ["ready", "not_ready"] },
+        "decidedAt": { "type": "string", "format": "date-time" },
+        "note": { "$ref": "#/$defs/nonemptyString" }
+      }
+    },
+    "pilotReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "pilotId", "definition", "sourceSHA256", "generatedAt", "metrics", "completedFamilyIds", "incompleteFamilies", "unresolvedConflictFields", "citationReviewIds", "sourceSpans", "readiness", "readinessHistory", "broaderTraversalBlocked"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "pilotId": { "$ref": "#/$defs/nonemptyString" },
+        "definition": { "$ref": "#/$defs/pilotDefinition" },
+        "sourceSHA256": { "$ref": "#/$defs/sha256" },
+        "generatedAt": { "type": "string", "format": "date-time" },
+        "metrics": { "type": "array", "items": { "$ref": "#/$defs/pilotMetric" } },
+        "completedFamilyIds": { "type": "array", "items": { "$ref": "#/$defs/familyId" } },
+        "incompleteFamilies": { "type": "object", "additionalProperties": { "type": "string" } },
+        "unresolvedConflictFields": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "citationReviewIds": { "type": "array", "items": { "$ref": "#/$defs/nonemptyString" } },
+        "sourceSpans": { "type": "array", "items": { "$ref": "#/$defs/sourceSpan" } },
+        "readiness": { "type": "string", "enum": ["pending", "ready", "not_ready"] },
+        "readinessHistory": { "type": "array", "items": { "$ref": "#/$defs/pilotReadinessEvent" } },
+        "broaderTraversalBlocked": { "type": "boolean" }
       }
     }
   }

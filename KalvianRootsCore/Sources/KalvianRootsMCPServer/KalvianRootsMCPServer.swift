@@ -4,7 +4,7 @@ import KalvianRootsCore
 import MCP
 
 public let kalvianRootsMCPContractVersion = "1.0"
-public let kalvianRootsMCPExecutableVersion = "0.7.0"
+public let kalvianRootsMCPExecutableVersion = "0.9.0"
 
 public struct ToolWarning: Codable, Equatable, Sendable {
   public let code: String
@@ -136,6 +136,8 @@ public struct KalvianRootsMCPServerFactory {
   private let familyComparisonStore: any FamilyComparisonStoring
   private let familyResearchService: FamilyResearchService
   private let traversalSessionService: TraversalSessionService
+  private let citationReviewService: CitationReviewService
+  private let pilotService: PilotService
   private let auditWriter: any MCPAuditWriting
   private let now: NowProvider
   private let operationID: OperationIDProvider
@@ -151,6 +153,8 @@ public struct KalvianRootsMCPServerFactory {
     familyComparisonStore: any FamilyComparisonStoring = FileFamilyComparisonStore(),
     familyResearchService: FamilyResearchService = FamilyResearchService(),
     traversalSessionService: TraversalSessionService? = nil,
+    citationReviewService: CitationReviewService = CitationReviewService(),
+    pilotService: PilotService? = nil,
     auditWriter: any MCPAuditWriting = FileMCPAuditWriter(),
     now: @escaping NowProvider = { Date() },
     operationID: @escaping OperationIDProvider = { UUID() }
@@ -169,6 +173,10 @@ public struct KalvianRootsMCPServerFactory {
     self.traversalSessionService = traversalSessionService ?? TraversalSessionService(
       worker: ParsedFamilyTraversalWorker(
         bookTextService: bookTextService, parsingService: familyParsingService))
+    self.citationReviewService = citationReviewService
+    self.pilotService = pilotService ?? PilotService(
+      traversalService: self.traversalSessionService,
+      citationReviewService: citationReviewService)
     self.auditWriter = auditWriter
     self.now = now
     self.operationID = operationID
@@ -192,6 +200,10 @@ public struct KalvianRootsMCPServerFactory {
         Self.compareFamilySourcesTool, Self.prepareCitationProposalsTool,
         Self.startFamilyTraversalTool, Self.resumeFamilyTraversalTool,
         Self.getFamilyTraversalTool,
+        Self.getCitationReviewTool, Self.recordCitationDecisionTool,
+        Self.recordFamilySearchAttachmentOutcomeTool,
+        Self.createPilotReportTool, Self.getPilotReportTool,
+        Self.refreshPilotReportTool, Self.recordPilotReadinessTool,
       ])
     }
 
@@ -205,6 +217,8 @@ public struct KalvianRootsMCPServerFactory {
     let familyComparisonStore = self.familyComparisonStore
     let familyResearchService = self.familyResearchService
     let traversalSessionService = self.traversalSessionService
+    let citationReviewService = self.citationReviewService
+    let pilotService = self.pilotService
     let auditWriter = self.auditWriter
     let now = self.now
     let operationID = self.operationID
@@ -267,7 +281,8 @@ public struct KalvianRootsMCPServerFactory {
           personContextStore: personContextStore, citationService: citationService,
           hiskiEvidenceStore: hiskiEvidenceStore,
           familyComparisonStore: familyComparisonStore,
-          familyResearchService: familyResearchService, auditWriter: auditWriter)
+          familyResearchService: familyResearchService,
+          citationReviewService: citationReviewService, auditWriter: auditWriter)
       }
       if request.name == "start_family_traversal" {
         return await Self.handleStartFamilyTraversal(
@@ -284,6 +299,41 @@ public struct KalvianRootsMCPServerFactory {
         return await Self.handleGetFamilyTraversal(
           request: request, operationId: id, generatedAt: generatedAt,
           traversalService: traversalSessionService, auditWriter: auditWriter)
+      }
+      if request.name == "get_citation_review" {
+        return await Self.handleGetCitationReview(
+          request: request, operationId: id, generatedAt: generatedAt,
+          citationReviewService: citationReviewService, auditWriter: auditWriter)
+      }
+      if request.name == "record_citation_decision" {
+        return await Self.handleRecordCitationDecision(
+          request: request, operationId: id, generatedAt: generatedAt,
+          citationReviewService: citationReviewService, auditWriter: auditWriter)
+      }
+      if request.name == "record_familysearch_attachment_outcome" {
+        return await Self.handleRecordAttachmentOutcome(
+          request: request, operationId: id, generatedAt: generatedAt,
+          citationReviewService: citationReviewService, auditWriter: auditWriter)
+      }
+      if request.name == "create_pilot_report" {
+        return await Self.handleCreatePilotReport(
+          request: request, operationId: id, generatedAt: generatedAt,
+          pilotService: pilotService, auditWriter: auditWriter)
+      }
+      if request.name == "get_pilot_report" {
+        return await Self.handleGetPilotReport(
+          request: request, operationId: id, generatedAt: generatedAt,
+          pilotService: pilotService, auditWriter: auditWriter)
+      }
+      if request.name == "refresh_pilot_report" {
+        return await Self.handleRefreshPilotReport(
+          request: request, operationId: id, generatedAt: generatedAt,
+          pilotService: pilotService, auditWriter: auditWriter)
+      }
+      if request.name == "record_pilot_readiness" {
+        return await Self.handleRecordPilotReadiness(
+          request: request, operationId: id, generatedAt: generatedAt,
+          pilotService: pilotService, auditWriter: auditWriter)
       }
       if request.name == "get_hiski_record" {
         return await Self.handleGetHiskiRecord(
@@ -823,6 +873,121 @@ public struct KalvianRootsMCPServerFactory {
       title: "Get family traversal checkpoint", readOnlyHint: true,
       destructiveHint: false, idempotentHint: true, openWorldHint: false))
 
+  private static let getCitationReviewTool = Tool(
+    name: "get_citation_review", title: "Get citation review",
+    description: "Return exact copyable citation proposals, source links, provenance, and separately recorded human dispositions without accessing FamilySearch.",
+    inputSchema: .object([
+      "type": "object", "additionalProperties": false, "required": ["reviewId"],
+      "properties": .object(["reviewId": .object(["type": "string", "minLength": 1])]),
+    ]),
+    annotations: .init(
+      title: "Get citation review", readOnlyHint: true, destructiveHint: false,
+      idempotentHint: true, openWorldHint: false))
+
+  private static let recordCitationDecisionTool = Tool(
+    name: "record_citation_decision", title: "Record citation decision",
+    description: "Record one explicitly human-confirmed approved, rejected, or deferred disposition. This does not attach a citation.",
+    inputSchema: .object([
+      "type": "object", "additionalProperties": false,
+      "required": ["reviewId", "proposalId", "disposition", "explicitHumanConfirmation"],
+      "properties": .object([
+        "reviewId": .object(["type": "string", "minLength": 1]),
+        "proposalId": .object(["type": "string", "minLength": 1]),
+        "disposition": .object(["type": "string", "enum": ["approved", "rejected", "deferred"]]),
+        "note": .object(["type": "string"]),
+        "explicitHumanConfirmation": .object(["type": "boolean", "const": true]),
+      ]),
+    ]),
+    annotations: .init(
+      title: "Record citation decision", readOnlyHint: false, destructiveHint: false,
+      idempotentHint: false, openWorldHint: false))
+
+  private static let recordFamilySearchAttachmentOutcomeTool = Tool(
+    name: "record_familysearch_attachment_outcome",
+    title: "Record FamilySearch attachment outcome",
+    description: "Record a human-reported copy or visible-UI attachment outcome for one individually approved proposal. The tool never opens or changes FamilySearch.",
+    inputSchema: .object([
+      "type": "object", "additionalProperties": false,
+      "required": ["reviewId", "proposalId", "status", "explicitHumanConfirmation"],
+      "properties": .object([
+        "reviewId": .object(["type": "string", "minLength": 1]),
+        "proposalId": .object(["type": "string", "minLength": 1]),
+        "status": .object(["type": "string", "enum": ["copied", "attached", "failed", "deferred"]]),
+        "familySearchPersonId": .object(["type": "string"]),
+        "note": .object(["type": "string"]),
+        "explicitHumanConfirmation": .object(["type": "boolean", "const": true]),
+      ]),
+    ]),
+    annotations: .init(
+      title: "Record FamilySearch attachment outcome", readOnlyHint: false,
+      destructiveHint: false, idempotentHint: false, openWorldHint: false))
+
+  private static let pilotDefinitionSchema: Value = .object([
+    "type": "object", "additionalProperties": false,
+    "required": ["name", "familyIds", "traversalSessionId", "citationReviewIds"],
+    "properties": .object([
+      "name": .object(["type": "string", "minLength": 1]),
+      "familyIds": .object([
+        "type": "array", "minItems": 1, "maxItems": 25,
+        "items": .object(["type": "string", "minLength": 3, "maxLength": 80]),
+      ]),
+      "traversalSessionId": .object(["type": "string", "minLength": 1]),
+      "citationReviewIds": .object([
+        "type": "array", "items": .object(["type": "string", "minLength": 1]),
+      ]),
+    ]),
+  ])
+
+  private static let createPilotReportTool = Tool(
+    name: "create_pilot_report", title: "Create Juuret pilot report",
+    description: "Create an evidence-bounded report for one explicitly defined family set. Unsupported quality measures remain pending rather than being guessed.",
+    inputSchema: .object([
+      "type": "object", "additionalProperties": false, "required": ["definition"],
+      "properties": .object(["definition": pilotDefinitionSchema]),
+    ]),
+    annotations: .init(
+      title: "Create Juuret pilot report", readOnlyHint: false,
+      destructiveHint: false, idempotentHint: true, openWorldHint: false))
+
+  private static let getPilotReportTool = Tool(
+    name: "get_pilot_report", title: "Get Juuret pilot report",
+    description: "Return a saved pilot report without doing research or contacting external services.",
+    inputSchema: .object([
+      "type": "object", "additionalProperties": false, "required": ["pilotId"],
+      "properties": .object(["pilotId": .object(["type": "string", "minLength": 1])]),
+    ]),
+    annotations: .init(
+      title: "Get Juuret pilot report", readOnlyHint: true,
+      destructiveHint: false, idempotentHint: true, openWorldHint: false))
+
+  private static let refreshPilotReportTool = Tool(
+    name: "refresh_pilot_report", title: "Refresh Juuret pilot report",
+    description: "Recompute a saved pilot report from its traversal checkpoint and citation review ledgers without network access.",
+    inputSchema: .object([
+      "type": "object", "additionalProperties": false, "required": ["pilotId"],
+      "properties": .object(["pilotId": .object(["type": "string", "minLength": 1])]),
+    ]),
+    annotations: .init(
+      title: "Refresh Juuret pilot report", readOnlyHint: false,
+      destructiveHint: false, idempotentHint: true, openWorldHint: false))
+
+  private static let recordPilotReadinessTool = Tool(
+    name: "record_pilot_readiness", title: "Record pilot readiness decision",
+    description: "Record the user's explicit ready or not-ready decision and rationale. Broader traversal remains blocked while readiness is pending or not ready.",
+    inputSchema: .object([
+      "type": "object", "additionalProperties": false,
+      "required": ["pilotId", "readiness", "note", "explicitHumanConfirmation"],
+      "properties": .object([
+        "pilotId": .object(["type": "string", "minLength": 1]),
+        "readiness": .object(["type": "string", "enum": ["ready", "not_ready"]]),
+        "note": .object(["type": "string", "minLength": 1]),
+        "explicitHumanConfirmation": .object(["type": "boolean", "const": true]),
+      ]),
+    ]),
+    annotations: .init(
+      title: "Record pilot readiness decision", readOnlyHint: false,
+      destructiveHint: false, idempotentHint: false, openWorldHint: false))
+
   private struct ParsedFamilyNotFound: Codable, Sendable {
     let found: Bool
     init() { found = false }
@@ -1031,6 +1196,34 @@ public struct KalvianRootsMCPServerFactory {
   }
 
   private struct TraversalSessionArguments: Decodable { let sessionId: String }
+
+  private struct CitationReviewArguments: Decodable { let reviewId: String }
+
+  private struct RecordCitationDecisionArguments: Decodable {
+    let reviewId: String
+    let proposalId: String
+    let disposition: CitationDisposition
+    let note: String?
+    let explicitHumanConfirmation: Bool
+  }
+
+  private struct RecordAttachmentOutcomeArguments: Decodable {
+    let reviewId: String
+    let proposalId: String
+    let status: AttachmentOutcomeStatus
+    let familySearchPersonId: String?
+    let note: String?
+    let explicitHumanConfirmation: Bool
+  }
+
+  private struct CreatePilotReportArguments: Decodable { let definition: PilotDefinition }
+  private struct PilotReportArguments: Decodable { let pilotId: String }
+  private struct RecordPilotReadinessArguments: Decodable {
+    let pilotId: String
+    let readiness: PilotReadiness
+    let note: String
+    let explicitHumanConfirmation: Bool
+  }
 
   private struct PreparedStartingFamily {
     let record: ParsedFamilyRecord
@@ -1456,6 +1649,7 @@ public struct KalvianRootsMCPServerFactory {
     hiskiEvidenceStore: any HiskiEvidenceStoring,
     familyComparisonStore: any FamilyComparisonStoring,
     familyResearchService: FamilyResearchService,
+    citationReviewService: CitationReviewService,
     auditWriter: any MCPAuditWriting
   ) async -> CallTool.Result {
     let allowed: Set<String> = ["comparisonId", "selectedPerson"]
@@ -1487,6 +1681,7 @@ public struct KalvianRootsMCPServerFactory {
       let workup = try familyResearchService.prepareWorkup(
         comparison: comparison, context: context, juuretProposal: juuret,
         hiskiEvidence: evidence)
+      _ = try await citationReviewService.prepare(workup: workup)
       let warnings = workup.warnings.map { ToolWarning(code: $0.code, message: $0.message) }
       let envelope = ToolEnvelope(
         contractVersion: kalvianRootsMCPContractVersion, operationId: operationId,
@@ -1646,6 +1841,277 @@ public struct KalvianRootsMCPServerFactory {
       envelope: envelope, request: request, operationId: operationId,
       generatedAt: generatedAt, auditWriter: auditWriter, cacheStatus: cacheStatus,
       externalServicesContacted: externalServices)
+  }
+
+  private static func handleGetCitationReview(
+    request: CallTool.Parameters, operationId: String, generatedAt: String,
+    citationReviewService: CitationReviewService, auditWriter: any MCPAuditWriting
+  ) async -> CallTool.Result {
+    guard Set((request.arguments ?? [:]).keys) == ["reviewId"],
+      let arguments = try? decodeArguments(CitationReviewArguments.self, request: request),
+      !arguments.reviewId.isEmpty
+    else {
+      return await errorResult(
+        code: "invalid_request", message: "get_citation_review arguments are invalid.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter)
+    }
+    do {
+      let review = try await citationReviewService.get(reviewId: arguments.reviewId)
+      return try await citationReviewSuccessResult(
+        review, readOnly: true, request: request, operationId: operationId,
+        generatedAt: generatedAt, auditWriter: auditWriter, cacheStatus: "review_hit")
+    } catch {
+      return await citationReviewErrorResult(
+        error, request: request, operationId: operationId, generatedAt: generatedAt,
+        auditWriter: auditWriter)
+    }
+  }
+
+  private static func handleRecordCitationDecision(
+    request: CallTool.Parameters, operationId: String, generatedAt: String,
+    citationReviewService: CitationReviewService, auditWriter: any MCPAuditWriting
+  ) async -> CallTool.Result {
+    let allowed: Set<String> = [
+      "reviewId", "proposalId", "disposition", "note", "explicitHumanConfirmation",
+    ]
+    guard Set((request.arguments ?? [:]).keys).subtracting(allowed).isEmpty,
+      let arguments = try? decodeArguments(RecordCitationDecisionArguments.self, request: request),
+      arguments.explicitHumanConfirmation
+    else {
+      return await errorResult(
+        code: "approval_required",
+        message: "record_citation_decision requires explicit human confirmation.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter)
+    }
+    do {
+      let review = try await citationReviewService.recordDecision(
+        reviewId: arguments.reviewId, proposalId: arguments.proposalId,
+        disposition: arguments.disposition, note: arguments.note,
+        explicitHumanConfirmation: arguments.explicitHumanConfirmation)
+      return try await citationReviewSuccessResult(
+        review, readOnly: false, request: request, operationId: operationId,
+        generatedAt: generatedAt, auditWriter: auditWriter, cacheStatus: "review_update")
+    } catch {
+      return await citationReviewErrorResult(
+        error, request: request, operationId: operationId, generatedAt: generatedAt,
+        auditWriter: auditWriter)
+    }
+  }
+
+  private static func handleRecordAttachmentOutcome(
+    request: CallTool.Parameters, operationId: String, generatedAt: String,
+    citationReviewService: CitationReviewService, auditWriter: any MCPAuditWriting
+  ) async -> CallTool.Result {
+    let allowed: Set<String> = [
+      "reviewId", "proposalId", "status", "familySearchPersonId", "note",
+      "explicitHumanConfirmation",
+    ]
+    guard Set((request.arguments ?? [:]).keys).subtracting(allowed).isEmpty,
+      let arguments = try? decodeArguments(RecordAttachmentOutcomeArguments.self, request: request),
+      arguments.explicitHumanConfirmation
+    else {
+      return await errorResult(
+        code: "approval_required",
+        message: "record_familysearch_attachment_outcome requires explicit human confirmation.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter)
+    }
+    do {
+      let review = try await citationReviewService.recordAttachmentOutcome(
+        reviewId: arguments.reviewId, proposalId: arguments.proposalId,
+        status: arguments.status, familySearchPersonId: arguments.familySearchPersonId,
+        note: arguments.note,
+        explicitHumanConfirmation: arguments.explicitHumanConfirmation)
+      return try await citationReviewSuccessResult(
+        review, readOnly: false, request: request, operationId: operationId,
+        generatedAt: generatedAt, auditWriter: auditWriter, cacheStatus: "review_update")
+    } catch {
+      return await citationReviewErrorResult(
+        error, request: request, operationId: operationId, generatedAt: generatedAt,
+        auditWriter: auditWriter)
+    }
+  }
+
+  private static func citationReviewSuccessResult(
+    _ review: CitationReviewRecord, readOnly: Bool, request: CallTool.Parameters,
+    operationId: String, generatedAt: String, auditWriter: any MCPAuditWriting,
+    cacheStatus: String
+  ) async throws -> CallTool.Result {
+    let warnings = review.workup.warnings.map { ToolWarning(code: $0.code, message: $0.message) }
+    var seenSpans: Set<String> = []
+    let provenance = review.items.flatMap { $0.proposal.sourceSpans }.filter {
+      seenSpans.insert("\($0.sourceSha256)|\($0.blockSha256)").inserted
+    }
+    let envelope = ToolEnvelope(
+      contractVersion: kalvianRootsMCPContractVersion, operationId: operationId,
+      generatedAt: generatedAt, tool: request.name, readOnly: readOnly, data: review,
+      warnings: warnings, conflicts: review.workup.conflicts, provenance: provenance,
+      auditRef: "audit:\(operationId)")
+    return try await successResult(
+      envelope: envelope, request: request, operationId: operationId,
+      generatedAt: generatedAt, auditWriter: auditWriter, cacheStatus: cacheStatus,
+      externalServicesContacted: [])
+  }
+
+  private static func citationReviewErrorResult(
+    _ error: Error, request: CallTool.Parameters, operationId: String,
+    generatedAt: String, auditWriter: any MCPAuditWriting
+  ) async -> CallTool.Result {
+    if let error = error as? CitationReviewError {
+      return await errorResult(
+        code: error.code, message: error.localizedDescription, operationId: operationId,
+        retryable: false, details: nil, request: request, generatedAt: generatedAt,
+        auditWriter: auditWriter)
+    }
+    return await errorResult(
+      code: "internal_error", message: "The operation could not be completed.",
+      operationId: operationId, retryable: false, details: nil, request: request,
+      generatedAt: generatedAt, auditWriter: auditWriter)
+  }
+
+  private static func handleCreatePilotReport(
+    request: CallTool.Parameters, operationId: String, generatedAt: String,
+    pilotService: PilotService, auditWriter: any MCPAuditWriting
+  ) async -> CallTool.Result {
+    guard Set((request.arguments ?? [:]).keys) == ["definition"],
+      let arguments = try? decodeArguments(CreatePilotReportArguments.self, request: request)
+    else {
+      return await errorResult(
+        code: "invalid_request", message: "create_pilot_report arguments are invalid.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter)
+    }
+    do {
+      let report = try await pilotService.create(definition: arguments.definition)
+      return try await pilotSuccessResult(
+        report, readOnly: false, request: request, operationId: operationId,
+        generatedAt: generatedAt, auditWriter: auditWriter, cacheStatus: "pilot_write")
+    } catch {
+      return await pilotErrorResult(
+        error, request: request, operationId: operationId, generatedAt: generatedAt,
+        auditWriter: auditWriter)
+    }
+  }
+
+  private static func handleGetPilotReport(
+    request: CallTool.Parameters, operationId: String, generatedAt: String,
+    pilotService: PilotService, auditWriter: any MCPAuditWriting
+  ) async -> CallTool.Result {
+    guard Set((request.arguments ?? [:]).keys) == ["pilotId"],
+      let arguments = try? decodeArguments(PilotReportArguments.self, request: request)
+    else {
+      return await errorResult(
+        code: "invalid_request", message: "get_pilot_report arguments are invalid.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter)
+    }
+    do {
+      let report = try await pilotService.get(pilotId: arguments.pilotId)
+      return try await pilotSuccessResult(
+        report, readOnly: true, request: request, operationId: operationId,
+        generatedAt: generatedAt, auditWriter: auditWriter, cacheStatus: "pilot_hit")
+    } catch {
+      return await pilotErrorResult(
+        error, request: request, operationId: operationId, generatedAt: generatedAt,
+        auditWriter: auditWriter)
+    }
+  }
+
+  private static func handleRefreshPilotReport(
+    request: CallTool.Parameters, operationId: String, generatedAt: String,
+    pilotService: PilotService, auditWriter: any MCPAuditWriting
+  ) async -> CallTool.Result {
+    guard Set((request.arguments ?? [:]).keys) == ["pilotId"],
+      let arguments = try? decodeArguments(PilotReportArguments.self, request: request)
+    else {
+      return await errorResult(
+        code: "invalid_request", message: "refresh_pilot_report arguments are invalid.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter)
+    }
+    do {
+      let report = try await pilotService.refresh(pilotId: arguments.pilotId)
+      return try await pilotSuccessResult(
+        report, readOnly: false, request: request, operationId: operationId,
+        generatedAt: generatedAt, auditWriter: auditWriter, cacheStatus: "pilot_update")
+    } catch {
+      return await pilotErrorResult(
+        error, request: request, operationId: operationId, generatedAt: generatedAt,
+        auditWriter: auditWriter)
+    }
+  }
+
+  private static func handleRecordPilotReadiness(
+    request: CallTool.Parameters, operationId: String, generatedAt: String,
+    pilotService: PilotService, auditWriter: any MCPAuditWriting
+  ) async -> CallTool.Result {
+    let allowed: Set<String> = [
+      "pilotId", "readiness", "note", "explicitHumanConfirmation",
+    ]
+    guard Set((request.arguments ?? [:]).keys).subtracting(allowed).isEmpty,
+      let arguments = try? decodeArguments(RecordPilotReadinessArguments.self, request: request),
+      arguments.explicitHumanConfirmation
+    else {
+      return await errorResult(
+        code: "approval_required",
+        message: "record_pilot_readiness requires explicit human confirmation.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter)
+    }
+    do {
+      let report = try await pilotService.recordReadiness(
+        pilotId: arguments.pilotId, readiness: arguments.readiness, note: arguments.note,
+        explicitHumanConfirmation: arguments.explicitHumanConfirmation)
+      return try await pilotSuccessResult(
+        report, readOnly: false, request: request, operationId: operationId,
+        generatedAt: generatedAt, auditWriter: auditWriter, cacheStatus: "pilot_update")
+    } catch {
+      return await pilotErrorResult(
+        error, request: request, operationId: operationId, generatedAt: generatedAt,
+        auditWriter: auditWriter)
+    }
+  }
+
+  private static func pilotSuccessResult(
+    _ report: PilotReport, readOnly: Bool, request: CallTool.Parameters,
+    operationId: String, generatedAt: String, auditWriter: any MCPAuditWriting,
+    cacheStatus: String
+  ) async throws -> CallTool.Result {
+    var warnings = report.incompleteFamilies.sorted(by: { $0.key < $1.key }).map {
+      ToolWarning(code: "pilot_family_incomplete", message: "\($0.key): \($0.value)")
+    }
+    if report.readiness == .pending {
+      warnings.append(ToolWarning(
+        code: "pilot_readiness_pending",
+        message: "Broader traversal remains blocked until the user records a readiness decision."))
+    }
+    let envelope = ToolEnvelope(
+      contractVersion: kalvianRootsMCPContractVersion, operationId: operationId,
+      generatedAt: generatedAt, tool: request.name, readOnly: readOnly, data: report,
+      warnings: warnings, conflicts: [FactConflict](), provenance: report.sourceSpans,
+      auditRef: "audit:\(operationId)")
+    return try await successResult(
+      envelope: envelope, request: request, operationId: operationId,
+      generatedAt: generatedAt, auditWriter: auditWriter, cacheStatus: cacheStatus,
+      externalServicesContacted: [])
+  }
+
+  private static func pilotErrorResult(
+    _ error: Error, request: CallTool.Parameters, operationId: String,
+    generatedAt: String, auditWriter: any MCPAuditWriting
+  ) async -> CallTool.Result {
+    if let error = error as? PilotServiceError {
+      return await errorResult(
+        code: error.code, message: error.localizedDescription, operationId: operationId,
+        retryable: false, details: nil, request: request, generatedAt: generatedAt,
+        auditWriter: auditWriter)
+    }
+    return await errorResult(
+      code: "internal_error", message: "The operation could not be completed.",
+      operationId: operationId, retryable: false, details: nil, request: request,
+      generatedAt: generatedAt, auditWriter: auditWriter)
   }
 
   private static func prepareStartingFamily(
