@@ -13,22 +13,36 @@ import XCTest
 final class RootsFileManagerTests: XCTestCase {
     
     var fileManager: RootsFileManager!
+    private var temporaryDocumentsDirectory: URL!
     
     override func setUp() async throws {
         try await super.setUp()
-        fileManager = RootsFileManager()
-        
-        // Wait for file to load by polling
-        for _ in 0..<50 { // Wait up to 5 seconds
-            if fileManager.isFileLoaded {
-                break
-            }
-            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-        }
+        temporaryDocumentsDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RootsFileManagerTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: temporaryDocumentsDirectory,
+            withIntermediateDirectories: true
+        )
+
+        let fixtureURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("../KalvianRootsCore/Tests/KalvianRootsCoreTests/Fixtures/JuuretKälviällä.roots")
+            .standardizedFileURL
+        let canonicalURL = temporaryDocumentsDirectory
+            .appendingPathComponent("JuuretKälviällä.roots")
+        try FileManager.default.copyItem(at: fixtureURL, to: canonicalURL)
+
+        fileManager = RootsFileManager(documentsDirectory: temporaryDocumentsDirectory)
+        await fileManager.autoLoadDefaultFile()
+        XCTAssertTrue(fileManager.isFileLoaded, fileManager.errorMessage ?? "Fixture did not load")
     }
     
     override func tearDown() async throws {
         fileManager = nil
+        if let temporaryDocumentsDirectory {
+            try? FileManager.default.removeItem(at: temporaryDocumentsDirectory)
+        }
+        temporaryDocumentsDirectory = nil
         try await super.tearDown()
     }
     
@@ -40,12 +54,11 @@ final class RootsFileManagerTests: XCTestCase {
     
     // MARK: - File Loading Tests
     
-    func testFilePathIsValid() async {
+    func testFilePathIsValid() async throws {
         // Then: Should have valid file URL
-        if let url = fileManager.currentFileURL {
-            XCTAssertFalse(url.path.isEmpty, "File path should not be empty")
-            XCTAssertTrue(url.path.contains("JuuretKälviällä"), "Should be the correct file")
-        }
+        let url = try XCTUnwrap(fileManager.currentFileURL)
+        XCTAssertFalse(url.path.isEmpty, "File path should not be empty")
+        XCTAssertEqual(url.lastPathComponent, "JuuretKälviällä.roots")
     }
     
     // MARK: - Family Extraction Tests
@@ -70,11 +83,12 @@ final class RootsFileManagerTests: XCTestCase {
     }
     
     func testGetAllFamilyIdsBeforeFileLoads() {
-        // When: Getting IDs before file loads
-        let _ = fileManager.getAllFamilyIds()
+        // Given: A manager that has not explicitly loaded its source
+        let unloadedManager = RootsFileManager(documentsDirectory: temporaryDocumentsDirectory)
         
-        // Then: Should return empty array or handle gracefully
-        XCTAssertTrue(true, "Should handle request before file loads")
+        // Then: The static family index remains available without loading source text
+        XCTAssertFalse(unloadedManager.isFileLoaded)
+        XCTAssertFalse(unloadedManager.getAllFamilyIds().isEmpty)
     }
     
     // MARK: - File Search Tests
@@ -108,17 +122,13 @@ final class RootsFileManagerTests: XCTestCase {
     
     func testCurrentFileURLProperty() async {
         // Then: Should have file URL
-        if let url = fileManager.currentFileURL {
-            XCTAssertFalse(url.path.isEmpty, "File path should not be empty")
-            XCTAssertTrue(url.path.contains("JuuretKälviällä"), "Should be the correct file")
-        }
+        XCTAssertEqual(fileManager.currentFileURL?.deletingLastPathComponent(), temporaryDocumentsDirectory)
     }
     
-    func testCurrentFileContentProperty() async {
+    func testCurrentFileContentProperty() async throws {
         // Then: Should have contents
-        if let contents = fileManager.currentFileContent {
-            XCTAssertGreaterThan(contents.count, 1000, "File should have substantial content")
-        }
+        let contents = try XCTUnwrap(fileManager.currentFileContent)
+        XCTAssertGreaterThan(contents.count, 1000, "Fixture should have substantial content")
     }
     
     // MARK: - Error Handling Tests
@@ -136,16 +146,13 @@ final class RootsFileManagerTests: XCTestCase {
         // Test: Should handle when file is corrupted
     }
     
-    // MARK: - iCloud Integration Tests
+    // MARK: - Local Documents Tests
     
-    func testFindsFileInICloudDrive() async {
-        // Then: Should find in iCloud location
-        if let url = fileManager.currentFileURL {
-            XCTAssertTrue(
-                url.path.contains("iCloud") || url.path.contains("Library"),
-                "Should be in expected location"
-            )
-        }
+    func testUsesConfiguredLocalDocumentsDirectory() async {
+        XCTAssertEqual(
+            fileManager.currentFileURL?.deletingLastPathComponent(),
+            temporaryDocumentsDirectory
+        )
     }
     
     func testHandlesICloudUnavailable() {
@@ -159,10 +166,11 @@ final class RootsFileManagerTests: XCTestCase {
     func testExtractionPerformance() async {
         // When: Measuring extraction time
         let startTime = Date()
-        _ = fileManager.extractFamilyText(familyId: "KORPI 6")
+        let familyText = fileManager.extractFamilyText(familyId: "SAKERI 4")
         let endTime = Date()
         
         // Then: Should be fast
+        XCTAssertNotNil(familyText)
         let duration = endTime.timeIntervalSince(startTime)
         XCTAssertLessThan(duration, 1.0, "Extraction should be fast")
     }

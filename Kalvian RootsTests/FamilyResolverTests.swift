@@ -32,14 +32,6 @@ final class FamilyResolverTests: XCTestCase {
             fileManager: fileManager,
             familyNetworkCache: cache
         )
-        
-        // Wait for file to load
-        for _ in 0..<50 {
-            if fileManager.isFileLoaded {
-                break
-            }
-            try? await Task.sleep(nanoseconds: 100_000_000)
-        }
     }
     
     override func tearDown() async throws {
