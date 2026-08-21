@@ -1,6 +1,7 @@
 import Foundation
+
 #if canImport(FoundationNetworking)
-import FoundationNetworking
+  import FoundationNetworking
 #endif
 
 public let juuretFamilySchemaVersion = "juuret-family/1"
@@ -79,7 +80,8 @@ extension FamilyParsingError: LocalizedError {
     case .cacheMiss(let familyId): "No validated parsed family is cached for \(familyId)."
     case .malformedAIResponse(let reason): "DeepSeek returned malformed family JSON: \(reason)"
     case .unsupportedSchema(let version): "Unsupported family schema: \(version)"
-    case .validationFailed(let reasons): "Parsed family validation failed: \(reasons.joined(separator: "; "))"
+    case .validationFailed(let reasons):
+      "Parsed family validation failed: \(reasons.joined(separator: "; "))"
     case .credentialUnavailable: "The local DeepSeek credential is not configured."
     case .aiRequestFailed(let reason): "The DeepSeek request failed: \(reason)"
     case .cacheUnreadable(let reason): "The parsed-family cache could not be read: \(reason)"
@@ -92,12 +94,16 @@ public protocol FamilyAIResponding: Sendable {
 }
 
 public protocol FamilyParsingServing: Sendable {
-  func parseFamily(source: FamilyTextRecord, cachePolicy: ParseCachePolicy) async throws -> ParsedFamilyRecord
+  func parseFamily(source: FamilyTextRecord, cachePolicy: ParseCachePolicy) async throws
+    -> ParsedFamilyRecord
   func getParsedFamily(familyId: String, sourceSHA256: String) async throws -> ParsedFamilyRecord?
 }
 
 public actor NativeParsedFamilyCache {
-  private struct Payload: Codable { let schemaVersion: Int; var records: [String: ParsedFamilyRecord] }
+  private struct Payload: Codable {
+    let schemaVersion: Int
+    var records: [String: ParsedFamilyRecord]
+  }
   private let url: URL
   private let fileManager: FileManager
   private var loaded: Payload?
@@ -107,14 +113,17 @@ public actor NativeParsedFamilyCache {
     self.url = url ?? Self.defaultURL(fileManager: fileManager)
   }
 
-  public func record(familyId: String, sourceSHA256: String, parserVersion: String) throws -> ParsedFamilyRecord? {
+  public func record(familyId: String, sourceSHA256: String, parserVersion: String) throws
+    -> ParsedFamilyRecord?
+  {
     let payload = try load()
     return payload.records[Self.key(familyId, sourceSHA256, parserVersion)]
   }
 
   public func store(_ record: ParsedFamilyRecord) throws {
     var payload = try load()
-    payload.records[Self.key(record.familyId, record.source.sha256, record.parserImplementationVersion)] = record
+    payload.records[
+      Self.key(record.familyId, record.source.sha256, record.parserImplementationVersion)] = record
     let directory = url.deletingLastPathComponent()
     try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
     let encoder = JSONEncoder()
@@ -137,16 +146,21 @@ public actor NativeParsedFamilyCache {
       }
       loaded = payload
       return payload
-    } catch let error as FamilyParsingError { throw error }
-    catch { throw FamilyParsingError.cacheUnreadable(error.localizedDescription) }
+    } catch let error as FamilyParsingError { throw error } catch {
+      throw FamilyParsingError.cacheUnreadable(error.localizedDescription)
+    }
   }
 
-  private static func key(_ familyId: String, _ sourceSHA256: String, _ parserVersion: String) -> String {
+  private static func key(_ familyId: String, _ sourceSHA256: String, _ parserVersion: String)
+    -> String
+  {
     "\(familyId.uppercased().trimmingCharacters(in: .whitespacesAndNewlines))|\(sourceSHA256)|\(juuretFamilySchemaVersion)|\(parserVersion)"
   }
 
   private static func defaultURL(fileManager: FileManager) -> URL {
-    guard let support = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+    guard
+      let support = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+    else {
       fatalError("Application Support directory is unavailable")
     }
     return support.appendingPathComponent("Kalvian Roots/Cache/parsed-families-v1.json")
@@ -158,9 +172,12 @@ public actor LegacyFamilyCacheReader {
   private var payload: [String: Any]?
 
   public init(url: URL? = nil, fileManager: FileManager = .default) {
-    if let url { self.url = url }
-    else {
-      guard let support = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+    if let url {
+      self.url = url
+    } else {
+      guard
+        let support = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+      else {
         fatalError("Application Support directory is unavailable")
       }
       self.url = support.appendingPathComponent("Kalvian Roots/Cache/families.json")
@@ -173,7 +190,9 @@ public actor LegacyFamilyCacheReader {
     guard let version = root["schemaVersion"] as? Int else {
       throw FamilyParsingError.cacheUnreadable("Legacy cache has no schemaVersion.")
     }
-    guard version == 2 else { throw FamilyParsingError.unsupportedSchema("legacy-family-cache/\(version)") }
+    guard version == 2 else {
+      throw FamilyParsingError.unsupportedSchema("legacy-family-cache/\(version)")
+    }
     guard let families = root["families"] as? [String: Any] else {
       throw FamilyParsingError.cacheUnreadable("Legacy cache has no families object.")
     }
@@ -186,7 +205,8 @@ public actor LegacyFamilyCacheReader {
       let data = try JSONSerialization.data(withJSONObject: main)
       return try JSONDecoder().decode(Family.self, from: data)
     } catch {
-      throw FamilyParsingError.cacheUnreadable("Legacy entry \(key) is malformed: \(error.localizedDescription)")
+      throw FamilyParsingError.cacheUnreadable(
+        "Legacy entry \(key) is malformed: \(error.localizedDescription)")
     }
   }
 
@@ -194,13 +214,16 @@ public actor LegacyFamilyCacheReader {
     if let payload { return payload }
     guard FileManager.default.fileExists(atPath: url.path) else { return [:] }
     do {
-      guard let root = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any] else {
+      guard
+        let root = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+      else {
         throw FamilyParsingError.cacheUnreadable("Legacy cache root is not an object.")
       }
       payload = root
       return root
-    } catch let error as FamilyParsingError { throw error }
-    catch { throw FamilyParsingError.cacheUnreadable(error.localizedDescription) }
+    } catch let error as FamilyParsingError { throw error } catch {
+      throw FamilyParsingError.cacheUnreadable(error.localizedDescription)
+    }
   }
 }
 
@@ -219,13 +242,16 @@ public actor FamilyParsingService: FamilyParsingServing {
     self.legacyCache = legacyCache
   }
 
-  public func parseFamily(source: FamilyTextRecord, cachePolicy: ParseCachePolicy) async throws -> ParsedFamilyRecord {
+  public func parseFamily(source: FamilyTextRecord, cachePolicy: ParseCachePolicy) async throws
+    -> ParsedFamilyRecord
+  {
     if cachePolicy != .refresh,
       let native = try await nativeCache.record(
         familyId: source.familyId,
         sourceSHA256: source.source.sha256,
         parserVersion: familyParserImplementationVersion
-      ) {
+      )
+    {
       return native
     }
     if cachePolicy != .refresh,
@@ -233,7 +259,8 @@ public actor FamilyParsingService: FamilyParsingServing {
         familyId: source.familyId,
         sourceSHA256: source.source.sha256,
         parserVersion: "legacy-schema2-unknown"
-      ) {
+      )
+    {
       return imported
     }
 
@@ -248,7 +275,8 @@ public actor FamilyParsingService: FamilyParsingServing {
         warnings: [
           ParsingWarning(
             code: "legacy_cache_provenance_limited",
-            message: "Imported from schema-2 families.json; raw DeepSeek response, original source hash, prompt version, and parser version were not stored."
+            message:
+              "Imported from schema-2 families.json; raw DeepSeek response, original source hash, prompt version, and parser version were not stored."
           )
         ]
       )
@@ -271,12 +299,16 @@ public actor FamilyParsingService: FamilyParsingServing {
     return record
   }
 
-  public func getParsedFamily(familyId: String, sourceSHA256: String) async throws -> ParsedFamilyRecord? {
+  public func getParsedFamily(familyId: String, sourceSHA256: String) async throws
+    -> ParsedFamilyRecord?
+  {
     if let current = try await nativeCache.record(
       familyId: familyId,
       sourceSHA256: sourceSHA256,
       parserVersion: familyParserImplementationVersion
-    ) { return current }
+    ) {
+      return current
+    }
     return try await nativeCache.record(
       familyId: familyId,
       sourceSHA256: sourceSHA256,
@@ -290,16 +322,38 @@ public actor FamilyParsingService: FamilyParsingServing {
     if family.pageReferences.isEmpty { issues.append("Page references are required") }
     if family.couples.isEmpty { issues.append("At least one couple is required") }
     for (index, couple) in family.couples.enumerated() {
-      if couple.husband.name.isEmpty { issues.append("Couple \(index + 1): Husband name is required") }
+      if couple.husband.name.isEmpty {
+        issues.append("Couple \(index + 1): Husband name is required")
+      }
       if couple.wife.name.isEmpty { issues.append("Couple \(index + 1): Wife name is required") }
     }
     if family.familyId.caseInsensitiveCompare(source.familyId) != .orderedSame {
       issues.append("Family ID \(family.familyId) does not match source \(source.familyId)")
     }
-    if family.pageReferences != source.span.pageReferences {
+    if !pageReferencesEquivalent(family.pageReferences, source.span.pageReferences) {
       issues.append("Page references do not match the source header")
     }
     if !issues.isEmpty { throw FamilyParsingError.validationFailed(issues) }
+  }
+
+  private static func pageReferencesEquivalent(_ lhs: [String], _ rhs: [String]) -> Bool {
+    expandedPageReferences(lhs) == expandedPageReferences(rhs)
+  }
+
+  /// Expands only numeric page ranges for comparison. Stored parsed values and
+  /// canonical source-header provenance remain unchanged.
+  private static func expandedPageReferences(_ values: [String]) -> [String] {
+    values.flatMap { value -> [String] in
+      let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+      let parts = trimmed.split(
+        omittingEmptySubsequences: false, whereSeparator: { $0 == "-" || $0 == "–" })
+      guard parts.count == 2,
+        let first = Int(String(parts[0]).trimmingCharacters(in: .whitespaces)),
+        let last = Int(String(parts[1]).trimmingCharacters(in: .whitespaces)),
+        first <= last, last - first <= 100
+      else { return [trimmed] }
+      return (first...last).map(String.init)
+    }
   }
 }
 
@@ -326,8 +380,9 @@ public enum FamilyJSONDecoder {
         throw FamilyParsingError.validationFailed(["Family ID does not match the requested family"])
       }
       return sanitize(family)
-    } catch let error as FamilyParsingError { throw error }
-    catch { throw FamilyParsingError.malformedAIResponse(error.localizedDescription) }
+    } catch let error as FamilyParsingError { throw error } catch {
+      throw FamilyParsingError.malformedAIResponse(error.localizedDescription)
+    }
   }
 
   private static func clean(_ response: String) -> String {

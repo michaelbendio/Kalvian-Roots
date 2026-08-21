@@ -224,8 +224,10 @@ public actor FileHiskiEvidenceStore: HiskiEvidenceStoring {
   }
 
   private static func defaultURL(fileManager: FileManager) -> URL {
-    guard let support = fileManager.urls(
-      for: .applicationSupportDirectory, in: .userDomainMask).first
+    guard
+      let support = fileManager.urls(
+        for: .applicationSupportDirectory, in: .userDomainMask
+      ).first
     else { fatalError("Application Support directory is unavailable") }
     return support.appendingPathComponent("Kalvian Roots", isDirectory: true)
       .appendingPathComponent("Research", isDirectory: true)
@@ -406,8 +408,10 @@ public actor FileFamilyComparisonStore: FamilyComparisonStoring {
   }
 
   private static func defaultURL(fileManager: FileManager) -> URL {
-    guard let support = fileManager.urls(
-      for: .applicationSupportDirectory, in: .userDomainMask).first
+    guard
+      let support = fileManager.urls(
+        for: .applicationSupportDirectory, in: .userDomainMask
+      ).first
     else { fatalError("Application Support directory is unavailable") }
     return support.appendingPathComponent("Kalvian Roots", isDirectory: true)
       .appendingPathComponent("Research", isDirectory: true)
@@ -482,9 +486,11 @@ public struct FamilyResearchService: Sendable {
     familySearchCandidates: [PersonCandidateInput],
     hiskiEvidence: [StoredHiskiEvidence]
   ) throws -> FamilyComparisonRecord {
-    guard let starting = context.families.first(where: {
-      Self.familyKey($0.parsedFamily.familyId) == Self.familyKey(context.selectedPerson.familyId)
-    }) else {
+    guard
+      let starting = context.families.first(where: {
+        Self.familyKey($0.parsedFamily.familyId) == Self.familyKey(context.selectedPerson.familyId)
+      })
+    else {
       throw ResearchStoreError.invalidRequest(
         "the selected person's starting family is absent from the resolved context")
     }
@@ -526,31 +532,42 @@ public struct FamilyResearchService: Sendable {
       familySearch: familySearch, juuretKalvialla: juuret, hiski: hiski)
     var warnings = context.missingReferences
     if !context.complete {
-      warnings.append(NetworkWarning(
-        code: "incomplete_context",
-        message: "The family context is incomplete; the comparison is bounded to returned evidence."))
+      warnings.append(
+        NetworkWarning(
+          code: "incomplete_context",
+          message:
+            "The family context is incomplete; the comparison is bounded to returned evidence."))
     }
     if familySearchCandidates.isEmpty {
-      warnings.append(NetworkWarning(
-        code: "familysearch_not_supplied",
-        message: "No UI-extracted FamilySearch candidates were supplied."))
+      warnings.append(
+        NetworkWarning(
+          code: "familysearch_not_supplied",
+          message: "No UI-extracted FamilySearch candidates were supplied."))
     }
     for input in familySearchCandidates where GenealogyDateParser.parse(input.rawBirthDate) == nil {
-      warnings.append(NetworkWarning(
-        code: "familysearch_birth_date_missing",
-        message: "\(input.rawName) has no parseable FamilySearch birth date and was not identity-matched."))
+      warnings.append(
+        NetworkWarning(
+          code: "familysearch_birth_date_missing",
+          message:
+            "\(input.rawName) has no parseable FamilySearch birth date and was not identity-matched."
+        ))
     }
     for evidence in hiskiEvidence where evidence.searchWasAmbiguous {
-      warnings.append(NetworkWarning(
-        code: "ambiguous_hiski_candidates",
-        message: "HiSki query \(evidence.query.queryId) returned multiple candidates; identity requires review."))
+      warnings.append(
+        NetworkWarning(
+          code: "ambiguous_hiski_candidates",
+          message:
+            "HiSki query \(evidence.query.queryId) returned multiple candidates; identity requires review."
+        ))
     }
     warnings = Self.uniqueWarnings(warnings)
     let evidenceIds = hiskiEvidence.map(\.candidateId)
     let comparisonId = Self.stableID(
       "family-comparison", context.contextId,
-      familySearchCandidates.map { "\($0.rawName)|\($0.rawBirthDate ?? "")|\($0.familySearchId ?? "")" }
-        .joined(separator: ";"),
+      familySearchCandidates.map {
+        "\($0.rawName)|\($0.rawBirthDate ?? "")|\($0.familySearchId ?? "")"
+      }
+      .joined(separator: ";"),
       evidenceIds.joined(separator: ";"))
     return FamilyComparisonRecord(
       comparisonId: comparisonId, contextId: context.contextId,
@@ -585,16 +602,14 @@ public struct FamilyResearchService: Sendable {
       guard let record = evidence.record else { return nil }
       var warnings: [NetworkWarning] = []
       if evidence.searchWasAmbiguous {
-        warnings.append(NetworkWarning(
-          code: "ambiguous_hiski_candidates",
-          message: "This detail record came from an ambiguous result set and still requires identity review."))
+        warnings.append(
+          NetworkWarning(
+            code: "ambiguous_hiski_candidates",
+            message:
+              "This detail record came from an ambiguous result set and still requires identity review."
+          ))
       }
-      let event = evidence.candidate.eventType.rawValue.capitalized
-      let rendered = [
-        "HiSki \(event) record:", record.recordText,
-        "Source: \(record.citationURL)",
-        "Motivated by Juuret \(record.query.motivation.juuretField): \(record.query.motivation.juuretValue)",
-      ].joined(separator: "\n")
+      let rendered = record.citationURL
       return CitationProposal(
         proposalId: Self.stableID("hiski-citation", context.contextId, evidence.candidateId),
         citationType: "hiski_\(evidence.candidate.eventType.rawValue)",
@@ -606,27 +621,36 @@ public struct FamilyResearchService: Sendable {
     var decisions = context.conflicts.map {
       HumanResearchDecision(
         code: "resolve_conflict",
-        message: "Review \($0.field) conflict: \($0.claims.map(\.value).joined(separator: " versus ")).")
+        message:
+          "Review \($0.field) conflict: \($0.claims.map(\.value).joined(separator: " versus ")).")
     }
     if comparison.familySearchCandidateCount == 0 {
-      decisions.append(HumanResearchDecision(
-        code: "familysearch_review_needed",
-        message: "Use the visible FamilySearch workflow to check the selected person and its sourced dates."))
+      decisions.append(
+        HumanResearchDecision(
+          code: "familysearch_review_needed",
+          message:
+            "Use the visible FamilySearch workflow to check the selected person and its sourced dates."
+        ))
     }
     for evidence in relevantEvidence where evidence.searchWasAmbiguous {
-      decisions.append(HumanResearchDecision(
-        code: "choose_hiski_identity",
-        message: "Confirm whether HiSki candidate \(evidence.candidateId) is the selected person."))
+      decisions.append(
+        HumanResearchDecision(
+          code: "choose_hiski_identity",
+          message: "Confirm whether HiSki candidate \(evidence.candidateId) is the selected person."
+        ))
     }
     for evidence in relevantEvidence where evidence.record == nil {
-      decisions.append(HumanResearchDecision(
-        code: "retrieve_hiski_record",
-        message: "Review and retrieve the detail record for HiSki candidate \(evidence.candidateId)."))
+      decisions.append(
+        HumanResearchDecision(
+          code: "retrieve_hiski_record",
+          message:
+            "Review and retrieve the detail record for HiSki candidate \(evidence.candidateId)."))
     }
     let allProposals = [juuretProposal] + hiskiProposals
     decisions += allProposals.map {
       HumanResearchDecision(
-        code: "approve_citation", message: "Approve or reject \($0.citationType) proposal \($0.proposalId).",
+        code: "approve_citation",
+        message: "Approve or reject \($0.citationType) proposal \($0.proposalId).",
         relatedProposalId: $0.proposalId)
     }
     let warnings = Self.uniqueWarnings(

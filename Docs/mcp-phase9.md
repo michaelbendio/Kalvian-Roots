@@ -38,8 +38,25 @@ Automated tests verify independent dispositions, rejection without explicit
 confirmation, rejection of an attachment outcome before approval, required
 person identification for a confirmed attachment, and complete traceability
 from an outcome back to the workup, person, and source spans. The complete
-Swift package run passes 48 core XCTest tests, 12 Swift Testing workflow tests,
+Swift package run passes 51 core XCTest tests, 12 Swift Testing workflow tests,
 and 13 MCP adapter tests.
+
+The first supervised Kustaa Matinp. (`KLXK-37H`) proposal was rejected. It
+revealed three concrete defects that are now permanent regression gates:
+
+- a parent citation must resolve and render the person's `as_child` family;
+  it must never fall back to the family where that person is a parent;
+- the legacy cache representation `268`, `269` is equivalent for validation
+  to the canonical source header `268-269`, while both original
+  representations remain unchanged; and
+- a HiSki proposal's rendered citation is the canonical app-compatible detail
+  URL, such as `https://hiski.genealogia.fi/hiski?en+t4085059`.
+
+`Phase9KustaaAcceptanceTests` uses the exact approved Kustaa Juuret citation
+and HiSki URL as golden outputs. It also verifies that an unresolved
+`as_child` family stops citation generation with an explicit error. This is
+the automated technical acceptance gate for that request; it is not evidence
+of a FamilySearch attachment.
 
 The MCP integration test uses only in-memory fixtures. Its example attachment
 outcome is not evidence that a real FamilySearch citation was attached.

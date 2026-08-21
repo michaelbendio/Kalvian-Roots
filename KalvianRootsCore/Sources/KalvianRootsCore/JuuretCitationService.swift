@@ -44,13 +44,16 @@ public enum CitationServiceError: Error, Equatable, Sendable {
   case contextNotFound(String)
   case selectedPersonMismatch
   case sourceFamilyMissing(String)
+  case asChildCitationRequired(String)
   case invalidSelectedPerson(String)
   case contextStoreUnavailable(String)
 
   public var code: String {
     switch self {
     case .contextNotFound: "record_not_found"
-    case .selectedPersonMismatch, .sourceFamilyMissing, .invalidSelectedPerson: "invalid_request"
+    case .selectedPersonMismatch, .sourceFamilyMissing, .asChildCitationRequired,
+      .invalidSelectedPerson:
+      "invalid_request"
     case .contextStoreUnavailable: "cache_unavailable"
     }
   }
@@ -65,6 +68,8 @@ extension CitationServiceError: LocalizedError {
       "The selected person does not match the stored context."
     case .sourceFamilyMissing(let familyId):
       "The citation source family \(familyId) is absent from the resolved context."
+    case .asChildCitationRequired(let familyId):
+      "The required as_child citation family \(familyId) was not resolved."
     case .invalidSelectedPerson(let reason):
       "The selected person cannot be rendered: \(reason)"
     case .contextStoreUnavailable(let reason):
@@ -180,7 +185,7 @@ public struct JuuretCitationService: CitationServing, Sendable {
     guard context.selectedPerson == selectedPerson else {
       throw CitationServiceError.selectedPersonMismatch
     }
-    let renderingTarget = citationTarget(in: context, selectedPerson: selectedPerson)
+    let renderingTarget = try citationTarget(in: context, selectedPerson: selectedPerson)
     guard
       let sourceRecord = context.families.first(where: {
         familyKey($0.familyId) == familyKey(renderingTarget.familyId)
@@ -191,8 +196,13 @@ public struct JuuretCitationService: CitationServing, Sendable {
     try validate(renderingTarget, in: sourceRecord.parsedFamily)
 
     let conflictedFields = Set(context.conflicts.map(\.field))
-    let renderableClaims = context.claims.filter {
+    var renderableClaims = context.claims.filter {
       $0.derivation != .referenceHarvested || !conflictedFields.contains($0.field)
+    }
+    if renderingTarget != selectedPerson {
+      renderableClaims = renderableClaims.filter {
+        $0.sourceSpan.blockSha256 == sourceRecord.span.blockSha256
+      }
     }
     let rendered = try render(
       family: sourceRecord.parsedFamily,
@@ -202,8 +212,8 @@ public struct JuuretCitationService: CitationServing, Sendable {
     )
     let spans = sourceSpans(
       startingWith: sourceRecord.span,
-      claims: context.claims,
-      conflicts: context.conflicts
+      claims: renderingTarget == selectedPerson ? context.claims : renderableClaims,
+      conflicts: renderingTarget == selectedPerson ? context.conflicts : []
     )
     var warnings: [NetworkWarning] = []
     for warning in context.families.flatMap(\.warnings) {
@@ -365,18 +375,13 @@ public struct JuuretCitationService: CitationServing, Sendable {
 
   private func appendNotes(_ family: Family, to lines: inout [String]) {
     let notes = family.notes.filter { !$0.lowercased().contains("leski") }
-    let hasInfantDeaths = family.totalChildrenDiedInfancy > 0
-    guard !notes.isEmpty || !family.noteDefinitions.isEmpty || hasInfantDeaths else { return }
+    guard !notes.isEmpty || !family.noteDefinitions.isEmpty else { return }
     lines.append("Note:")
     lines += notes.map(JuuretCitationFormatting.footnoteText)
     for key in family.noteDefinitions.keys.sorted() {
       if let value = family.noteDefinitions[key] {
         lines.append("\(JuuretCitationFormatting.footnoteMarker(key)) \(value)")
       }
-    }
-    if hasInfantDeaths {
-      let count = family.totalChildrenDiedInfancy
-      lines.append("\(count) \(count == 1 ? "child" : "children") died in infancy")
     }
   }
 
@@ -449,14 +454,46 @@ public struct JuuretCitationService: CitationServing, Sendable {
   private func citationTarget(
     in context: PersonContextResolution,
     selectedPerson: PersonReference
-  ) -> PersonReference {
+  ) throws -> PersonReference {
     guard selectedPerson.role == .parent || selectedPerson.role == .spouse else {
       return selectedPerson
     }
-    return context.edges.first {
+    if let matched = context.edges.first(where: {
       $0.direction == .asChild && $0.status == .resolved
         && $0.sourcePerson == selectedPerson && $0.matchedPerson != nil
-    }?.matchedPerson ?? selectedPerson
+    })?.matchedPerson {
+      return matched
+    }
+    throw CitationServiceError.asChildCitationRequired(
+      requiredAsChildFamilyId(in: context, selectedPerson: selectedPerson)
+        ?? selectedPerson.rawName)
+  }
+
+  private func requiredAsChildFamilyId(
+    in context: PersonContextResolution,
+    selectedPerson: PersonReference
+  ) -> String? {
+    if let record = context.families.first(where: {
+      familyKey($0.familyId) == familyKey(selectedPerson.familyId)
+    }), record.parsedFamily.couples.indices.contains(selectedPerson.coupleIndex) {
+      let couple = record.parsedFamily.couples[selectedPerson.coupleIndex]
+      switch selectedPerson.role {
+      case .parent:
+        let person = selectedPerson.personIndex == 0 ? couple.husband : couple.wife
+        if let familyId = nonempty(person.asChild) { return familyId }
+      case .spouse:
+        if couple.children.indices.contains(selectedPerson.personIndex),
+          let familyId = nonempty(couple.children[selectedPerson.personIndex].spouseParentsFamilyId)
+        {
+          return familyId
+        }
+      case .child:
+        break
+      }
+    }
+    return context.edges.first {
+      $0.direction == .asChild && $0.sourcePerson == selectedPerson
+    }?.toFamilyId
   }
 
   private func sourceSpans(
@@ -510,7 +547,8 @@ public struct JuuretCitationService: CitationServing, Sendable {
   }
 
   private func markers(_ values: [String]) -> String {
-    values.isEmpty ? "" : " " + values.map(JuuretCitationFormatting.footnoteMarker).joined(separator: " ")
+    values.isEmpty
+      ? "" : " " + values.map(JuuretCitationFormatting.footnoteMarker).joined(separator: " ")
   }
 
   private func formatDate(_ raw: String, parentBirthYear: Int? = nil) -> String {

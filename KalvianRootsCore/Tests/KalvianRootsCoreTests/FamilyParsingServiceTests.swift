@@ -1,11 +1,14 @@
 import Foundation
 import XCTest
+
 @testable import KalvianRootsCore
 
 final class FamilyParsingServiceTests: XCTestCase {
   func testSavedFamilyFixturesDecode() throws {
-    let sakeri = try FamilyJSONDecoder.decode(try fixture("SAKERI 4.json"), expectedFamilyId: "SAKERI 4")
-    let difficult = try FamilyJSONDecoder.decode(try fixture("HYYPPA 7.json"), expectedFamilyId: "HYYPPÄ 7")
+    let sakeri = try FamilyJSONDecoder.decode(
+      try fixture("SAKERI 4.json"), expectedFamilyId: "SAKERI 4")
+    let difficult = try FamilyJSONDecoder.decode(
+      try fixture("HYYPPA 7.json"), expectedFamilyId: "HYYPPÄ 7")
     XCTAssertEqual(sakeri.primaryCouple?.children.first?.familySearchId, "KN1X-VHG")
     XCTAssertEqual(difficult.couples.count, 2)
   }
@@ -22,21 +25,28 @@ final class FamilyParsingServiceTests: XCTestCase {
 
   func testDecoderRejectsMalformedJSONAndUnsupportedSchema() {
     XCTAssertThrowsError(try FamilyJSONDecoder.decode("{bad", expectedFamilyId: "SAKERI 4")) {
-      guard case FamilyParsingError.malformedAIResponse = $0 else { return XCTFail("Unexpected \($0)") }
+      guard case FamilyParsingError.malformedAIResponse = $0 else {
+        return XCTFail("Unexpected \($0)")
+      }
     }
-    XCTAssertThrowsError(try FamilyJSONDecoder.decode(
-      Self.multipleSpouseJSON.replacingOccurrences(of: "juuret-family/1", with: "juuret-family/99"),
-      expectedFamilyId: "HYYPPÄ 7"
-    )) {
+    XCTAssertThrowsError(
+      try FamilyJSONDecoder.decode(
+        Self.multipleSpouseJSON.replacingOccurrences(
+          of: "juuret-family/1", with: "juuret-family/99"),
+        expectedFamilyId: "HYYPPÄ 7"
+      )
+    ) {
       XCTAssertEqual($0 as? FamilyParsingError, .unsupportedSchema("juuret-family/99"))
     }
-    XCTAssertThrowsError(try FamilyJSONDecoder.decode(
-      Self.multipleSpouseJSON.replacingOccurrences(
-        of: #""familyId":"HYYPPÄ 7""#,
-        with: #""familyId":"HYYPPÄ 7","inventedField":"value""#
-      ),
-      expectedFamilyId: "HYYPPÄ 7"
-    )) {
+    XCTAssertThrowsError(
+      try FamilyJSONDecoder.decode(
+        Self.multipleSpouseJSON.replacingOccurrences(
+          of: #""familyId":"HYYPPÄ 7""#,
+          with: #""familyId":"HYYPPÄ 7","inventedField":"value""#
+        ),
+        expectedFamilyId: "HYYPPÄ 7"
+      )
+    ) {
       guard case FamilyParsingError.validationFailed = $0 else {
         return XCTFail("Unexpected \($0)")
       }
@@ -68,6 +78,28 @@ final class FamilyParsingServiceTests: XCTestCase {
     )
     XCTAssertEqual(callCount, 0)
     XCTAssertNotNil(cached)
+  }
+
+  func testHyphenatedSourcePageRangeAcceptsEquivalentCachedPageList() async throws {
+    let directory = temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let legacyURL = directory.appendingPathComponent("families.json")
+    try Self.legacyPayload(
+      familyId: "PIENI-PORKOLA 5", mainFamilyJSON: Self.pieniPorkolaFamilyJSON
+    ).write(to: legacyURL)
+    let ai = CountingAI(response: "not used")
+    let service = FamilyParsingService(
+      ai: ai,
+      nativeCache: NativeParsedFamilyCache(url: directory.appendingPathComponent("parsed.json")),
+      legacyCache: LegacyFamilyCacheReader(url: legacyURL))
+    let source = try sourceRecord(familyId: "PIENI-PORKOLA 5", pages: ["268-269"])
+
+    let record = try await service.parseFamily(source: source, cachePolicy: .useValidated)
+
+    XCTAssertEqual(record.parsedFamily.pageReferences, ["268", "269"])
+    XCTAssertEqual(record.span.pageReferences, ["268-269"])
+    let calls = await ai.calls
+    XCTAssertEqual(calls, 0)
   }
 
   func testMalformedLegacyEntryIsRejectedAndDoesNotCallAI() async throws {
@@ -169,30 +201,40 @@ final class FamilyParsingServiceTests: XCTestCase {
   }
 
   private func fixture(_ name: String) throws -> String {
-    let url = try XCTUnwrap(Bundle.module.url(forResource: name, withExtension: nil, subdirectory: "Fixtures"))
+    let url = try XCTUnwrap(
+      Bundle.module.url(forResource: name, withExtension: nil, subdirectory: "Fixtures"))
     return try String(contentsOf: url, encoding: .utf8)
   }
 
-  private static func legacyPayload(mainFamilyJSON: String) throws -> Data {
+  private static func legacyPayload(
+    familyId: String = "SAKERI 4", mainFamilyJSON: String
+  ) throws -> Data {
     let family = try JSONSerialization.jsonObject(with: Data(mainFamilyJSON.utf8))
     return try JSONSerialization.data(withJSONObject: [
       "schemaVersion": 2,
       "families": [
-        "SAKERI 4": [
+        familyId: [
           "cachedAt": "2026-08-19T00:00:00Z", "extractionTime": 1,
-          "network": ["mainFamily": family, "asChildFamilies": [:], "asParentFamilies": [:], "spouseAsChildFamilies": [:]],
+          "network": [
+            "mainFamily": family, "asChildFamilies": [:], "asParentFamilies": [:],
+            "spouseAsChildFamilies": [:],
+          ],
         ]
       ],
     ])
   }
 
   private static let sakeriFamilyJSON = """
-  {"familyId":"SAKERI 4","pageReferences":["265","266"],"couples":[{"husband":{"name":"Antti","patronymic":"Mikonp.","birthDate":"05.08.1729","noteMarkers":[]},"wife":{"name":"Brita","patronymic":"Juhont.","birthDate":"04.01.1735","noteMarkers":[]},"fullMarriageDate":"08.10.1750","children":[{"name":"Maria","birthDate":"03.03.1756","spouse":"Juho Styrman","asParent":"Puukangas 6","familySearchId":"KN1X-VHG","noteMarkers":[]}],"coupleNotes":[]}],"notes":[],"noteDefinitions":{}}
-  """
+    {"familyId":"SAKERI 4","pageReferences":["265","266"],"couples":[{"husband":{"name":"Antti","patronymic":"Mikonp.","birthDate":"05.08.1729","noteMarkers":[]},"wife":{"name":"Brita","patronymic":"Juhont.","birthDate":"04.01.1735","noteMarkers":[]},"fullMarriageDate":"08.10.1750","children":[{"name":"Maria","birthDate":"03.03.1756","spouse":"Juho Styrman","asParent":"Puukangas 6","familySearchId":"KN1X-VHG","noteMarkers":[]}],"coupleNotes":[]}],"notes":[],"noteDefinitions":{}}
+    """
+
+  private static let pieniPorkolaFamilyJSON = """
+    {"familyId":"PIENI-PORKOLA 5","pageReferences":["268","269"],"couples":[{"husband":{"name":"Matti","patronymic":"Matinp.","birthDate":"22.12.1701","noteMarkers":[]},"wife":{"name":"Brita","patronymic":"Kustaant.","birthDate":"20.05.1699","noteMarkers":[]},"children":[{"name":"Kustaa","birthDate":"22.08.1726","familySearchId":"KLXK-37H","noteMarkers":[]}],"coupleNotes":[]}],"notes":[],"noteDefinitions":{}}
+    """
 
   private static let multipleSpouseJSON = """
-  {"schemaVersion":"juuret-family/1","familyId":"HYYPPÄ 7","pageReferences":["10"],"couples":[{"husband":{"name":"Jaakko","patronymic":"Jaakonp.","noteMarkers":[]},"wife":{"name":"Brita","patronymic":"Antint.","noteMarkers":[]},"children":[{"name":"Maria","birthDate":"01.01.1751","noteMarkers":[]},{"name":"Maria","birthDate":"02.02.1753","noteMarkers":[]}],"coupleNotes":[]},{"husband":{"name":"Jaakko","patronymic":"Jaakonp.","noteMarkers":[]},"wife":{"name":"Elisabet","patronymic":"Matint.","noteMarkers":[]},"children":[{"name":"Antti","birthDate":"03.03.1760","noteMarkers":[]}],"coupleNotes":[]}],"notes":[],"noteDefinitions":{}}
-  """
+    {"schemaVersion":"juuret-family/1","familyId":"HYYPPÄ 7","pageReferences":["10"],"couples":[{"husband":{"name":"Jaakko","patronymic":"Jaakonp.","noteMarkers":[]},"wife":{"name":"Brita","patronymic":"Antint.","noteMarkers":[]},"children":[{"name":"Maria","birthDate":"01.01.1751","noteMarkers":[]},{"name":"Maria","birthDate":"02.02.1753","noteMarkers":[]}],"coupleNotes":[]},{"husband":{"name":"Jaakko","patronymic":"Jaakonp.","noteMarkers":[]},"wife":{"name":"Elisabet","patronymic":"Matint.","noteMarkers":[]},"children":[{"name":"Antti","birthDate":"03.03.1760","noteMarkers":[]}],"coupleNotes":[]}],"notes":[],"noteDefinitions":{}}
+    """
 }
 
 private actor CountingAI: FamilyAIResponding {

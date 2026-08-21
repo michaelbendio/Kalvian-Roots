@@ -67,10 +67,10 @@ final class JuuretCitationServiceTests: XCTestCase {
       proposal.renderedText,
       """
       Information on page 10 includes:
-      → Matti
+      Matti
       Liisa
       Children:
-      Anna
+      → Anna
       Additional spouse:
       Kaarin, b. 1701
       m. 1720
@@ -97,7 +97,7 @@ final class JuuretCitationServiceTests: XCTestCase {
     }
   }
 
-  func testParentCitationUsesResolvedAsChildFamilyAndHarvestsAdultDeath() throws {
+  func testParentCitationUsesOnlyResolvedAsChildFamilyFacts() throws {
     let fixture = CitationFixture.parentAsChild
 
     let proposal = try JuuretCitationService().generateJuuretCitation(
@@ -110,13 +110,11 @@ final class JuuretCitationServiceTests: XCTestCase {
       Erkki
       Kaarin
       Children:
-      → Matti, 1700 - 1 January 1780
-      Additional information:
-      Matti's death date is on page 10
+      → Matti, b. 1700
       """
     )
     XCTAssertEqual(proposal.selectedPerson, fixture.selected)
-    XCTAssertEqual(proposal.sourceSpans.map(\.familyId), ["CHILD 1", "TEST 1"])
+    XCTAssertEqual(proposal.sourceSpans.map(\.familyId), ["CHILD 1"])
   }
 
   func testFileContextStoreRoundTripsWarningsAndCycles() async throws {
@@ -236,8 +234,8 @@ private enum CitationFixture {
       ]
     )
     let selected = PersonReference(
-      familyId: "TEST 1", coupleIndex: 0, role: .parent, personIndex: 0,
-      rawName: "Matti")
+      familyId: "TEST 1", coupleIndex: 0, role: .child, personIndex: 0,
+      rawName: "Anna")
     let context = PersonContextResolution(
       contextId: "context-multiple", selectedPerson: selected, complete: true,
       families: [record(family, source: source, span: sourceSpan)], claims: [], conflicts: [])
