@@ -142,6 +142,15 @@ conflicts, Juuret and HiSki proposals, and human decisions required.
 or canonical-file mutation occurs; every proposed fact is traceable without
 reading logs.
 
+**Status:** Complete. `compare_family_sources` converts UI-extracted
+FamilySearch candidates, Juuret children, and retained HiSki birth evidence
+into the shared `PersonCandidate` comparison model. `prepare_citation_proposals`
+returns the stored context, accessed families, claims, conflicts, comparison,
+Juuret and HiSki proposals, complete HiSki evidence, a readable report, and
+explicit human decisions. The `SAKERI 4` to `PUUKANGAS 6` fixture workup passes
+without network or source mutation. Verification evidence and the network-
+context rule are recorded in `mcp-phase7.md`.
+
 ## Phase 8 — Bounded and resumable network traversal
 
 **Deliverable:** Add a work queue, deduplication, cycle protection, checkpoints,

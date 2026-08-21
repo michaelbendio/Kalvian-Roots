@@ -4,7 +4,7 @@ import KalvianRootsCore
 import MCP
 
 public let kalvianRootsMCPContractVersion = "1.0"
-public let kalvianRootsMCPExecutableVersion = "0.5.0"
+public let kalvianRootsMCPExecutableVersion = "0.6.0"
 
 public struct ToolWarning: Codable, Equatable, Sendable {
   public let code: String
@@ -132,6 +132,9 @@ public struct KalvianRootsMCPServerFactory {
   private let citationService: any CitationServing
   private let personContextStore: any PersonContextStoring
   private let hiskiResearchService: any HiskiResearchServing
+  private let hiskiEvidenceStore: any HiskiEvidenceStoring
+  private let familyComparisonStore: any FamilyComparisonStoring
+  private let familyResearchService: FamilyResearchService
   private let auditWriter: any MCPAuditWriting
   private let now: NowProvider
   private let operationID: OperationIDProvider
@@ -143,6 +146,9 @@ public struct KalvianRootsMCPServerFactory {
     citationService: any CitationServing = JuuretCitationService(),
     personContextStore: any PersonContextStoring = FilePersonContextStore(),
     hiskiResearchService: any HiskiResearchServing = HiskiResearchService(),
+    hiskiEvidenceStore: any HiskiEvidenceStoring = FileHiskiEvidenceStore(),
+    familyComparisonStore: any FamilyComparisonStoring = FileFamilyComparisonStore(),
+    familyResearchService: FamilyResearchService = FamilyResearchService(),
     auditWriter: any MCPAuditWriting = FileMCPAuditWriter(),
     now: @escaping NowProvider = { Date() },
     operationID: @escaping OperationIDProvider = { UUID() }
@@ -155,6 +161,9 @@ public struct KalvianRootsMCPServerFactory {
     self.citationService = citationService
     self.personContextStore = personContextStore
     self.hiskiResearchService = hiskiResearchService
+    self.hiskiEvidenceStore = hiskiEvidenceStore
+    self.familyComparisonStore = familyComparisonStore
+    self.familyResearchService = familyResearchService
     self.auditWriter = auditWriter
     self.now = now
     self.operationID = operationID
@@ -165,7 +174,7 @@ public struct KalvianRootsMCPServerFactory {
       name: "kalvian-roots",
       version: kalvianRootsMCPExecutableVersion,
       title: "Kalvian Roots",
-      instructions: "Read, parse, resolve, prepare Juuret citations, and research bounded HiSki evidence.",
+      instructions: "Read, parse, resolve, compare, and prepare bounded Juuret and HiSki citation workups for human review.",
       capabilities: .init(tools: .init(listChanged: false))
     )
 
@@ -175,6 +184,7 @@ public struct KalvianRootsMCPServerFactory {
         Self.resolveFamilyReferencesTool, Self.resolvePersonContextTool,
         Self.generateJuuretCitationTool,
         Self.buildHiskiQueryTool, Self.searchHiskiTool, Self.getHiskiRecordTool,
+        Self.compareFamilySourcesTool, Self.prepareCitationProposalsTool,
       ])
     }
 
@@ -184,6 +194,9 @@ public struct KalvianRootsMCPServerFactory {
     let citationService = self.citationService
     let personContextStore = self.personContextStore
     let hiskiResearchService = self.hiskiResearchService
+    let hiskiEvidenceStore = self.hiskiEvidenceStore
+    let familyComparisonStore = self.familyComparisonStore
+    let familyResearchService = self.familyResearchService
     let auditWriter = self.auditWriter
     let now = self.now
     let operationID = self.operationID
@@ -222,19 +235,37 @@ public struct KalvianRootsMCPServerFactory {
       if request.name == "build_hiski_query" {
         return await Self.handleBuildHiskiQuery(
           request: request, operationId: id, generatedAt: generatedAt,
-          hiskiResearchService: hiskiResearchService, auditWriter: auditWriter
+          hiskiResearchService: hiskiResearchService,
+          auditWriter: auditWriter
         )
       }
       if request.name == "search_hiski" {
         return await Self.handleSearchHiski(
           request: request, operationId: id, generatedAt: generatedAt,
-          hiskiResearchService: hiskiResearchService, auditWriter: auditWriter
+          hiskiResearchService: hiskiResearchService, hiskiEvidenceStore: hiskiEvidenceStore,
+          auditWriter: auditWriter
         )
+      }
+      if request.name == "compare_family_sources" {
+        return await Self.handleCompareFamilySources(
+          request: request, operationId: id, generatedAt: generatedAt,
+          personContextStore: personContextStore, hiskiEvidenceStore: hiskiEvidenceStore,
+          familyComparisonStore: familyComparisonStore,
+          familyResearchService: familyResearchService, auditWriter: auditWriter)
+      }
+      if request.name == "prepare_citation_proposals" {
+        return await Self.handlePrepareCitationProposals(
+          request: request, operationId: id, generatedAt: generatedAt,
+          personContextStore: personContextStore, citationService: citationService,
+          hiskiEvidenceStore: hiskiEvidenceStore,
+          familyComparisonStore: familyComparisonStore,
+          familyResearchService: familyResearchService, auditWriter: auditWriter)
       }
       if request.name == "get_hiski_record" {
         return await Self.handleGetHiskiRecord(
           request: request, operationId: id, generatedAt: generatedAt,
-          hiskiResearchService: hiskiResearchService, auditWriter: auditWriter
+          hiskiResearchService: hiskiResearchService, hiskiEvidenceStore: hiskiEvidenceStore,
+          auditWriter: auditWriter
         )
       }
       if request.name == "resolve_person_context" {
@@ -658,6 +689,54 @@ public struct KalvianRootsMCPServerFactory {
       idempotentHint: false, openWorldHint: true)
   )
 
+  private static let personCandidateInputSchema: Value = .object([
+    "type": "object", "additionalProperties": false,
+    "required": ["source", "rawName"],
+    "properties": .object([
+      "source": .object(["type": "string", "const": "familySearch"]),
+      "rawName": .object(["type": "string", "minLength": 1]),
+      "rawBirthDate": .object(["type": ["string", "null"]]),
+      "rawDeathDate": .object(["type": ["string", "null"]]),
+      "familySearchId": .object(["type": ["string", "null"]]),
+      "provenance": .object(["type": "array", "items": sourceSpanSchema]),
+    ]),
+  ])
+
+  private static let compareFamilySourcesTool = Tool(
+    name: "compare_family_sources", title: "Compare family sources",
+    description: "Compare a stored Juuret person context with optional UI-extracted FamilySearch people and stored HiSki evidence using the shared identity model.",
+    inputSchema: .object([
+      "type": "object", "additionalProperties": false,
+      "required": ["contextId"],
+      "properties": .object([
+        "contextId": .object(["type": "string", "minLength": 1]),
+        "familySearchCandidates": .object([
+          "type": "array", "items": personCandidateInputSchema]),
+        "hiskiCandidateIds": .object([
+          "type": "array", "items": .object(["type": "string", "minLength": 1])]),
+      ]),
+    ]),
+    annotations: .init(
+      title: "Compare family sources", readOnlyHint: true, destructiveHint: false,
+      idempotentHint: true, openWorldHint: false)
+  )
+
+  private static let prepareCitationProposalsTool = Tool(
+    name: "prepare_citation_proposals", title: "Prepare citation proposals",
+    description: "Prepare a complete, readable single-family workup from stored context, comparison, and HiSki evidence. Every proposal requires human approval.",
+    inputSchema: .object([
+      "type": "object", "additionalProperties": false,
+      "required": ["comparisonId", "selectedPerson"],
+      "properties": .object([
+        "comparisonId": .object(["type": "string", "minLength": 1]),
+        "selectedPerson": personReferenceSchema,
+      ]),
+    ]),
+    annotations: .init(
+      title: "Prepare citation proposals", readOnlyHint: true, destructiveHint: false,
+      idempotentHint: true, openWorldHint: false)
+  )
+
   private struct ParsedFamilyNotFound: Codable, Sendable {
     let found: Bool
     init() { found = false }
@@ -846,6 +925,17 @@ public struct KalvianRootsMCPServerFactory {
     let query: HiskiQuery
     let candidate: HiskiResultCandidate
     let allowLiveNetwork: Bool
+  }
+
+  private struct CompareFamilySourcesArguments: Decodable {
+    let contextId: String
+    let familySearchCandidates: [PersonCandidateInput]?
+    let hiskiCandidateIds: [String]?
+  }
+
+  private struct PrepareCitationProposalsArguments: Decodable {
+    let comparisonId: String
+    let selectedPerson: PersonReference
   }
 
   private struct PreparedStartingFamily {
@@ -1107,6 +1197,7 @@ public struct KalvianRootsMCPServerFactory {
     operationId: String,
     generatedAt: String,
     hiskiResearchService: any HiskiResearchServing,
+    hiskiEvidenceStore: any HiskiEvidenceStoring,
     auditWriter: any MCPAuditWriting
   ) async -> CallTool.Result {
     let allowed: Set<String> = ["query", "allowLiveNetwork"]
@@ -1121,6 +1212,7 @@ public struct KalvianRootsMCPServerFactory {
     do {
       let result = try await hiskiResearchService.search(
         arguments.query, allowLiveNetwork: arguments.allowLiveNetwork)
+      try await hiskiEvidenceStore.store(searchResult: result, retrievedAt: generatedAt)
       let warnings = result.ambiguous
         ? [ToolWarning(
           code: "ambiguous_hiski_candidates",
@@ -1135,6 +1227,12 @@ public struct KalvianRootsMCPServerFactory {
         envelope: envelope, request: request, operationId: operationId,
         generatedAt: generatedAt, auditWriter: auditWriter, cacheStatus: "not_applicable",
         externalServicesContacted: ["hiski.genealogia.fi"])
+    } catch let error as ResearchStoreError {
+      return await errorResult(
+        code: error.code, message: error.localizedDescription, operationId: operationId,
+        retryable: false, details: nil, request: request, generatedAt: generatedAt,
+        auditWriter: auditWriter,
+        externalServicesContacted: arguments.allowLiveNetwork ? ["hiski.genealogia.fi"] : [])
     } catch let error as HiskiResearchServiceError {
       return await errorResult(
         code: error.code, message: error.localizedDescription, operationId: operationId,
@@ -1155,6 +1253,7 @@ public struct KalvianRootsMCPServerFactory {
     operationId: String,
     generatedAt: String,
     hiskiResearchService: any HiskiResearchServing,
+    hiskiEvidenceStore: any HiskiEvidenceStoring,
     auditWriter: any MCPAuditWriting
   ) async -> CallTool.Result {
     let allowed: Set<String> = ["query", "candidate", "allowLiveNetwork"]
@@ -1170,6 +1269,7 @@ public struct KalvianRootsMCPServerFactory {
       let record = try await hiskiResearchService.record(
         for: arguments.candidate, query: arguments.query,
         allowLiveNetwork: arguments.allowLiveNetwork)
+      try await hiskiEvidenceStore.store(record: record, retrievedAt: generatedAt)
       let envelope = ToolEnvelope(
         contractVersion: kalvianRootsMCPContractVersion, operationId: operationId,
         generatedAt: generatedAt, tool: request.name, readOnly: true, data: record,
@@ -1180,6 +1280,12 @@ public struct KalvianRootsMCPServerFactory {
         envelope: envelope, request: request, operationId: operationId,
         generatedAt: generatedAt, auditWriter: auditWriter, cacheStatus: "not_applicable",
         externalServicesContacted: ["hiski.genealogia.fi"])
+    } catch let error as ResearchStoreError {
+      return await errorResult(
+        code: error.code, message: error.localizedDescription, operationId: operationId,
+        retryable: false, details: nil, request: request, generatedAt: generatedAt,
+        auditWriter: auditWriter,
+        externalServicesContacted: arguments.allowLiveNetwork ? ["hiski.genealogia.fi"] : [])
     } catch let error as HiskiResearchServiceError {
       return await errorResult(
         code: error.code, message: error.localizedDescription, operationId: operationId,
@@ -1192,6 +1298,126 @@ public struct KalvianRootsMCPServerFactory {
         retryable: true, details: nil, request: request, generatedAt: generatedAt,
         auditWriter: auditWriter,
         externalServicesContacted: arguments.allowLiveNetwork ? ["hiski.genealogia.fi"] : [])
+    }
+  }
+
+  private static func handleCompareFamilySources(
+    request: CallTool.Parameters, operationId: String, generatedAt: String,
+    personContextStore: any PersonContextStoring,
+    hiskiEvidenceStore: any HiskiEvidenceStoring,
+    familyComparisonStore: any FamilyComparisonStoring,
+    familyResearchService: FamilyResearchService,
+    auditWriter: any MCPAuditWriting
+  ) async -> CallTool.Result {
+    let allowed: Set<String> = ["contextId", "familySearchCandidates", "hiskiCandidateIds"]
+    guard Set((request.arguments ?? [:]).keys).subtracting(allowed).isEmpty,
+      let arguments = try? decodeArguments(CompareFamilySourcesArguments.self, request: request),
+      !arguments.contextId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else {
+      return await errorResult(
+        code: "invalid_request", message: "compare_family_sources arguments are invalid.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter)
+    }
+    do {
+      guard let context = try await personContextStore.context(id: arguments.contextId) else {
+        throw ResearchStoreError.recordNotFound(arguments.contextId)
+      }
+      let ids = arguments.hiskiCandidateIds ?? []
+      let evidence = try await hiskiEvidenceStore.evidence(candidateIds: ids)
+      let found = Set(evidence.map(\.candidateId))
+      if let missing = ids.first(where: { !found.contains($0) }) {
+        throw ResearchStoreError.recordNotFound(missing)
+      }
+      let comparison = try familyResearchService.compare(
+        context: context, familySearchCandidates: arguments.familySearchCandidates ?? [],
+        hiskiEvidence: evidence)
+      try await familyComparisonStore.store(comparison)
+      let warnings = comparison.warnings.map { ToolWarning(code: $0.code, message: $0.message) }
+      let envelope = ToolEnvelope(
+        contractVersion: kalvianRootsMCPContractVersion, operationId: operationId,
+        generatedAt: generatedAt, tool: request.name, readOnly: true, data: comparison,
+        warnings: warnings, conflicts: comparison.conflicts,
+        provenance: comparison.provenance, auditRef: "audit:\(operationId)")
+      return try await successResult(
+        envelope: envelope, request: request, operationId: operationId,
+        generatedAt: generatedAt, auditWriter: auditWriter, cacheStatus: "research_store_hit",
+        externalServicesContacted: [])
+    } catch let error as ResearchStoreError {
+      return await errorResult(
+        code: error.code, message: error.localizedDescription, operationId: operationId,
+        retryable: false, details: nil, request: request, generatedAt: generatedAt,
+        auditWriter: auditWriter)
+    } catch {
+      return await errorResult(
+        code: "internal_error", message: "The operation could not be completed.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter)
+    }
+  }
+
+  private static func handlePrepareCitationProposals(
+    request: CallTool.Parameters, operationId: String, generatedAt: String,
+    personContextStore: any PersonContextStoring, citationService: any CitationServing,
+    hiskiEvidenceStore: any HiskiEvidenceStoring,
+    familyComparisonStore: any FamilyComparisonStoring,
+    familyResearchService: FamilyResearchService,
+    auditWriter: any MCPAuditWriting
+  ) async -> CallTool.Result {
+    let allowed: Set<String> = ["comparisonId", "selectedPerson"]
+    guard Set((request.arguments ?? [:]).keys).subtracting(allowed).isEmpty,
+      let arguments = try? decodeArguments(PrepareCitationProposalsArguments.self, request: request),
+      !arguments.comparisonId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else {
+      return await errorResult(
+        code: "invalid_request", message: "prepare_citation_proposals arguments are invalid.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter)
+    }
+    do {
+      guard let comparison = try await familyComparisonStore.comparison(id: arguments.comparisonId)
+      else { throw ResearchStoreError.recordNotFound(arguments.comparisonId) }
+      guard comparison.selectedPerson == arguments.selectedPerson else {
+        throw ResearchStoreError.invalidRequest("selectedPerson does not match the stored comparison")
+      }
+      guard let context = try await personContextStore.context(id: comparison.contextId) else {
+        throw ResearchStoreError.recordNotFound(comparison.contextId)
+      }
+      let evidence = try await hiskiEvidenceStore.evidence(candidateIds: comparison.hiskiEvidenceIds)
+      let found = Set(evidence.map(\.candidateId))
+      if let missing = comparison.hiskiEvidenceIds.first(where: { !found.contains($0) }) {
+        throw ResearchStoreError.recordNotFound(missing)
+      }
+      let juuret = try citationService.generateJuuretCitation(
+        context: context, selectedPerson: arguments.selectedPerson)
+      let workup = try familyResearchService.prepareWorkup(
+        comparison: comparison, context: context, juuretProposal: juuret,
+        hiskiEvidence: evidence)
+      let warnings = workup.warnings.map { ToolWarning(code: $0.code, message: $0.message) }
+      let envelope = ToolEnvelope(
+        contractVersion: kalvianRootsMCPContractVersion, operationId: operationId,
+        generatedAt: generatedAt, tool: request.name, readOnly: true, data: workup,
+        warnings: warnings, conflicts: workup.conflicts,
+        provenance: comparison.provenance, auditRef: "audit:\(operationId)")
+      return try await successResult(
+        envelope: envelope, request: request, operationId: operationId,
+        generatedAt: generatedAt, auditWriter: auditWriter, cacheStatus: "research_store_hit",
+        externalServicesContacted: [])
+    } catch let error as ResearchStoreError {
+      return await errorResult(
+        code: error.code, message: error.localizedDescription, operationId: operationId,
+        retryable: false, details: nil, request: request, generatedAt: generatedAt,
+        auditWriter: auditWriter)
+    } catch let error as CitationServiceError {
+      return await errorResult(
+        code: error.code, message: error.localizedDescription, operationId: operationId,
+        retryable: false, details: nil, request: request, generatedAt: generatedAt,
+        auditWriter: auditWriter)
+    } catch {
+      return await errorResult(
+        code: "internal_error", message: "The operation could not be completed.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter)
     }
   }
 

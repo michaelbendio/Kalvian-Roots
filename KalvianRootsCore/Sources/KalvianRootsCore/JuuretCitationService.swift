@@ -9,6 +9,9 @@ public struct CitationProposal: Codable, Equatable, Sendable {
   public let sourceSpans: [SourceSpan]
   public let conflicts: [FactConflict]
   public let warnings: [NetworkWarning]
+  public let sourceURL: String?
+  public let hiskiQueryId: String?
+  public let hiskiCandidateId: String?
   public let requiresApproval: Bool
 
   public init(
@@ -18,7 +21,10 @@ public struct CitationProposal: Codable, Equatable, Sendable {
     renderedText: String,
     sourceSpans: [SourceSpan],
     conflicts: [FactConflict],
-    warnings: [NetworkWarning]
+    warnings: [NetworkWarning],
+    sourceURL: String? = nil,
+    hiskiQueryId: String? = nil,
+    hiskiCandidateId: String? = nil
   ) {
     self.proposalId = proposalId
     self.citationType = citationType
@@ -27,6 +33,9 @@ public struct CitationProposal: Codable, Equatable, Sendable {
     self.sourceSpans = sourceSpans
     self.conflicts = conflicts
     self.warnings = warnings
+    self.sourceURL = sourceURL
+    self.hiskiQueryId = hiskiQueryId
+    self.hiskiCandidateId = hiskiCandidateId
     self.requiresApproval = true
   }
 }

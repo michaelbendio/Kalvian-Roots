@@ -9,7 +9,7 @@ final class KalvianRootsMCPServerTests: XCTestCase {
   private let fixedDate = Date(timeIntervalSince1970: 1_777_777_777)
   private let fixedOperationID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
 
-  func testDiscoveryExposesPhaseSixTools() async throws {
+  func testDiscoveryExposesPhaseSevenTools() async throws {
     let session = try await makeSession()
     defer { session.stop() }
 
@@ -21,9 +21,76 @@ final class KalvianRootsMCPServerTests: XCTestCase {
       "resolve_family_references", "resolve_person_context",
       "generate_juuret_citation",
       "build_hiski_query", "search_hiski", "get_hiski_record",
+      "compare_family_sources", "prepare_citation_proposals",
     ])
     XCTAssertEqual(tools.first?.annotations.readOnlyHint, true)
     XCTAssertEqual(tools.first?.annotations.openWorldHint, false)
+  }
+
+  func testSingleFamilyResearcherPreparesTraceableWorkupWithoutNetworkMutation() async throws {
+    let session = try await makeSession()
+    defer { session.stop() }
+    let person = PersonReference(
+      familyId: "SAKERI 4", coupleIndex: 0, role: .child, personIndex: 0,
+      rawName: "Maria", rawBirthDate: "03.03.1756", familySearchId: "KN1X-VHG")
+    let contextResult = try await session.client.callTool(
+      name: "resolve_person_context", arguments: [
+        "familyId": "SAKERI 4", "person": try Value(person),
+        "limits": try Value(TraversalLimits(maxFamilies: 2, maxDepth: 1, maxElapsedSeconds: 10)),
+      ])
+    let context: ToolEnvelope<PersonContextResolution> = try decodeTextContent(contextResult.content)
+    XCTAssertEqual(context.data.families.map(\.familyId), ["SAKERI 4", "PUUKANGAS 6"])
+    XCTAssertFalse(context.data.conflicts.isEmpty)
+
+    let motivation = HiskiQueryMotivation(
+      person: person, juuretField: "birthDate", juuretValue: "03.03.1756",
+      sourceSpan: context.data.families[0].span)
+    let queryResult = try await session.client.callTool(
+      name: "build_hiski_query", arguments: [
+        "eventType": "birth", "primaryName": "Maria", "date": "03.03.1756",
+        "motivation": try Value(motivation),
+      ])
+    let query: ToolEnvelope<HiskiQuery> = try decodeTextContent(queryResult.content)
+    let searchResult = try await session.client.callTool(
+      name: "search_hiski", arguments: [
+        "query": try Value(query.data), "allowLiveNetwork": true,
+      ])
+    let search: ToolEnvelope<HiskiSearchResult> = try decodeTextContent(searchResult.content)
+    let detailResult = try await session.client.callTool(
+      name: "get_hiski_record", arguments: [
+        "query": try Value(query.data), "candidate": try Value(search.data.candidates[0]),
+        "allowLiveNetwork": true,
+      ])
+    XCTAssertEqual(detailResult.isError, false)
+
+    let compareResult = try await session.client.callTool(
+      name: "compare_family_sources", arguments: [
+        "contextId": try Value(context.data.contextId),
+        "familySearchCandidates": try Value([PersonCandidateInput(
+          source: .familySearch, rawName: "Maria Antint.", rawBirthDate: "3.3.1756",
+          rawDeathDate: "4.10.1829", familySearchId: "KN1X-VHG")]),
+        "hiskiCandidateIds": try Value([search.data.candidates[0].candidateId]),
+      ])
+    let comparison: ToolEnvelope<FamilyComparisonRecord> = try decodeTextContent(compareResult.content)
+    XCTAssertEqual(comparison.data.accessedFamilyIds, ["SAKERI 4", "PUUKANGAS 6"])
+    XCTAssertEqual(comparison.data.familySearchCandidateCount, 1)
+    XCTAssertTrue(comparison.data.warnings.contains { $0.code == "ambiguous_hiski_candidates" })
+
+    let preparedResult = try await session.client.callTool(
+      name: "prepare_citation_proposals", arguments: [
+        "comparisonId": try Value(comparison.data.comparisonId), "selectedPerson": try Value(person),
+      ])
+    let workup: ToolEnvelope<FamilyResearchWorkup> = try decodeTextContent(preparedResult.content)
+    XCTAssertTrue(workup.data.requiresApproval)
+    XCTAssertEqual(workup.data.juuretCitationProposal.citationType, "juuret")
+    XCTAssertEqual(workup.data.hiskiCitationProposals.count, 1)
+    XCTAssertEqual(workup.data.hiskiCitationProposals[0].hiskiCandidateId, "candidate-1")
+    XCTAssertTrue(workup.data.renderedReport.contains("PUUKANGAS 6"))
+    XCTAssertTrue(workup.data.renderedReport.contains("No FamilySearch change or canonical Juuret source change was performed."))
+    XCTAssertFalse(workup.data.humanDecisionsRequired.isEmpty)
+
+    let audits = await session.auditWriter.records
+    XCTAssertEqual(Array(audits.suffix(2)).map(\.externalServicesContacted), [[], []])
   }
 
   func testHiskiToolsBuildSearchAndRetrieveWithoutChoosingAmbiguousCandidate() async throws {
@@ -378,11 +445,15 @@ final class KalvianRootsMCPServerTests: XCTestCase {
     let auditWriter = MemoryMCPAuditWriter()
     let parsingService = StubParsingService()
     let contextStore = MemoryPersonContextStore()
+    let evidenceStore = MemoryHiskiEvidenceStore()
+    let comparisonStore = MemoryFamilyComparisonStore()
     let server = await KalvianRootsMCPServerFactory(
       bookTextService: bookTextService,
       familyParsingService: parsingService,
       personContextStore: contextStore,
       hiskiResearchService: StubHiskiResearchService(),
+      hiskiEvidenceStore: evidenceStore,
+      familyComparisonStore: comparisonStore,
       auditWriter: auditWriter,
       now: { fixedDate },
       operationID: { fixedOperationID }

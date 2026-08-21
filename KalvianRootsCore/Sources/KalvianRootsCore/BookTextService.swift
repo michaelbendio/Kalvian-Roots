@@ -28,7 +28,7 @@ public struct SourceRevision: Codable, Equatable, Sendable {
   }
 }
 
-public struct SourceSpan: Codable, Equatable, Sendable {
+public struct SourceSpan: Codable, Hashable, Sendable {
   public let sourceId: String
   public let sourceSha256: String
   public let familyId: String

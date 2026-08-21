@@ -19,7 +19,7 @@ import KalvianRootsCore
  */
 
 @Observable
-class NameEquivalenceManager {
+class NameEquivalenceManager: NameCanonicalizing {
 
     // MARK: - Properties
 
@@ -287,50 +287,7 @@ class NameEquivalenceManager {
 
         logInfo(.nameEquivalence, "📚 Loading default Finnish name equivalences")
 
-        let defaultPairs = [
-
-            ("Liisa", "Elisabet"),
-            ("Liisa", "Elis."),
-            ("Liisa", "Lijsa"),
-            ("Liisa", "Lisa"),
-            ("Maija", "Maria"),
-            ("Malin", "Magdalena"),
-            ("Helena", "Leena"),
-            ("Tuomas", "Thomas"),
-            ("Johan", "Juho"),
-            ("Juho", "Johannes"),
-            ("Matti", "Matias"),
-            ("Matti", "Mats"),
-            ("Matti", "Matts"),
-            ("Matti", "Matthias"),
-            ("Mikko", "Michel"),
-            ("Mikko", "Michael"),
-            ("Anna", "Annika"),
-            ("Kaisa", "Caisa"),
-            ("Kustaa", "Kustavi"),
-            ("Kustaa", "Gustav"),
-            ("Kustaa", "Gustaf"),
-            ("Brita", "Birgit"),
-            ("Brita", "Briita"),
-            ("Brita", "Britha"),
-            ("Erik", "Erkki"),
-            ("Erik", "Ericus"),
-            ("Jaakko", "Jacob"),
-            ("Kaarin", "Carin"),
-            ("Kaarin", "Catharina"),
-            ("Katariina", "Catharina"),
-            ("Henrik", "Heikki"),
-            ("Henrik", "Henric"),
-            ("Henrik", "Hinric"),
-            ("Margareta", "Marketta"),
-            ("Kristina", "Kirstine"),
-            ("Pietari", "Petrus"),
-            ("Pietari", "Per"),
-            ("Antti", "Anders"),
-            ("Antti", "Andreas"),
-            ("Elisabet", "Elisabeth"),
-            ("Abraham", "Abram")
-        ]
+        let defaultPairs = NameEquivalenceRules.defaultPairs
         for (name1, name2) in defaultPairs {
             addEquivalenceToGraph(normalizeName(name1), normalizeName(name2))
         }

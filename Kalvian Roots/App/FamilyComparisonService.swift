@@ -17,7 +17,6 @@ struct HiskiCitationProposal: Equatable {
 final class FamilyComparisonService {
 
     private let nameManager: NameEquivalenceManager
-    private let genealogyCalendar = Calendar(identifier: .gregorian)
     private let reportDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
@@ -26,26 +25,6 @@ final class FamilyComparisonService {
         formatter.dateFormat = "dd MMM yyyy"
         return formatter
     }()
-    private let familySearchDateFormats = [
-        "d.M.yyyy",
-        "dd.MM.yyyy",
-        "d MMM yyyy",
-        "dd MMM yyyy",
-        "d MMMM yyyy",
-        "dd MMMM yyyy",
-        "d. MMM yyyy",
-        "dd. MMM yyyy",
-        "d. MMMM yyyy",
-        "dd. MMMM yyyy",
-        "MMM yyyy",
-        "MMMM yyyy",
-        "yyyy"
-    ]
-    private let genealogyDateLocales = [
-        Locale(identifier: "en_US_POSIX"),
-        Locale(identifier: "sv_SE"),
-        Locale(identifier: "fi_FI")
-    ]
 
     init(nameManager: NameEquivalenceManager) {
         self.nameManager = nameManager
@@ -163,6 +142,9 @@ private extension FamilyComparisonService {
         PersonCandidate(
             name: person.name,
             birthDate: parseGenealogyDate(person.birthDate),
+            deathDate: parseGenealogyDate(person.deathDate),
+            rawBirthDate: person.birthDate,
+            rawDeathDate: person.deathDate,
             source: .juuretKalvialla,
             nameManager: nameManager,
             familySearchId: person.familySearchId,
@@ -174,6 +156,7 @@ private extension FamilyComparisonService {
         PersonCandidate(
             name: event.childName,
             birthDate: parseGenealogyDate(event.birthDate),
+            rawBirthDate: event.birthDate,
             source: .hiski,
             nameManager: nameManager,
             familySearchId: nil,
@@ -185,6 +168,7 @@ private extension FamilyComparisonService {
         PersonCandidate(
             name: row.childName,
             birthDate: parseGenealogyDate(row.birthDate),
+            rawBirthDate: row.birthDate,
             source: .hiski,
             nameManager: nameManager,
             familySearchId: nil,
@@ -193,51 +177,7 @@ private extension FamilyComparisonService {
     }
 
     func parseGenealogyDate(_ rawDate: String?) -> Date? {
-        guard let rawDate else {
-            return nil
-        }
-
-        let trimmed = rawDate.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return nil
-        }
-
-        for locale in genealogyDateLocales {
-            for format in familySearchDateFormats {
-                guard dateString(trimmed, matchesFormatShape: format) else {
-                    continue
-                }
-
-                let formatter = DateFormatter()
-                formatter.calendar = genealogyCalendar
-                formatter.locale = locale
-                formatter.timeZone = TimeZone(secondsFromGMT: 0)
-                formatter.isLenient = false
-                formatter.dateFormat = format
-
-                if let date = formatter.date(from: trimmed) {
-                    return date
-                }
-            }
-        }
-
-        return nil
-    }
-
-    private func dateString(_ value: String, matchesFormatShape format: String) -> Bool {
-        switch format {
-        case "d.M.yyyy", "dd.MM.yyyy":
-            return value.range(of: #"^\d{1,2}\.\d{1,2}\.\d{4}$"#, options: .regularExpression) != nil
-        case "d MMM yyyy", "dd MMM yyyy", "d MMMM yyyy", "dd MMMM yyyy",
-             "d. MMM yyyy", "dd. MMM yyyy", "d. MMMM yyyy", "dd. MMMM yyyy":
-            return value.range(of: #"^\d{1,2}\.?\s+\p{L}+\.?\s+\d{4}$"#, options: .regularExpression) != nil
-        case "MMM yyyy", "MMMM yyyy":
-            return value.range(of: #"^\p{L}+\.?\s+\d{4}$"#, options: .regularExpression) != nil
-        case "yyyy":
-            return value.range(of: #"^\d{4}$"#, options: .regularExpression) != nil
-        default:
-            return false
-        }
+        GenealogyDateParser.parse(rawDate)
     }
 
     func familySearchChildrenWithHiskiBirthDates(

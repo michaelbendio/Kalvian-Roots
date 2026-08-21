@@ -194,17 +194,7 @@
           "selectedPerson": { "$ref": "#/$defs/personReference" }
         }
       },
-      "outputDataSchema": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["proposals"],
-        "properties": {
-          "proposals": {
-            "type": "array",
-            "items": { "$ref": "#/$defs/citationProposal" }
-          }
-        }
-      }
+      "outputDataSchema": { "$ref": "#/$defs/familyResearchWorkup" }
     }
   ],
   "$defs": {
@@ -391,12 +381,15 @@
       "required": ["proposalId", "citationType", "selectedPerson", "renderedText", "sourceSpans", "conflicts", "warnings", "requiresApproval"],
       "properties": {
         "proposalId": { "$ref": "#/$defs/nonemptyString" },
-        "citationType": { "type": "string", "enum": ["juuret", "hiski"] },
+        "citationType": { "type": "string", "pattern": "^(juuret|hiski_(birth|marriage|death))$" },
         "selectedPerson": { "$ref": "#/$defs/personReference" },
         "renderedText": { "$ref": "#/$defs/nonemptyString" },
         "sourceSpans": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/sourceSpan" } },
         "conflicts": { "type": "array", "items": { "$ref": "#/$defs/factConflict" } },
         "warnings": { "type": "array", "items": { "$ref": "#/$defs/warning" } },
+        "sourceURL": { "type": "string", "format": "uri" },
+        "hiskiQueryId": { "$ref": "#/$defs/nonemptyString" },
+        "hiskiCandidateId": { "$ref": "#/$defs/nonemptyString" },
         "requiresApproval": { "const": true }
       }
     },
@@ -480,26 +473,58 @@
     "personCandidate": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["source", "rawName", "rawBirthDate"],
+      "required": ["source", "rawName"],
       "properties": {
         "source": { "type": "string", "enum": ["familySearch", "juuretKalvialla", "hiski"] },
         "rawName": { "$ref": "#/$defs/nonemptyString" },
-        "rawBirthDate": { "$ref": "#/$defs/nonemptyString" },
+        "rawBirthDate": { "type": "string" },
         "rawDeathDate": { "type": "string" },
         "familySearchId": { "type": "string" },
-        "hiskiCandidateId": { "type": "string" },
         "provenance": { "type": "array", "items": { "$ref": "#/$defs/sourceSpan" } }
       }
     },
     "familyComparison": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["comparisonId", "rows", "conflicts", "warnings"],
+      "required": ["comparisonId", "contextId", "selectedPerson", "startingFamilyId", "accessedFamilyIds", "rows", "matchCount", "familySearchOnlyCount", "juuretOnlyCount", "hiskiOnlyCount", "familySearchCandidateCount", "hiskiEvidenceIds", "conflicts", "warnings", "provenance"],
       "properties": {
         "comparisonId": { "$ref": "#/$defs/nonemptyString" },
+        "contextId": { "$ref": "#/$defs/nonemptyString" },
+        "selectedPerson": { "$ref": "#/$defs/personReference" },
+        "startingFamilyId": { "$ref": "#/$defs/familyId" },
+        "accessedFamilyIds": { "type": "array", "items": { "$ref": "#/$defs/familyId" } },
         "rows": { "type": "array", "items": { "type": "object" } },
+        "matchCount": { "type": "integer", "minimum": 0 },
+        "familySearchOnlyCount": { "type": "integer", "minimum": 0 },
+        "juuretOnlyCount": { "type": "integer", "minimum": 0 },
+        "hiskiOnlyCount": { "type": "integer", "minimum": 0 },
+        "familySearchCandidateCount": { "type": "integer", "minimum": 0 },
+        "hiskiEvidenceIds": { "type": "array", "items": { "$ref": "#/$defs/nonemptyString" } },
         "conflicts": { "type": "array", "items": { "$ref": "#/$defs/factConflict" } },
-        "warnings": { "type": "array", "items": { "$ref": "#/$defs/warning" } }
+        "warnings": { "type": "array", "items": { "$ref": "#/$defs/warning" } },
+        "provenance": { "type": "array", "items": { "$ref": "#/$defs/sourceSpan" } }
+      }
+    },
+    "familyResearchWorkup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workupId", "startingFamilyId", "selectedPerson", "accessedFamilyIds", "parsedFamilies", "claims", "comparison", "juuretCitationProposal", "hiskiCitationProposals", "hiskiEvidence", "conflicts", "warnings", "humanDecisionsRequired", "renderedReport", "requiresApproval"],
+      "properties": {
+        "workupId": { "$ref": "#/$defs/nonemptyString" },
+        "startingFamilyId": { "$ref": "#/$defs/familyId" },
+        "selectedPerson": { "$ref": "#/$defs/personReference" },
+        "accessedFamilyIds": { "type": "array", "items": { "$ref": "#/$defs/familyId" } },
+        "parsedFamilies": { "type": "array", "items": { "$ref": "#/$defs/parsedFamilyRecord" } },
+        "claims": { "type": "array", "items": { "$ref": "#/$defs/factClaim" } },
+        "comparison": { "$ref": "#/$defs/familyComparison" },
+        "juuretCitationProposal": { "$ref": "#/$defs/citationProposal" },
+        "hiskiCitationProposals": { "type": "array", "items": { "$ref": "#/$defs/citationProposal" } },
+        "hiskiEvidence": { "type": "array", "items": { "type": "object" } },
+        "conflicts": { "type": "array", "items": { "$ref": "#/$defs/factConflict" } },
+        "warnings": { "type": "array", "items": { "$ref": "#/$defs/warning" } },
+        "humanDecisionsRequired": { "type": "array", "items": { "type": "object" } },
+        "renderedReport": { "$ref": "#/$defs/nonemptyString" },
+        "requiresApproval": { "const": true }
       }
     }
   }

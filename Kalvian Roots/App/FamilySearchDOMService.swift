@@ -1,4 +1,5 @@
 import Foundation
+import KalvianRootsCore
 
 struct FamilySearchPersonSummary: Codable, Equatable, Hashable {
     var id: String?
@@ -104,11 +105,19 @@ enum FamilySearchDOMService {
         dateParser: (String?) -> Date?
     ) -> [PersonCandidate] {
         children.map { child in
-            PersonCandidate(
+            let rawBirthDate = firstNonBlank(
+                child.birthDate, child.birth?.date, child.christeningDate, child.christening?.date
+            )
+            let rawDeathDate = firstNonBlank(
+                child.deathDate, child.death?.date, child.burialDate, child.burial?.date
+            )
+            return PersonCandidate(
                 name: child.name,
                 identityName: comparisonGivenName(from: child.name),
-                birthDate: dateParser(firstNonBlank(child.birthDate, child.birth?.date, child.christeningDate, child.christening?.date)),
-                deathDate: dateParser(firstNonBlank(child.deathDate, child.death?.date, child.burialDate, child.burial?.date)),
+                birthDate: dateParser(rawBirthDate),
+                deathDate: dateParser(rawDeathDate),
+                rawBirthDate: rawBirthDate,
+                rawDeathDate: rawDeathDate,
                 source: .familySearch,
                 nameManager: nameManager,
                 familySearchId: child.id,
