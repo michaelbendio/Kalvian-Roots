@@ -9,7 +9,7 @@ final class KalvianRootsMCPServerTests: XCTestCase {
   private let fixedDate = Date(timeIntervalSince1970: 1_777_777_777)
   private let fixedOperationID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
 
-  func testDiscoveryExposesPhaseSevenTools() async throws {
+  func testDiscoveryExposesPhaseEightTools() async throws {
     let session = try await makeSession()
     defer { session.stop() }
 
@@ -22,9 +22,45 @@ final class KalvianRootsMCPServerTests: XCTestCase {
       "generate_juuret_citation",
       "build_hiski_query", "search_hiski", "get_hiski_record",
       "compare_family_sources", "prepare_citation_proposals",
+      "start_family_traversal", "resume_family_traversal", "get_family_traversal",
     ])
     XCTAssertEqual(tools.first?.annotations.readOnlyHint, true)
     XCTAssertEqual(tools.first?.annotations.openWorldHint, false)
+  }
+
+  func testBoundedTraversalStopsResumesAndReturnsDurableCheckpoint() async throws {
+    let session = try await makeSession()
+    defer { session.stop() }
+    let policy = TraversalPolicy(
+      maxFamilies: 2, maxDepth: 1, maxAttemptsPerFamily: 2, maxItemsPerResume: 1,
+      maxDeepSeekCalls: 0, maxHiskiCalls: 0, minimumSecondsBetweenItems: 0,
+      allowedFamilyIds: ["SAKERI 4", "PUUKANGAS 6"])
+
+    let startedResult = try await session.client.callTool(
+      name: "start_family_traversal", arguments: [
+        "startingFamilyIds": try Value(["SAKERI 4"]), "policy": try Value(policy),
+      ])
+    let started: ToolEnvelope<TraversalSession> = try decodeTextContent(startedResult.content)
+    XCTAssertEqual(started.data.items.map(\.familyId), ["SAKERI 4"])
+
+    let firstResult = try await session.client.callTool(
+      name: "resume_family_traversal", arguments: ["sessionId": try Value(started.data.sessionId)])
+    let first: ToolEnvelope<TraversalSession> = try decodeTextContent(firstResult.content)
+    XCTAssertEqual(first.data.completedFamilyIds, ["SAKERI 4"])
+    XCTAssertEqual(first.data.items.map(\.familyId), ["SAKERI 4", "PUUKANGAS 6"])
+    XCTAssertEqual(first.data.stopReason, "batch_limit")
+
+    let secondResult = try await session.client.callTool(
+      name: "resume_family_traversal", arguments: ["sessionId": try Value(started.data.sessionId)])
+    let second: ToolEnvelope<TraversalSession> = try decodeTextContent(secondResult.content)
+    XCTAssertEqual(second.data.status, .completed)
+    XCTAssertEqual(second.data.completedFamilyIds, ["SAKERI 4", "PUUKANGAS 6"])
+    XCTAssertEqual(second.data.usage.deepSeekCalls, 0)
+
+    let fetchedResult = try await session.client.callTool(
+      name: "get_family_traversal", arguments: ["sessionId": try Value(started.data.sessionId)])
+    let fetched: ToolEnvelope<TraversalSession> = try decodeTextContent(fetchedResult.content)
+    XCTAssertEqual(fetched.data, second.data)
   }
 
   func testSingleFamilyResearcherPreparesTraceableWorkupWithoutNetworkMutation() async throws {
@@ -447,6 +483,10 @@ final class KalvianRootsMCPServerTests: XCTestCase {
     let contextStore = MemoryPersonContextStore()
     let evidenceStore = MemoryHiskiEvidenceStore()
     let comparisonStore = MemoryFamilyComparisonStore()
+    let traversalService = TraversalSessionService(
+      worker: ParsedFamilyTraversalWorker(
+        bookTextService: bookTextService, parsingService: parsingService),
+      store: MemoryTraversalSessionStore(), now: { fixedDate })
     let server = await KalvianRootsMCPServerFactory(
       bookTextService: bookTextService,
       familyParsingService: parsingService,
@@ -454,6 +494,7 @@ final class KalvianRootsMCPServerTests: XCTestCase {
       hiskiResearchService: StubHiskiResearchService(),
       hiskiEvidenceStore: evidenceStore,
       familyComparisonStore: comparisonStore,
+      traversalSessionService: traversalService,
       auditWriter: auditWriter,
       now: { fixedDate },
       operationID: { fixedOperationID }

@@ -4,7 +4,7 @@ import KalvianRootsCore
 import MCP
 
 public let kalvianRootsMCPContractVersion = "1.0"
-public let kalvianRootsMCPExecutableVersion = "0.6.0"
+public let kalvianRootsMCPExecutableVersion = "0.7.0"
 
 public struct ToolWarning: Codable, Equatable, Sendable {
   public let code: String
@@ -135,6 +135,7 @@ public struct KalvianRootsMCPServerFactory {
   private let hiskiEvidenceStore: any HiskiEvidenceStoring
   private let familyComparisonStore: any FamilyComparisonStoring
   private let familyResearchService: FamilyResearchService
+  private let traversalSessionService: TraversalSessionService
   private let auditWriter: any MCPAuditWriting
   private let now: NowProvider
   private let operationID: OperationIDProvider
@@ -149,6 +150,7 @@ public struct KalvianRootsMCPServerFactory {
     hiskiEvidenceStore: any HiskiEvidenceStoring = FileHiskiEvidenceStore(),
     familyComparisonStore: any FamilyComparisonStoring = FileFamilyComparisonStore(),
     familyResearchService: FamilyResearchService = FamilyResearchService(),
+    traversalSessionService: TraversalSessionService? = nil,
     auditWriter: any MCPAuditWriting = FileMCPAuditWriter(),
     now: @escaping NowProvider = { Date() },
     operationID: @escaping OperationIDProvider = { UUID() }
@@ -164,6 +166,9 @@ public struct KalvianRootsMCPServerFactory {
     self.hiskiEvidenceStore = hiskiEvidenceStore
     self.familyComparisonStore = familyComparisonStore
     self.familyResearchService = familyResearchService
+    self.traversalSessionService = traversalSessionService ?? TraversalSessionService(
+      worker: ParsedFamilyTraversalWorker(
+        bookTextService: bookTextService, parsingService: familyParsingService))
     self.auditWriter = auditWriter
     self.now = now
     self.operationID = operationID
@@ -185,6 +190,8 @@ public struct KalvianRootsMCPServerFactory {
         Self.generateJuuretCitationTool,
         Self.buildHiskiQueryTool, Self.searchHiskiTool, Self.getHiskiRecordTool,
         Self.compareFamilySourcesTool, Self.prepareCitationProposalsTool,
+        Self.startFamilyTraversalTool, Self.resumeFamilyTraversalTool,
+        Self.getFamilyTraversalTool,
       ])
     }
 
@@ -197,6 +204,7 @@ public struct KalvianRootsMCPServerFactory {
     let hiskiEvidenceStore = self.hiskiEvidenceStore
     let familyComparisonStore = self.familyComparisonStore
     let familyResearchService = self.familyResearchService
+    let traversalSessionService = self.traversalSessionService
     let auditWriter = self.auditWriter
     let now = self.now
     let operationID = self.operationID
@@ -260,6 +268,22 @@ public struct KalvianRootsMCPServerFactory {
           hiskiEvidenceStore: hiskiEvidenceStore,
           familyComparisonStore: familyComparisonStore,
           familyResearchService: familyResearchService, auditWriter: auditWriter)
+      }
+      if request.name == "start_family_traversal" {
+        return await Self.handleStartFamilyTraversal(
+          request: request, operationId: id, generatedAt: generatedAt,
+          bookTextService: bookTextService, traversalService: traversalSessionService,
+          auditWriter: auditWriter)
+      }
+      if request.name == "resume_family_traversal" {
+        return await Self.handleResumeFamilyTraversal(
+          request: request, operationId: id, generatedAt: generatedAt,
+          traversalService: traversalSessionService, auditWriter: auditWriter)
+      }
+      if request.name == "get_family_traversal" {
+        return await Self.handleGetFamilyTraversal(
+          request: request, operationId: id, generatedAt: generatedAt,
+          traversalService: traversalSessionService, auditWriter: auditWriter)
       }
       if request.name == "get_hiski_record" {
         return await Self.handleGetHiskiRecord(
@@ -737,6 +761,68 @@ public struct KalvianRootsMCPServerFactory {
       idempotentHint: true, openWorldHint: false)
   )
 
+  private static let traversalPolicySchema: Value = .object([
+    "type": "object", "additionalProperties": false,
+    "required": [
+      "maxFamilies", "maxDepth", "maxAttemptsPerFamily", "maxItemsPerResume",
+      "maxDeepSeekCalls", "maxHiskiCalls", "minimumSecondsBetweenItems", "allowedFamilyIds",
+    ],
+    "properties": .object([
+      "maxFamilies": .object(["type": "integer", "minimum": 1, "maximum": 25]),
+      "maxDepth": .object(["type": "integer", "minimum": 0, "maximum": 10]),
+      "maxAttemptsPerFamily": .object(["type": "integer", "minimum": 1, "maximum": 5]),
+      "maxItemsPerResume": .object(["type": "integer", "minimum": 1, "maximum": 10]),
+      "maxDeepSeekCalls": .object(["type": "integer", "minimum": 0, "maximum": 25]),
+      "maxHiskiCalls": .object(["type": "integer", "minimum": 0, "maximum": 100]),
+      "minimumSecondsBetweenItems": .object(["type": "integer", "minimum": 0, "maximum": 300]),
+      "allowedFamilyIds": .object([
+        "type": "array", "minItems": 1, "maxItems": 25,
+        "items": .object(["type": "string", "minLength": 3, "maxLength": 80]),
+      ]),
+    ]),
+  ])
+
+  private static let startFamilyTraversalTool = Tool(
+    name: "start_family_traversal", title: "Start bounded family traversal",
+    description: "Create or return an idempotent, durable family work queue with explicit family, depth, retry, rate, DeepSeek, and HiSki limits.",
+    inputSchema: .object([
+      "type": "object", "additionalProperties": false,
+      "required": ["startingFamilyIds", "policy"],
+      "properties": .object([
+        "startingFamilyIds": .object([
+          "type": "array", "minItems": 1, "maxItems": 25,
+          "items": .object(["type": "string", "minLength": 3, "maxLength": 80]),
+        ]),
+        "expectedSourceSHA256": .object(["type": "string", "pattern": "^[a-f0-9]{64}$"]),
+        "policy": traversalPolicySchema,
+      ]),
+    ]),
+    annotations: .init(
+      title: "Start bounded family traversal", readOnlyHint: true,
+      destructiveHint: false, idempotentHint: true, openWorldHint: false))
+
+  private static let resumeFamilyTraversalTool = Tool(
+    name: "resume_family_traversal", title: "Resume bounded family traversal",
+    description: "Process the next bounded batch and atomically checkpoint success, retryable failure, or incomplete status.",
+    inputSchema: .object([
+      "type": "object", "additionalProperties": false, "required": ["sessionId"],
+      "properties": .object(["sessionId": .object(["type": "string", "minLength": 1])]),
+    ]),
+    annotations: .init(
+      title: "Resume bounded family traversal", readOnlyHint: true,
+      destructiveHint: false, idempotentHint: false, openWorldHint: true))
+
+  private static let getFamilyTraversalTool = Tool(
+    name: "get_family_traversal", title: "Get family traversal checkpoint",
+    description: "Return a durable traversal checkpoint without processing or network access.",
+    inputSchema: .object([
+      "type": "object", "additionalProperties": false, "required": ["sessionId"],
+      "properties": .object(["sessionId": .object(["type": "string", "minLength": 1])]),
+    ]),
+    annotations: .init(
+      title: "Get family traversal checkpoint", readOnlyHint: true,
+      destructiveHint: false, idempotentHint: true, openWorldHint: false))
+
   private struct ParsedFamilyNotFound: Codable, Sendable {
     let found: Bool
     init() { found = false }
@@ -937,6 +1023,14 @@ public struct KalvianRootsMCPServerFactory {
     let comparisonId: String
     let selectedPerson: PersonReference
   }
+
+  private struct StartFamilyTraversalArguments: Decodable {
+    let startingFamilyIds: [String]
+    let expectedSourceSHA256: String?
+    let policy: TraversalPolicy
+  }
+
+  private struct TraversalSessionArguments: Decodable { let sessionId: String }
 
   private struct PreparedStartingFamily {
     let record: ParsedFamilyRecord
@@ -1419,6 +1513,139 @@ public struct KalvianRootsMCPServerFactory {
         operationId: operationId, retryable: false, details: nil, request: request,
         generatedAt: generatedAt, auditWriter: auditWriter)
     }
+  }
+
+  private static func handleStartFamilyTraversal(
+    request: CallTool.Parameters, operationId: String, generatedAt: String,
+    bookTextService: any BookTextServing, traversalService: TraversalSessionService,
+    auditWriter: any MCPAuditWriting
+  ) async -> CallTool.Result {
+    let allowed: Set<String> = ["startingFamilyIds", "expectedSourceSHA256", "policy"]
+    guard Set((request.arguments ?? [:]).keys).subtracting(allowed).isEmpty,
+      let arguments = try? decodeArguments(StartFamilyTraversalArguments.self, request: request),
+      arguments.policy.isValid, !arguments.startingFamilyIds.isEmpty,
+      arguments.expectedSourceSHA256.map(isSHA256) ?? true
+    else {
+      return await errorResult(
+        code: "invalid_request", message: "start_family_traversal arguments are invalid.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter)
+    }
+    do {
+      let source = try await bookTextService.getFamilyText(
+        familyId: arguments.startingFamilyIds[0],
+        expectedSourceSHA256: arguments.expectedSourceSHA256)
+      let session = try await traversalService.start(
+        startingFamilyIds: arguments.startingFamilyIds,
+        sourceSHA256: source.source.sha256, policy: arguments.policy)
+      return try await traversalSuccessResult(
+        session, request: request, operationId: operationId, generatedAt: generatedAt,
+        auditWriter: auditWriter, cacheStatus: "checkpoint_write", externalServices: [])
+    } catch let error as BookTextError {
+      return await errorResult(
+        code: error.code, message: error.localizedDescription, operationId: operationId,
+        retryable: isRetryable(error), details: details(for: error), request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter)
+    } catch let error as TraversalSessionError {
+      return await errorResult(
+        code: error.code, message: error.localizedDescription, operationId: operationId,
+        retryable: false, details: nil, request: request, generatedAt: generatedAt,
+        auditWriter: auditWriter)
+    } catch {
+      return await errorResult(
+        code: "internal_error", message: "The operation could not be completed.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter)
+    }
+  }
+
+  private static func handleResumeFamilyTraversal(
+    request: CallTool.Parameters, operationId: String, generatedAt: String,
+    traversalService: TraversalSessionService, auditWriter: any MCPAuditWriting
+  ) async -> CallTool.Result {
+    guard Set((request.arguments ?? [:]).keys) == ["sessionId"],
+      let arguments = try? decodeArguments(TraversalSessionArguments.self, request: request),
+      !arguments.sessionId.isEmpty
+    else {
+      return await errorResult(
+        code: "invalid_request", message: "resume_family_traversal arguments are invalid.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter)
+    }
+    do {
+      let before = try await traversalService.get(sessionId: arguments.sessionId)
+      let session = try await traversalService.resume(sessionId: arguments.sessionId)
+      var external: [String] = []
+      if session.usage.deepSeekCalls > before.usage.deepSeekCalls { external.append("DeepSeek") }
+      if session.usage.hiskiCalls > before.usage.hiskiCalls {
+        external.append("hiski.genealogia.fi")
+      }
+      return try await traversalSuccessResult(
+        session, request: request, operationId: operationId, generatedAt: generatedAt,
+        auditWriter: auditWriter, cacheStatus: "checkpoint_update", externalServices: external)
+    } catch let error as TraversalSessionError {
+      return await errorResult(
+        code: error.code, message: error.localizedDescription, operationId: operationId,
+        retryable: false, details: nil, request: request, generatedAt: generatedAt,
+        auditWriter: auditWriter)
+    } catch {
+      return await errorResult(
+        code: "internal_error", message: "The operation could not be completed.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter)
+    }
+  }
+
+  private static func handleGetFamilyTraversal(
+    request: CallTool.Parameters, operationId: String, generatedAt: String,
+    traversalService: TraversalSessionService, auditWriter: any MCPAuditWriting
+  ) async -> CallTool.Result {
+    guard Set((request.arguments ?? [:]).keys) == ["sessionId"],
+      let arguments = try? decodeArguments(TraversalSessionArguments.self, request: request),
+      !arguments.sessionId.isEmpty
+    else {
+      return await errorResult(
+        code: "invalid_request", message: "get_family_traversal arguments are invalid.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter)
+    }
+    do {
+      let session = try await traversalService.get(sessionId: arguments.sessionId)
+      return try await traversalSuccessResult(
+        session, request: request, operationId: operationId, generatedAt: generatedAt,
+        auditWriter: auditWriter, cacheStatus: "checkpoint_hit", externalServices: [])
+    } catch let error as TraversalSessionError {
+      return await errorResult(
+        code: error.code, message: error.localizedDescription, operationId: operationId,
+        retryable: false, details: nil, request: request, generatedAt: generatedAt,
+        auditWriter: auditWriter)
+    } catch {
+      return await errorResult(
+        code: "internal_error", message: "The operation could not be completed.",
+        operationId: operationId, retryable: false, details: nil, request: request,
+        generatedAt: generatedAt, auditWriter: auditWriter)
+    }
+  }
+
+  private static func traversalSuccessResult(
+    _ session: TraversalSession, request: CallTool.Parameters, operationId: String,
+    generatedAt: String, auditWriter: any MCPAuditWriting, cacheStatus: String,
+    externalServices: [String]
+  ) async throws -> CallTool.Result {
+    let warnings = session.items.compactMap { item -> ToolWarning? in
+      guard let code = item.lastErrorCode, let message = item.incompleteReason else { return nil }
+      return ToolWarning(code: code, message: "\(item.familyId): \(message)")
+    }
+    let provenance = session.items.compactMap(\.sourceSpan)
+    let envelope = ToolEnvelope(
+      contractVersion: kalvianRootsMCPContractVersion, operationId: operationId,
+      generatedAt: generatedAt, tool: request.name, readOnly: true, data: session,
+      warnings: warnings, conflicts: [FactConflict](), provenance: provenance,
+      auditRef: "audit:\(operationId)")
+    return try await successResult(
+      envelope: envelope, request: request, operationId: operationId,
+      generatedAt: generatedAt, auditWriter: auditWriter, cacheStatus: cacheStatus,
+      externalServicesContacted: externalServices)
   }
 
   private static func prepareStartingFamily(

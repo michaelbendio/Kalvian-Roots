@@ -161,6 +161,16 @@ network boundaries.
 duplication; repeated execution is idempotent; failed AI or HiSki calls do not
 corrupt progress; incomplete families report why.
 
+**Status:** Complete. The shared `TraversalSessionService` maintains a durable,
+source-revision-bound family work queue with explicit allow-list, family-count,
+depth, retry, batch/rate, DeepSeek-call, and HiSki-call limits. It checkpoints
+before and after every attempt, recovers interrupted items, deduplicates cycles,
+and retains terminal or retryable failure reasons. MCP exposes
+`start_family_traversal`, `resume_family_traversal`, and
+`get_family_traversal`. Four-family stop/resume, idempotence, durable restart,
+AI failure, and retryable HiSki failure evidence are recorded in
+`mcp-phase8.md`.
+
 ## Phase 9 — FamilySearch-assisted citation workflow
 
 **Deliverable:** Present approved citation text and source links for copying or

@@ -195,6 +195,46 @@
         }
       },
       "outputDataSchema": { "$ref": "#/$defs/familyResearchWorkup" }
+    },
+    {
+      "name": "start_family_traversal",
+      "introducedInPhase": 8,
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["startingFamilyIds", "policy"],
+        "properties": {
+          "startingFamilyIds": { "type": "array", "minItems": 1, "maxItems": 25, "items": { "$ref": "#/$defs/familyId" } },
+          "expectedSourceSHA256": { "$ref": "#/$defs/sha256" },
+          "policy": { "$ref": "#/$defs/traversalPolicy" }
+        }
+      },
+      "outputDataSchema": { "$ref": "#/$defs/traversalSession" }
+    },
+    {
+      "name": "resume_family_traversal",
+      "introducedInPhase": 8,
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sessionId"],
+        "properties": { "sessionId": { "$ref": "#/$defs/nonemptyString" } }
+      },
+      "outputDataSchema": { "$ref": "#/$defs/traversalSession" }
+    },
+    {
+      "name": "get_family_traversal",
+      "introducedInPhase": 8,
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sessionId"],
+        "properties": { "sessionId": { "$ref": "#/$defs/nonemptyString" } }
+      },
+      "outputDataSchema": { "$ref": "#/$defs/traversalSession" }
     }
   ],
   "$defs": {
@@ -525,6 +565,65 @@
         "humanDecisionsRequired": { "type": "array", "items": { "type": "object" } },
         "renderedReport": { "$ref": "#/$defs/nonemptyString" },
         "requiresApproval": { "const": true }
+      }
+    },
+    "traversalPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxFamilies", "maxDepth", "maxAttemptsPerFamily", "maxItemsPerResume", "maxDeepSeekCalls", "maxHiskiCalls", "minimumSecondsBetweenItems", "allowedFamilyIds"],
+      "properties": {
+        "maxFamilies": { "type": "integer", "minimum": 1, "maximum": 25 },
+        "maxDepth": { "type": "integer", "minimum": 0, "maximum": 10 },
+        "maxAttemptsPerFamily": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "maxItemsPerResume": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "maxDeepSeekCalls": { "type": "integer", "minimum": 0, "maximum": 25 },
+        "maxHiskiCalls": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "minimumSecondsBetweenItems": { "type": "integer", "minimum": 0, "maximum": 300 },
+        "allowedFamilyIds": { "type": "array", "minItems": 1, "maxItems": 25, "items": { "$ref": "#/$defs/familyId" } }
+      }
+    },
+    "traversalWorkItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["familyId", "depth", "status", "attempts", "referencedFamilyIds", "auditRefs"],
+      "properties": {
+        "familyId": { "$ref": "#/$defs/familyId" },
+        "depth": { "type": "integer", "minimum": 0 },
+        "discoveredFrom": { "type": "string" },
+        "status": { "type": "string", "enum": ["queued", "in_progress", "retry_pending", "completed", "failed"] },
+        "attempts": { "type": "integer", "minimum": 0 },
+        "sourceSpan": { "$ref": "#/$defs/sourceSpan" },
+        "referencedFamilyIds": { "type": "array", "items": { "$ref": "#/$defs/familyId" } },
+        "lastErrorCode": { "type": "string" },
+        "incompleteReason": { "type": "string" },
+        "auditRefs": { "type": "array", "items": { "type": "string" } },
+        "completedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "traversalSession": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "sessionId", "sourceSHA256", "startingFamilyIds", "policy", "items", "usage", "status", "createdAt", "updatedAt"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "sessionId": { "$ref": "#/$defs/nonemptyString" },
+        "sourceSHA256": { "$ref": "#/$defs/sha256" },
+        "startingFamilyIds": { "type": "array", "items": { "$ref": "#/$defs/familyId" } },
+        "policy": { "$ref": "#/$defs/traversalPolicy" },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/traversalWorkItem" } },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["deepSeekCalls", "hiskiCalls"],
+          "properties": {
+            "deepSeekCalls": { "type": "integer", "minimum": 0 },
+            "hiskiCalls": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "status": { "type": "string", "enum": ["running", "completed", "incomplete"] },
+        "stopReason": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       }
     }
   }
