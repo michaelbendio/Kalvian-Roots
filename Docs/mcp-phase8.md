@@ -54,6 +54,6 @@ Run on 2026-08-20 with Xcode 27 beta 5:
 - retryable HiSki failure preserved prior progress and later completed; and
 - terminal malformed-AI output retained its exact incomplete reason.
 
-The Phase 6 live HiSki/VPN smoke was attempted on 2026-08-20 and timed out. Phase
-8 failure handling is verified with deterministic stubs and makes no live
+The Phase 6 live HiSki/VPN smoke succeeded on its 2026-08-20 retry. Phase 8
+failure handling remains verified with deterministic stubs and makes no live
 network call.

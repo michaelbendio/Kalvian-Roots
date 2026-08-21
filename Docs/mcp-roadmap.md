@@ -126,13 +126,11 @@ retrieval through the existing `sl.gif` logic.
 names remain exact; ambiguous sets remain candidates; an opt-in live smoke test
 succeeds under the explicit VPN-ready workflow.
 
-**Status:** Implementation complete; live acceptance pending. Shared query,
-date, name-exception, `sl.gif`, and citation-link rules now serve both the app
-and MCP. Saved birth, marriage, death, and detail fixtures pass; live tools
-require explicit network opt-in. The VPN-backed smoke was attempted on
-2026-08-20 and the HiSki request timed out after 60 seconds. The remaining gate
-is a successful live response; the exact external-network blocker is documented
-in `mcp-phase6.md`.
+**Status:** Complete. Shared query, date, name-exception, `sl.gif`, and citation-
+link rules now serve both the app and MCP. Saved birth, marriage, death, and
+detail fixtures pass; live tools require explicit network opt-in. After an
+initial transient timeout, the VPN-backed smoke succeeded on 2026-08-20 in
+0.529 seconds. Evidence is documented in `mcp-phase6.md`.
 
 ## Phase 7 — Single-family DSH researcher
 

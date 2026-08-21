@@ -58,13 +58,13 @@ Run on 2026-08-19 with Xcode 27 beta 5:
 - the complete existing app test scheme passed; and
 - the tool catalog is valid JSON.
 
-The opt-in live smoke was run on 2026-08-20 with ExpressVPN connected through
-Netherlands - Amsterdam. The HTTPS request to `hiski.genealogia.fi` timed out
-after 60 seconds, so the test failed without accepting an empty or partial
-response. ExpressVPN was then disconnected, and FamilySearch was not accessed.
-Phase 6 remains acceptance-pending until a VPN-backed request succeeds. This is
-an external-network blocker, not an offline parsing or query-construction test
-failure.
+The first opt-in live smoke on 2026-08-20 timed out after 60 seconds. A second
+run with ExpressVPN connected returned a valid HiSki results page and passed in
+0.529 seconds. This confirms the live query and parser path while also showing
+that HiSki availability can be transient. ExpressVPN was confirmed disconnected
+afterward, and FamilySearch was not accessed while it was active.
+
+Phase 6 is accepted.
 
 ## Phase boundary
 

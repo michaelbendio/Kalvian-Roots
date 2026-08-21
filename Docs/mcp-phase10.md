@@ -46,7 +46,7 @@ tests. Operating procedures are recorded in `mcp-operations.md`.
 ## Remaining acceptance steps
 
 1. Select a meaningful, bounded real family set.
-2. Resolve the VPN-backed HiSki timeout and complete its HiSki research.
+2. Complete the defined family's HiSki research through the accepted live path.
 3. Human-review parsing, reference resolution, matches, and citations.
 4. Complete the supervised Phase 9 attachment step where appropriate.
 5. Refresh the pilot report and document errors and unresolved conflicts.

@@ -78,9 +78,10 @@ Do not overwrite it from derived JSON.
 
 ## External-service safety
 
-Live HiSki use is opt-in. The 2026-08-20 VPN-backed smoke attempt timed out after
-60 seconds and remains an external-network acceptance blocker. Before a workflow
-uses both HiSki and FamilySearch, disconnect the VPN before opening or operating
+Live HiSki use is opt-in. On 2026-08-20 its first VPN-backed smoke attempt timed
+out, while the retry succeeded in 0.529 seconds; treat transient availability as
+a retryable condition without discarding saved progress. Before a workflow uses
+both HiSki and FamilySearch, disconnect the VPN before opening or operating
 FamilySearch; FamilySearch may challenge VPN traffic. FamilySearch
 actions remain visible, manual or UI-driven, Juuret-bounded, and individually
 approved. The MCP server records reported outcomes but never silently attaches
