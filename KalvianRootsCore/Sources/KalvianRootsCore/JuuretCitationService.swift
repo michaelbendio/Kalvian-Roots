@@ -114,7 +114,6 @@ public actor FilePersonContextStore: PersonContextStoring {
 
   private let url: URL
   private let fileManager: FileManager
-  private var loaded: Payload?
 
   public init(url: URL? = nil, fileManager: FileManager = .default) {
     self.fileManager = fileManager
@@ -130,7 +129,6 @@ public actor FilePersonContextStore: PersonContextStoring {
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
     do {
       try encoder.encode(payload).write(to: url, options: [.atomic])
-      loaded = payload
     } catch {
       throw CitationServiceError.contextStoreUnavailable(error.localizedDescription)
     }
@@ -141,10 +139,8 @@ public actor FilePersonContextStore: PersonContextStoring {
   }
 
   private func load() throws -> Payload {
-    if let loaded { return loaded }
     guard fileManager.fileExists(atPath: url.path) else {
       let payload = Payload(schemaVersion: 1, contexts: [:])
-      loaded = payload
       return payload
     }
     do {
@@ -154,7 +150,6 @@ public actor FilePersonContextStore: PersonContextStoring {
           "Unsupported person-context cache schema \(payload.schemaVersion)."
         )
       }
-      loaded = payload
       return payload
     } catch let error as CitationServiceError {
       throw error

@@ -50,7 +50,7 @@ DSH
       -> KalvianRootsCore service protocols and implementations
         -> local Documents source file
         -> local Application Support caches and audit records
-        -> DeepSeek, only when parse_family is called
+        -> DeepSeek, only inside explicit parsing operations (including scoped refresh)
         -> HiSki, only for explicit HiSki research calls
 
 Kalvian Roots macOS app
@@ -69,7 +69,7 @@ unrelated data:
 
 | Version | Owner | Initial value | Changes when |
 | --- | --- | --- | --- |
-| MCP contract | KalvianRootsMCP | `1.0` | A tool name, request, response, or error contract changes. |
+| MCP contract | KalvianRootsMCP | `1.1` (initially `1.0`) | A tool name, request, response, or error contract changes. |
 | Juuret family JSON schema | Family Parsing Service | `juuret-family/1` | Parsed family structure or validation rules change. |
 | Provenance schema | KalvianRootsCore | `provenance/1` | Source or fact provenance structure changes. |
 | Persistent cache schema | Owning cache service | Existing family cache remains `2`; new caches declare their own positive integer | On-disk representation changes. |
@@ -150,7 +150,7 @@ they are not identity keys.
 
 Every successful tool response contains:
 
-- `contractVersion` (`1.0`);
+- `contractVersion` (`1.1`);
 - `operationId` (UUID);
 - `generatedAt` (RFC 3339 UTC);
 - `tool`;
@@ -464,3 +464,70 @@ than duplicated into every entry.
 
 Phase 0 is closed. The initial failures and their test-only corrections are
 recorded so later work can distinguish the verified baseline from regressions.
+
+
+## Contract 1.1 amendment: scoped cache maintenance and citation preview
+
+Authorized implementation on 2026-09-11 adds three tools without changing the
+canonical-source or FamilySearch write boundary. The executable is `0.10.0`.
+This maintenance slice does not change Phase 10 acceptance/readiness decisions.
+
+| Tool | Required input | Behavior |
+| --- | --- | --- |
+| `audit_family_cache` | `familyIds`, `expectedSourceSHA256` | Reports native revision status, desktop networks containing embedded copies, and dependent records. No parsing or network access. |
+| `refresh_family_cache` | `familyIds`, `expectedSourceSHA256`, `mode`, `dryRun` | Previews dependencies or installs a staged, backed-up scoped refresh. |
+| `preview_juuret_citation` | `person`, `limits`, `expectedSourceSHA256` | Resolves the selected person from existing native records and runs the shared citation renderer without persisting a context or review. |
+
+Cache scope is 1–10 distinct, explicit family IDs. It never expands parsing to
+related families. All requested blocks must match the required complete source
+hash. Counts are labeled as stored desktop networks or native records; neither
+is a count of all canonical book families.
+
+Refresh `mode: "cached"` requires validated current native parser records and
+refuses legacy imports. `mode: "reparse"` calls the existing DeepSeek parser at
+most once per requested block. `dryRun: true` reports current provenance and
+possible dependency invalidation only: no AI call, staged output, or installed
+changes. Reparse output cannot be predicted by a dry run. Apply returns actual
+changed files, changed network IDs, parsed records, AI call count, and backup ID.
+No separate human-approval flag is needed for derived cache maintenance; it
+cannot approve a citation or alter a canonical annotation.
+
+An apply requires the desktop application to be closed. All parses complete in
+a separate local Application Support staging directory before active caches are
+modified. Source and cache bytes are rechecked before installation. Exact
+family IDs select replacement objects, including copies embedded in otherwise
+unrelated desktop networks. Removed reference targets are pruned from the
+refreshed main families' resolved maps. Other genealogy objects are preserved.
+References newly added by a parse are not traversed by this maintenance tool.
+
+Affected contexts, comparisons, citation reviews, traversal sessions, and pilot
+reports are conservatively removed from active stores using exact structured
+family/dependency references. Their original bytes, including human decisions
+and attachment history, remain in `Maintenance/backups/<backupId>/before/`.
+They must be rebuilt and reviewed against the refreshed data. Unaffected records
+and decisions remain active. The backup also includes replacement files and a
+manifest with source hash, scope, and before/after hashes. There is no retention
+pruning in this release.
+
+Every MCP tool acquires the same nonblocking filesystem lock, including across
+new server processes. Persistent stores re-read their files on each access, so
+a loaded service cannot resurrect records archived by maintenance. Installation
+uses atomic file replacements and a pending journal. Before the next tool runs,
+an interrupted transaction is rolled back from verified backups. Recovery stops
+if any involved file differs from both its before and after hash, or if the
+desktop app is running. External programs that ignore this lock must remain
+closed during an apply. Restart older MCP hosts when installing this version.
+
+Audit and preview do not write genealogy or research caches; they retain the
+normal operation audit and may perform recovery of an interrupted transaction
+before reading. Citation preview never imports a legacy desktop entry or calls
+AI. An already imported native legacy record is usable only with matching source
+and span and its provenance-limited warning. Missing/obsolete records fail
+explicitly. Parent/spouse citations still require a resolved `as_child` family;
+editorial corrections still produce mixed-source review drafts. Every proposal
+retains `requiresApproval: true`. Traversal bounds and incomplete-reference
+warnings remain visible in the returned context.
+
+Additional error codes: `cache_busy`, `desktop_app_running`, `cache_changed`,
+`cache_recovery_required`, and `cache_unreadable`. Existing parsing, source,
+identity, traversal, and citation error codes remain applicable.

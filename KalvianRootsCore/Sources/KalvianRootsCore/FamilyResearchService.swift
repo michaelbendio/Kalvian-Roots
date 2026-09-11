@@ -360,7 +360,6 @@ public actor FileFamilyComparisonStore: FamilyComparisonStoring {
 
   private let url: URL
   private let fileManager: FileManager
-  private var loaded: Payload?
 
   public init(url: URL? = nil, fileManager: FileManager = .default) {
     self.fileManager = fileManager
@@ -376,7 +375,6 @@ public actor FileFamilyComparisonStore: FamilyComparisonStoring {
       let encoder = JSONEncoder()
       encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
       try encoder.encode(payload).write(to: url, options: [.atomic])
-      loaded = payload
     } catch {
       throw ResearchStoreError.unavailable(error.localizedDescription)
     }
@@ -387,10 +385,8 @@ public actor FileFamilyComparisonStore: FamilyComparisonStoring {
   }
 
   private func load() throws -> Payload {
-    if let loaded { return loaded }
     guard fileManager.fileExists(atPath: url.path) else {
       let empty = Payload(schemaVersion: 1, records: [:])
-      loaded = empty
       return empty
     }
     do {
@@ -398,7 +394,6 @@ public actor FileFamilyComparisonStore: FamilyComparisonStoring {
       guard payload.schemaVersion == 1 else {
         throw ResearchStoreError.unavailable("unsupported comparison schema")
       }
-      loaded = payload
       return payload
     } catch let error as ResearchStoreError {
       throw error

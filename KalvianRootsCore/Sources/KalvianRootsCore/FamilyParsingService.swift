@@ -108,7 +108,6 @@ public actor NativeParsedFamilyCache {
   }
   private let url: URL
   private let fileManager: FileManager
-  private var loaded: Payload?
 
   public init(url: URL? = nil, fileManager: FileManager = .default) {
     self.fileManager = fileManager
@@ -131,14 +130,11 @@ public actor NativeParsedFamilyCache {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
     try encoder.encode(payload).write(to: url, options: [.atomic])
-    loaded = payload
   }
 
   private func load() throws -> Payload {
-    if let loaded { return loaded }
     guard fileManager.fileExists(atPath: url.path) else {
       let payload = Payload(schemaVersion: 1, records: [:])
-      loaded = payload
       return payload
     }
     do {
@@ -146,14 +142,13 @@ public actor NativeParsedFamilyCache {
       guard payload.schemaVersion == 1 else {
         throw FamilyParsingError.unsupportedSchema("parsed-family-cache/\(payload.schemaVersion)")
       }
-      loaded = payload
       return payload
     } catch let error as FamilyParsingError { throw error } catch {
       throw FamilyParsingError.cacheUnreadable(error.localizedDescription)
     }
   }
 
-  private static func key(_ familyId: String, _ sourceSHA256: String, _ parserVersion: String)
+  static func key(_ familyId: String, _ sourceSHA256: String, _ parserVersion: String)
     -> String
   {
     "\(familyId.uppercased().trimmingCharacters(in: .whitespacesAndNewlines))|\(sourceSHA256)|\(juuretFamilySchemaVersion)|\(parserVersion)"
@@ -171,7 +166,6 @@ public actor NativeParsedFamilyCache {
 
 public actor LegacyFamilyCacheReader {
   private let url: URL
-  private var payload: [String: Any]?
 
   public init(url: URL? = nil, fileManager: FileManager = .default) {
     if let url {
@@ -213,7 +207,6 @@ public actor LegacyFamilyCacheReader {
   }
 
   private func load() throws -> [String: Any] {
-    if let payload { return payload }
     guard FileManager.default.fileExists(atPath: url.path) else { return [:] }
     do {
       guard
@@ -221,7 +214,6 @@ public actor LegacyFamilyCacheReader {
       else {
         throw FamilyParsingError.cacheUnreadable("Legacy cache root is not an object.")
       }
-      payload = root
       return root
     } catch let error as FamilyParsingError { throw error } catch {
       throw FamilyParsingError.cacheUnreadable(error.localizedDescription)
@@ -310,6 +302,23 @@ public actor FamilyParsingService: FamilyParsingServing {
     )
     try await nativeCache.store(record)
     return record
+  }
+
+  /// Shared validation for cache audit, scoped refresh, and read-only citation preview.
+  public static func validateCachedRecord(_ record: ParsedFamilyRecord,
+    against source: FamilyTextRecord, allowLegacy: Bool
+  ) throws {
+    let editorial = JuuretEditorialSource(rawText: source.rawText)
+    let expectedVersion = editorial == nil ? familyParserImplementationVersion : editorialFamilyParserVersion
+    guard record.found, record.familyId == source.familyId,
+      record.source.sha256 == source.source.sha256,
+      record.span == source.span,
+      record.familySchemaVersion == juuretFamilySchemaVersion,
+      record.parserImplementationVersion == expectedVersion ||
+        (allowLegacy && editorial == nil && record.parserImplementationVersion == "legacy-schema2-unknown"),
+      record.parsedFamily.editorialSource == editorial
+    else { throw FamilyParsingError.validationFailed(["Cached record provenance or parser version is not current"]) }
+    try validate(record.parsedFamily, against: source)
   }
 
   public func getParsedFamily(familyId: String, sourceSHA256: String) async throws

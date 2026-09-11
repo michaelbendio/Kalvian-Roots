@@ -132,7 +132,6 @@ public actor FilePilotReportStore: PilotReportStoring {
   private struct Payload: Codable { let schemaVersion: Int; var reports: [String: PilotReport] }
   private let url: URL
   private let fileManager: FileManager
-  private var loaded: Payload?
 
   public init(url: URL? = nil, fileManager: FileManager = .default) {
     self.fileManager = fileManager
@@ -150,17 +149,14 @@ public actor FilePilotReportStore: PilotReportStoring {
       let encoder = JSONEncoder()
       encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
       try encoder.encode(payload).write(to: url, options: [.atomic])
-      loaded = payload
     } catch {
       throw PilotServiceError.storeUnavailable(error.localizedDescription)
     }
   }
 
   private func load() throws -> Payload {
-    if let loaded { return loaded }
     guard fileManager.fileExists(atPath: url.path) else {
       let payload = Payload(schemaVersion: 1, reports: [:])
-      loaded = payload
       return payload
     }
     do {
@@ -168,7 +164,6 @@ public actor FilePilotReportStore: PilotReportStoring {
       guard payload.schemaVersion == 1 else {
         throw PilotServiceError.storeUnavailable("unsupported pilot report schema")
       }
-      loaded = payload
       return payload
     } catch let error as PilotServiceError { throw error }
     catch { throw PilotServiceError.storeUnavailable(error.localizedDescription) }

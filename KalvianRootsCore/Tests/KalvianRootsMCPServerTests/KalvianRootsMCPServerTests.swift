@@ -20,6 +20,7 @@ final class KalvianRootsMCPServerTests: XCTestCase {
       "get_family_text", "parse_family", "get_parsed_family",
       "resolve_family_references", "resolve_person_context",
       "generate_juuret_citation",
+      "audit_family_cache", "refresh_family_cache", "preview_juuret_citation",
       "build_hiski_query", "search_hiski", "get_hiski_record",
       "compare_family_sources", "prepare_citation_proposals",
       "start_family_traversal", "resume_family_traversal", "get_family_traversal",
@@ -30,6 +31,71 @@ final class KalvianRootsMCPServerTests: XCTestCase {
     ])
     XCTAssertEqual(tools.first?.annotations.readOnlyHint, true)
     XCTAssertEqual(tools.first?.annotations.openWorldHint, false)
+  }
+
+  func testCacheToolProtocolAuditDryRunPreviewAndInvalidArguments() async throws {
+    let session = try await makeSession()
+    defer { session.stop() }
+    let source = try await session.bookTextService.getFamilyText(familyId: "SAKERI 4", expectedSourceSHA256: nil)
+    let scope: [String: Value] = ["familyIds": try Value(["SAKERI 4"]), "expectedSourceSHA256": try Value(source.source.sha256)]
+    let auditResult = try await session.client.callTool(name: "audit_family_cache", arguments: scope)
+    let audit: ToolEnvelope<CacheAuditReport> = try decodeTextContent(auditResult.content)
+    XCTAssertEqual(audit.data.totalLegacyNetworks, 0)
+    XCTAssertEqual(audit.data.families.map(\.familyId), ["SAKERI 4"])
+    XCTAssertTrue(audit.readOnly)
+    var refresh = scope
+    refresh["mode"] = "reparse"; refresh["dryRun"] = true
+    let dryRunResult = try await session.client.callTool(name: "refresh_family_cache", arguments: refresh)
+    let dryRun: ToolEnvelope<CacheRefreshReport> = try decodeTextContent(dryRunResult.content)
+    XCTAssertEqual(dryRun.data.status, "preview")
+    XCTAssertEqual(dryRun.data.deepSeekCalls, 0)
+    XCTAssertTrue(dryRun.readOnly)
+    let invalid = try await session.client.callTool(name: "audit_family_cache", arguments: ["familyIds": try Value(["SAKERI 4"])])
+    XCTAssertEqual(invalid.isError, true)
+    let error: ToolErrorEnvelope = try decodeTextContent(invalid.content)
+    XCTAssertEqual(error.code, "invalid_request")
+
+    let parsedResult = try await session.client.callTool(name: "parse_family", arguments: ["familyId": "SAKERI 4"])
+    let parsed: ToolEnvelope<ParsedFamilyRecord> = try decodeTextContent(parsedResult.content)
+    let native = NativeParsedFamilyCache(url: session.cacheRoot.appendingPathComponent("Cache/parsed-families-v1.json"))
+    try await native.store(ParsedFamilyRecord(familyId: source.familyId, source: source.source, span: source.span,
+      parserImplementationVersion: familyParserImplementationVersion, parsedFamily: parsed.data.parsedFamily))
+    refresh["mode"] = "cached"; refresh["dryRun"] = false
+    let appliedResult = try await session.client.callTool(name: "refresh_family_cache", arguments: refresh)
+    let applied: ToolEnvelope<CacheRefreshReport> = try decodeTextContent(appliedResult.content)
+    XCTAssertFalse(applied.readOnly)
+    XCTAssertEqual(applied.data.status, "refreshed")
+    XCTAssertEqual(applied.data.changedNetworkIds, ["SAKERI 4"])
+    XCTAssertNotNil(applied.data.backupId)
+    XCTAssertEqual(applied.data.deepSeekCalls, 0)
+    let person = PersonReference(familyId: "SAKERI 4", coupleIndex: 0, role: .child, personIndex: 0,
+      rawName: "Maria", rawBirthDate: "03.03.1756", familySearchId: "KN1X-VHG")
+    let previewResult = try await session.client.callTool(name: "preview_juuret_citation", arguments: [
+      "person": try Value(person), "expectedSourceSHA256": try Value(source.source.sha256),
+      "limits": try Value(TraversalLimits(maxFamilies: 1, maxDepth: 0, maxElapsedSeconds: 10)),
+    ])
+    let preview: ToolEnvelope<CitationPreview> = try decodeTextContent(previewResult.content)
+    XCTAssertTrue(preview.data.proposal.requiresApproval)
+    XCTAssertTrue(preview.warnings.contains { $0.code == "legacy_cache_provenance_limited" })
+    XCTAssertTrue(preview.readOnly)
+    XCTAssertTrue(preview.data.context.externalServicesContacted.isEmpty)
+    let auditRecords = await session.auditWriter.records
+    XCTAssertEqual(auditRecords.last?.externalServicesContacted, [])
+  }
+
+  func testRefreshReturnsStructuredDesktopGuardError() async throws {
+    let session = try await makeSession(desktopRunning: true)
+    defer { session.stop() }
+    let hash = try await session.bookTextService.loadSource().sha256
+    let result = try await session.client.callTool(name: "refresh_family_cache", arguments: [
+      "familyIds": try Value(["SAKERI 4"]), "expectedSourceSHA256": try Value(hash),
+      "mode": "reparse", "dryRun": false,
+    ])
+    XCTAssertEqual(result.isError, true)
+    let error: ToolErrorEnvelope = try decodeTextContent(result.content)
+    XCTAssertEqual(error.code, "desktop_app_running")
+    let records = await session.auditWriter.records
+    XCTAssertTrue(records.last?.externalServicesContacted.isEmpty == true)
   }
 
   func testBoundedTraversalStopsResumesAndReturnsDurableCheckpoint() async throws {
@@ -253,7 +319,7 @@ final class KalvianRootsMCPServerTests: XCTestCase {
 
     XCTAssertEqual(result.isError, false)
     let envelope: ToolEnvelope<FamilyTextRecord> = try decodeTextContent(result.content)
-    XCTAssertEqual(envelope.contractVersion, "1.0")
+    XCTAssertEqual(envelope.contractVersion, "1.1")
     XCTAssertEqual(envelope.operationId, fixedOperationID.uuidString.lowercased())
     XCTAssertEqual(envelope.tool, "get_family_text")
     XCTAssertTrue(envelope.readOnly)
@@ -514,7 +580,7 @@ final class KalvianRootsMCPServerTests: XCTestCase {
     }
   }
 
-  private func makeSession() async throws -> TestSession {
+  private func makeSession(desktopRunning: Bool = false) async throws -> TestSession {
     let fixtureDirectory = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent()
       .deletingLastPathComponent()
@@ -543,6 +609,7 @@ final class KalvianRootsMCPServerTests: XCTestCase {
     let pilotService = PilotService(
       traversalService: traversalService, citationReviewService: citationReviewService,
       store: MemoryPilotReportStore(), now: { fixedDate })
+    let cacheRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     let server = await KalvianRootsMCPServerFactory(
       bookTextService: bookTextService,
       familyParsingService: parsingService,
@@ -553,6 +620,7 @@ final class KalvianRootsMCPServerTests: XCTestCase {
       traversalSessionService: traversalService,
       citationReviewService: citationReviewService,
       pilotService: pilotService,
+      cacheMaintenance: CacheMaintenanceService(root: cacheRoot, book: bookTextService, desktopIsRunning: { desktopRunning }),
       auditWriter: auditWriter,
       now: { fixedDate },
       operationID: { fixedOperationID }
@@ -569,7 +637,7 @@ final class KalvianRootsMCPServerTests: XCTestCase {
       server: server,
       client: client,
       bookTextService: bookTextService,
-      auditWriter: auditWriter
+      auditWriter: auditWriter, cacheRoot: cacheRoot
     )
   }
 
@@ -687,11 +755,13 @@ private struct TestSession {
   let client: Client
   let bookTextService: BookTextService
   let auditWriter: MemoryMCPAuditWriter
+  let cacheRoot: URL
 
   func stop() {
     Task {
       await server.stop()
       await client.disconnect()
+      try? FileManager.default.removeItem(at: cacheRoot)
     }
   }
 }

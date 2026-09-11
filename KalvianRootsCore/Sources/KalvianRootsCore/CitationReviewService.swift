@@ -117,7 +117,6 @@ public actor FileCitationReviewStore: CitationReviewStoring {
 
   private let url: URL
   private let fileManager: FileManager
-  private var loaded: Payload?
 
   public init(url: URL? = nil, fileManager: FileManager = .default) {
     self.fileManager = fileManager
@@ -135,17 +134,14 @@ public actor FileCitationReviewStore: CitationReviewStoring {
       let encoder = JSONEncoder()
       encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
       try encoder.encode(payload).write(to: url, options: [.atomic])
-      loaded = payload
     } catch {
       throw CitationReviewError.storeUnavailable(error.localizedDescription)
     }
   }
 
   private func load() throws -> Payload {
-    if let loaded { return loaded }
     guard fileManager.fileExists(atPath: url.path) else {
       let payload = Payload(schemaVersion: 1, reviews: [:])
-      loaded = payload
       return payload
     }
     do {
@@ -153,7 +149,6 @@ public actor FileCitationReviewStore: CitationReviewStoring {
       guard payload.schemaVersion == 1 else {
         throw CitationReviewError.storeUnavailable("unsupported citation review schema")
       }
-      loaded = payload
       return payload
     } catch let error as CitationReviewError { throw error }
     catch { throw CitationReviewError.storeUnavailable(error.localizedDescription) }

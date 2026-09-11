@@ -173,7 +173,6 @@ public actor FileTraversalSessionStore: TraversalSessionStoring {
   private struct Payload: Codable { let schemaVersion: Int; var sessions: [String: TraversalSession] }
   private let url: URL
   private let fileManager: FileManager
-  private var loaded: Payload?
 
   public init(url: URL? = nil, fileManager: FileManager = .default) {
     self.fileManager = fileManager
@@ -191,17 +190,14 @@ public actor FileTraversalSessionStore: TraversalSessionStoring {
       let encoder = JSONEncoder()
       encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
       try encoder.encode(payload).write(to: url, options: [.atomic])
-      loaded = payload
     } catch {
       throw TraversalSessionError.storeUnavailable(error.localizedDescription)
     }
   }
 
   private func load() throws -> Payload {
-    if let loaded { return loaded }
     guard fileManager.fileExists(atPath: url.path) else {
       let payload = Payload(schemaVersion: 1, sessions: [:])
-      loaded = payload
       return payload
     }
     do {
@@ -209,7 +205,6 @@ public actor FileTraversalSessionStore: TraversalSessionStoring {
       guard payload.schemaVersion == 1 else {
         throw TraversalSessionError.storeUnavailable("unsupported traversal schema")
       }
-      loaded = payload
       return payload
     } catch let error as TraversalSessionError { throw error }
     catch { throw TraversalSessionError.storeUnavailable(error.localizedDescription) }

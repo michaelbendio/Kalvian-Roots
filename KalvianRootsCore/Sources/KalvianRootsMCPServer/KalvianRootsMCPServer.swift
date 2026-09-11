@@ -3,8 +3,8 @@ import Foundation
 import KalvianRootsCore
 import MCP
 
-public let kalvianRootsMCPContractVersion = "1.0"
-public let kalvianRootsMCPExecutableVersion = "0.9.0"
+public let kalvianRootsMCPContractVersion = "1.1"
+public let kalvianRootsMCPExecutableVersion = "0.10.0"
 
 public struct ToolWarning: Codable, Equatable, Sendable {
   public let code: String
@@ -138,6 +138,7 @@ public struct KalvianRootsMCPServerFactory {
   private let traversalSessionService: TraversalSessionService
   private let citationReviewService: CitationReviewService
   private let pilotService: PilotService
+  private let cacheMaintenance: CacheMaintenanceService
   private let auditWriter: any MCPAuditWriting
   private let now: NowProvider
   private let operationID: OperationIDProvider
@@ -155,6 +156,7 @@ public struct KalvianRootsMCPServerFactory {
     traversalSessionService: TraversalSessionService? = nil,
     citationReviewService: CitationReviewService = CitationReviewService(),
     pilotService: PilotService? = nil,
+    cacheMaintenance: CacheMaintenanceService? = nil,
     auditWriter: any MCPAuditWriting = FileMCPAuditWriter(),
     now: @escaping NowProvider = { Date() },
     operationID: @escaping OperationIDProvider = { UUID() }
@@ -177,6 +179,7 @@ public struct KalvianRootsMCPServerFactory {
     self.pilotService = pilotService ?? PilotService(
       traversalService: self.traversalSessionService,
       citationReviewService: citationReviewService)
+    self.cacheMaintenance = cacheMaintenance ?? CacheMaintenanceService(book: bookTextService)
     self.auditWriter = auditWriter
     self.now = now
     self.operationID = operationID
@@ -196,6 +199,7 @@ public struct KalvianRootsMCPServerFactory {
         Self.getFamilyTextTool, Self.parseFamilyTool, Self.getParsedFamilyTool,
         Self.resolveFamilyReferencesTool, Self.resolvePersonContextTool,
         Self.generateJuuretCitationTool,
+        Self.auditFamilyCacheTool, Self.refreshFamilyCacheTool, Self.previewJuuretCitationTool,
         Self.buildHiskiQueryTool, Self.searchHiskiTool, Self.getHiskiRecordTool,
         Self.compareFamilySourcesTool, Self.prepareCitationProposalsTool,
         Self.startFamilyTraversalTool, Self.resumeFamilyTraversalTool,
@@ -219,6 +223,7 @@ public struct KalvianRootsMCPServerFactory {
     let traversalSessionService = self.traversalSessionService
     let citationReviewService = self.citationReviewService
     let pilotService = self.pilotService
+    let cacheMaintenance = self.cacheMaintenance
     let auditWriter = self.auditWriter
     let now = self.now
     let operationID = self.operationID
@@ -226,6 +231,21 @@ public struct KalvianRootsMCPServerFactory {
     await server.withMethodHandler(CallTool.self) { request in
       let id = operationID().uuidString.lowercased()
       let generatedAt = Self.rfc3339(now())
+
+      if ["audit_family_cache", "refresh_family_cache", "preview_juuret_citation"].contains(request.name) {
+        return await Self.handleCacheTools(request: request, operationId: id, generatedAt: generatedAt,
+          maintenance: cacheMaintenance, book: bookTextService, parser: familyParsingService,
+          citation: citationService, auditWriter: auditWriter)
+      }
+      // Serialize persistent operations across hosts, and recover interrupted maintenance
+      // before any loaded service can read or write a partially refreshed cache.
+      let lease: CacheAccessLease
+      do { lease = try cacheMaintenance.acquireAccess() }
+      catch {
+        return await Self.cacheToolError(error, request: request, operationId: id,
+          generatedAt: generatedAt, auditWriter: auditWriter)
+      }
+      defer { withExtendedLifetime(lease) {} }
 
       if request.name == "parse_family" {
         return await Self.handleParseFamily(
@@ -482,6 +502,127 @@ public struct KalvianRootsMCPServerFactory {
     }
 
     return server
+  }
+
+  private static let cacheScopeProperties: [String: Value] = [
+    "familyIds": .object(["type": "array", "minItems": 1, "maxItems": 10, "uniqueItems": true,
+      "items": .object(["type": "string", "minLength": 3, "maxLength": 80])]),
+    "expectedSourceSHA256": .object(["type": "string", "pattern": "^[a-f0-9]{64}$"]),
+  ]
+  private static let auditFamilyCacheTool = Tool(
+    name: "audit_family_cache", title: "Audit scoped family caches",
+    description: "Inspect current source provenance, embedded desktop copies, and dependent research records for 1–10 explicit families. Counts describe stored entries, not the number of canonical book families. No AI or genealogy writes.",
+    inputSchema: .object(["type": "object", "additionalProperties": false,
+      "required": ["familyIds", "expectedSourceSHA256"], "properties": .object(cacheScopeProperties)]),
+    annotations: .init(readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false))
+  private static let refreshFamilyCacheTool = Tool(
+    name: "refresh_family_cache", title: "Refresh scoped family caches",
+    description: "Preview or apply maintenance for 1–10 explicit families. cached requires current native records; reparse calls DeepSeek once per requested family only on apply. Apply requires the desktop app closed, stages all records, backs up changed files, replaces embedded copies, prunes removed links, and archives dependent contexts, comparisons, reviews, traversals and pilots. Never edits canonical text or FamilySearch.",
+    inputSchema: .object(["type": "object", "additionalProperties": false,
+      "required": ["familyIds", "expectedSourceSHA256", "mode", "dryRun"],
+      "properties": .object(cacheScopeProperties.merging([
+        "mode": .object(["type": "string", "enum": ["cached", "reparse"]]),
+        "dryRun": .object(["type": "boolean"]),
+      ]) { _, new in new })]),
+    annotations: .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true))
+  private static let previewJuuretCitationTool = Tool(
+    name: "preview_juuret_citation", title: "Preview Juuret citation",
+    description: "Resolve a selected person from current native caches and render the existing approval-required citation, including editorial evidence and strict as_child requirements. No AI, context writes, review decisions, or attachments. Missing caches are reported explicitly.",
+    inputSchema: .object(["type": "object", "additionalProperties": false,
+      "required": ["person", "limits", "expectedSourceSHA256"], "properties": .object([
+        "person": personReferenceSchema, "limits": traversalLimitsSchema,
+        "expectedSourceSHA256": .object(["type": "string", "pattern": "^[a-f0-9]{64}$"]),
+      ])]),
+    annotations: .init(readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false))
+
+  private struct CacheScopeArguments: Decodable {
+    let familyIds: [String]
+    let expectedSourceSHA256: String
+  }
+  private struct CacheRefreshArguments: Decodable {
+    let familyIds: [String]
+    let expectedSourceSHA256: String
+    let mode: CacheRefreshMode
+    let dryRun: Bool
+  }
+  private struct CitationPreviewArguments: Decodable {
+    let person: PersonReference
+    let limits: TraversalLimits
+    let expectedSourceSHA256: String
+  }
+  private static func handleCacheTools(request: CallTool.Parameters, operationId: String,
+    generatedAt: String, maintenance: CacheMaintenanceService, book: any BookTextServing,
+    parser: any FamilyParsingServing, citation: any CitationServing, auditWriter: any MCPAuditWriting
+  ) async -> CallTool.Result {
+    do {
+      let keys = Set((request.arguments ?? [:]).keys)
+      if request.name == "audit_family_cache" {
+        guard keys == ["familyIds", "expectedSourceSHA256"],
+          let args = try? decodeArguments(CacheScopeArguments.self, request: request)
+        else { throw CacheMaintenanceError.invalidScope }
+        let result = try await maintenance.audit(familyIds: args.familyIds, expectedSourceSHA256: args.expectedSourceSHA256)
+        return try await successResult(envelope: ToolEnvelope(
+          contractVersion: kalvianRootsMCPContractVersion, operationId: operationId, generatedAt: generatedAt,
+          tool: request.name, readOnly: true, data: result, warnings: [], conflicts: [],
+          provenance: result.families.map(\.sourceSpan), auditRef: "audit:\(operationId)"),
+          request: request, operationId: operationId, generatedAt: generatedAt, auditWriter: auditWriter,
+          cacheStatus: "audited", externalServicesContacted: [])
+      }
+      if request.name == "refresh_family_cache" {
+        guard keys == ["familyIds", "expectedSourceSHA256", "mode", "dryRun"],
+          let args = try? decodeArguments(CacheRefreshArguments.self, request: request)
+        else { throw CacheMaintenanceError.invalidScope }
+        let result = try await maintenance.refresh(familyIds: args.familyIds,
+          expectedSourceSHA256: args.expectedSourceSHA256, mode: args.mode, dryRun: args.dryRun)
+        return try await successResult(envelope: ToolEnvelope(
+          contractVersion: kalvianRootsMCPContractVersion, operationId: operationId, generatedAt: generatedAt,
+          tool: request.name, readOnly: args.dryRun, data: result,
+          warnings: result.refreshedFamilies.flatMap(\.warnings).map { ToolWarning(code: $0.code, message: $0.message) }, conflicts: [],
+          provenance: result.audit.families.map(\.sourceSpan), auditRef: "audit:\(operationId)"),
+          request: request, operationId: operationId, generatedAt: generatedAt, auditWriter: auditWriter,
+          cacheStatus: result.status, externalServicesContacted: result.deepSeekCalls > 0 ? ["DeepSeek"] : [])
+      }
+      guard keys == ["person", "limits", "expectedSourceSHA256"],
+        let args = try? decodeArguments(CitationPreviewArguments.self, request: request),
+        isSHA256(args.expectedSourceSHA256), args.limits.isValid
+      else { throw CacheMaintenanceError.invalidScope }
+      let lease = try maintenance.acquireAccess()
+      defer { withExtendedLifetime(lease) {} }
+      let result = try await CitationPreviewService(book: book, parser: parser, citation: citation)
+        .preview(person: args.person, limits: args.limits, expectedSourceSHA256: args.expectedSourceSHA256)
+      let warnings = toolWarnings(records: result.context.families, network: result.context.missingReferences,
+        cycles: result.context.cycles) + result.proposal.warnings.map { ToolWarning(code: $0.code, message: $0.message) }
+      return try await successResult(envelope: ToolEnvelope(
+        contractVersion: kalvianRootsMCPContractVersion, operationId: operationId, generatedAt: generatedAt,
+        tool: request.name, readOnly: true, data: result, warnings: warnings,
+        conflicts: result.proposal.conflicts, provenance: result.proposal.sourceSpans, auditRef: "audit:\(operationId)"),
+        request: request, operationId: operationId, generatedAt: generatedAt, auditWriter: auditWriter,
+        cacheStatus: "preview", externalServicesContacted: [])
+    } catch {
+      return await cacheToolError(error, request: request, operationId: operationId,
+        generatedAt: generatedAt, auditWriter: auditWriter)
+    }
+  }
+  private static func cacheToolError(_ error: Error, request: CallTool.Parameters,
+    operationId: String, generatedAt: String, auditWriter: any MCPAuditWriting
+  ) async -> CallTool.Result {
+    let failure = error as? CacheRefreshFailure
+    let error = failure?.cause ?? error
+    let code: String
+    switch error {
+    case let value as CacheMaintenanceError: code = value.code
+    case let value as BookTextError: code = value.code
+    case let value as FamilyParsingError: code = value.code
+    case let value as FamilyNetworkError: code = value.code
+    case let value as CitationServiceError: code = value.code
+    default: code = "internal_error"
+    }
+    return await errorResult(code: code,
+      message: code == "internal_error" ? "The cache operation could not be completed." : error.localizedDescription,
+      operationId: operationId, retryable: ["cache_busy", "ai_request_failed"].contains(code),
+      details: failure.map { ["deepSeekCalls": String($0.deepSeekCalls)] }, request: request,
+      generatedAt: generatedAt, auditWriter: auditWriter,
+      externalServicesContacted: (failure?.deepSeekCalls ?? 0) > 0 ? ["DeepSeek"] : [])
   }
 
   private static let getFamilyTextTool = Tool(
@@ -2314,6 +2455,11 @@ public struct KalvianRootsMCPServerFactory {
 
   private static func auditRequest(_ request: CallTool.Parameters) -> [String: String] {
     var result = ["tool": request.name]
+    if let ids = request.arguments?["familyIds"]?.arrayValue {
+      result["familyIds"] = ids.compactMap(\.stringValue).joined(separator: ", ")
+    }
+    if let mode = request.arguments?["mode"]?.stringValue { result["mode"] = mode }
+    if let dryRun = request.arguments?["dryRun"]?.boolValue { result["dryRun"] = String(dryRun) }
     if let familyId = request.arguments?["familyId"]?.stringValue {
       result["familyId"] = familyId
     }
