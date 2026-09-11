@@ -87,6 +87,12 @@ struct CitationGenerator {
         nameEquivalenceManager: NameEquivalenceManager?,
         citationType: CitationType
     ) -> String {
+        let editorialSources = ([family] + (network?.allFamilies ?? [])).compactMap(\.editorialSource)
+        if !editorialSources.isEmpty {
+            var seen = Set<String>()
+            return editorialSources.filter { seen.insert($0.blockSHA256).inserted }
+                .map(\.citationReviewText).joined(separator: "\n\n")
+        }
         var citation = "Information on \(family.pageReferenceString) includes:\n"
         var enhancementSources: [EnhancementSource] = []
         var targetChildInFamily: Person? = nil

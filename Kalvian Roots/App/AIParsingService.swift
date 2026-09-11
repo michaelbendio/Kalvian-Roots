@@ -68,7 +68,7 @@ class AIParsingService {
             logDebug(.parsing, "📤 Sending request to AI service...")
             let jsonResponse: String = try await service.parseFamily(
                 familyId: familyId,
-                familyText: familyText
+                familyText: JuuretEditorialSource(rawText: familyText)?.workingText ?? familyText
             )
             
             let parsingTime = DebugLogger.shared.endTimer("ai_parsing")
@@ -76,7 +76,8 @@ class AIParsingService {
             logTrace(.parsing, "Raw JSON response: \(jsonResponse.prefix(500))...")
             
             // Parse JSON string to Family object
-            let family = try parseJSON(jsonResponse, familyId: familyId)
+            var family = try parseJSON(jsonResponse, familyId: familyId)
+            family.editorialSource = JuuretEditorialSource(rawText: familyText)
             
             logDebug(.parsing, "🔍 DEBUG: Checking parsed marriage dates:")
             for (index, couple) in family.couples.enumerated() {
@@ -169,13 +170,21 @@ class AIParsingService {
             guard let husbandData = coupleData["husband"] as? [String: Any] else {
                 throw AIServiceError.invalidResponse("Couple \(index + 1) missing 'husband' data")
             }
-            let husband = try convertJSONToPerson(husbandData)
+            var husband = try convertJSONToPerson(husbandData)
+            husband.spouse = nil
+            husband.spouseFamilySearchId = nil
+            husband.spouseBirthDate = nil
+            husband.spouseParentsFamilyId = nil
             
             // Extract wife
             guard let wifeData = coupleData["wife"] as? [String: Any] else {
                 throw AIServiceError.invalidResponse("Couple \(index + 1) missing 'wife' data")
             }
-            let wife = try convertJSONToPerson(wifeData)
+            var wife = try convertJSONToPerson(wifeData)
+            wife.spouse = nil
+            wife.spouseFamilySearchId = nil
+            wife.spouseBirthDate = nil
+            wife.spouseParentsFamilyId = nil
             
             // Extract marriage date
             let marriageDate = coupleData["marriageDate"] as? String

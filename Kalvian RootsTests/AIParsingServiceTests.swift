@@ -41,6 +41,26 @@ final class AIParsingServiceTests: XCTestCase {
     
     // MARK: - Service Configuration Tests
     
+    func testEditorialTextIsKeptOutsideAIAndParentSpouseFieldsAreNotDuplicated() async throws {
+        let source = """
+        TEST 1, page 1
+        ★ 1710 Simo
+        ★ n 1697 Maria
+        Research correction, 2026-09-11 (editorial; manual citation review required):
+        The former Porkola 4 parent reference is withdrawn.
+        """
+        let response = Family(familyId: "TEST 1", pageReferences: ["1"],
+            husband: Person(name: "Simo", birthDate: "1710", spouse: "Maria", noteMarkers: []),
+            wife: Person(name: "Maria", birthDate: "n 1697", spouse: "Simo", noteMarkers: []))
+        let mock = MockAIService(response: String(data: try JSONEncoder().encode(response), encoding: .utf8)!)
+        let parsed = try await AIParsingService(service: mock).parseFamily(familyId: "TEST 1", familyText: source)
+        XCTAssertEqual(mock.lastInput, JuuretEditorialSource(rawText: source)?.workingText)
+        XCTAssertFalse(mock.lastInput!.contains("Porkola 4"))
+        XCTAssertEqual(parsed.editorialSource, JuuretEditorialSource(rawText: source))
+        XCTAssertNil(parsed.primaryCouple?.husband.spouse)
+        XCTAssertNil(parsed.primaryCouple?.wife.spouse)
+    }
+
     func testServiceInitialization() {
         XCTAssertNotNil(service, "Service should initialize")
         XCTAssertFalse(service.isConfigured, "Service should not be configured without API key")
@@ -250,6 +270,7 @@ private final class MockAIService: AIService {
     let name = "Mock"
     var isConfigured: Bool { true }
     private let response: String
+    private(set) var lastInput: String?
 
     init(response: String) {
         self.response = response
@@ -258,6 +279,7 @@ private final class MockAIService: AIService {
     func configure(apiKey: String) throws {}
 
     func parseFamily(familyId: String, familyText: String) async throws -> String {
-        response
+        lastInput = familyText
+        return response
     }
 }
