@@ -29,6 +29,24 @@ final class CitationGeneratorTests: XCTestCase {
         super.tearDown()
     }
     
+    func testEditorialCorrectionSurvivesCacheCodingAndProducesReviewDraft() throws {
+        testFamily.editorialSource = JuuretEditorialSource(rawText: """
+        TEST 1, page 1
+        ★ 01.06.1714 Maria <M8ZK-CC9>
+        Research correction, 2026-09-11 (editorial; manual citation review required):
+        The book prints 31.10.1707. Birth evidence: https://hiski.genealogia.fi/hiski?en+t4084909
+        """)
+        let saved = try JSONEncoder().encode(testFamily)
+        let loaded = try JSONDecoder().decode(Family.self, from: saved)
+        let sanitized = JuuretOriginPhraseFilter.sanitized(loaded)
+        let text = CitationGenerator.generateMainFamilyCitation(family: sanitized)
+        XCTAssertTrue(text.hasPrefix("REVIEW REQUIRED"))
+        XCTAssertFalse(text.contains("Information on"))
+        XCTAssertTrue(text.contains("01.06.1714"))
+        XCTAssertTrue(text.contains("The book prints 31.10.1707"))
+        XCTAssertEqual(sanitized.editorialSource, testFamily.editorialSource)
+    }
+
     // MARK: - Main Family Citation Tests
     
     func testGenerateMainFamilyCitation() {

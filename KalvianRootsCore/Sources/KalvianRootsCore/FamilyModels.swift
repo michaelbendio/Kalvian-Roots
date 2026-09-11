@@ -140,6 +140,7 @@ public struct Family: Hashable, Sendable, Codable {
   public var couples: [Couple]
   public var notes: [String]
   public var noteDefinitions: [String: String]
+  public var editorialSource: JuuretEditorialSource?
 
   public init(
     familyId: String,
@@ -150,7 +151,8 @@ public struct Family: Hashable, Sendable, Codable {
     children: [Person] = [],
     childrenDiedInfancy: Int? = nil,
     notes: [String] = [],
-    noteDefinitions: [String: String] = [:]
+    noteDefinitions: [String: String] = [:],
+    editorialSource: JuuretEditorialSource? = nil
   ) {
     self.init(
       familyId: familyId,
@@ -163,7 +165,8 @@ public struct Family: Hashable, Sendable, Codable {
         childrenDiedInfancy: childrenDiedInfancy
       )],
       notes: notes,
-      noteDefinitions: noteDefinitions
+      noteDefinitions: noteDefinitions,
+      editorialSource: editorialSource
     )
   }
 
@@ -172,13 +175,15 @@ public struct Family: Hashable, Sendable, Codable {
     pageReferences: [String],
     couples: [Couple],
     notes: [String] = [],
-    noteDefinitions: [String: String] = [:]
+    noteDefinitions: [String: String] = [:],
+    editorialSource: JuuretEditorialSource? = nil
   ) {
     self.familyId = familyId
     self.pageReferences = pageReferences
     self.couples = couples
     self.notes = notes
     self.noteDefinitions = noteDefinitions
+    self.editorialSource = editorialSource
   }
 
   public var primaryCouple: Couple? { couples.first }

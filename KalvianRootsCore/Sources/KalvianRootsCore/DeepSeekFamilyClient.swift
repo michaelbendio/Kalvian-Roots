@@ -106,6 +106,20 @@ public enum DeepSeekFamilyPrompt {
     spouseBirthDate, and spouseParentsFamilyId. Optional values may be null;
     noteMarkers must always be an array.
 
+    Parent relationships are represented by the couple. Leave their child-only
+    spouse, spouseFamilySearchId, spouseBirthDate, and spouseParentsFamilyId fields null.
+    Each ★ starts a new person row. A date belongs only to that same row;
+    a blank birth date must stay null and must not borrow the next row's date.
+    The name field contains the given name only; put the exact patronymic token
+    (for example Laurinp., Juhonp., Antint.) in patronymic, without expansion.
+    pageReferences contains only page numbers, for example ["237", "239"],
+    never the words "page" or "pages". Family references contain the identifier
+    without surrounding braces. Retain trailing family references on child rows
+    as asParent even when they are not enclosed in braces.
+    A spouse lifespan such as "1711-1792" is not a marriage date: put only the
+    birth part in spouseBirthDate and preserve the lifespan in a note.
+    Do not invent a note definition when the source has a marker but no definition.
+
     Preserve every name, patronymic, spelling, punctuation, and date exactly.
     Never normalize or translate names. Preserve approximate "n " prefixes.
     Preserve historical death expressions such as "isoviha" exactly.

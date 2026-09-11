@@ -5,7 +5,9 @@ import Foundation
 #endif
 
 public let juuretFamilySchemaVersion = "juuret-family/1"
-public let familyParserImplementationVersion = "deepseek-chat-prompt-2026-08-19"
+public let familyParserImplementationVersion = "deepseek-chat-prompt-2026-09-11"
+
+public let editorialFamilyParserVersion = "deepseek-editorial-split-2026-09-11-v3"
 
 public enum ParseCachePolicy: String, Codable, Sendable {
   case useValidated
@@ -245,16 +247,22 @@ public actor FamilyParsingService: FamilyParsingServing {
   public func parseFamily(source: FamilyTextRecord, cachePolicy: ParseCachePolicy) async throws
     -> ParsedFamilyRecord
   {
+    let editorial = JuuretEditorialSource(rawText: source.rawText)
+    let parserVersion = editorial == nil ? familyParserImplementationVersion : editorialFamilyParserVersion
     if cachePolicy != .refresh,
       let native = try await nativeCache.record(
         familyId: source.familyId,
         sourceSHA256: source.source.sha256,
-        parserVersion: familyParserImplementationVersion
+        parserVersion: parserVersion
       )
     {
+      try Self.validate(native.parsedFamily, against: source)
+      guard native.parsedFamily.editorialSource == editorial else {
+        throw FamilyParsingError.validationFailed(["Editorial source provenance does not match the current block"])
+      }
       return native
     }
-    if cachePolicy != .refresh,
+    if editorial == nil, cachePolicy != .refresh,
       let imported = try await nativeCache.record(
         familyId: source.familyId,
         sourceSHA256: source.source.sha256,
@@ -264,7 +272,7 @@ public actor FamilyParsingService: FamilyParsingServing {
       return imported
     }
 
-    if cachePolicy != .refresh, let legacy = try await legacyCache.family(id: source.familyId) {
+    if editorial == nil, cachePolicy != .refresh, let legacy = try await legacyCache.family(id: source.familyId) {
       try Self.validate(legacy, against: source)
       let record = ParsedFamilyRecord(
         familyId: source.familyId,
@@ -285,15 +293,20 @@ public actor FamilyParsingService: FamilyParsingServing {
     }
 
     guard cachePolicy != .cacheOnly else { throw FamilyParsingError.cacheMiss(source.familyId) }
-    let response = try await ai.parseFamily(familyId: source.familyId, familyText: source.rawText)
-    let family = try FamilyJSONDecoder.decode(response, expectedFamilyId: source.familyId)
+    let response = try await ai.parseFamily(familyId: source.familyId, familyText: editorial?.workingText ?? source.rawText)
+    var family = try FamilyJSONDecoder.decode(response, expectedFamilyId: source.familyId)
+    family.editorialSource = editorial
     try Self.validate(family, against: source)
     let record = ParsedFamilyRecord(
       familyId: source.familyId,
       source: source.source,
       span: source.span,
-      parserImplementationVersion: familyParserImplementationVersion,
-      parsedFamily: family
+      parserImplementationVersion: parserVersion,
+      parsedFamily: family,
+      warnings: editorial == nil ? [] : [ParsingWarning(
+        code: "editorial_review_required",
+        message: "Corrected working genealogy: printed claims and editorial evidence require separate citation review."
+      )]
     )
     try await nativeCache.store(record)
     return record
@@ -302,6 +315,9 @@ public actor FamilyParsingService: FamilyParsingServing {
   public func getParsedFamily(familyId: String, sourceSHA256: String) async throws
     -> ParsedFamilyRecord?
   {
+    if let editorial = try await nativeCache.record(
+      familyId: familyId, sourceSHA256: sourceSHA256, parserVersion: editorialFamilyParserVersion
+    ) { return editorial }
     if let current = try await nativeCache.record(
       familyId: familyId,
       sourceSHA256: sourceSHA256,
@@ -332,6 +348,37 @@ public actor FamilyParsingService: FamilyParsingServing {
     }
     if !pageReferencesEquivalent(family.pageReferences, source.span.pageReferences) {
       issues.append("Page references do not match the source header")
+    }
+    if let editorial = JuuretEditorialSource(rawText: source.rawText) {
+      let rows = editorial.workingText.components(separatedBy: "\n").filter { $0.hasPrefix("★") }
+      let datePattern = #"^★\s*((?:n\s*)?\d{1,2}\.\d{1,2}\.\d{4}|(?:n\s*)?\d{4})(?=\s)"#
+      let dateRegex = try! NSRegularExpression(pattern: datePattern)
+      for couple in family.couples {
+        for (person, isChild) in [(couple.husband, false), (couple.wife, false)] + couple.children.map({ ($0, true) }) {
+          let matchingRows = rows.filter { row in
+            if let id = person.familySearchId { return row.contains("<\(id)>") }
+            return row.contains(person.displayName)
+          }
+          guard matchingRows.count == 1, let row = matchingRows.first else {
+            issues.append("Cannot verify one exact source row for \(person.displayName)")
+            continue
+          }
+          let nsRow = row as NSString
+          let match = dateRegex.firstMatch(in: row, range: NSRange(location: 0, length: nsRow.length))
+          let birth = match.map { nsRow.substring(with: $0.range(at: 1)) }
+          if person.birthDate != birth {
+            issues.append("Birth date for \(person.displayName) does not match its own source row")
+          }
+          if let reference = person.asChild, !row.localizedCaseInsensitiveContains(reference) {
+            issues.append("Parent-family reference for \(person.displayName) is absent from its source row")
+          }
+          if isChild && !row.contains("∞") &&
+            [person.spouse, person.marriageDate, person.fullMarriageDate, person.asParent,
+             person.spouseFamilySearchId, person.spouseParentsFamilyId].contains(where: { $0 != nil }) {
+            issues.append("Unsupported spouse/adult-family data for \(person.displayName)")
+          }
+        }
+      }
     }
     if !issues.isEmpty { throw FamilyParsingError.validationFailed(issues) }
   }
@@ -447,7 +494,7 @@ public enum FamilyJSONDecoder {
       pageReferences: family.pageReferences,
       couples: family.couples.map { couple in
         Couple(
-          husband: sanitize(couple.husband), wife: sanitize(couple.wife),
+          husband: sanitizeParent(couple.husband), wife: sanitizeParent(couple.wife),
           marriageDate: couple.marriageDate, fullMarriageDate: couple.fullMarriageDate,
           children: couple.children.map(sanitize), childrenDiedInfancy: couple.childrenDiedInfancy,
           coupleNotes: couple.coupleNotes.compactMap(sanitizeField)
@@ -460,16 +507,36 @@ public enum FamilyJSONDecoder {
     )
   }
 
+  private static func sanitizeParent(_ person: Person) -> Person {
+    var parent = sanitize(person)
+    // The couple already represents this relationship. Child-only spouse fields
+    // duplicate the parental couple in the desktop display and citation model.
+    parent.spouse = nil
+    parent.spouseFamilySearchId = nil
+    parent.spouseBirthDate = nil
+    parent.spouseParentsFamilyId = nil
+    return parent
+  }
+
   private static func sanitize(_ person: Person) -> Person {
     Person(
       name: person.name, patronymic: person.patronymic, birthDate: person.birthDate,
       deathDate: sanitizeField(person.deathDate), marriageDate: person.marriageDate,
       fullMarriageDate: person.fullMarriageDate, spouse: sanitizeField(person.spouse),
-      asChild: sanitizeField(person.asChild), asParent: sanitizeField(person.asParent),
+      asChild: sanitizeReference(person.asChild), asParent: sanitizeReference(person.asParent),
       familySearchId: person.familySearchId, spouseFamilySearchId: person.spouseFamilySearchId,
       noteMarkers: person.noteMarkers, fatherName: person.fatherName, motherName: person.motherName,
-      spouseBirthDate: person.spouseBirthDate, spouseParentsFamilyId: person.spouseParentsFamilyId
+      spouseBirthDate: person.spouseBirthDate, spouseParentsFamilyId: sanitizeReference(person.spouseParentsFamilyId)
     )
+  }
+
+  private static func sanitizeReference(_ value: String?) -> String? {
+    guard let value = sanitizeField(value) else { return nil }
+    // Braces delimit a reference in the source; they are not part of its family ID.
+    if value.hasPrefix("{"), value.hasSuffix("}") {
+      return String(value.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    return value
   }
 
   private static func sanitizeField(_ value: String?) -> String? {

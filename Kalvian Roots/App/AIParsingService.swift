@@ -30,9 +30,11 @@ final class AIParsingService {
         do {
             let response = try await service.parseFamily(
                 familyId: familyId,
-                familyText: familyText
+                familyText: JuuretEditorialSource(rawText: familyText)?.workingText ?? familyText
             )
-            return try FamilyJSONDecoder.decode(response, expectedFamilyId: familyId)
+            var family = try FamilyJSONDecoder.decode(response, expectedFamilyId: familyId)
+            family.editorialSource = JuuretEditorialSource(rawText: familyText)
+            return family
         } catch let error as AIServiceError {
             throw error
         } catch {

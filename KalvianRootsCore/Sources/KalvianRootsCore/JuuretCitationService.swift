@@ -194,6 +194,18 @@ public struct JuuretCitationService: CitationServing, Sendable {
       throw CitationServiceError.sourceFamilyMissing(renderingTarget.familyId)
     }
     try validate(renderingTarget, in: sourceRecord.parsedFamily)
+    let editorialRecords = context.families.filter { $0.parsedFamily.editorialSource != nil }
+    if !editorialRecords.isEmpty {
+      return CitationProposal(
+        proposalId: stableID("juuret-editorial-review", context.contextId, editorialRecords.map { $0.span.blockSha256 }.joined(separator: "|")),
+        selectedPerson: selectedPerson,
+        renderedText: editorialRecords.compactMap { $0.parsedFamily.editorialSource?.citationReviewText }.joined(separator: "\n\n"),
+        sourceSpans: editorialRecords.map(\.span),
+        conflicts: context.conflicts,
+        warnings: [NetworkWarning(code: "editorial_review_required",
+          message: "Mixed-source research draft requires manual attribution review before attachment.")]
+      )
+    }
 
     let conflictedFields = Set(context.conflicts.map(\.field))
     var renderableClaims = context.claims.filter {

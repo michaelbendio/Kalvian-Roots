@@ -428,3 +428,26 @@ Kalvian Roots is a hybrid system:
         - citation generation
 
 All actions remain user-controlled and auditable.
+
+Editorial research corrections (September 2026)
+----------------------------------------------
+
+Approved working-file corrections may include a trailing `Research correction,`
+note (optionally prefixed `*)`). The parser sends only the preceding working
+text to AI and preserves the exact editorial note and block hash in the optional
+`Family.editorialSource` field. Disputed old relationships in that note are not
+parsing input. This metadata survives disk coding and origin-phrase filtering.
+
+Citation generation for a corrected family or a context containing one returns
+a visibly review-required mixed-source research draft. It includes the exact
+working text and separately labeled printed claims, corrections, uncertainty,
+and evidence links. It does not describe corrected facts as information printed
+on the book pages. This is a review output, not a ready-to-attach book citation.
+Ordinary book citations retain their existing format. A missing as-child parent
+family still prevents the MCP parent/spouse Juuret citation; parish evidence can
+be cited separately. No fallback relationship is inferred.
+
+For an editorial source, MCP ignores legacy cache imports and uses a separate
+parser version. A native editorial cache hit must retain the exact current
+editorial source. Refresh only affected families, back up active caches first,
+and invalidate affected embedded networks and derived contexts/proposals.

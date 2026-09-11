@@ -92,14 +92,18 @@ final class BookTextServiceTests: XCTestCase {
         encoding: .utf8
       )
     )
-    XCTAssertEqual(puukangas.span.startLine, 4_572)
-    XCTAssertEqual(puukangas.span.endLine, 4_580)
-    XCTAssertEqual(sakeri.span.startLine, 6_565)
-    XCTAssertEqual(sakeri.span.endLine, 6_578)
-    XCTAssertEqual(
-      sakeri.source.sha256,
-      "3accc9e3cca9d2940798c7ff78fdb635e52564a806876501079ae145e67dd486"
-    )
+    // Approved edits to other blocks can move these unchanged families and
+    // change the whole-file hash. Validate spans against the current bytes.
+    let currentData = try Data(contentsOf: sourceURL)
+    let currentHash = SHA256.hash(data: currentData).map { String(format: "%02x", $0) }.joined()
+    let lines = String(decoding: currentData, as: UTF8.self).components(separatedBy: "\n")
+    for record in [puukangas, sakeri] {
+      XCTAssertEqual(record.source.sha256, currentHash)
+      XCTAssertEqual(record.span.sourceSha256, currentHash)
+      let actualLines = lines[(record.span.startLine - 1)...(record.span.endLine - 1)]
+        .joined(separator: "\n").trimmingCharacters(in: .newlines)
+      XCTAssertEqual(actualLines, record.rawText.trimmingCharacters(in: .newlines))
+    }
   }
 
   func testSourceAndBlockRevisionsAreExactAndStable() async throws {

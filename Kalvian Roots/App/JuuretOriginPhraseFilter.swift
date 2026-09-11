@@ -18,7 +18,8 @@ enum JuuretOriginPhraseFilter {
             pageReferences: family.pageReferences,
             couples: family.couples.map(sanitized),
             notes: sanitizedNotes(family.notes),
-            noteDefinitions: sanitized(family.noteDefinitions)
+            noteDefinitions: sanitized(family.noteDefinitions),
+            editorialSource: family.editorialSource
         )
     }
 

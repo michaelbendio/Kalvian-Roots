@@ -10,7 +10,18 @@
     "pageReferences": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
     "couples": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/couple" } },
     "notes": { "type": "array", "items": { "type": "string" } },
-    "noteDefinitions": { "type": "object", "additionalProperties": { "type": "string" } }
+    "noteDefinitions": { "type": "object", "additionalProperties": { "type": "string" } },
+    "editorialSource": {
+      "description": "Host-preserved editorial source; never populated by AI extraction.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["workingText", "correctionText", "blockSHA256"],
+      "properties": {
+        "workingText": { "type": "string" },
+        "correctionText": { "type": "string" },
+        "blockSHA256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
   },
   "$defs": {
     "nullableString": { "type": ["string", "null"] },
